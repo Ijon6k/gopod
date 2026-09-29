@@ -1,0 +1,62 @@
+[
+	{
+		"id": "aerochat",
+		"name": "AeroChat",
+		"description": "Realtime chat platform with WebSocket support",
+		"status": "running",
+		"cpu": 3.4,
+		"memory": 1240,
+		"memoryTotal": 16384,
+		"createdAt": "2024-10-12",
+		"domains": [],
+		"services": []
+	},
+	{
+		"id": "portfolio",
+		"name": "Portfolio",
+		"description": "Personal website and project showcase",
+		"status": "running",
+		"cpu": 0.7,
+		"memory": 180,
+		"memoryTotal": 16384,
+		"createdAt": "2024-09-03",
+		"domains": [],
+		"services": []
+	},
+	{
+		"id": "ngumpulhost",
+		"name": "NgumpulHost",
+		"description": "Community hosting platform for small teams",
+		"status": "running",
+		"cpu": 2.1,
+		"memory": 820,
+		"memoryTotal": 16384,
+		"createdAt": "2024-11-20",
+		"domains": [],
+		"services": []
+	},
+	{
+		"id": "minecraft",
+		"name": "Minecraft",
+		"description": "Dedicated game server — Survival SMP",
+		"status": "degraded",
+		"cpu": 8.2,
+		"memory": 4096,
+		"memoryTotal": 16384,
+		"createdAt": "2025-01-07",
+		"domains": [],
+		"services": []
+	},
+	{
+		"id": "homelab",
+		"name": "HomeLab",
+		"description": "Personal services and a compact Compose application stack",
+		"status": "running",
+		"cpu": 5.6,
+		"memory": 1860,
+		"memoryTotal": 16384,
+		"createdAt": "2025-02-18",
+		"domains": [],
+		"services": []
+	}
+]

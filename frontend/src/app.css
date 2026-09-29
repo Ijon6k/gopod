@@ -1,0 +1,355 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+
+/* ──────────────────────────────────────────────
+   GOPOD Design System — CSS Custom Properties
+   Migrated 1:1 from Figma/React design
+   ────────────────────────────────────────────── */
+
+@theme {
+  /* Background surfaces */
+  --color-bg-outer: #050607;
+  --color-bg-shell: #0D0F12;
+  --color-bg-panel: #111318;
+  --color-bg-surface: #15181D;
+  --color-bg-hover: #191D23;
+
+  /* Text hierarchy */
+  --color-text-primary: #E7E8EB;
+  --color-text-secondary: #9498A1;
+  --color-text-tertiary: #656A74;
+  --color-text-muted: #50555E;
+
+  /* Accent — indigo, used sparingly */
+  --color-accent: #6973A8;
+  --color-accent-hover: #7680B5;
+
+  /* Status colors */
+  --color-status-green: #4C9A72;
+  --color-status-amber: #B8893B;
+  --color-status-red: #B85454;
+  --color-status-gray: #656A74;
+  --color-status-blue: #6973A8;
+
+  /* Fonts */
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Radii */
+  --radius-shell: 12px;
+  --radius-card: 8px;
+  --radius-sm: 6px;
+
+  /* ──────────────────────────────────────────────
+     Typography Scale Tokens
+     ────────────────────────────────────────────── */
+  /* Base text: 14px for all standard/default content */
+  --text-base: 14px;
+  --text-base--line-height: 1.5;
+
+  /* 16px for prominent text / subheadings / emphasis */
+  --text-md: 16px;
+  --text-md--line-height: 1.5;
+
+  /* 18px and above for headings, titles, metrics */
+  --text-lg: 18px;
+  --text-lg--line-height: 1.4;
+
+  --text-xl: 20px;
+  --text-xl--line-height: 1.35;
+
+  --text-2xl: 24px;
+  --text-2xl--line-height: 1.25;
+
+  --text-3xl: 28px;
+  --text-3xl--line-height: 1.2;
+
+  --text-4xl: 32px;
+  --text-4xl--line-height: 1.15;
+
+  /* Explicit Numeric Tokens for Tailwind utilities */
+  --text-14: 14px;
+  --text-14--line-height: 1.5;
+
+  --text-16: 16px;
+  --text-16--line-height: 1.5;
+
+  --text-18: 18px;
+  --text-18--line-height: 1.4;
+
+  --text-20: 20px;
+  --text-20--line-height: 1.35;
+
+  --text-22: 22px;
+  --text-22--line-height: 1.3;
+
+  --text-24: 24px;
+  --text-24--line-height: 1.25;
+
+  /* Semantic utility tokens */
+  --text-body: 14px;
+  --text-body--line-height: 1.5;
+
+  --text-subheading: 16px;
+  --text-subheading--line-height: 1.5;
+
+  --text-heading: 18px;
+  --text-heading--line-height: 1.4;
+
+  --text-title: 20px;
+  --text-title--line-height: 1.35;
+
+  --text-display: 24px;
+  --text-display--line-height: 1.25;
+}
+
+:root {
+  /* Legacy CSS vars — used by components directly */
+  --bg-outer: #050607;
+  --bg-shell: #0D0F12;
+  --bg-panel: #111318;
+  --bg-surface: #15181D;
+  --bg-hover: #191D23;
+
+  --text-primary: #E7E8EB;
+  --text-secondary: #9498A1;
+  --text-tertiary: #656A74;
+  --text-muted: #50555E;
+
+  --accent: #6973A8;
+  --accent-hover: #7680B5;
+  --accent-muted: rgba(105, 115, 168, 0.10);
+
+  --status-green: #4C9A72;
+  --status-amber: #B8893B;
+  --status-red: #B85454;
+  --status-gray: #656A74;
+  --status-blue: #6973A8;
+
+  --border: rgba(255, 255, 255, 0.055);
+  --border-subtle: rgba(255, 255, 255, 0.035);
+
+  --radius-shell: 12px;
+  --radius-card: 8px;
+  --radius-sm: 6px;
+
+  --sidebar-width: 232px;
+  --topbar-height: 52px;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* Code Editor & Terminal Tokens (Dark Mode) */
+  --bg-editor: #111318;
+  --bg-editor-gutter: rgba(255, 255, 255, 0.015);
+  --bg-terminal: #0D0F13;
+  --code-text: #E7E8EB;
+  --code-comment: #656A74;
+  --code-key: #8FA3D8;
+  --code-string: #A3C9A8;
+  --code-number: #D8B28A;
+  --code-bool: #B89FD6;
+  --code-section: #B89FD6;
+  --code-value: #C0C6D4;
+
+  /* Canvas / Topology Tokens (Dark Mode) */
+  --bg-canvas: #090A0F;
+  --bg-canvas-dot: #1F2230;
+  --bg-canvas-node: #12151E;
+  --border-canvas-node: rgba(255, 255, 255, 0.08);
+  --bg-canvas-node-hover: #171A27;
+  --bg-canvas-node-selected: #181C2C;
+  --shadow-canvas-node: none;
+  --bg-canvas-pill: rgba(255, 255, 255, 0.035);
+  --bg-canvas-pill-text: var(--text-muted);
+  --bg-canvas-pill-border: rgba(255, 255, 255, 0.045);
+  --border-canvas-edge: rgba(255, 255, 255, 0.13);
+  --border-canvas-edge-glow: rgba(105, 115, 168, 0.4);
+  --bg-canvas-region-project: rgba(12, 14, 20, 0.40);
+  --bg-canvas-region-project-hover: rgba(14, 16, 24, 0.60);
+  --bg-canvas-region-pod: rgba(16, 19, 31, 0.30);
+  --bg-canvas-region-pod-hover: rgba(21, 25, 40, 0.45);
+  --border-canvas-region-pod: rgba(105, 115, 168, 0.28);
+
+  /* Typography scale tokens (CSS variables) */
+  --font-size-base: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 18px;
+  --font-size-xl: 20px;
+  --font-size-22: 22px;
+  --font-size-2xl: 24px;
+  --font-size-3xl: 28px;
+  --font-size-4xl: 32px;
+
+  --text-14: 14px;
+  --text-16: 16px;
+  --text-18: 18px;
+  --text-20: 20px;
+  --text-22: 22px;
+  --text-24: 24px;
+}
+
+[data-theme="light"],
+html.light {
+  --bg-outer: #EDEEF2;
+  --bg-shell: #FFFFFF;
+  --bg-panel: #F7F8FA;
+  --bg-surface: #EFF1F5;
+  --bg-hover: #E4E7ED;
+
+  /* Code Editor & Terminal Tokens (Light Mode) */
+  --bg-editor: #F8F9FA;
+  --bg-editor-gutter: rgba(0, 0, 0, 0.025);
+  --bg-terminal: #F5F6F8;
+  --code-text: #1F2328;
+  --code-comment: #6E7781;
+  --code-key: #2E5AAC;
+  --code-string: #1A7F37;
+  --code-number: #953800;
+  --code-bool: #8250DF;
+  --code-section: #8250DF;
+  --code-value: #24292F;
+
+  /* Canvas / Topology Tokens (Light Mode) */
+  --bg-canvas: #F4F6FA;
+  --bg-canvas-dot: #CBD2DF;
+  --bg-canvas-node: #FFFFFF;
+  --border-canvas-node: rgba(0, 0, 0, 0.09);
+  --bg-canvas-node-hover: #F8FAFD;
+  --bg-canvas-node-selected: #FFFFFF;
+  --shadow-canvas-node: none;
+  --bg-canvas-pill: #EEF1F6;
+  --bg-canvas-pill-text: var(--text-secondary);
+  --bg-canvas-pill-border: rgba(0, 0, 0, 0.06);
+  --border-canvas-edge: rgba(0, 0, 0, 0.16);
+  --border-canvas-edge-glow: rgba(91, 102, 163, 0.25);
+  --bg-canvas-region-project: rgba(0, 0, 0, 0.025);
+  --bg-canvas-region-project-hover: rgba(0, 0, 0, 0.045);
+  --bg-canvas-region-pod: rgba(91, 102, 163, 0.05);
+  --bg-canvas-region-pod-hover: rgba(91, 102, 163, 0.09);
+  --border-canvas-region-pod: rgba(91, 102, 163, 0.35);
+
+  --text-primary: #12141A;
+  --text-secondary: #474D59;
+  --text-tertiary: #6E7582;
+  --text-muted: #8E96A4;
+
+  --accent: #5B66A3;
+  --accent-hover: #4A548E;
+  --accent-muted: rgba(91, 102, 163, 0.12);
+
+  --status-green: #2E7D52;
+  --status-amber: #A67324;
+  --status-red: #A83C3C;
+  --status-gray: #717784;
+  --status-blue: #4A67C4;
+
+  --border: rgba(0, 0, 0, 0.085);
+  --border-subtle: rgba(0, 0, 0, 0.045);
+}
+
+/* ──────────────────────────────────────────────
+   Base Resets
+   ────────────────────────────────────────────── */
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--text-base);
+  line-height: 1.5;
+  color: var(--text-primary);
+  background: var(--bg-outer);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ──────────────────────────────────────────────
+   Scrollbar
+   ────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-tertiary);
+}
+
+/* ──────────────────────────────────────────────
+   Focus & Selection
+   ────────────────────────────────────────────── */
+
+*,
+*:focus,
+*:focus-visible {
+  outline: none !important;
+}
+
+input,
+textarea,
+select,
+button {
+  outline: none !important;
+  box-shadow: none !important;
+  -webkit-tap-highlight-color: transparent;
+}
+
+input:focus,
+input:focus-visible,
+textarea:focus,
+textarea:focus-visible,
+select:focus,
+select:focus-visible,
+button:focus,
+button:focus-visible {
+  outline: none !important;
+  outline-offset: 0 !important;
+  box-shadow: none !important;
+}
+
+*:focus-visible {
+  outline: 1.5px solid var(--accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--accent-muted);
+  color: var(--text-primary);
+}
+
+/* ──────────────────────────────────────────────
+   Utilities
+   ────────────────────────────────────────────── */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}

@@ -1,0 +1,53 @@
+# OS & Tooling
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Logs & Runtime
+*.log
+logs/
+tmp/
+*.tmp
+
+# Environment & Secrets
+.env
+.env.*
+.env.local
+!.env.example
+
+# IDE & Editors
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Golang Backend
+backend/bin/
+backend/dist/*
+!backend/dist/.gitkeep
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+coverage.txt
+coverage.out
+coverage.html
+vendor/
+
+# Frontend (Node / Bun / SvelteKit / Vite)
+node_modules/
+frontend/node_modules/
+.svelte-kit/
+frontend/.svelte-kit/
+build/
+frontend/build/
+.output/
+frontend/.output/
+vite.config.*.timestamp-*
+frontend/vite.config.*.timestamp-*

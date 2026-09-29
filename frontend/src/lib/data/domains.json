@@ -1,0 +1,7 @@
+[
+	{ "id": "d1", "hostname": "chat.example.com", "projectId": "aerochat", "serviceId": "aerochat-web", "serviceName": "web", "tls": true, "status": "active", "proxyPort": 8301, "containerPort": 3000, "publishedPort": 3000 },
+	{ "id": "d2", "hostname": "ws.example.com", "projectId": "aerochat", "serviceId": "aerochat-ws", "serviceName": "websocket", "tls": true, "status": "active", "proxyPort": 8302, "containerPort": 8080, "publishedPort": 8080 },
+	{ "id": "d3", "hostname": "joko.dev", "projectId": "portfolio", "serviceId": "portfolio-web", "serviceName": "web", "tls": true, "status": "active", "proxyPort": 8401, "containerPort": 3000, "publishedPort": 3000 },
+	{ "id": "d4", "hostname": "ngumpulhost.com", "projectId": "ngumpulhost", "serviceId": "ngumpul-frontend", "serviceName": "frontend", "tls": true, "status": "active", "proxyPort": 8501, "containerPort": 3000, "publishedPort": 3000 },
+	{ "id": "d5", "hostname": "api.ngumpulhost.com", "projectId": "ngumpulhost", "serviceId": "ngumpul-backend", "serviceName": "backend", "tls": true, "status": "active", "proxyPort": 8502, "containerPort": 8000, "publishedPort": 8000 }
+]

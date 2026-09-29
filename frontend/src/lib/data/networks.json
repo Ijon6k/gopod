@@ -1,0 +1,6 @@
+[
+	{ "id": "net1", "name": "aerochat-network", "driver": "bridge", "projects": ["AeroChat"], "containers": 3, "subnet": "10.88.0.0/24", "gateway": "10.88.0.1" },
+	{ "id": "net2", "name": "ngumpul-network", "driver": "bridge", "projects": ["NgumpulHost"], "containers": 2, "subnet": "10.88.1.0/24", "gateway": "10.88.1.1" },
+	{ "id": "net3", "name": "minecraft-network", "driver": "bridge", "projects": ["Minecraft"], "containers": 2, "subnet": "10.88.2.0/24", "gateway": "10.88.2.1" },
+	{ "id": "net4", "name": "podman", "driver": "bridge", "projects": [], "containers": 0, "subnet": "10.88.0.0/16", "gateway": "10.88.0.1" }
+]

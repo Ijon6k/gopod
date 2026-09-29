@@ -1,0 +1,16 @@
+services:
+  gopod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: gopod
+    restart: unless-stopped
+    ports:
+      - "${PORT:-8085}:${PORT:-8085}"
+    environment:
+      - PORT=${PORT:-8085}
+      - PODMAN_SOCKET=/run/podman/podman.sock
+    volumes:
+      - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:ro,z"
+    security_opt:
+      - label=disable

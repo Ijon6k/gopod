@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "skills": {
+    "find-skills": {
+      "source": "vercel-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/find-skills/SKILL.md",
+      "computedHash": "b146008599c31057cef1c145774cea5d5afb30e8f43fa802e47a4b461419aaaf"
+    },
+    "modular-code": {
+      "source": "parcadei/continuous-claude-v3",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/modular-code/SKILL.md",
+      "computedHash": "13aaae6ac9acdc6814cd9fe3e07e8391b8f600e48c8c03810e47c4411ed61c37"
+    },
+    "no-ai-design-slop": {
+      "source": "mengto/skills",
+      "sourceType": "github",
+      "skillPath": "agent-skills/ui/no-ai-design-slop/SKILL.md",
+      "computedHash": "b3b7e88b282f4e498c10592d77f3a55e65ad1b81979cf2a6b06aa07e84eed34f"
+    }
+  }
+}

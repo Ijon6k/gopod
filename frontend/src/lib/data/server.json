@@ -1,0 +1,22 @@
+{
+	"hostname": "cpx41-edge",
+	"ip": "49.12.84.112",
+	"os": "Ubuntu 24.04 LTS",
+	"kernel": "6.8.0-49-generic",
+	"vcpu": 4,
+	"memory": 16,
+	"storage": 60,
+	"storageUsed": 18.4,
+	"memoryUsed": 6.1,
+	"cpuUsage": 14.2,
+	"status": "online",
+	"podmanVersion": "5.3.1",
+	"rootless": true,
+	"systemd": true,
+	"quadlet": true,
+	"caddy": "healthy",
+	"podmanHealth": "healthy",
+	"networkHealth": "healthy",
+	"storageHealth": "healthy",
+	"uptime": "14d 7h 22m"
+}

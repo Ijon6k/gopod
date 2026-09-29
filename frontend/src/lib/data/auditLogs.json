@@ -1,0 +1,90 @@
+[
+	{
+		"id": "aud-1",
+		"action": "deployment.create",
+		"category": "deployment",
+		"actor": "Joko (Admin)",
+		"target": "AeroChat / web (v1.8.0)",
+		"status": "healthy",
+		"ip": "192.168.1.12",
+		"timeAgo": "8 min ago",
+		"timestamp": "2025-09-22T10:14:00Z"
+	},
+	{
+		"id": "aud-2",
+		"action": "container.restart",
+		"category": "runtime",
+		"actor": "Joko (Admin)",
+		"target": "aerochat-redis",
+		"status": "healthy",
+		"ip": "192.168.1.12",
+		"timeAgo": "2 hours ago",
+		"timestamp": "2025-09-22T08:30:12Z"
+	},
+	{
+		"id": "aud-3",
+		"action": "settings.theme_change",
+		"category": "settings",
+		"actor": "Joko (Admin)",
+		"target": "Appearance Mode",
+		"status": "healthy",
+		"ip": "192.168.1.12",
+		"timeAgo": "3 hours ago",
+		"timestamp": "2025-09-22T07:22:45Z"
+	},
+	{
+		"id": "aud-4",
+		"action": "network.tls_renew",
+		"category": "network",
+		"actor": "Caddy ACME Daemon",
+		"target": "chat.joko.dev",
+		"status": "healthy",
+		"ip": "127.0.0.1",
+		"timeAgo": "5 hours ago",
+		"timestamp": "2025-09-22T05:10:00Z"
+	},
+	{
+		"id": "aud-5",
+		"action": "container.crash",
+		"category": "runtime",
+		"actor": "Podman Engine",
+		"target": "minecraft-server (OOM)",
+		"status": "failed",
+		"ip": "127.0.0.1",
+		"timeAgo": "7 hours ago",
+		"timestamp": "2025-09-22T03:45:18Z"
+	},
+	{
+		"id": "aud-6",
+		"action": "deployment.create",
+		"category": "deployment",
+		"actor": "GitHub Webhook",
+		"target": "NgumpulHost / backend",
+		"status": "healthy",
+		"ip": "140.82.112.4",
+		"timeAgo": "20 hours ago",
+		"timestamp": "2025-09-21T14:20:00Z"
+	},
+	{
+		"id": "aud-7",
+		"action": "security.auth_login",
+		"category": "security",
+		"actor": "Joko (Admin)",
+		"target": "Web Console Session",
+		"status": "healthy",
+		"ip": "192.168.1.12",
+		"timeAgo": "1 day ago",
+		"timestamp": "2025-09-21T09:00:00Z"
+	},
+	{
+		"id": "aud-8",
+		"action": "volume.snapshot",
+		"category": "runtime",
+		"actor": "Backup Scheduler",
+		"target": "vol-aerochat-data",
+		"status": "healthy",
+		"ip": "127.0.0.1",
+		"timeAgo": "2 days ago",
+		"timestamp": "2025-09-20T02:00:00Z"
+	}
+]

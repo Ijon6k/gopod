@@ -139,7 +139,7 @@
 				id: 'system',
 				name: 'System Host & Standalone',
 				description: 'Host infrastructure, daemons, and standalone containers',
-				status: 'active',
+				status: 'running',
 				services: [],
 				domains: [],
 				cpu: 0,

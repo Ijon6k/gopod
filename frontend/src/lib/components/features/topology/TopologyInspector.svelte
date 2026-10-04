@@ -14,7 +14,8 @@
 		ShieldCheck,
 		Folder,
 		Cpu,
-		Database
+		Database,
+		FileText
 	} from 'phosphor-svelte';
 
 	interface Props {
@@ -25,7 +26,8 @@
 
 	let { selected, onclose, onFocusProject }: Props = $props();
 
-	function getIcon(type: string) {
+	function getIcon(type: string, isQuadlet?: boolean) {
+		if (isQuadlet) return FileText;
 		switch (type) {
 			case 'domain':
 				return Globe;
@@ -50,7 +52,8 @@
 </script>
 
 {#if selected}
-	{@const Icon = getIcon(selected.kind === 'node' ? selected.item.type : selected.item.type)}
+	{@const isQuadlet = selected.kind === 'node' && ((selected.item.badge || '').toLowerCase() === 'quadlet' || (selected.item.raw as any)?.type === 'quadlet' || (selected.item.raw as any)?.isQuadlet)}
+	{@const Icon = getIcon(selected.kind === 'node' ? selected.item.type : selected.item.type, isQuadlet)}
 	<aside
 		class="w-[330px] border-l border-[var(--border)] bg-[var(--bg-shell)] backdrop-blur-md flex flex-col h-full z-20 shrink-0 select-text overflow-y-auto transition-colors duration-200"
 	>
@@ -60,8 +63,8 @@
 				<span class="text-[var(--text-secondary)]">
 					<Icon size={16} />
 				</span>
-				<span class="text-[11px] font-mono uppercase tracking-wider text-[var(--text-tertiary)]">
-					{selected.kind === 'node' ? selected.item.type : `${selected.item.type} territory`}
+				<span class="text-xs font-medium capitalize text-[var(--text-secondary)] font-[var(--font-sans)]">
+					{selected.kind === 'node' ? (isQuadlet ? 'Quadlet Unit' : selected.item.type) : `${selected.item.type} territory`}
 				</span>
 			</div>
 
@@ -120,7 +123,24 @@
 					<!-- Service Details -->
 					{#if node.type === 'service' && node.raw}
 						<div class="flex flex-col gap-2 pt-2 border-t border-[var(--border-subtle)]">
-							{#if node.raw.source}
+							{#if node.raw.type === 'quadlet' || node.badge === 'quadlet'}
+								<div class="flex flex-col gap-1 p-2 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+									<div class="flex items-center justify-between text-[11px]">
+										<span class="text-[var(--text-tertiary)]">Quadlet Unit</span>
+										<span class="font-mono text-[10px] text-[var(--accent)] font-semibold">systemd --user</span>
+									</div>
+									<span class="font-mono text-[11.5px] text-[var(--text-primary)]">
+										{node.raw.source || `${node.title}.container`}
+									</span>
+								</div>
+								{#if node.raw.quadletConfig}
+									<div class="flex flex-col gap-1">
+										<span class="text-[11px] text-[var(--text-tertiary)]">Quadlet Definition</span>
+										<pre class="font-mono text-[10px] text-[var(--text-secondary)] bg-[var(--bg-surface)] p-2 rounded border border-[var(--border-subtle)] overflow-x-auto whitespace-pre leading-relaxed">{node.raw.quadletConfig}</pre>
+									</div>
+								{/if}
+							{/if}
+							{#if node.raw.source && node.raw.type !== 'quadlet'}
 								<div class="flex flex-col gap-0.5">
 									<span class="text-[11px] text-[var(--text-tertiary)]">Source Repository</span>
 									<span class="font-mono text-[11.5px] text-[var(--text-secondary)]">{node.raw.source}</span>
@@ -150,9 +170,26 @@
 					<!-- Container Details -->
 					{#if node.type === 'container' && node.raw}
 						<div class="flex flex-col gap-2 pt-2 border-t border-[var(--border-subtle)]">
+							{#if node.raw.isQuadlet || (node.badge && node.badge.toLowerCase() === 'quadlet')}
+								<div class="flex flex-col gap-1 p-2 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)]">
+									<div class="flex items-center justify-between text-[11px]">
+										<span class="text-[var(--text-tertiary)]">Systemd Service</span>
+										<span class="font-mono text-[10px] text-[var(--accent)] font-semibold">active (running)</span>
+									</div>
+									<span class="font-mono text-[11.5px] text-[var(--text-primary)]">
+										{node.title}
+									</span>
+								</div>
+								{#if node.raw.quadletConfig}
+									<div class="flex flex-col gap-1">
+										<span class="text-[11px] text-[var(--text-tertiary)]">Systemd Unit Configuration</span>
+										<pre class="font-mono text-[10px] text-[var(--text-secondary)] bg-[var(--bg-surface)] p-2 rounded border border-[var(--border-subtle)] overflow-x-auto whitespace-pre leading-relaxed">{node.raw.quadletConfig}</pre>
+									</div>
+								{/if}
+							{/if}
 							<div class="flex flex-col gap-0.5">
 								<span class="text-[11px] text-[var(--text-tertiary)]">Image</span>
-								<span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">{node.raw.image}</span>
+								<span class="font-mono text-[11px] text-[var(--text-secondary)] break-all">{node.raw.image || node.subtitle}</span>
 							</div>
 							{#if node.raw.ports}
 								<div class="flex flex-col gap-0.5">

@@ -16,7 +16,26 @@ export type Status =
 
 export type DomainStatus = 'active' | 'pending' | 'error';
 export type VolumeStatus = 'mounted' | 'unmounted';
-export type ServiceType = 'application' | 'image' | 'compose' | 'pod' | 'kubernetes' | 'quadlet';
+export type ServiceType = 'application' | 'image' | 'compose' | 'pod' | 'kubernetes' | 'quadlet' | 'database';
+
+export interface SSHKey {
+	id: string;
+	name: string;
+	publicKey: string;
+	privateKey?: string;
+	fingerprint: string;
+	type: 'ed25519' | 'rsa';
+	createdAt: string;
+}
+
+export interface ContainerRegistry {
+	id: string;
+	name: string;
+	url: string;
+	username: string;
+	token?: string;
+	createdAt: string;
+}
 
 export interface PodmanSecret {
 	id: string;
@@ -82,8 +101,16 @@ export interface Service {
 	type: ServiceType;
 	status: Status;
 	source: string;
+	sourceType?: 'git' | 'image' | 'drop';
 	branch?: string;
+	sshKeyId?: string;
 	image?: string;
+	registryId?: string;
+	buildType?: 'dockerfile' | 'nixpacks' | 'static';
+	buildPath?: string;
+	dockerfilePath?: string;
+	runtimeTarget?: 'standalone' | 'pod' | 'quadlet';
+	podId?: string;
 	command?: string;
 	entrypoint?: string;
 	domain?: string;
@@ -103,6 +130,9 @@ export interface Service {
 	quadletConfig?: string;
 	secretMounts?: ServiceSecretMount[];
 	advanced?: ServiceAdvancedConfig;
+	autoDeploy?: boolean;
+	watchPaths?: string;
+	webhookToken?: string;
 }
 
 export interface Workload {

@@ -13,6 +13,8 @@
 		WifiHigh,
 		Globe,
 		TreeStructure as NetworkIcon,
+		TreeStructure,
+		ChartLineUp,
 		GitBranch,
 		ChartBar,
 		HardDrives,
@@ -75,6 +77,8 @@
 		WifiHigh,
 		Globe,
 		NetworkIcon,
+		TreeStructure,
+		ChartLineUp,
 		GitBranch,
 		ChartBar,
 		HardDrives,
@@ -84,9 +88,20 @@
 	};
 
 	function isActive(path: string): boolean {
-		const pathname = page.url.pathname;
-		if (path === '/') return pathname === '/';
-		return pathname.startsWith(path);
+		const currentPath = page.url.pathname;
+		const currentSearch = page.url.search;
+		const currentFull = currentPath + currentSearch;
+
+		if (path.includes('?')) {
+			return currentFull === path;
+		}
+
+		if (path === '/monitoring') {
+			return currentPath.startsWith('/monitoring');
+		}
+
+		if (path === '/') return currentPath === '/';
+		return currentPath.startsWith(path);
 	}
 
 	function toggle(label: string) {

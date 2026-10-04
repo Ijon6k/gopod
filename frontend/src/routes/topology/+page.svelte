@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader } from '$lib/components/ui';
 	import {
 		projects,
 		services,
@@ -14,11 +13,24 @@
 	} from '$lib/data';
 	import {
 		TopologyCanvas,
-		TopologyToolbar,
 		TopologyInspector,
 		computeTopologyGraph,
 		type SelectedItem
 	} from '$lib/components/features/topology';
+	import {
+		ShareNetwork,
+		Globe,
+		Minus,
+		Plus,
+		CornersOut,
+		Database,
+		ShieldCheck,
+		FileText,
+		Cube,
+		HardDrive,
+		CaretDown,
+		CaretLeft
+	} from 'phosphor-svelte';
 	import { onMount } from 'svelte';
 
 	// Query param support (e.g., /topology?project=aerochat)
@@ -30,7 +42,7 @@
 	);
 
 	let selectedItem: SelectedItem = $state(null);
-	let zoom = $state(1);
+	let zoom = $state(0.9);
 	let panX = $state(40);
 	let panY = $state(40);
 
@@ -48,6 +60,8 @@
 			viewMode
 		})
 	);
+
+	let currentProject = $derived(projects.find((p) => p.id === viewMode));
 
 	function setViewMode(mode: string) {
 		viewMode = mode;
@@ -81,16 +95,16 @@
 
 	function handleFitView() {
 		const bounds = graph.bounds;
-		const viewportWidth = 1000;
-		const viewportHeight = 650;
+		const viewportWidth = window.innerWidth || 1200;
+		const viewportHeight = window.innerHeight || 800;
 
-		const scaleX = (viewportWidth - 100) / bounds.width;
-		const scaleY = (viewportHeight - 100) / bounds.height;
-		const fitZoom = Math.max(0.4, Math.min(1.1, Math.min(scaleX, scaleY)));
+		const scaleX = (viewportWidth - 200) / bounds.width;
+		const scaleY = (viewportHeight - 200) / bounds.height;
+		const fitZoom = Math.max(0.4, Math.min(1.15, Math.min(scaleX, scaleY)));
 
 		zoom = Math.round(fitZoom * 100) / 100;
-		panX = Math.round(50 - bounds.minX * zoom);
-		panY = Math.round(50 - bounds.minY * zoom);
+		panX = Math.round(60 - bounds.minX * zoom);
+		panY = Math.round(60 - bounds.minY * zoom);
 	}
 
 	// Keyboard shortcut: Esc to close inspector
@@ -112,51 +126,148 @@
 	<title>Topology — GOPOD</title>
 </svelte:head>
 
-<div class="w-full h-full flex flex-col gap-4 flex-1 pb-4">
-	<!-- Page Header -->
-	<PageHeader
-		title="Topology"
-		subtitle="Infrastructure map showing logical project territories, pod groupings, and resource flow."
+<!-- Full-bleed Viewport Canvas (No outer margins or boxed clipping) -->
+<div class="relative w-full h-full flex flex-1 overflow-hidden bg-[var(--bg-canvas)] select-none">
+	<!-- Canvas Interactive Surface -->
+	<TopologyCanvas
+		{graph}
+		{selectedItem}
+		onselect={(item) => (selectedItem = item)}
+		bind:zoom
+		bind:panX
+		bind:panY
+		onViewportChange={(v) => {
+			zoom = v.zoom;
+			panX = v.panX;
+			panY = v.panY;
+		}}
 	/>
 
-	<!-- Toolbar Controls -->
-	<TopologyToolbar
-		{projects}
-		{viewMode}
-		{zoom}
-		onViewModeChange={setViewMode}
-		onZoomIn={handleZoomIn}
-		onZoomOut={handleZoomOut}
-		onResetZoom={handleResetZoom}
-		onFitView={handleFitView}
-	/>
+	<!-- Floating HUD Header & Scope Selector (Top-Left) -->
+	<div class="absolute top-3.5 left-3.5 z-20 flex flex-col items-start gap-2 pointer-events-auto w-auto max-w-none">
+		<div class="flex items-center gap-2.5 p-1.5 pl-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]/95 backdrop-blur-md shadow-lg whitespace-nowrap">
+			<div class="flex items-center gap-2 shrink-0">
+				<ShareNetwork size={16} class="text-[var(--accent)] shrink-0" />
+				<span class="text-xs font-semibold text-[var(--text-primary)]">Topology</span>
+			</div>
 
-	<!-- Interactive Topology Viewport with Inspector Dock -->
-	<div class="relative flex-1 w-full min-h-[660px] flex rounded-[var(--radius-card)] overflow-hidden border border-[var(--border)] bg-[var(--bg-canvas)] transition-colors duration-200">
-		<!-- Main Canvas Area -->
-		<div class="flex-1 h-full flex relative overflow-hidden">
-			<TopologyCanvas
-				{graph}
-				{selectedItem}
-				onselect={(item) => (selectedItem = item)}
-				bind:zoom
-				bind:panX
-				bind:panY
-				onViewportChange={(v) => {
-					zoom = v.zoom;
-					panX = v.panX;
-					panY = v.panY;
-				}}
-			/>
+			<div class="h-4 w-px bg-[var(--border)] shrink-0"></div>
+
+			<!-- Dropdown Selector -->
+			<div class="relative flex items-center">
+				<select
+					id="topology-scope-select"
+					value={viewMode}
+					onchange={(e) => setViewMode(e.currentTarget.value)}
+					class="bg-transparent border-0 outline-none text-xs font-medium text-[var(--text-primary)] cursor-pointer pr-5 font-[var(--font-sans)] appearance-none"
+				>
+					<option value="global" class="bg-[var(--bg-panel)] text-[var(--text-primary)]">
+						Global Infrastructure (Overview)
+					</option>
+					<optgroup label="Projects" class="bg-[var(--bg-panel)] text-[var(--text-tertiary)]">
+						{#each projects as proj}
+							<option value={proj.id} class="bg-[var(--bg-panel)] text-[var(--text-primary)]">
+								{proj.name} (Project)
+							</option>
+						{/each}
+					</optgroup>
+				</select>
+				<CaretDown size={11} class="absolute right-0 text-[var(--text-tertiary)] pointer-events-none" />
+			</div>
+
+			{#if viewMode !== 'global'}
+				<button
+					type="button"
+					onclick={() => setViewMode('global')}
+					class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline ml-1 px-1.5 py-0.5 rounded bg-[var(--accent)]/10 border border-[var(--accent)]/20 cursor-pointer shrink-0"
+					title="Switch back to global overview"
+				>
+					<CaretLeft size={11} /> All
+				</button>
+			{/if}
 		</div>
 
-		<!-- Right-Side Inspector Drawer -->
-		{#if selectedItem}
+		<!-- Quick Metadata Bar -->
+		<div class="flex items-center gap-2 px-3 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/85 backdrop-blur-xs text-[11px] text-[var(--text-tertiary)] w-fit shadow-xs whitespace-nowrap">
+			<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-green)] shrink-0"></span>
+			<span>{graph.nodes.length} nodes · {graph.edges.length} connections</span>
+			{#if currentProject}
+				<span class="opacity-50">·</span>
+				<span class="text-[var(--text-secondary)] font-medium">{currentProject.name}</span>
+			{/if}
+		</div>
+	</div>
+
+	<!-- Floating HUD Controls (Top-Right) -->
+	<div class="absolute top-3.5 right-3.5 z-20 flex items-center gap-2 pointer-events-auto">
+		<div class="flex items-center gap-1 p-1 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]/90 backdrop-blur-md shadow-lg">
+			<button
+				type="button"
+				onclick={handleZoomOut}
+				class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				title="Zoom Out"
+				aria-label="Zoom out"
+			>
+				<Minus size={13} />
+			</button>
+
+			<button
+				type="button"
+				onclick={handleResetZoom}
+				class="px-2 h-7 rounded flex items-center justify-center text-[11px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				title="Reset to 100%"
+			>
+				{Math.round(zoom * 100)}%
+			</button>
+
+			<button
+				type="button"
+				onclick={handleZoomIn}
+				class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				title="Zoom In"
+				aria-label="Zoom in"
+			>
+				<Plus size={13} />
+			</button>
+
+			<div class="w-px h-3.5 bg-[var(--border)] mx-0.5"></div>
+
+			<button
+				type="button"
+				onclick={handleFitView}
+				class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				title="Fit View"
+				aria-label="Fit view"
+			>
+				<CornersOut size={13} />
+			</button>
+		</div>
+	</div>
+
+	<!-- Floating Legend & Navigation Hint (Bottom-Left) -->
+	<div class="absolute bottom-3.5 left-3.5 z-10 hidden lg:flex items-center gap-2.5 pointer-events-none select-none">
+		<div class="flex items-center gap-3 px-3 py-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/85 backdrop-blur-xs text-[11px] text-[var(--text-secondary)] shadow-xs">
+			<span class="flex items-center gap-1.5"><Globe size={12} class="text-[var(--accent)]" /> Domain</span>
+			<span class="flex items-center gap-1.5"><ShieldCheck size={12} class="text-[var(--status-green)]" /> Caddy</span>
+			<span class="flex items-center gap-1.5"><Database size={12} class="text-[var(--status-amber)]" /> Database</span>
+			<span class="flex items-center gap-1.5"><FileText size={12} class="text-[var(--accent)]" /> Quadlet</span>
+			<span class="flex items-center gap-1.5"><Cube size={12} /> Container</span>
+			<span class="flex items-center gap-1.5"><HardDrive size={12} class="text-[var(--text-tertiary)]" /> Volume</span>
+		</div>
+
+		<div class="px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/75 text-[11px] text-[var(--text-tertiary)]">
+			Drag to pan · Scroll to zoom · Click node to inspect
+		</div>
+	</div>
+
+	<!-- Slide-Over Right Inspector Drawer -->
+	{#if selectedItem}
+		<div class="absolute right-0 top-0 bottom-0 z-30 w-80 sm:w-96 shadow-2xl h-full flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200">
 			<TopologyInspector
 				selected={selectedItem}
 				onclose={() => (selectedItem = null)}
 				onFocusProject={(projId) => setViewMode(projId)}
 			/>
-		{/if}
-	</div>
+		</div>
+	{/if}
 </div>

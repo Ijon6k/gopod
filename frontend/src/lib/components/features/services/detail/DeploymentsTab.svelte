@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service, Deployment } from '$lib/types';
 	import { Button, Input, Chip } from '$lib/components/primitives';
+	import { SearchInput } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { DeploymentCard, DeploymentLogsModal, WebhookDeployModal } from '$lib/components/features/deployments';
 	import {
@@ -333,24 +334,11 @@
 		</div>
 
 		<!-- Search Input -->
-		<div class="flex items-center gap-2 max-w-[280px] w-full px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] focus-within:border-[var(--accent)]">
-			<MagnifyingGlass size={13} class="text-[var(--text-tertiary)]" />
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Search commit, message, version..."
-				class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)]"
-			/>
-			{#if searchQuery}
-				<button
-					type="button"
-					onclick={() => (searchQuery = '')}
-					class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border-0 bg-transparent cursor-pointer p-0"
-				>
-					<X size={11} />
-				</button>
-			{/if}
-		</div>
+		<SearchInput
+			bind:value={searchQuery}
+			placeholder="Search commit, message, version..."
+			class="max-w-[280px] w-full"
+		/>
 	</div>
 
 	<!-- ══════════════════════════════════════════════════════════════

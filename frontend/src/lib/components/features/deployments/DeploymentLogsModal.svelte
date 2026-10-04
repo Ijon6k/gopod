@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Deployment } from '$lib/types';
 	import { Button } from '$lib/components/primitives';
-	import { StatusBadge } from '$lib/components/ui';
+	import { StatusBadge, SearchInput } from '$lib/components/ui';
 	import { getDeploymentSteps, getDeploymentLogs } from '$lib/utils/deploymentLogs';
 	import {
 		X,
@@ -181,24 +181,11 @@
 			<!-- Terminal Logs Toolbar -->
 			<div class="flex flex-wrap items-center justify-between gap-3 px-5 py-2.5 border-b border-[var(--border)] bg-[var(--bg-panel)] shrink-0 text-xs">
 				<!-- Search Filter -->
-				<div class="flex items-center gap-2 flex-1 max-w-[320px] px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-					<MagnifyingGlass size={13} class="text-[var(--text-tertiary)]" />
-					<input
-						type="text"
-						bind:value={searchQuery}
-						placeholder="Search in deployment logs..."
-						class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] font-[var(--font-mono)]"
-					/>
-					{#if searchQuery}
-						<button
-							type="button"
-							onclick={() => (searchQuery = '')}
-							class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border-0 bg-transparent cursor-pointer p-0"
-						>
-							<X size={11} />
-						</button>
-					{/if}
-				</div>
+				<SearchInput
+					bind:value={searchQuery}
+					placeholder="Search in deployment logs..."
+					class="max-w-[320px] flex-1 text-xs"
+				/>
 
 				<!-- Actions: AutoScroll, Copy, Download -->
 				<div class="flex items-center gap-2 text-xs">

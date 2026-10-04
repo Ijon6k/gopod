@@ -1,6 +1,12 @@
 {
   "version": 1,
   "skills": {
+    "caddy-reverse-proxy": {
+      "source": "dimdasci/vps-setup",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/caddy-reverse-proxy/SKILL.md",
+      "computedHash": "acf4cfd40dc7306e294123199f0e972dfe4d3330a5dc5b9e014c95347734394c"
+    },
     "find-skills": {
       "source": "vercel-labs/skills",
       "sourceType": "github",
@@ -18,6 +24,24 @@
       "sourceType": "github",
       "skillPath": "agent-skills/ui/no-ai-design-slop/SKILL.md",
       "computedHash": "b3b7e88b282f4e498c10592d77f3a55e65ad1b81979cf2a6b06aa07e84eed34f"
+    },
+    "podman": {
+      "source": "bagelhole/devops-security-agent-skills",
+      "sourceType": "github",
+      "skillPath": "devops/containers/podman/SKILL.md",
+      "computedHash": "630c1d74b1c5d4e588916434b5c4a7fc80e0e5b4405b9b8faf08b7c53f80ee13"
+    },
+    "refactoring-ui": {
+      "source": "wondelai/skills",
+      "sourceType": "github",
+      "skillPath": "refactoring-ui/SKILL.md",
+      "computedHash": "27f1bda9fe53f7565928109a283a8ca20dba74ed9aab8d2ad78140f3ae658e83"
+    },
+    "ux-heuristics": {
+      "source": "wondelai/skills",
+      "sourceType": "github",
+      "skillPath": "ux-heuristics/SKILL.md",
+      "computedHash": "078959463a4d191d3ff17fd7a0b036697c79da3e86102251c98f76ffa9e66a28"
     }
   }
 }

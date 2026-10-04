@@ -176,35 +176,35 @@
 		<!-- Aesthetic Architecture Column Guides (Project View) -->
 		{#if isProjectView}
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none text-[10px] font-mono tracking-widest text-[var(--text-tertiary)] uppercase font-medium"
+				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
 				style="transform: translate3d(80px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-1.5 opacity-90">
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)]"></span> Ingress & Domains
+				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
+					<span class="w-2 h-2 rounded-full bg-[var(--text-tertiary)]"></span> Ingress & Domains
 				</span>
 			</div>
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none text-[10px] font-mono tracking-widest text-[var(--text-tertiary)] uppercase font-medium"
-				style="transform: translate3d(360px, 48px, 0);"
+				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
+				style="transform: translate3d(390px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-1.5 opacity-90">
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span> Services
+				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
+					<span class="w-2 h-2 rounded-full bg-[var(--accent)]"></span> Services & Workloads
 				</span>
 			</div>
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none text-[10px] font-mono tracking-widest text-[var(--text-tertiary)] uppercase font-medium"
-				style="transform: translate3d(670px, 48px, 0);"
+				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
+				style="transform: translate3d(730px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-1.5 opacity-90">
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-green)]"></span> Runtime Pods
+				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
+					<span class="w-2 h-2 rounded-full bg-[var(--status-green)]"></span> Runtime Pods & Containers
 				</span>
 			</div>
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none text-[10px] font-mono tracking-widest text-[var(--text-tertiary)] uppercase font-medium"
-				style="transform: translate3d(1010px, 48px, 0);"
+				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
+				style="transform: translate3d(1120px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-1.5 opacity-90">
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)]"></span> Storage & Network
+				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
+					<span class="w-2 h-2 rounded-full bg-[var(--status-amber)]"></span> Storage & Volumes
 				</span>
 			</div>
 		{/if}

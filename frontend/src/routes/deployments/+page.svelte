@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { PageHeader } from '$lib/components/ui';
+	import { PageHeader, SearchInput } from '$lib/components/ui';
 	import { Button } from '$lib/components/primitives';
 	import { dataStore } from '$lib/data';
 	import type { Deployment } from '$lib/types';
@@ -158,24 +158,11 @@
 		</div>
 
 		<!-- Search Input -->
-		<div class="flex items-center gap-2 max-w-[320px] w-full px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] focus-within:border-[var(--accent)]">
-			<MagnifyingGlass size={13} class="text-[var(--text-tertiary)]" />
-			<input
-				type="text"
-				bind:value={searchQuery}
-				placeholder="Search by project, service, commit..."
-				class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)]"
-			/>
-			{#if searchQuery}
-				<button
-					type="button"
-					onclick={() => (searchQuery = '')}
-					class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] border-0 bg-transparent cursor-pointer p-0"
-				>
-					<X size={11} />
-				</button>
-			{/if}
-		</div>
+		<SearchInput
+			bind:value={searchQuery}
+			placeholder="Search by project, service, commit..."
+			class="max-w-[320px] w-full"
+		/>
 	</div>
 
 	<!-- Long Component List ("Komponen Panjang") -->

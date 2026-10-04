@@ -2,6 +2,13 @@
 	import { server, containers } from '$lib/data';
 	import { Cpu, HardDrive, Gauge, ShieldCheck, Pulse } from 'phosphor-svelte';
 
+	interface Props {
+		activeTab?: string;
+		onSelectTab?: (tab: 'tree' | 'system' | 'storage' | 'charts') => void;
+	}
+
+	let { activeTab = '', onSelectTab }: Props = $props();
+
 	let activeContainers = $derived(containers.filter((c) => c.status === 'running' || c.status === 'healthy').length);
 	let failedContainers = $derived(containers.filter((c) => c.status === 'failed').length);
 
@@ -16,7 +23,7 @@
 		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3">
 			<div class="flex items-center justify-between">
 				<span class="text-xs font-medium text-[var(--text-secondary)]">CPU Utilization</span>
-				<div class="p-1 rounded bg-[rgba(105,115,168,0.10)] text-[var(--accent)]">
+				<div class="p-1 rounded bg-[var(--accent-muted)] text-[var(--accent)]">
 					<Cpu size={15} />
 				</div>
 			</div>
@@ -39,8 +46,8 @@
 			</div>
 
 			<div class="flex items-center justify-between text-[10.5px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-				<span>Load: 0.28, 0.42, 0.39</span>
-				<span class="text-[var(--status-green)] font-medium">Normal</span>
+				<span>Load: 0.28, 0.42 <span class="font-mono text-[var(--text-secondary)]">({((0.28 / server.vcpu) * 100).toFixed(0)}% cap)</span></span>
+				<span class="text-[var(--status-green)] font-medium">Optimal</span>
 			</div>
 		</div>
 
@@ -48,7 +55,7 @@
 		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3">
 			<div class="flex items-center justify-between">
 				<span class="text-xs font-medium text-[var(--text-secondary)]">Memory (RAM)</span>
-				<div class="p-1 rounded bg-[rgba(76,154,114,0.10)] text-[var(--status-green)]">
+				<div class="p-1 rounded bg-[var(--status-green-muted)] text-[var(--status-green)]">
 					<Gauge size={15} />
 				</div>
 			</div>
@@ -77,15 +84,20 @@
 		</div>
 
 		<!-- 3. Disk Storage -->
-		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3">
-			<div class="flex items-center justify-between">
-				<span class="text-xs font-medium text-[var(--text-secondary)]">Root Storage</span>
-				<div class="p-1 rounded bg-[rgba(184,137,59,0.10)] text-[var(--status-amber)]">
+		<button
+			type="button"
+			onclick={() => onSelectTab?.('storage')}
+			class="p-4 rounded-[var(--radius-card)] border bg-[var(--bg-panel)] transition-all flex flex-col justify-between gap-3 text-left cursor-pointer group {activeTab === 'storage' ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/30' : 'border-[var(--border)] hover:border-[var(--status-amber)]/60'}"
+			title="Click to view detailed storage analysis & prune"
+		>
+			<div class="flex items-center justify-between w-full">
+				<span class="text-xs font-medium text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]">Root Storage</span>
+				<div class="p-1 rounded bg-[var(--status-amber-muted)] text-[var(--status-amber)]">
 					<HardDrive size={15} />
 				</div>
 			</div>
 
-			<div class="flex items-baseline justify-between gap-2">
+			<div class="flex items-baseline justify-between gap-2 w-full">
 				<strong class="text-2xl font-medium tracking-tight text-[var(--text-primary)] tabular-nums font-[var(--font-mono)]">
 					{server.storageUsed.toFixed(1)} <span class="text-xs font-normal text-[var(--text-tertiary)]">/ {server.storage} GB</span>
 				</strong>
@@ -102,17 +114,17 @@
 				></div>
 			</div>
 
-			<div class="flex items-center justify-between text-[10.5px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
+			<div class="flex items-center justify-between text-[10.5px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)] w-full">
 				<span>Free: {(server.storage - server.storageUsed).toFixed(1)} GB</span>
-				<span>ext4 (cgroups v2)</span>
+				<span class="text-[var(--accent)] group-hover:underline">Analyze & Prune →</span>
 			</div>
-		</div>
+		</button>
 
 		<!-- 4. Workloads & Engine Health -->
 		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3">
 			<div class="flex items-center justify-between">
 				<span class="text-xs font-medium text-[var(--text-secondary)]">Workloads & Health</span>
-				<div class="p-1 rounded bg-[rgba(105,115,168,0.10)] text-[var(--accent)]">
+				<div class="p-1 rounded bg-[var(--accent-muted)] text-[var(--accent)]">
 					<Pulse size={15} />
 				</div>
 			</div>

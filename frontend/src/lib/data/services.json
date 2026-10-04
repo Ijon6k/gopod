@@ -66,6 +66,29 @@
 		"createdAt": "2024-10-12"
 	},
 	{
+		"id": "aerochat-relay",
+		"projectId": "aerochat",
+		"name": "push-relay",
+		"type": "quadlet",
+		"status": "running",
+		"source": "push-relay.container",
+		"image": "ghcr.io/joko/push-relay:v1.2",
+		"domain": "relay.example.com",
+		"port": 9092,
+		"cpu": 0.4,
+		"memory": 128,
+		"restartPolicy": "always",
+		"health": "healthy",
+		"replicas": 1,
+		"description": "Background push notification relay daemon managed natively by systemd Quadlet",
+		"quadletConfig": "[Unit]\nDescription=AeroChat Push Notification Relay\nAfter=network-online.target\n\n[Container]\nImage=ghcr.io/joko/push-relay:v1.2\nPublishPort=9092:9092\nAutoUpdate=registry\nRestart=always\n\n[Service]\nRestart=always\n\n[Install]\nWantedBy=default.target",
+		"envVars": [
+			{ "key": "RELAY_PORT", "value": "9092", "secret": false }
+		],
+		"deployments": [],
+		"createdAt": "2024-11-05"
+	},
+	{
 		"id": "portfolio-web",
 		"projectId": "portfolio",
 		"name": "web",
@@ -212,5 +235,28 @@
 		"envVars": [],
 		"deployments": [],
 		"createdAt": "2025-02-18"
+	},
+	{
+		"id": "homelab-metube",
+		"projectId": "homelab",
+		"name": "metube",
+		"type": "quadlet",
+		"status": "running",
+		"source": "metube.container",
+		"image": "ghcr.io/alexta69/metube:latest",
+		"domain": "tube.homelab.lan",
+		"port": 8081,
+		"cpu": 0.4,
+		"memory": 160,
+		"restartPolicy": "always",
+		"health": "healthy",
+		"replicas": 1,
+		"description": "YouTube downloader web UI running as a native systemd Quadlet unit",
+		"quadletConfig": "[Unit]\nDescription=MeTube Video Downloader Quadlet\nAfter=network-online.target\n\n[Container]\nImage=ghcr.io/alexta69/metube:latest\nPublishPort=8081:8081\nVolume=metube-downloads:/downloads:Z\nAutoUpdate=registry\nRestart=always\n\n[Service]\nRestart=always\nTimeoutStartSec=300\n\n[Install]\nWantedBy=default.target",
+		"envVars": [
+			{ "key": "OUTPUT_TEMPLATE", "value": "%(title)s.%(ext)s", "secret": false }
+		],
+		"deployments": [],
+		"createdAt": "2025-02-20"
 	}
 ]

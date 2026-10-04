@@ -46,6 +46,8 @@ export const domains = dataStore.domains;
 export const server = serverJson as Server;
 export const auditLogs = auditLogsJson as AuditLog[];
 export const podmanSecrets = dataStore.podmanSecrets;
+export const sshKeys = dataStore.sshKeys;
+export const registries = dataStore.registries;
 
 // ── Helper functions ──
 

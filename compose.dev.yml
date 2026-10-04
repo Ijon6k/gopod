@@ -14,7 +14,7 @@ services:
       - GOPOD_DB_PATH=/app/data/gopod.db
       - CADDY_ADMIN_URL=http://caddy:2019
     volumes:
-      - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:ro,z"
+      - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:z"
       - "./data:/app/data:Z"
     networks:
       - gopod-net

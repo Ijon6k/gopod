@@ -12,20 +12,55 @@ type Project struct {
 
 // Service represents a workload inside a project.
 type Service struct {
-	ID            string    `json:"id"`
-	ProjectID     string    `json:"projectId"`
-	Name          string    `json:"name"`
-	Type          string    `json:"type"`
-	Status        string    `json:"status"`
-	Source        string    `json:"source"`
-	Branch        string    `json:"branch"`
-	Image         string    `json:"image"`
-	Port          int       `json:"port"`
-	CPULimit      float64   `json:"cpuLimit"`
-	MemoryLimit   int       `json:"memoryLimit"`
-	RestartPolicy string    `json:"restartPolicy"`
-	EnvVars       []EnvVar  `json:"envVars"`
-	CreatedAt     time.Time `json:"createdAt"`
+	ID             string    `json:"id"`
+	ProjectID      string    `json:"projectId"`
+	Name           string    `json:"name"`
+	Type           string    `json:"type"`
+	Status         string    `json:"status"`
+	Source         string    `json:"source"`
+	Branch         string    `json:"branch"`
+	Image          string    `json:"image"`
+	Port           int       `json:"port"`
+	CPULimit       float64   `json:"cpuLimit"`
+	MemoryLimit    int       `json:"memoryLimit"`
+	RestartPolicy  string    `json:"restartPolicy"`
+	WebhookToken   string    `json:"webhookToken,omitempty"`
+	GitRepo        string    `json:"gitRepo,omitempty"`
+	GitBranch      string    `json:"gitBranch,omitempty"`
+	DockerfilePath string    `json:"dockerfilePath,omitempty"`
+	SSHKeyID       string    `json:"sshKeyId,omitempty"`
+	EnvVars        []EnvVar  `json:"envVars"`
+	CreatedAt      time.Time `json:"createdAt"`
+}
+
+// SSHKey represents an SSH deploy key for Git repositories.
+type SSHKey struct {
+	ID          string    `json:"id"`
+	Name        string    `json:"name"`
+	PublicKey   string    `json:"publicKey"`
+	PrivateKey  string    `json:"privateKey,omitempty"`
+	Fingerprint string    `json:"fingerprint"`
+	Type        string    `json:"type"`
+	CreatedAt   time.Time `json:"createdAt"`
+}
+
+// ContainerRegistry represents credentials for pulling/pushing private container images.
+type ContainerRegistry struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	URL       string    `json:"url"`
+	Username  string    `json:"username"`
+	Token     string    `json:"token,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+// Secret represents a Podman secret.
+type Secret struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Value     string    `json:"value,omitempty"`
+	Driver    string    `json:"driver"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 // EnvVar represents environment variables with secret hiding capability.

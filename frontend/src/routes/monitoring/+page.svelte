@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { PageHeader, AreaChart } from '$lib/components/ui';
 	import { server, monitoringData, dataStore } from '$lib/data';
-	import { ServerOverviewBar, ProcessTaskManager, PodmanStorageManager } from '$lib/components/features/monitoring';
+	import { ServerOverviewBar, ProcessTaskManager, PodmanStorageManager, ContainerTerminalModal } from '$lib/components/features/monitoring';
 	import { TreeStructure, Stack, HardDrive, ChartLineUp, ArrowClockwise } from 'phosphor-svelte';
 
 	let urlView = $derived(page.url.searchParams.get('view'));
@@ -12,6 +12,7 @@
 	let isRefreshing = $state(false);
 	let refreshRate = $state<'3s' | '5s' | '15s' | 'paused'>('3s');
 	let lastUpdatedSec = $state(0);
+	let terminalTarget = $state<string | null>(null);
 
 	$effect(() => {
 		if (urlView === 'charts') {
@@ -32,7 +33,7 @@
 	}
 
 	function handleOpenTerminal(containerName: string) {
-		console.log('Open terminal for', containerName);
+		terminalTarget = containerName;
 	}
 
 	function handleRefresh() {
@@ -277,5 +278,12 @@
 				/>
 			</div>
 		</div>
+	{/if}
+
+	{#if terminalTarget}
+		<ContainerTerminalModal
+			containerName={terminalTarget}
+			onclose={() => (terminalTarget = null)}
+		/>
 	{/if}
 </div>

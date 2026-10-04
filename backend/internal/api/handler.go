@@ -63,6 +63,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/containers/{id}/restart", h.handleContainerRestart)
 	mux.HandleFunc("DELETE /api/containers/{id}", h.handleContainerDelete)
 	mux.HandleFunc("GET /api/containers/{id}/logs", h.handleContainerLogs)
+	mux.HandleFunc("GET /api/containers/{id}/exec", h.handleContainerExec)
 	mux.HandleFunc("GET /api/pods", h.handleListPods)
 	mux.HandleFunc("GET /api/images", h.handleListImages)
 	mux.HandleFunc("POST /api/images/prune", h.handlePruneImages)
@@ -70,6 +71,20 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/volumes/prune", h.handlePruneVolumes)
 	mux.HandleFunc("GET /api/networks", h.handleListNetworks)
 	mux.HandleFunc("POST /api/system/prune", h.handlePruneSystem)
+
+	// CI/CD Deploy Webhooks
+	mux.HandleFunc("POST /api/deploy/webhook/{token}", h.handleDeployWebhook)
+
+	// Credentials (SSH Keys, Registries, Secrets)
+	mux.HandleFunc("GET /api/credentials/ssh-keys", h.handleListSSHKeys)
+	mux.HandleFunc("POST /api/credentials/ssh-keys", h.handleCreateSSHKey)
+	mux.HandleFunc("DELETE /api/credentials/ssh-keys/{id}", h.handleDeleteSSHKey)
+	mux.HandleFunc("GET /api/credentials/registries", h.handleListRegistries)
+	mux.HandleFunc("POST /api/credentials/registries", h.handleCreateRegistry)
+	mux.HandleFunc("DELETE /api/credentials/registries/{id}", h.handleDeleteRegistry)
+	mux.HandleFunc("GET /api/credentials/secrets", h.handleListSecrets)
+	mux.HandleFunc("POST /api/credentials/secrets", h.handleCreateSecret)
+	mux.HandleFunc("DELETE /api/credentials/secrets/{id}", h.handleDeleteSecret)
 
 	// Volume Snapshots & Schedules
 	mux.HandleFunc("GET /api/volumes/snapshots", h.handleListVolumeSnapshots)

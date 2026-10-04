@@ -11,6 +11,7 @@ export { runtimeApi } from './runtime';
 export { systemApi } from './system';
 export { volumesApi } from './volumes';
 export { trafficApi } from './traffic';
+export { credentialsApi } from './credentials';
 
 // Default aggregated API service
 import projectsApi from './projects';
@@ -20,6 +21,7 @@ import runtimeApi from './runtime';
 import systemApi from './system';
 import volumesApi from './volumes';
 import trafficApi from './traffic';
+import credentialsApi from './credentials';
 
 export const api = {
 	projects: projectsApi,
@@ -28,7 +30,8 @@ export const api = {
 	runtime: runtimeApi,
 	system: systemApi,
 	volumes: volumesApi,
-	traffic: trafficApi
+	traffic: trafficApi,
+	credentials: credentialsApi
 };
 
 export default api;

@@ -152,13 +152,55 @@ func (d *DB) migrate() error {
 		finished_at DATETIME
 	);
 
+	CREATE TABLE IF NOT EXISTS ssh_keys (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		public_key TEXT NOT NULL,
+		private_key TEXT DEFAULT '',
+		fingerprint TEXT DEFAULT '',
+		type TEXT DEFAULT 'ed25519',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS container_registries (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		url TEXT NOT NULL,
+		username TEXT NOT NULL,
+		token TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS secrets (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		value TEXT DEFAULT '',
+		driver TEXT DEFAULT 'file',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_services_project ON services(project_id);
 	CREATE INDEX IF NOT EXISTS idx_domains_project ON domains(project_id);
 	CREATE INDEX IF NOT EXISTS idx_deployments_service ON deployments(service_id);
 	`
 
-	_, err := d.Exec(schema)
-	return err
+	if _, err := d.Exec(schema); err != nil {
+		return err
+	}
+
+	// Safe column additions for service Git and Webhook support
+	newCols := []string{
+		"ALTER TABLE services ADD COLUMN webhook_token TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN git_repo TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN git_branch TEXT DEFAULT 'main';",
+		"ALTER TABLE services ADD COLUMN dockerfile_path TEXT DEFAULT 'Dockerfile';",
+		"ALTER TABLE services ADD COLUMN ssh_key_id TEXT DEFAULT '';",
+	}
+	for _, q := range newCols {
+		_, _ = d.Exec(q)
+	}
+
+	return nil
 }
 
 func (d *DB) seedIfEmpty() error {

@@ -23,8 +23,10 @@
 		Key,
 		ClockCounterClockwise,
 		CaretDown,
+		SignOut,
 		X
 	} from 'phosphor-svelte';
+	import { authStore } from '$lib/stores/auth.svelte';
 	import type { NavItem } from '$lib/types';
 
 	interface Props {
@@ -276,37 +278,56 @@
 		{#if isMinimized}
 			<button
 				onclick={() => navigate('/settings')}
-				title="Joko (admin@gopod.dev)"
+				title="{authStore.user?.name || 'Administrator'} ({authStore.user?.email || 'admin@gopod.dev'})"
 				class="w-8 h-8 rounded-full bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--accent)] font-semibold text-xs flex items-center justify-center cursor-pointer hover:border-[var(--accent)] transition-colors relative"
 			>
-				J
+				{authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'A'}
 				<span
 					class="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-[var(--status-green)] border-2 border-[var(--bg-outer)]"
 				></span>
 			</button>
-		{:else}
 			<button
-				onclick={() => navigate('/settings')}
-				class="w-full flex items-center justify-between gap-2 p-1.5 rounded-[var(--radius-sm)] bg-transparent border-0 hover:bg-[var(--bg-hover)] transition-colors cursor-pointer text-left group"
-				title="Account Settings"
+				onclick={async () => {
+					await authStore.logout();
+					goto('/login');
+				}}
+				title="Sign Out"
+				class="w-8 h-8 rounded-[var(--radius-sm)] flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--status-red)] hover:bg-[var(--bg-hover)] transition-colors border-0 bg-transparent cursor-pointer"
 			>
-				<div class="flex items-center gap-2.5 min-w-0">
+				<SignOut size={16} />
+			</button>
+		{:else}
+			<div class="flex items-center justify-between gap-1 w-full">
+				<button
+					onclick={() => navigate('/settings')}
+					class="flex-1 flex items-center gap-2.5 min-w-0 p-1.5 rounded-[var(--radius-sm)] bg-transparent border-0 hover:bg-[var(--bg-hover)] transition-colors cursor-pointer text-left group"
+					title="Account Settings"
+				>
 					<div
 						class="w-7 h-7 rounded-full bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--accent)] font-semibold text-xs flex items-center justify-center shrink-0 group-hover:border-[var(--accent)]"
 					>
-						J
+						{authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'A'}
 					</div>
 					<div class="flex flex-col min-w-0">
-						<span class="text-base font-medium text-[var(--text-primary)] truncate leading-tight">
-							Joko
+						<span class="text-sm font-medium text-[var(--text-primary)] truncate leading-tight">
+							{authStore.user?.name || 'Administrator'}
 						</span>
 						<span class="text-xs text-[var(--text-tertiary)] truncate">
-							admin@gopod.dev
+							{authStore.user?.email || 'admin@gopod.dev'}
 						</span>
 					</div>
-				</div>
-				<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-green)] shrink-0" title="Online"></span>
-			</button>
+				</button>
+				<button
+					onclick={async () => {
+						await authStore.logout();
+						goto('/login');
+					}}
+					title="Sign Out"
+					class="p-1.5 rounded-[var(--radius-sm)] text-[var(--text-tertiary)] hover:text-[var(--status-red)] hover:bg-[var(--bg-hover)] transition-colors border-0 bg-transparent cursor-pointer shrink-0"
+				>
+					<SignOut size={16} />
+				</button>
+			</div>
 			<div class="flex items-center justify-between px-2 text-[11px] text-[var(--text-muted)] font-mono">
 				<span>cpx41-edge</span>
 				<span>v0.1.0</span>

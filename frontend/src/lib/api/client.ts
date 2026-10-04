@@ -4,10 +4,22 @@ import axios, { type AxiosInstance, type AxiosError } from 'axios';
 export const apiClient: AxiosInstance = axios.create({
 	baseURL: '/api',
 	timeout: 15000,
+	withCredentials: true,
 	headers: {
 		'Content-Type': 'application/json',
 		Accept: 'application/json'
 	}
+});
+
+// Request interceptor to attach Bearer token if present
+apiClient.interceptors.request.use((config) => {
+	if (typeof window !== 'undefined') {
+		const token = localStorage.getItem('gopod_token');
+		if (token && config.headers) {
+			config.headers.Authorization = `Bearer ${token}`;
+		}
+	}
+	return config;
 });
 
 // Response interceptor for consistent error extraction

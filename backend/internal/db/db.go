@@ -179,9 +179,26 @@ func (d *DB) migrate() error {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS users (
+		id TEXT PRIMARY KEY,
+		email TEXT UNIQUE NOT NULL,
+		password_hash TEXT NOT NULL,
+		name TEXT DEFAULT '',
+		role TEXT DEFAULT 'admin',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS sessions (
+		token TEXT PRIMARY KEY,
+		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		expires_at DATETIME NOT NULL,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_services_project ON services(project_id);
 	CREATE INDEX IF NOT EXISTS idx_domains_project ON domains(project_id);
 	CREATE INDEX IF NOT EXISTS idx_deployments_service ON deployments(service_id);
+	CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 	`
 
 	if _, err := d.Exec(schema); err != nil {

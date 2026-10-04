@@ -434,6 +434,95 @@ class DataStore {
 		}
 	}
 
+	private sseSource: EventSource | null = null;
+	isStreaming = $state<boolean>(false);
+
+	startStreamingStats() {
+		if (typeof window === 'undefined') return;
+		if (this.sseSource) return;
+
+		try {
+			this.sseSource = new EventSource('/api/stats/stream');
+			this.isStreaming = true;
+
+			this.sseSource.onmessage = (event) => {
+				try {
+					const data = JSON.parse(event.data);
+					if (data.system) {
+						const sys = data.system;
+						this.server = {
+							...this.server,
+							hostname: sys.hostname || this.server.hostname,
+							os: sys.os || this.server.os,
+							kernel: sys.kernel || this.server.kernel,
+							vcpu: sys.vcpu || this.server.vcpu,
+							memory: parseFloat(sys.memoryTotalGB?.toFixed(1)) || this.server.memory,
+							memoryUsed: parseFloat(sys.memoryUsedGB?.toFixed(1)) || this.server.memoryUsed,
+							cpuUsage: parseFloat(sys.cpuUsage?.toFixed(1)) || this.server.cpuUsage,
+							podmanVersion: sys.podmanVersion || this.server.podmanVersion,
+							rootless: sys.rootless ?? this.server.rootless,
+							uptime: sys.uptime || this.server.uptime,
+							status: 'online'
+						};
+					}
+
+					if (data.stats && Array.isArray(data.stats) && data.stats.length > 0) {
+						this.applyStatsUpdate(data.stats);
+					}
+				} catch (e) {
+					// Ignore parse error
+				}
+			};
+
+			this.sseSource.onerror = () => {
+				// EventSource reconnects automatically
+			};
+		} catch (e) {
+			this.fetchLiveStats();
+		}
+	}
+
+	stopStreamingStats() {
+		if (this.sseSource) {
+			this.sseSource.close();
+			this.sseSource = null;
+			this.isStreaming = false;
+		}
+	}
+
+	private applyStatsUpdate(stats: any[]) {
+		for (const s of stats) {
+			const found = this.containers.find((c) => c.name === s.name || c.id === s.id);
+			if (found) {
+				found.cpu = s.cpuPercent ?? found.cpu;
+				found.pids = s.pids ?? found.pids;
+			} else {
+				this.containers.unshift({
+					id: s.id,
+					name: s.name,
+					projectId: 'system',
+					projectName: 'System Host',
+					serviceId: s.name,
+					serviceName: s.name,
+					image: s.name,
+					status: 'running',
+					cpu: s.cpuPercent || 0.1,
+					memory: Math.round((s.memUsage || 0) / (1024 * 1024)) || 32,
+					memoryLimit: Math.round((s.memLimit || 0) / (1024 * 1024)) || 512,
+					ports: '—',
+					startedAt: 'Active',
+					netRx: s.netDisplay?.split('/')[0]?.trim() || '—',
+					netTx: s.netDisplay?.split('/')[1]?.trim() || '—',
+					blockRead: '—',
+					blockWrite: '—',
+					pids: s.pids || 1,
+					restarts: 0,
+					uptime: 'Active'
+				});
+			}
+		}
+	}
+
 	async fetchLiveStats() {
 		try {
 			const [sys, stats] = await Promise.all([
@@ -459,36 +548,7 @@ class DataStore {
 			}
 
 			if (stats && Array.isArray(stats) && stats.length > 0) {
-				for (const s of stats) {
-					const found = this.containers.find((c) => c.name === s.name || c.id === s.id);
-					if (found) {
-						found.cpu = s.cpuPercent ?? found.cpu;
-						found.pids = s.pids ?? found.pids;
-					} else {
-						this.containers.unshift({
-							id: s.id,
-							name: s.name,
-							projectId: 'system',
-							projectName: 'System Host',
-							serviceId: s.name,
-							serviceName: s.name,
-							image: s.name,
-							status: 'running',
-							cpu: s.cpuPercent || 0.1,
-							memory: Math.round((s.memUsage || 0) / (1024 * 1024)) || 32,
-							memoryLimit: Math.round((s.memLimit || 0) / (1024 * 1024)) || 512,
-							ports: '—',
-							startedAt: 'Active',
-							netRx: s.netDisplay?.split('/')[0]?.trim() || '—',
-							netTx: s.netDisplay?.split('/')[1]?.trim() || '—',
-							blockRead: '—',
-							blockWrite: '—',
-							pids: s.pids || 1,
-							restarts: 0,
-							uptime: 'Active'
-						});
-					}
-				}
+				this.applyStatsUpdate(stats);
 			}
 		} catch (e) {
 			// Silently fallback to mock data

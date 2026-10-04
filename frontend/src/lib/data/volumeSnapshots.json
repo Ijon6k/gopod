@@ -1,0 +1,54 @@
+[
+	{
+		"id": "snap-1",
+		"volumeName": "aerochat-pgdata",
+		"projectId": "aerochat",
+		"serviceId": "aerochat-db",
+		"filename": "aerochat-pgdata_2026-10-04_0200.tar.zst",
+		"size": "1.2 GB",
+		"sizeBytes": 1288490188,
+		"createdAt": "2026-10-04T02:00:15Z",
+		"timeAgo": "4h ago",
+		"status": "completed",
+		"compression": "zstd"
+	},
+	{
+		"id": "snap-2",
+		"volumeName": "aerochat-pgdata",
+		"projectId": "aerochat",
+		"serviceId": "aerochat-db",
+		"filename": "aerochat-pgdata_2026-10-03_0200.tar.zst",
+		"size": "1.18 GB",
+		"sizeBytes": 1267000000,
+		"createdAt": "2026-10-03T02:00:10Z",
+		"timeAgo": "1d ago",
+		"status": "completed",
+		"compression": "zstd"
+	},
+	{
+		"id": "snap-3",
+		"volumeName": "aerochat-redis-data",
+		"projectId": "aerochat",
+		"serviceId": "aerochat-redis",
+		"filename": "aerochat-redis-data_2026-10-04_0300.tar.zst",
+		"size": "340 MB",
+		"sizeBytes": 356515840,
+		"createdAt": "2026-10-04T03:00:08Z",
+		"timeAgo": "3h ago",
+		"status": "completed",
+		"compression": "zstd"
+	},
+	{
+		"id": "snap-4",
+		"volumeName": "ngumpul-uploads",
+		"projectId": "ngumpulhost",
+		"serviceId": "ngumpul-backend",
+		"filename": "ngumpul-uploads_2026-10-04_0100.tar.zst",
+		"size": "4.1 GB",
+		"sizeBytes": 4402341478,
+		"createdAt": "2026-10-04T01:00:20Z",
+		"timeAgo": "5h ago",
+		"status": "completed",
+		"compression": "zstd"
+	}
+]

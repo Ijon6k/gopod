@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader, StatusBadge, DataTable } from '$lib/components/ui';
+	import { PageHeader, StatusBadge, DataTable, Tabs } from '$lib/components/ui';
 	import { Button, Card, Chip } from '$lib/components/primitives';
 	import { getProjectById, getProjectServices, getProjectDomains, getProjectDeployments, containers, pods, volumes, networks, server, projects } from '$lib/data';
 	import CreateServiceModal from '$lib/components/features/services/create/CreateServiceModal.svelte';
+	import { ProjectBackupsView } from '$lib/components/features/projects';
 	import type { WorkloadChoice } from '$lib/components/features/services/create/WorkloadTypeSelector.svelte';
 	import {
 		TopologyCanvas,
@@ -32,6 +33,13 @@
 	let services = $derived(projectId ? getProjectServices(projectId) : []);
 	let projectDomains = $derived(projectId ? getProjectDomains(projectId) : []);
 	let projectDeployments = $derived(projectId ? getProjectDeployments(projectId) : []);
+
+	let activeTab = $state<'services' | 'backups' | 'deployments'>('services');
+	let projectTabs = $derived([
+		{ id: 'services', label: `Services (${services.length})` },
+		{ id: 'backups', label: 'Volumes & Backups' },
+		{ id: 'deployments', label: `Deployments (${projectDeployments.length})` }
+	]);
 
 	let isCreateModalOpen = $state(false);
 	let modalInitialType = $state<WorkloadChoice>('application');
@@ -153,22 +161,27 @@
 				</div>
 			{/snippet}
 			{#snippet actions()}
-				<!-- New Service Button -->
-				<Button
-					variant="primary"
-					size="sm"
-					onclick={() =>
-						openCreateWithCategory(
-							selectedCategory !== 'all' ? (selectedCategory as WorkloadChoice) : 'application'
-						)}
-				>
-					<Plus size={13} /> New service
-				</Button>
+				{#if activeTab === 'services'}
+					<Button
+						variant="primary"
+						size="sm"
+						onclick={() =>
+							openCreateWithCategory(
+								selectedCategory !== 'all' ? (selectedCategory as WorkloadChoice) : 'application'
+							)}
+					>
+						<Plus size={13} /> New service
+					</Button>
+				{/if}
 			{/snippet}
 		</PageHeader>
 
-		<!-- Services Resource Inventory -->
-		<section class="flex flex-col gap-4">
+		<!-- Project Tabs -->
+		<Tabs tabs={projectTabs} bind:active={activeTab} />
+
+		{#if activeTab === 'services'}
+			<!-- Services Resource Inventory -->
+			<section class="flex flex-col gap-4">
 			<!-- Header & Filter Row -->
 			<div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 				<!-- Category Filter Pills -->
@@ -521,7 +534,7 @@
 			{/if}
 		</section>
 
-		<!-- Recent Deployments -->
+		<!-- Recent Deployments (shown on services tab) -->
 		{#if projectDeployments.length > 0}
 			<section class="flex flex-col gap-3">
 				<div class="flex items-center justify-between">
@@ -538,12 +551,36 @@
 						{ key: 'duration', label: 'Duration' },
 						{ key: 'timeAgo', label: 'When' }
 					]}
-					rows={projectDeployments}
+					rows={projectDeployments.slice(0, 5)}
 					keyExtractor={(d) => d.id}
 					onRowClick={(d) => goto(`/projects/${project.id}/services/${d.serviceId}`)}
 				/>
 			</section>
 		{/if}
+	{:else if activeTab === 'backups'}
+		<ProjectBackupsView projectId={project.id} />
+	{:else if activeTab === 'deployments'}
+		<section class="flex flex-col gap-3">
+			<div class="flex items-center justify-between">
+				<h2 class="text-sm font-medium text-[var(--text-primary)] m-0">All Project Deployments</h2>
+				<span class="text-xs text-[var(--text-tertiary)] tabular-nums">{projectDeployments.length} total</span>
+			</div>
+
+			<DataTable
+				columns={[
+					{ key: 'serviceName', label: 'Service' },
+					{ key: 'version', label: 'Version', mono: true },
+					{ key: 'commit', label: 'Commit', mono: true },
+					{ key: 'status', label: 'Status', render: depStatusSnippet },
+					{ key: 'duration', label: 'Duration' },
+					{ key: 'timeAgo', label: 'When' }
+				]}
+				rows={projectDeployments}
+				keyExtractor={(d) => d.id}
+				onRowClick={(d) => goto(`/projects/${project.id}/services/${d.serviceId}`)}
+			/>
+		</section>
+	{/if}
 	</div>
 
 	<!-- Create Service Modal -->

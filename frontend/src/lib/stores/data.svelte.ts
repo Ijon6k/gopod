@@ -15,7 +15,11 @@ import type {
 	Server,
 	PodmanSecret,
 	SSHKey,
-	ContainerRegistry
+	ContainerRegistry,
+	PortMapping,
+	CaddyAccessLog,
+	VolumeSnapshot,
+	VolumeBackupSchedule
 } from '$lib/types';
 
 import projectsJson from '$lib/data/projects.json';
@@ -28,6 +32,10 @@ import volumesJson from '$lib/data/volumes.json';
 import networksJson from '$lib/data/networks.json';
 import domainsJson from '$lib/data/domains.json';
 import serverJson from '$lib/data/server.json';
+import portsJson from '$lib/data/ports.json';
+import accessLogsJson from '$lib/data/accessLogs.json';
+import volumeSnapshotsJson from '$lib/data/volumeSnapshots.json';
+import volumeSchedulesJson from '$lib/data/volumeSchedules.json';
 
 export const initialPodmanSecrets: PodmanSecret[] = [
 	{ id: 'sec-1', name: 'db_password', createdAt: '2025-01-15T08:00:00Z', driver: 'file' },
@@ -145,6 +153,10 @@ class DataStore {
 	networks = $state<Network[]>(networksJson as Network[]);
 	domains = $state<Domain[]>(domainsJson as Domain[]);
 	server = $state<Server>(serverJson as Server);
+	ports = $state<PortMapping[]>(portsJson as PortMapping[]);
+	accessLogs = $state<CaddyAccessLog[]>(accessLogsJson as CaddyAccessLog[]);
+	volumeSnapshots = $state<VolumeSnapshot[]>(volumeSnapshotsJson as VolumeSnapshot[]);
+	volumeSchedules = $state<VolumeBackupSchedule[]>(volumeSchedulesJson as VolumeBackupSchedule[]);
 	podmanSecrets = $state<PodmanSecret[]>(initialPodmanSecrets);
 	sshKeys = $state<SSHKey[]>(initialSSHKeys);
 	registries = $state<ContainerRegistry[]>(initialRegistries);
@@ -276,8 +288,53 @@ class DataStore {
 		this.domains.unshift(domain);
 	}
 
+	updateDomain(updated: Domain) {
+		const idx = this.domains.findIndex((d) => d.id === updated.id);
+		if (idx !== -1) {
+			this.domains[idx] = { ...updated };
+		}
+	}
+
 	deleteDomain(domainId: string) {
 		this.domains = this.domains.filter((d) => d.id !== domainId);
+	}
+
+	getProjectVolumeSnapshots(projectId: string): VolumeSnapshot[] {
+		return this.volumeSnapshots.filter((s) => s.projectId === projectId);
+	}
+
+	getProjectVolumeSchedules(projectId: string): VolumeBackupSchedule[] {
+		return this.volumeSchedules.filter((s) => s.projectId === projectId);
+	}
+
+	createVolumeSnapshot(volumeName: string, projectId: string, serviceId: string): VolumeSnapshot {
+		const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
+		const newSnapshot: VolumeSnapshot = {
+			id: `snap-${Date.now()}`,
+			volumeName,
+			projectId,
+			serviceId,
+			filename: `${volumeName}_${dateStr}.tar.zst`,
+			size: 'Calculating...',
+			sizeBytes: 1024 * 1024 * 50,
+			createdAt: new Date().toISOString(),
+			timeAgo: 'Just now',
+			status: 'completed',
+			compression: 'zstd'
+		};
+		this.volumeSnapshots.unshift(newSnapshot);
+		return newSnapshot;
+	}
+
+	deleteVolumeSnapshot(id: string) {
+		this.volumeSnapshots = this.volumeSnapshots.filter((s) => s.id !== id);
+	}
+
+	toggleVolumeSchedule(id: string) {
+		const sched = this.volumeSchedules.find((s) => s.id === id);
+		if (sched) {
+			sched.enabled = !sched.enabled;
+		}
 	}
 
 	addSecret(name: string) {

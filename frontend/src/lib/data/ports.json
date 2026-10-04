@@ -1,0 +1,86 @@
+[
+	{
+		"id": "port-1",
+		"hostPort": 80,
+		"containerPort": 80,
+		"protocol": "tcp",
+		"serviceId": "caddy-ingress",
+		"serviceName": "Caddy Reverse Proxy",
+		"containerName": "caddy-system",
+		"bindAddress": "0.0.0.0",
+		"isPublic": true,
+		"status": "listening"
+	},
+	{
+		"id": "port-2",
+		"hostPort": 443,
+		"containerPort": 443,
+		"protocol": "tcp",
+		"serviceId": "caddy-ingress",
+		"serviceName": "Caddy Reverse Proxy (TLS)",
+		"containerName": "caddy-system",
+		"bindAddress": "0.0.0.0",
+		"isPublic": true,
+		"status": "listening"
+	},
+	{
+		"id": "port-3",
+		"hostPort": 3000,
+		"containerPort": 3000,
+		"protocol": "tcp",
+		"serviceId": "aerochat-web",
+		"serviceName": "aerochat / web",
+		"containerName": "aerochat-web-app",
+		"bindAddress": "127.0.0.1",
+		"isPublic": false,
+		"status": "listening"
+	},
+	{
+		"id": "port-4",
+		"hostPort": 8080,
+		"containerPort": 8080,
+		"protocol": "tcp",
+		"serviceId": "aerochat-ws",
+		"serviceName": "aerochat / websocket",
+		"containerName": "aerochat-ws-gw",
+		"bindAddress": "127.0.0.1",
+		"isPublic": false,
+		"status": "listening"
+	},
+	{
+		"id": "port-5",
+		"hostPort": 5432,
+		"containerPort": 5432,
+		"protocol": "tcp",
+		"serviceId": "aerochat-db",
+		"serviceName": "aerochat / postgres",
+		"containerName": "aerochat-postgres-16",
+		"bindAddress": "127.0.0.1",
+		"isPublic": false,
+		"status": "listening"
+	},
+	{
+		"id": "port-6",
+		"hostPort": 6379,
+		"containerPort": 6379,
+		"protocol": "tcp",
+		"serviceId": "aerochat-redis",
+		"serviceName": "aerochat / redis",
+		"containerName": "aerochat-redis-master",
+		"bindAddress": "127.0.0.1",
+		"isPublic": false,
+		"status": "listening"
+	},
+	{
+		"id": "port-7",
+		"hostPort": 8000,
+		"containerPort": 8000,
+		"protocol": "tcp",
+		"serviceId": "ngumpul-backend",
+		"serviceName": "ngumpulhost / backend",
+		"containerName": "ngumpul-api",
+		"bindAddress": "127.0.0.1",
+		"isPublic": false,
+		"status": "listening"
+	}
+]

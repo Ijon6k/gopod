@@ -54,6 +54,7 @@
 			icon: 'Globe',
 			children: [
 				{ label: 'Domains', path: '/networking/domains', icon: 'Globe' },
+				{ label: 'Traffic & Logs', path: '/networking/requests', icon: 'ChartLineUp' },
 				{ label: 'Ports', path: '/networking/ports', icon: 'NetworkIcon' }
 			]
 		},

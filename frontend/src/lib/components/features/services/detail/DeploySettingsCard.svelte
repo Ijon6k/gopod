@@ -21,7 +21,10 @@
 
 	let { service, onTerminalClick, onRedeploy }: Props = $props();
 
-	let autoDeploy = $state(service.autoDeploy ?? true);
+	let autoDeploy = $state(true);
+	$effect(() => {
+		autoDeploy = service.autoDeploy ?? true;
+	});
 	let isDeploying = $state(false);
 	let isRebuilding = $state(false);
 	let feedbackMessage = $state<{ text: string; type: 'success' | 'info' } | null>(null);

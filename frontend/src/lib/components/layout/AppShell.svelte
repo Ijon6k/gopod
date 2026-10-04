@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { page } from '$app/state';
 	import Sidebar from './Sidebar.svelte';
 	import Topbar from './Topbar.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
@@ -9,6 +10,8 @@
 	}
 
 	let { children }: Props = $props();
+
+	let isFullBleed = $derived(page.url.pathname === '/topology');
 
 	onMount(() => {
 		ui.init();
@@ -40,8 +43,10 @@
 		class="flex-1 min-w-0 h-full max-h-full bg-[var(--bg-shell)] rounded-none md:rounded-[var(--radius-shell)] border-0 md:border md:border-[var(--border)] flex flex-col overflow-hidden transition-colors duration-200 shadow-none md:shadow-sm"
 	>
 		<Topbar />
-		<main class="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-3.5 py-4 md:px-8 md:py-7">
-			{@render children()}
+		<main class="flex-1 min-h-0 {isFullBleed ? 'overflow-hidden p-0' : 'overflow-y-auto overflow-x-hidden px-3.5 md:px-8 pb-4 md:pb-7'}">
+			<div class="w-full flex-1 flex flex-col {isFullBleed ? 'h-full pt-0' : 'pt-4 md:pt-7'}">
+				{@render children()}
+			</div>
 		</main>
 	</div>
 </div>

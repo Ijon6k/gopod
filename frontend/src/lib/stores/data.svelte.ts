@@ -13,7 +13,9 @@ import type {
 	Network,
 	Domain,
 	Server,
-	PodmanSecret
+	PodmanSecret,
+	SSHKey,
+	ContainerRegistry
 } from '$lib/types';
 
 import projectsJson from '$lib/data/projects.json';
@@ -32,6 +34,42 @@ export const initialPodmanSecrets: PodmanSecret[] = [
 	{ id: 'sec-2', name: 'jwt_secret', createdAt: '2025-01-15T08:05:00Z', driver: 'file' },
 	{ id: 'sec-3', name: 'session_key', createdAt: '2025-02-01T12:00:00Z', driver: 'file' },
 	{ id: 'sec-4', name: 'redis_auth', createdAt: '2025-02-10T14:30:00Z', driver: 'file' }
+];
+
+export const initialSSHKeys: SSHKey[] = [
+	{
+		id: 'key-1',
+		name: 'Default Deployment Key',
+		publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInJ8tO01n9eW4M8pY2jV7qB5c0z6X1aF3gT7hU9kL2m gopod-deploy',
+		fingerprint: 'SHA256:d8a2f1b0c9e8d7c6b5a4938271605f4e',
+		type: 'ed25519',
+		createdAt: '2025-01-10T10:00:00Z'
+	},
+	{
+		id: 'key-2',
+		name: 'Personal GitHub (ed25519)',
+		publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKmP5oQ2rS4tU6vW8xY0zA1bC3dE5fG7hI9jK1lM3nO5 pixy@workstation',
+		fingerprint: 'SHA256:4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d',
+		type: 'ed25519',
+		createdAt: '2025-02-14T08:30:00Z'
+	}
+];
+
+export const initialRegistries: ContainerRegistry[] = [
+	{
+		id: 'reg-1',
+		name: 'Docker Hub (Default)',
+		url: 'docker.io',
+		username: 'ijon6k',
+		createdAt: '2025-01-12T12:00:00Z'
+	},
+	{
+		id: 'reg-2',
+		name: 'GitHub Packages (ghcr.io)',
+		url: 'ghcr.io',
+		username: 'ijon6k',
+		createdAt: '2025-02-01T09:15:00Z'
+	}
 ];
 
 class DataStore {
@@ -108,6 +146,36 @@ class DataStore {
 	domains = $state<Domain[]>(domainsJson as Domain[]);
 	server = $state<Server>(serverJson as Server);
 	podmanSecrets = $state<PodmanSecret[]>(initialPodmanSecrets);
+	sshKeys = $state<SSHKey[]>(initialSSHKeys);
+	registries = $state<ContainerRegistry[]>(initialRegistries);
+
+	addSSHKey(key: Omit<SSHKey, 'id' | 'createdAt'>) {
+		const newKey: SSHKey = {
+			...key,
+			id: `key-${Date.now()}`,
+			createdAt: new Date().toISOString()
+		};
+		this.sshKeys.push(newKey);
+		return newKey;
+	}
+
+	deleteSSHKey(id: string) {
+		this.sshKeys = this.sshKeys.filter((k) => k.id !== id);
+	}
+
+	addRegistry(reg: Omit<ContainerRegistry, 'id' | 'createdAt'>) {
+		const newReg: ContainerRegistry = {
+			...reg,
+			id: `reg-${Date.now()}`,
+			createdAt: new Date().toISOString()
+		};
+		this.registries.push(newReg);
+		return newReg;
+	}
+
+	deleteRegistry(id: string) {
+		this.registries = this.registries.filter((r) => r.id !== id);
+	}
 
 	getProjectServices(projectId: string): Service[] {
 		return this.services.filter((s) => s.projectId === projectId);

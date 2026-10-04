@@ -90,7 +90,12 @@
 		<!-- Tab Contents -->
 		<div class="pt-1">
 			{#if activeTab === 'general'}
-				<GeneralTab {service} onNavigateTab={(tab) => (activeTab = tab)} />
+				<GeneralTab
+					{service}
+					onNavigateTab={(tab) => (activeTab = tab)}
+					onTerminalClick={() => (activeTab = 'terminal')}
+					onRedeploy={handleRedeploy}
+				/>
 			{:else if activeTab === 'environment'}
 				<EnvironmentTab {service} />
 			{:else if activeTab === 'domains'}
@@ -98,7 +103,7 @@
 			{:else if activeTab === 'deployments'}
 				<DeploymentsTab {service} onRedeploy={handleRedeploy} />
 			{:else if activeTab === 'monitoring'}
-				<MonitoringTab {service} />
+				<MonitoringTab {service} onNavigateTab={(tab) => (activeTab = tab)} />
 			{:else if activeTab === 'logs'}
 				<LogsTab {service} />
 			{:else if activeTab === 'terminal'}

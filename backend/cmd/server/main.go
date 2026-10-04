@@ -22,9 +22,16 @@ func main() {
 		defaultPort = "8080"
 	}
 	defaultSocket := os.Getenv("PODMAN_SOCKET")
+	defaultDB := os.Getenv("GOPOD_DB_PATH")
+	defaultCaddy := os.Getenv("CADDY_ADMIN_URL")
+	if defaultCaddy == "" {
+		defaultCaddy = "http://127.0.0.1:2019"
+	}
 
 	port := flag.String("port", defaultPort, "HTTP server port")
 	socket := flag.String("socket", defaultSocket, "Podman unix socket path (optional)")
+	dbPath := flag.String("db", defaultDB, "SQLite database file path (optional)")
+	caddyAdmin := flag.String("caddy", defaultCaddy, "Caddy Admin API endpoint (optional)")
 	flag.Parse()
 
 	// Prepare embedded dist filesystem
@@ -58,6 +65,8 @@ func main() {
 	srvHandler := server.NewServer(server.Config{
 		Port:         *port,
 		PodmanSocket: *socket,
+		DBPath:       *dbPath,
+		CaddyAdmin:   *caddyAdmin,
 		DistFS:       distFS,
 	})
 

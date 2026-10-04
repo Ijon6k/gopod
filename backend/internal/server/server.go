@@ -9,20 +9,39 @@ import (
 	"time"
 
 	"gopod/internal/api"
+	"gopod/internal/caddy"
+	"gopod/internal/db"
 	"gopod/internal/podman"
+	"gopod/internal/runner"
 )
 
 // Config holds server configuration.
 type Config struct {
 	Port         string
 	PodmanSocket string
+	DBPath       string
+	CaddyAdmin   string
 	DistFS       fs.FS
 }
 
 // NewServer configures http.Handler with API routes and SPA fallback.
 func NewServer(cfg Config) http.Handler {
 	podmanClient := podman.NewClient(cfg.PodmanSocket)
-	apiHandler := api.NewHandler(podmanClient)
+
+	database, err := db.Open(cfg.DBPath)
+	if err != nil {
+		log.Printf("[ERROR] Failed to open SQLite database: %v", err)
+	}
+
+	var repo *db.Repository
+	if database != nil {
+		repo = db.NewRepository(database)
+	}
+
+	caddyReconciler := caddy.NewReconciler(cfg.CaddyAdmin, "")
+	deployer := runner.NewDeployer(podmanClient)
+
+	apiHandler := api.NewHandler(podmanClient, repo, caddyReconciler, deployer)
 
 	mux := http.NewServeMux()
 

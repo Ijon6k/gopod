@@ -1,0 +1,23 @@
+[Unit]
+Description=GOPOD PaaS Control Plane (Go Single Binary + SQLite)
+PartOf=gopod-pod.service
+After=gopod-pod.service
+
+[Container]
+ContainerName=gopod-server
+Pod=gopod.pod
+Image=ghcr.io/ijon6k/gopod:dev
+AutoUpdate=registry
+Environment=PORT=8085
+Environment=PODMAN_SOCKET=/run/podman/podman.sock
+Environment=GOPOD_DB_PATH=/app/data/gopod.db
+Environment=CADDY_ADMIN_URL=http://127.0.0.1:2019
+Volume=%t/podman/podman.sock:/run/podman/podman.sock:Z
+Volume=%h/.local/share/gopod/data:/app/data:Z
+
+[Service]
+Restart=always
+RestartSec=3s
+
+[Install]
+WantedBy=default.target

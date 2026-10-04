@@ -1,0 +1,5 @@
+[Network]
+NetworkName=gopod-net
+Subnet=10.89.0.0/16
+Gateway=10.89.0.1
+Internal=false

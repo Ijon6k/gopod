@@ -12,12 +12,19 @@
 	let { children }: Props = $props();
 
 	let isFullBleed = $derived(page.url.pathname === '/topology');
+	let isAuthPage = $derived(page.url.pathname === '/login' || page.url.pathname === '/setup');
 
 	onMount(() => {
 		ui.init();
 	});
 </script>
 
+{#if isAuthPage}
+	<!-- Standalone Fullscreen View for Setup & Login -->
+	<div class="h-screen max-h-screen w-screen max-w-full overflow-y-auto bg-[var(--bg-outer)] flex flex-col justify-center items-center p-4 md:p-6 transition-colors duration-200 box-border">
+		{@render children()}
+	</div>
+{:else}
 <div
 	class="h-screen max-h-screen w-screen max-w-full overflow-hidden bg-[var(--bg-shell)] md:bg-[var(--bg-outer)] flex items-stretch p-0 md:p-[12px] md:px-3.5 md:gap-3 transition-colors duration-200 box-border"
 >
@@ -50,3 +57,4 @@
 		</main>
 	</div>
 </div>
+{/if}

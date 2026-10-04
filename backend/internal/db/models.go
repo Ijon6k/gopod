@@ -33,6 +33,24 @@ type Service struct {
 	CreatedAt      time.Time `json:"createdAt"`
 }
 
+// User represents an administrator or team member.
+type User struct {
+	ID           string    `json:"id"`
+	Email        string    `json:"email"`
+	PasswordHash string    `json:"-"`
+	Name         string    `json:"name"`
+	Role         string    `json:"role"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+// Session represents an authenticated web session.
+type Session struct {
+	Token     string    `json:"token"`
+	UserID    string    `json:"userId"`
+	ExpiresAt time.Time `json:"expiresAt"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 // SSHKey represents an SSH deploy key for Git repositories.
 type SSHKey struct {
 	ID          string    `json:"id"`

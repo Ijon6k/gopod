@@ -31,6 +31,13 @@ func NewHandler(client *podman.Client, repo *db.Repository, caddyRec *caddy.Reco
 
 // RegisterRoutes registers all modular API routes on mux.
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
+	// Authentication & First-time Setup
+	mux.HandleFunc("GET /api/auth/status", h.handleAuthStatus)
+	mux.HandleFunc("POST /api/auth/setup", h.handleAuthSetup)
+	mux.HandleFunc("POST /api/auth/login", h.handleAuthLogin)
+	mux.HandleFunc("POST /api/auth/logout", h.handleAuthLogout)
+	mux.HandleFunc("GET /api/auth/me", h.handleAuthMe)
+
 	// System & Monitoring
 	mux.HandleFunc("GET /api/health", h.handleHealth)
 	mux.HandleFunc("GET /api/system", h.handleSystem)

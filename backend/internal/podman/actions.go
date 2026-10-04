@@ -47,6 +47,37 @@ type NetworkItem struct {
 	Gateway string `json:"gateway"`
 }
 
+// RunContainerOptions specifies parameters for launching a new container.
+type RunContainerOptions struct {
+	Name    string            `json:"name"`
+	Image   string            `json:"image"`
+	Ports   []string          `json:"ports,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+	Network string            `json:"network,omitempty"`
+}
+
+// RunContainer starts a new container with the specified options.
+func (c *Client) RunContainer(ctx context.Context, opts RunContainerOptions) (string, error) {
+	args := []string{"run", "-d", "--name", opts.Name}
+	for _, p := range opts.Ports {
+		args = append(args, "-p", p)
+	}
+	for k, v := range opts.Env {
+		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
+	}
+	if opts.Network != "" {
+		args = append(args, "--network", opts.Network)
+	}
+	args = append(args, opts.Image)
+
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("podman run failed: %s (%w)", strings.TrimSpace(string(out)), err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 // ── Container Lifecycle Actions ──
 
 func (c *Client) StartContainer(ctx context.Context, id string) error {

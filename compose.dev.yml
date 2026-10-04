@@ -1,7 +1,10 @@
 services:
   gopod:
-    image: ${GOPOD_IMAGE:-ghcr.io/ijon6k/gopod:latest}
-    container_name: gopod
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: gopod:dev
+    container_name: gopod-dev
     restart: unless-stopped
     ports:
       - "${PORT:-8085}:8085"
@@ -20,7 +23,7 @@ services:
 
   caddy:
     image: docker.io/library/caddy:alpine
-    container_name: gopod-caddy
+    container_name: gopod-caddy-dev
     restart: unless-stopped
     ports:
       - "80:80"

@@ -22,20 +22,23 @@ import type {
 	VolumeBackupSchedule
 } from '$lib/types';
 
-import projectsJson from '$lib/data/projects.json';
-import servicesJson from '$lib/data/services.json';
-import deploymentsJson from '$lib/data/deployments.json';
-import containersJson from '$lib/data/containers.json';
-import podsJson from '$lib/data/pods.json';
-import imagesJson from '$lib/data/images.json';
-import volumesJson from '$lib/data/volumes.json';
-import networksJson from '$lib/data/networks.json';
-import domainsJson from '$lib/data/domains.json';
-import serverJson from '$lib/data/server.json';
-import portsJson from '$lib/data/ports.json';
-import accessLogsJson from '$lib/data/accessLogs.json';
-import volumeSnapshotsJson from '$lib/data/volumeSnapshots.json';
-import volumeSchedulesJson from '$lib/data/volumeSchedules.json';
+import { api } from '$lib/api';
+
+
+import projectsJson from '$lib/data/mock/dummy_projects.json';
+import servicesJson from '$lib/data/mock/dummy_services.json';
+import deploymentsJson from '$lib/data/mock/dummy_deployments.json';
+import containersJson from '$lib/data/mock/dummy_containers.json';
+import podsJson from '$lib/data/mock/dummy_pods.json';
+import imagesJson from '$lib/data/mock/dummy_images.json';
+import volumesJson from '$lib/data/mock/dummy_volumes.json';
+import networksJson from '$lib/data/mock/dummy_networks.json';
+import domainsJson from '$lib/data/mock/dummy_domains.json';
+import serverJson from '$lib/data/mock/dummy_server.json';
+import portsJson from '$lib/data/mock/dummy_ports.json';
+import accessLogsJson from '$lib/data/mock/dummy_accessLogs.json';
+import volumeSnapshotsJson from '$lib/data/mock/dummy_volumeSnapshots.json';
+import volumeSchedulesJson from '$lib/data/mock/dummy_volumeSchedules.json';
 
 export const initialPodmanSecrets: PodmanSecret[] = [
 	{ id: 'sec-1', name: 'db_password', createdAt: '2025-01-15T08:00:00Z', driver: 'file' },
@@ -247,6 +250,8 @@ class DataStore {
 
 	addService(service: Service) {
 		this.services.unshift(service);
+		api.services.create(service).catch((err) => console.warn('Failed to sync service:', err));
+
 		// If it has domain, add it to domains
 		if (service.domain) {
 			this.addDomain({
@@ -284,13 +289,29 @@ class DataStore {
 		}
 	}
 
+	async deployService(serviceId: string) {
+		const svc = this.services.find((s) => s.id === serviceId);
+		if (svc) {
+			svc.status = 'deploying';
+		}
+		try {
+			const res = await api.services.deploy(serviceId);
+			if (svc) {
+				svc.status = 'running';
+			}
+			return res;
+		} catch (err) {
+			console.error('Service deployment error:', err);
+			if (svc) {
+				svc.status = 'failed';
+			}
+			throw err;
+		}
+	}
+
 	addDomain(domain: Domain) {
 		this.domains.unshift(domain);
-		fetch('/api/domains', {
-			method: 'POST',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(domain)
-		}).catch(() => null);
+		api.domains.create(domain).catch((err) => console.warn('Failed to sync domain:', err));
 	}
 
 	updateDomain(updated: Domain) {
@@ -298,18 +319,12 @@ class DataStore {
 		if (idx !== -1) {
 			this.domains[idx] = { ...updated };
 		}
-		fetch(`/api/domains/${updated.id}`, {
-			method: 'PUT',
-			headers: { 'Content-Type': 'application/json' },
-			body: JSON.stringify(updated)
-		}).catch(() => null);
+		api.domains.update(updated.id, updated).catch((err) => console.warn('Failed to sync domain update:', err));
 	}
 
 	deleteDomain(domainId: string) {
 		this.domains = this.domains.filter((d) => d.id !== domainId);
-		fetch(`/api/domains/${domainId}`, {
-			method: 'DELETE'
-		}).catch(() => null);
+		api.domains.delete(domainId).catch((err) => console.warn('Failed to sync domain delete:', err));
 	}
 
 	getProjectVolumeSnapshots(projectId: string): VolumeSnapshot[] {
@@ -336,11 +351,13 @@ class DataStore {
 			compression: 'zstd'
 		};
 		this.volumeSnapshots.unshift(newSnapshot);
+		api.volumes.createSnapshot({ volumeName, projectId, serviceId }).catch(() => null);
 		return newSnapshot;
 	}
 
 	deleteVolumeSnapshot(id: string) {
 		this.volumeSnapshots = this.volumeSnapshots.filter((s) => s.id !== id);
+		api.volumes.deleteSnapshot(id).catch(() => null);
 	}
 
 	toggleVolumeSchedule(id: string) {
@@ -348,6 +365,40 @@ class DataStore {
 		if (sched) {
 			sched.enabled = !sched.enabled;
 		}
+		api.volumes.toggleSchedule(id).catch(() => null);
+	}
+
+	async startContainer(id: string) {
+		const found = this.containers.find((c) => c.id === id);
+		if (found) found.status = 'running';
+		await api.runtime.containers.start(id);
+	}
+
+	async stopContainer(id: string) {
+		const found = this.containers.find((c) => c.id === id);
+		if (found) found.status = 'stopped';
+		await api.runtime.containers.stop(id);
+	}
+
+	async restartContainer(id: string) {
+		await api.runtime.containers.restart(id);
+	}
+
+	async deleteContainer(id: string, force = false) {
+		this.containers = this.containers.filter((c) => c.id !== id);
+		await api.runtime.containers.delete(id, force);
+	}
+
+	async pruneImages(all = false) {
+		await api.runtime.images.prune(all);
+	}
+
+	async pruneVolumes() {
+		await api.runtime.volumes.prune();
+	}
+
+	async pruneSystem() {
+		await api.system.prune();
 	}
 
 	addSecret(name: string) {
@@ -361,15 +412,36 @@ class DataStore {
 		return newSecret;
 	}
 
-	async fetchLiveStats() {
+	async fetchInitialData() {
 		try {
-			const [sysRes, statsRes] = await Promise.all([
-				fetch('/api/system').catch(() => null),
-				fetch('/api/stats').catch(() => null)
+			const [projectsData, servicesData, domainsData] = await Promise.all([
+				api.projects.list().catch(() => null),
+				api.services.list().catch(() => null),
+				api.domains.list().catch(() => null)
 			]);
 
-			if (sysRes && sysRes.ok) {
-				const sys = await sysRes.json();
+			if (projectsData && projectsData.length > 0) {
+				this.projects = projectsData;
+			}
+			if (servicesData && servicesData.length > 0) {
+				this.services = servicesData;
+			}
+			if (domainsData && domainsData.length > 0) {
+				this.domains = domainsData;
+			}
+		} catch (err) {
+			// Retain dummy mock data as fallback
+		}
+	}
+
+	async fetchLiveStats() {
+		try {
+			const [sys, stats] = await Promise.all([
+				api.system.info().catch(() => null),
+				api.system.stats().catch(() => null)
+			]);
+
+			if (sys) {
 				this.server = {
 					...this.server,
 					hostname: sys.hostname || this.server.hostname,
@@ -386,38 +458,35 @@ class DataStore {
 				};
 			}
 
-			if (statsRes && statsRes.ok) {
-				const stats = await statsRes.json();
-				if (Array.isArray(stats) && stats.length > 0) {
-					for (const s of stats) {
-						const found = this.containers.find((c) => c.name === s.name || c.id === s.id);
-						if (found) {
-							found.cpu = s.cpuPercent ?? found.cpu;
-							found.pids = s.pids ?? found.pids;
-						} else {
-							this.containers.unshift({
-								id: s.id,
-								name: s.name,
-								projectId: 'system',
-								projectName: 'System Host',
-								serviceId: s.name,
-								serviceName: s.name,
-								image: s.name,
-								status: 'running',
-								cpu: s.cpuPercent || 0.1,
-								memory: Math.round((s.memUsage || 0) / (1024 * 1024)) || 32,
-								memoryLimit: Math.round((s.memLimit || 0) / (1024 * 1024)) || 512,
-								ports: '—',
-								startedAt: 'Active',
-								netRx: s.netDisplay?.split('/')[0]?.trim() || '—',
-								netTx: s.netDisplay?.split('/')[1]?.trim() || '—',
-								blockRead: '—',
-								blockWrite: '—',
-								pids: s.pids || 1,
-								restarts: 0,
-								uptime: 'Active'
-							});
-						}
+			if (stats && Array.isArray(stats) && stats.length > 0) {
+				for (const s of stats) {
+					const found = this.containers.find((c) => c.name === s.name || c.id === s.id);
+					if (found) {
+						found.cpu = s.cpuPercent ?? found.cpu;
+						found.pids = s.pids ?? found.pids;
+					} else {
+						this.containers.unshift({
+							id: s.id,
+							name: s.name,
+							projectId: 'system',
+							projectName: 'System Host',
+							serviceId: s.name,
+							serviceName: s.name,
+							image: s.name,
+							status: 'running',
+							cpu: s.cpuPercent || 0.1,
+							memory: Math.round((s.memUsage || 0) / (1024 * 1024)) || 32,
+							memoryLimit: Math.round((s.memLimit || 0) / (1024 * 1024)) || 512,
+							ports: '—',
+							startedAt: 'Active',
+							netRx: s.netDisplay?.split('/')[0]?.trim() || '—',
+							netTx: s.netDisplay?.split('/')[1]?.trim() || '—',
+							blockRead: '—',
+							blockWrite: '—',
+							pids: s.pids || 1,
+							restarts: 0,
+							uptime: 'Active'
+						});
 					}
 				}
 			}

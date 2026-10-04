@@ -18,17 +18,32 @@ import type {
 	AuditLog
 } from '$lib/types';
 
-import projectsJson from './projects.json';
-import servicesJson from './services.json';
-import deploymentsJson from './deployments.json';
-import containersJson from './containers.json';
-import podsJson from './pods.json';
-import imagesJson from './images.json';
-import volumesJson from './volumes.json';
-import networksJson from './networks.json';
-import domainsJson from './domains.json';
-import serverJson from './server.json';
-import auditLogsJson from './auditLogs.json';
+// Reference Dummy Mock Data (Preserved for documentation, testing, and offline fallback)
+import dummyProjectsJson from './mock/dummy_projects.json';
+import dummyServicesJson from './mock/dummy_services.json';
+import dummyDeploymentsJson from './mock/dummy_deployments.json';
+import dummyContainersJson from './mock/dummy_containers.json';
+import dummyPodsJson from './mock/dummy_pods.json';
+import dummyImagesJson from './mock/dummy_images.json';
+import dummyVolumesJson from './mock/dummy_volumes.json';
+import dummyNetworksJson from './mock/dummy_networks.json';
+import dummyDomainsJson from './mock/dummy_domains.json';
+import dummyServerJson from './mock/dummy_server.json';
+import dummyAuditLogsJson from './mock/dummy_auditLogs.json';
+
+export const dummyMockData = {
+	projects: dummyProjectsJson,
+	services: dummyServicesJson,
+	deployments: dummyDeploymentsJson,
+	containers: dummyContainersJson,
+	pods: dummyPodsJson,
+	images: dummyImagesJson,
+	volumes: dummyVolumesJson,
+	networks: dummyNetworksJson,
+	domains: dummyDomainsJson,
+	server: dummyServerJson,
+	auditLogs: dummyAuditLogsJson
+};
 
 import { dataStore } from '$lib/stores/data.svelte';
 
@@ -39,12 +54,12 @@ export const services = dataStore.services;
 export const deployments = dataStore.deployments;
 export const containers = dataStore.containers;
 export const pods = dataStore.pods;
-export const images = imagesJson as Image[];
-export const volumes = volumesJson as Volume[];
-export const networks = networksJson as Network[];
+export const images = dummyImagesJson as Image[];
+export const volumes = dummyVolumesJson as Volume[];
+export const networks = dummyNetworksJson as Network[];
 export const domains = dataStore.domains;
-export const server = serverJson as Server;
-export const auditLogs = auditLogsJson as AuditLog[];
+export const server = dummyServerJson as Server;
+export const auditLogs = dummyAuditLogsJson as AuditLog[];
 export const podmanSecrets = dataStore.podmanSecrets;
 export const sshKeys = dataStore.sshKeys;
 export const registries = dataStore.registries;

@@ -49,12 +49,27 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/services", h.handleCreateService)
 	mux.HandleFunc("GET /api/services/{id}", h.handleGetService)
 	mux.HandleFunc("DELETE /api/services/{id}", h.handleDeleteService)
+	mux.HandleFunc("POST /api/services/{id}/deploy", h.handleDeployService)
 
 	// Domains
 	mux.HandleFunc("GET /api/domains", h.handleListDomains)
 	mux.HandleFunc("POST /api/domains", h.handleCreateDomain)
 	mux.HandleFunc("PUT /api/domains/{id}", h.handleUpdateDomain)
 	mux.HandleFunc("DELETE /api/domains/{id}", h.handleDeleteDomain)
+
+	// Container & Podman Runtime
+	mux.HandleFunc("POST /api/containers/{id}/start", h.handleContainerStart)
+	mux.HandleFunc("POST /api/containers/{id}/stop", h.handleContainerStop)
+	mux.HandleFunc("POST /api/containers/{id}/restart", h.handleContainerRestart)
+	mux.HandleFunc("DELETE /api/containers/{id}", h.handleContainerDelete)
+	mux.HandleFunc("GET /api/containers/{id}/logs", h.handleContainerLogs)
+	mux.HandleFunc("GET /api/pods", h.handleListPods)
+	mux.HandleFunc("GET /api/images", h.handleListImages)
+	mux.HandleFunc("POST /api/images/prune", h.handlePruneImages)
+	mux.HandleFunc("GET /api/volumes", h.handleListVolumes)
+	mux.HandleFunc("POST /api/volumes/prune", h.handlePruneVolumes)
+	mux.HandleFunc("GET /api/networks", h.handleListNetworks)
+	mux.HandleFunc("POST /api/system/prune", h.handlePruneSystem)
 
 	// Volume Snapshots & Schedules
 	mux.HandleFunc("GET /api/volumes/snapshots", h.handleListVolumeSnapshots)

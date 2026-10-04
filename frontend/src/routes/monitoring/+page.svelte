@@ -43,32 +43,31 @@
 	}
 
 	onMount(() => {
-		dataStore.fetchLiveStats();
-		let pollTimer: any;
-
-		function setupTimer() {
-			if (pollTimer) clearInterval(pollTimer);
-			if (refreshRate === 'paused') return;
-
-			const ms = refreshRate === '3s' ? 3000 : refreshRate === '5s' ? 5000 : 15000;
-			pollTimer = setInterval(() => {
-				dataStore.fetchLiveStats();
-				lastUpdatedSec = 0;
-			}, ms);
+		// When monitoring page is opened, start real-time SSE stream
+		if (refreshRate !== 'paused') {
+			dataStore.startStreamingStats();
 		}
-
-		setupTimer();
+		dataStore.fetchLiveStats();
 
 		const secTimer = setInterval(() => {
 			if (refreshRate !== 'paused') {
-				lastUpdatedSec += 1;
+				lastUpdatedSec = (lastUpdatedSec + 1) % 60;
 			}
 		}, 1000);
 
 		return () => {
-			if (pollTimer) clearInterval(pollTimer);
+			// Clean up when user navigates away
+			dataStore.stopStreamingStats();
 			clearInterval(secTimer);
 		};
+	});
+
+	$effect(() => {
+		if (refreshRate === 'paused') {
+			dataStore.stopStreamingStats();
+		} else {
+			dataStore.startStreamingStats();
+		}
 	});
 </script>
 
@@ -143,7 +142,7 @@
 			<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-xs">
 				<span class="w-2 h-2 rounded-full {refreshRate === 'paused' ? 'bg-[var(--status-amber)]' : 'bg-[var(--status-green)] animate-pulse'}"></span>
 				<span class="text-[11px] font-mono text-[var(--text-secondary)]">
-					{refreshRate === 'paused' ? 'Paused' : 'Live'}
+					{refreshRate === 'paused' ? 'Paused' : dataStore.isStreaming ? 'Stream (SSE)' : 'Live'}
 				</span>
 				<select
 					bind:value={refreshRate}

@@ -1,0 +1,35 @@
+[
+	{
+		"id": "sched-1",
+		"projectId": "aerochat",
+		"volumeName": "aerochat-pgdata",
+		"cron": "0 2 * * *",
+		"label": "Daily at 02:00 AM",
+		"retentionCount": 7,
+		"enabled": true,
+		"lastRun": "4h ago",
+		"nextRun": "in 20h"
+	},
+	{
+		"id": "sched-2",
+		"projectId": "aerochat",
+		"volumeName": "aerochat-redis-data",
+		"cron": "0 3 * * *",
+		"label": "Daily at 03:00 AM",
+		"retentionCount": 7,
+		"enabled": true,
+		"lastRun": "3h ago",
+		"nextRun": "in 21h"
+	},
+	{
+		"id": "sched-3",
+		"projectId": "ngumpulhost",
+		"volumeName": "ngumpul-uploads",
+		"cron": "0 1 * * *",
+		"label": "Daily at 01:00 AM",
+		"retentionCount": 14,
+		"enabled": true,
+		"lastRun": "5h ago",
+		"nextRun": "in 19h"
+	}
+]

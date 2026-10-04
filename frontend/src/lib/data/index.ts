@@ -48,6 +48,10 @@ export const auditLogs = auditLogsJson as AuditLog[];
 export const podmanSecrets = dataStore.podmanSecrets;
 export const sshKeys = dataStore.sshKeys;
 export const registries = dataStore.registries;
+export const ports = dataStore.ports;
+export const accessLogs = dataStore.accessLogs;
+export const volumeSnapshots = dataStore.volumeSnapshots;
+export const volumeSchedules = dataStore.volumeSchedules;
 
 // ── Helper functions ──
 
@@ -57,6 +61,14 @@ export function getProjectServices(projectId: string): Service[] {
 
 export function getProjectDomains(projectId: string): Domain[] {
 	return dataStore.getProjectDomains(projectId);
+}
+
+export function getProjectVolumeSnapshots(projectId: string) {
+	return dataStore.getProjectVolumeSnapshots(projectId);
+}
+
+export function getProjectVolumeSchedules(projectId: string) {
+	return dataStore.getProjectVolumeSchedules(projectId);
 }
 
 export function getProjectDeployments(projectId: string): Deployment[] {

@@ -161,6 +161,70 @@ export interface Domain {
 	proxyPort: number;
 	containerPort: number;
 	publishedPort: number;
+	dnsStatus?: 'valid' | 'pending' | 'error';
+	resolvedIp?: string;
+	httpsRedirect?: boolean;
+	pathPrefix?: string;
+	stripPathPrefix?: boolean;
+	websocket?: boolean;
+	cors?: boolean;
+	hsts?: boolean;
+	basicAuth?: boolean;
+	basicAuthUser?: string;
+}
+
+export interface PortMapping {
+	id: string;
+	hostPort: number;
+	containerPort: number;
+	protocol: 'tcp' | 'udp';
+	serviceId: string;
+	serviceName: string;
+	containerName: string;
+	bindAddress: '0.0.0.0' | '127.0.0.1';
+	isPublic: boolean;
+	status: 'listening' | 'idle';
+}
+
+export interface CaddyAccessLog {
+	id: string;
+	timestamp: string;
+	timeAgo: string;
+	clientIp: string;
+	method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH' | 'HEAD' | 'OPTIONS';
+	host: string;
+	uri: string;
+	status: number;
+	durationMs: number;
+	bytesSent: string;
+	serviceName: string;
+	upstream: string;
+}
+
+export interface VolumeSnapshot {
+	id: string;
+	volumeName: string;
+	projectId: string;
+	serviceId: string;
+	filename: string;
+	size: string;
+	sizeBytes: number;
+	createdAt: string;
+	timeAgo: string;
+	status: 'completed' | 'in_progress' | 'failed';
+	compression: 'zstd' | 'gzip';
+}
+
+export interface VolumeBackupSchedule {
+	id: string;
+	projectId: string;
+	volumeName: string;
+	cron: string;
+	label: string;
+	retentionCount: number;
+	enabled: boolean;
+	lastRun?: string;
+	nextRun?: string;
 }
 
 export interface DeploymentStep {

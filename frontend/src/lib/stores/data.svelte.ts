@@ -286,6 +286,11 @@ class DataStore {
 
 	addDomain(domain: Domain) {
 		this.domains.unshift(domain);
+		fetch('/api/domains', {
+			method: 'POST',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(domain)
+		}).catch(() => null);
 	}
 
 	updateDomain(updated: Domain) {
@@ -293,10 +298,18 @@ class DataStore {
 		if (idx !== -1) {
 			this.domains[idx] = { ...updated };
 		}
+		fetch(`/api/domains/${updated.id}`, {
+			method: 'PUT',
+			headers: { 'Content-Type': 'application/json' },
+			body: JSON.stringify(updated)
+		}).catch(() => null);
 	}
 
 	deleteDomain(domainId: string) {
 		this.domains = this.domains.filter((d) => d.id !== domainId);
+		fetch(`/api/domains/${domainId}`, {
+			method: 'DELETE'
+		}).catch(() => null);
 	}
 
 	getProjectVolumeSnapshots(projectId: string): VolumeSnapshot[] {

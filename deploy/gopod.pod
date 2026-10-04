@@ -1,0 +1,13 @@
+[Unit]
+Description=GOPOD Core System Pod (Caddy Ingress & Control Plane)
+After=network-online.target
+Wants=network-online.target
+
+[Pod]
+PodName=gopod
+Network=gopod-net.network
+PublishPort=80:80
+PublishPort=443:443
+
+[Install]
+WantedBy=default.target

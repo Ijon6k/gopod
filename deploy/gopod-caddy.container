@@ -1,0 +1,20 @@
+[Unit]
+Description=GOPOD Caddy Ingress Reverse Proxy
+PartOf=gopod-pod.service
+After=gopod-pod.service
+
+[Container]
+ContainerName=gopod-caddy
+Pod=gopod.pod
+Image=docker.io/library/caddy:alpine
+AutoUpdate=registry
+Volume=%h/.config/gopod/caddy:/etc/caddy:Z
+Volume=%h/.local/share/gopod/caddy/data:/data:Z
+Volume=%h/.local/share/gopod/logs:/var/log/caddy:Z
+
+[Service]
+Restart=always
+RestartSec=3s
+
+[Install]
+WantedBy=default.target

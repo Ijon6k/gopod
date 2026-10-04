@@ -70,9 +70,10 @@
 		}
 	]);
 
-	let totalPodmanGB = $derived(
-		storageCategories.reduce((acc, c) => acc + c.sizeGB, 0).toFixed(1)
+	let totalPodmanNum = $derived(
+		storageCategories.reduce((acc, c) => acc + c.sizeGB, 0)
 	);
+	let totalPodmanGB = $derived(totalPodmanNum.toFixed(1));
 	let totalReclaimableGB = $derived(
 		storageCategories.reduce((acc, c) => acc + c.reclaimableGB, 0).toFixed(1)
 	);
@@ -160,46 +161,25 @@
 		<!-- Proportional Distribution Bar -->
 		<div class="px-5 pt-5 pb-4 flex flex-col gap-3">
 			<div class="w-full h-2 rounded-full bg-[var(--bg-surface)] overflow-hidden flex">
-				<div
-					class="h-full bg-[var(--accent)]"
-					style="width: {(7.2 / totalPodmanGB) * 100}%;"
-					title="Images: 7.2 GB"
-				></div>
-				<div
-					class="h-full bg-[var(--status-amber)]"
-					style="width: {(2.1 / totalPodmanGB) * 100}%;"
-					title="Volumes: 2.1 GB"
-				></div>
-				<div
-					class="h-full bg-[var(--text-secondary)]"
-					style="width: {(1.4 / totalPodmanGB) * 100}%;"
-					title="Build Cache: 1.4 GB"
-				></div>
-				<div
-					class="h-full bg-[var(--status-green)]"
-					style="width: {(1.1 / totalPodmanGB) * 100}%;"
-					title="Containers: 1.1 GB"
-				></div>
+				{#each storageCategories as cat}
+					{#if cat.sizeGB > 0}
+						<div
+							class="h-full {cat.color}"
+							style="width: {(cat.sizeGB / (totalPodmanNum || 1)) * 100}%;"
+							title="{cat.name}: {cat.sizeGB} GB"
+						></div>
+					{/if}
+				{/each}
 			</div>
 
 			<!-- Sleek Inline Legend -->
 			<div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-[var(--text-tertiary)] font-mono">
-				<div class="flex items-center gap-1.5">
-					<span class="w-2 h-2 rounded-full bg-[var(--accent)]"></span>
-					<span>Images: <strong class="text-[var(--text-primary)]">7.2 GB</strong></span>
-				</div>
-				<div class="flex items-center gap-1.5">
-					<span class="w-2 h-2 rounded-full bg-[var(--status-amber)]"></span>
-					<span>Volumes: <strong class="text-[var(--text-primary)]">2.1 GB</strong></span>
-				</div>
-				<div class="flex items-center gap-1.5">
-					<span class="w-2 h-2 rounded-full bg-[var(--text-secondary)]"></span>
-					<span>Build Cache: <strong class="text-[var(--text-primary)]">1.4 GB</strong></span>
-				</div>
-				<div class="flex items-center gap-1.5">
-					<span class="w-2 h-2 rounded-full bg-[var(--status-green)]"></span>
-					<span>Containers: <strong class="text-[var(--text-primary)]">1.1 GB</strong></span>
-				</div>
+				{#each storageCategories as cat}
+					<div class="flex items-center gap-1.5">
+						<span class="w-2 h-2 rounded-full {cat.color}"></span>
+						<span>{cat.name.split(' ')[0]}: <strong class="text-[var(--text-primary)]">{cat.sizeGB} GB</strong></span>
+					</div>
+				{/each}
 			</div>
 		</div>
 

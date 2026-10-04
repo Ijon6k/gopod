@@ -64,19 +64,69 @@ fi
 systemctl --user enable --now podman.socket
 echo -e "${GREEN}✓ Podman user socket is running: $(podman info --format '{{.Host.RemoteConnectionInfo.URL}}' 2>/dev/null || echo 'active')${NC}"
 
-# 4. Prepare directories and Quadlet manifests
-echo -e "\n${BOLD}[4/5] Setting up GOPOD Quadlet systemd service...${NC}"
-QUADLET_DIR="${USER_HOME}/.config/containers/systemd"
+# 4. Prepare directories and Compose / Quadlet manifests
+echo -e "\n${BOLD}[4/5] Setting up GOPOD configuration and manifests...${NC}"
 GOPOD_CONFIG="${USER_HOME}/.config/gopod"
 GOPOD_DATA="${USER_HOME}/.local/share/gopod"
+QUADLET_DIR="${USER_HOME}/.config/containers/systemd"
 
-mkdir -p "${QUADLET_DIR}"
-mkdir -p "${GOPOD_CONFIG}/caddy"
+mkdir -p "${GOPOD_CONFIG}/caddy/data"
+mkdir -p "${GOPOD_CONFIG}/caddy/logs"
+mkdir -p "${GOPOD_CONFIG}/caddy/config"
 mkdir -p "${GOPOD_DATA}/data"
-mkdir -p "${GOPOD_DATA}/caddy/data"
-mkdir -p "${GOPOD_DATA}/logs"
+mkdir -p "${QUADLET_DIR}"
 
-# Copy or generate Quadlet units
+GOPOD_IMAGE="${GOPOD_IMAGE:-ghcr.io/ijon6k/gopod:latest}"
+echo "Using GoPod Image: ${GOPOD_IMAGE}"
+
+# Write production compose.yml
+cat <<EOF > "${GOPOD_CONFIG}/compose.yml"
+services:
+  gopod:
+    image: ${GOPOD_IMAGE}
+    container_name: gopod
+    restart: unless-stopped
+    ports:
+      - "\${PORT:-8085}:8085"
+    environment:
+      - PORT=8085
+      - PODMAN_SOCKET=/run/podman/podman.sock
+      - GOPOD_DB_PATH=/app/data/gopod.db
+      - CADDY_ADMIN_URL=http://caddy:2019
+    volumes:
+      - "\${PODMAN_SOCKET:-/run/user/$(id -u)/podman/podman.sock}:/run/podman/podman.sock:ro,z"
+      - "${GOPOD_DATA}/data:/app/data:Z"
+    networks:
+      - gopod-net
+    security_opt:
+      - label=disable
+
+  caddy:
+    image: docker.io/library/caddy:alpine
+    container_name: gopod-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CADDY_INGRESS_NETWORK=gopod-net
+    volumes:
+      - "${GOPOD_CONFIG}/caddy/Caddyfile:/etc/caddy/Caddyfile:Z"
+      - "${GOPOD_CONFIG}/caddy/data:/data:Z"
+      - "${GOPOD_CONFIG}/caddy/config:/config:Z"
+      - "${GOPOD_CONFIG}/caddy/logs:/var/log/caddy:Z"
+    networks:
+      - gopod-net
+
+networks:
+  gopod-net:
+    name: gopod-net
+    driver: bridge
+EOF
+
+echo -e "${GREEN}✓ Production compose.yml written to ${GOPOD_CONFIG}/compose.yml.${NC}"
+
+# Also write Quadlet unit files for native systemd integration
 cat <<'EOF' > "${QUADLET_DIR}/gopod-net.network"
 [Network]
 NetworkName=gopod-net
@@ -124,7 +174,7 @@ RestartSec=3s
 WantedBy=default.target
 EOF
 
-cat <<'EOF' > "${QUADLET_DIR}/gopod-server.container"
+cat <<EOF > "${QUADLET_DIR}/gopod-server.container"
 [Unit]
 Description=GOPOD PaaS Control Plane (Go Single Binary + SQLite)
 PartOf=gopod-pod.service
@@ -133,7 +183,7 @@ After=gopod-pod.service
 [Container]
 ContainerName=gopod-server
 Pod=gopod.pod
-Image=ghcr.io/ijon6k/gopod:dev
+Image=${GOPOD_IMAGE}
 AutoUpdate=registry
 Environment=PORT=8085
 Environment=PODMAN_SOCKET=/run/podman/podman.sock
@@ -152,10 +202,18 @@ EOF
 
 echo -e "${GREEN}✓ Quadlet unit files written to ${QUADLET_DIR}.${NC}"
 
-# 5. Reload systemd daemon and activate service
-echo -e "\n${BOLD}[5/5] Activating GOPOD via systemd Quadlet...${NC}"
-systemctl --user daemon-reload
-systemctl --user start gopod-pod.service || true
+# 5. Launch GOPOD service
+echo -e "\n${BOLD}[5/5] Launching GOPOD...${NC}"
+if command -v systemctl &> /dev/null && [ -d /run/systemd/system ]; then
+    systemctl --user daemon-reload || true
+    systemctl --user start gopod-pod.service 2>/dev/null || true
+fi
+
+# Fallback to podman compose if systemctl user session is inactive
+if ! podman ps 2>/dev/null | grep -q "gopod"; then
+    echo "Starting via podman compose..."
+    podman compose -f "${GOPOD_CONFIG}/compose.yml" up -d 2>/dev/null || true
+fi
 
 SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
 
@@ -163,7 +221,7 @@ echo -e "\n${GREEN}${BOLD}======================================================
 echo "          GOPOD Installation Finished Successfully!       "
 echo "==========================================================${NC}"
 echo -e "Dashboard URL : ${BOLD}http://${SERVER_IP}:8085${NC} (or http://${SERVER_IP} via Caddy)"
-echo -e "Service Status: ${BOLD}systemctl --user status gopod-pod.service${NC}"
+echo -e "Compose File  : ${BOLD}${GOPOD_CONFIG}/compose.yml${NC}"
 echo -e "Podman Pod    : ${BOLD}podman pod ps${NC}"
 echo -e "Database Path : ${BOLD}${GOPOD_DATA}/data/gopod.db${NC}"
 echo -e "${BLUE}Enjoy building with rootless Podman!${NC}\n"

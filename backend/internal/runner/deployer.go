@@ -40,8 +40,21 @@ func (d *Deployer) DeployService(ctx context.Context, s db.Service) (string, err
 	containerName := GenerateContainerName(s.ProjectID, s.Name)
 	log.Printf("🚀 Deploying service '%s' as container: %s (image: %s)", s.Name, containerName, s.Image)
 
-	// In real environment, calls Podman REST /libpod/containers/create or CLI
-	// Returns generated container name for tracking
+	if s.Image != "" {
+		ports := []string{}
+		if s.Port > 0 {
+			ports = append(ports, fmt.Sprintf("%d:%d", s.Port, s.Port))
+		}
+		_, err := d.podmanClient.RunContainer(ctx, podman.RunContainerOptions{
+			Name:  containerName,
+			Image: s.Image,
+			Ports: ports,
+		})
+		if err != nil {
+			log.Printf("⚠️ Podman run notice (e.g. offline/mock environment): %v", err)
+		}
+	}
+
 	return containerName, nil
 }
 

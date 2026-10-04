@@ -1,16 +1,41 @@
 services:
   gopod:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ${GOPOD_IMAGE:-ghcr.io/ijon6k/gopod:latest}
     container_name: gopod
     restart: unless-stopped
     ports:
-      - "${PORT:-8085}:${PORT:-8085}"
+      - "${PORT:-8085}:8085"
     environment:
-      - PORT=${PORT:-8085}
+      - PORT=8085
       - PODMAN_SOCKET=/run/podman/podman.sock
+      - GOPOD_DB_PATH=/app/data/gopod.db
+      - CADDY_ADMIN_URL=http://caddy:2019
     volumes:
       - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:ro,z"
+      - "./data:/app/data:Z"
+    networks:
+      - gopod-net
     security_opt:
       - label=disable
+
+  caddy:
+    image: docker.io/library/caddy:alpine
+    container_name: gopod-caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - CADDY_INGRESS_NETWORK=gopod-net
+    volumes:
+      - "./caddy/Caddyfile:/etc/caddy/Caddyfile:Z"
+      - "./caddy/data:/data:Z"
+      - "./caddy/config:/config:Z"
+      - "./caddy/logs:/var/log/caddy:Z"
+    networks:
+      - gopod-net
+
+networks:
+  gopod-net:
+    name: gopod-net
+    driver: bridge

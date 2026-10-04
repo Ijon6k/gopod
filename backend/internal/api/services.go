@@ -60,3 +60,30 @@ func (h *Handler) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Service deleted"})
 }
+
+func (h *Handler) handleDeployService(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	s, err := h.repo.GetService(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if s == nil {
+		httputil.WriteError(w, http.StatusNotFound, "Service not found")
+		return
+	}
+
+	containerName, err := h.deployer.DeployService(r.Context(), *s)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"status":        "deployed",
+		"serviceId":     id,
+		"containerName": containerName,
+		"deployedAt":    time.Now().UTC().Format(time.RFC3339),
+	})
+}
+

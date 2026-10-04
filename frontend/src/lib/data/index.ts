@@ -47,26 +47,112 @@ export const dummyMockData = {
 
 import { dataStore } from '$lib/stores/data.svelte';
 
-// Typed exports
+// Typed exports — dynamic proxies delegating to live reactive dataStore
 export { dataStore };
-export const projects = dataStore.projects;
-export const services = dataStore.services;
-export const deployments = dataStore.deployments;
-export const containers = dataStore.containers;
-export const pods = dataStore.pods;
-export const images = dummyImagesJson as Image[];
-export const volumes = dummyVolumesJson as Volume[];
-export const networks = dummyNetworksJson as Network[];
-export const domains = dataStore.domains;
-export const server = dummyServerJson as Server;
+
+export const projects = new Proxy([] as Project[], {
+	get(_, prop) {
+		return (dataStore.projects as any)[prop];
+	}
+});
+
+export const services = new Proxy([] as Service[], {
+	get(_, prop) {
+		return (dataStore.services as any)[prop];
+	}
+});
+
+export const deployments = new Proxy([] as Deployment[], {
+	get(_, prop) {
+		return (dataStore.deployments as any)[prop];
+	}
+});
+
+export const containers = new Proxy([] as Container[], {
+	get(_, prop) {
+		return (dataStore.containers as any)[prop];
+	}
+});
+
+export const pods = new Proxy([] as Pod[], {
+	get(_, prop) {
+		return (dataStore.pods as any)[prop];
+	}
+});
+
+export const images = new Proxy([] as Image[], {
+	get(_, prop) {
+		return (dataStore.images as any)[prop];
+	}
+});
+
+export const volumes = new Proxy([] as Volume[], {
+	get(_, prop) {
+		return (dataStore.volumes as any)[prop];
+	}
+});
+
+export const networks = new Proxy([] as Network[], {
+	get(_, prop) {
+		return (dataStore.networks as any)[prop];
+	}
+});
+
+export const domains = new Proxy([] as Domain[], {
+	get(_, prop) {
+		return (dataStore.domains as any)[prop];
+	}
+});
+
+export const server = new Proxy({} as Server, {
+	get(_, prop) {
+		return (dataStore.server as any)[prop];
+	}
+});
+
 export const auditLogs = dummyAuditLogsJson as AuditLog[];
-export const podmanSecrets = dataStore.podmanSecrets;
-export const sshKeys = dataStore.sshKeys;
-export const registries = dataStore.registries;
-export const ports = dataStore.ports;
-export const accessLogs = dataStore.accessLogs;
-export const volumeSnapshots = dataStore.volumeSnapshots;
-export const volumeSchedules = dataStore.volumeSchedules;
+
+export const podmanSecrets = new Proxy([] as PodmanSecret[], {
+	get(_, prop) {
+		return (dataStore.podmanSecrets as any)[prop];
+	}
+});
+
+export const sshKeys = new Proxy([] as SSHKey[], {
+	get(_, prop) {
+		return (dataStore.sshKeys as any)[prop];
+	}
+});
+
+export const registries = new Proxy([] as ContainerRegistry[], {
+	get(_, prop) {
+		return (dataStore.registries as any)[prop];
+	}
+});
+
+export const ports = new Proxy([] as PortMapping[], {
+	get(_, prop) {
+		return (dataStore.ports as any)[prop];
+	}
+});
+
+export const accessLogs = new Proxy([] as CaddyAccessLog[], {
+	get(_, prop) {
+		return (dataStore.accessLogs as any)[prop];
+	}
+});
+
+export const volumeSnapshots = new Proxy([] as VolumeSnapshot[], {
+	get(_, prop) {
+		return (dataStore.volumeSnapshots as any)[prop];
+	}
+});
+
+export const volumeSchedules = new Proxy([] as VolumeBackupSchedule[], {
+	get(_, prop) {
+		return (dataStore.volumeSchedules as any)[prop];
+	}
+});
 
 // ── Helper functions ──
 

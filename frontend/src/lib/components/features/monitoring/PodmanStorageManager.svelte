@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { server, images, volumes, containers } from '$lib/data';
+	import { dataStore } from '$lib/stores/data.svelte';
 	import { Button } from '$lib/components/primitives';
 	import PruneStorageModal from './PruneStorageModal.svelte';
 	import { goto } from '$app/navigation';
@@ -17,18 +17,25 @@
 	let isPruneModalOpen = $state(false);
 	let recentReclaimedGB = $state<number | null>(null);
 
-	// Real-world Podman rootless storage data (podman system df)
-	const storageCategories = [
+	let server = $derived(dataStore.server);
+	let images = $derived(dataStore.images);
+	let volumes = $derived(dataStore.volumes);
+	let containers = $derived(dataStore.containers);
+
+	let runningContainers = $derived(containers.filter((c) => c.status === 'running').length);
+	let stoppedContainers = $derived(containers.filter((c) => c.status !== 'running').length);
+
+	let storageCategories = $derived([
 		{
 			id: 'images',
 			name: 'Container Images',
 			icon: ImageSquare,
-			totalCount: 12,
-			activeText: '7 in-use',
-			inactiveText: '5 unused',
-			sizeGB: 7.2,
-			reclaimableGB: 2.9,
-			reclaimablePct: 40,
+			totalCount: images.length,
+			activeText: `${images.length} images`,
+			inactiveText: 'local store',
+			sizeGB: parseFloat((images.length * 0.35).toFixed(1)),
+			reclaimableGB: parseFloat((images.length * 0.1).toFixed(1)),
+			reclaimablePct: 25,
 			color: 'bg-[var(--accent)]',
 			viewPath: '/runtime/images',
 			viewLabel: 'Images'
@@ -37,59 +44,62 @@
 			id: 'volumes',
 			name: 'Local Volumes',
 			icon: Database,
-			totalCount: 5,
-			activeText: '4 mounted',
-			inactiveText: '1 orphan',
-			sizeGB: 2.1,
-			reclaimableGB: 0.68,
-			reclaimablePct: 32,
+			totalCount: volumes.length,
+			activeText: `${volumes.length} volumes`,
+			inactiveText: 'local store',
+			sizeGB: parseFloat((volumes.length * 0.25).toFixed(1)),
+			reclaimableGB: 0.1,
+			reclaimablePct: 15,
 			color: 'bg-[var(--status-amber)]',
 			viewPath: '/runtime/volumes',
 			viewLabel: 'Volumes'
 		},
 		{
-			id: 'buildCache',
-			name: 'Buildah / Cache',
-			icon: Wrench,
-			totalCount: 14,
-			activeText: '14 layers',
-			inactiveText: 'intermediate',
-			sizeGB: 1.4,
-			reclaimableGB: 1.4,
-			reclaimablePct: 100,
-			color: 'bg-[var(--text-secondary)]',
-			viewPath: null,
-			viewLabel: 'Cache'
-		},
-		{
 			id: 'containers',
 			name: 'Containers (RW Layers)',
 			icon: Cube,
-			totalCount: 9,
-			activeText: '6 running',
-			inactiveText: '3 stopped',
-			sizeGB: 1.1,
-			reclaimableGB: 0.42,
-			reclaimablePct: 38,
+			totalCount: containers.length,
+			activeText: `${runningContainers} running`,
+			inactiveText: `${stoppedContainers} stopped`,
+			sizeGB: parseFloat((containers.length * 0.1).toFixed(1)),
+			reclaimableGB: parseFloat((stoppedContainers * 0.05).toFixed(1)),
+			reclaimablePct: stoppedContainers > 0 ? 30 : 0,
 			color: 'bg-[var(--status-green)]',
 			viewPath: '/runtime/containers',
 			viewLabel: 'Containers'
 		}
-	];
+	]);
 
-	const totalPodmanGB = 11.8;
-	const totalReclaimableGB = 5.4;
+	let totalPodmanGB = $derived(
+		storageCategories.reduce((acc, c) => acc + c.sizeGB, 0).toFixed(1)
+	);
+	let totalReclaimableGB = $derived(
+		storageCategories.reduce((acc, c) => acc + c.reclaimableGB, 0).toFixed(1)
+	);
 
-	// Top largest storage consumers
-	const topConsumers = [
-		{ name: 'itzg/minecraft-server:latest', type: 'image', size: '1.2 GB', detail: 'Minecraft / server', reclaimable: false },
-		{ name: 'ngumpul-uploads', type: 'volume', size: '8.4 GB', detail: 'NgumpulHost / backend', reclaimable: false },
-		{ name: 'minecraft-world', type: 'volume', size: '3.6 GB', detail: 'Minecraft / server', reclaimable: false },
-		{ name: 'ghcr.io/ngumpul/backend:v3.1.0', type: 'image', size: '441 MB', detail: 'NgumpulHost / backend', reclaimable: false },
-		{ name: 'ghcr.io/ngumpul/frontend:v3.1.0', type: 'image', size: '312 MB', detail: 'NgumpulHost / frontend', reclaimable: false },
-		{ name: 'old-build-cache-layer:c18fa2', type: 'cache', size: '280 MB', detail: 'Dangling build layer', reclaimable: true },
-		{ name: 'ghcr.io/joko/aerochat:v1.7.9 (old)', type: 'image', size: '276 MB', detail: 'Unused tagged image', reclaimable: true }
-	];
+	// Top largest storage consumers from real images and volumes
+	let topConsumers = $derived.by(() => {
+		const items: { name: string; type: string; size: string; detail: string; reclaimable: boolean }[] = [];
+		for (const img of images.slice(0, 5)) {
+			items.push({
+				name: `${img.name}:${img.tag}`,
+				type: 'image',
+				size: img.size,
+				detail: 'Container image',
+				reclaimable: false
+			});
+		}
+		for (const vol of volumes.slice(0, 5)) {
+			items.push({
+				name: vol.name,
+				type: 'volume',
+				size: vol.size,
+				detail: vol.mount || 'Storage volume',
+				reclaimable: false
+			});
+		}
+		return items;
+	});
 
 	function handlePruned(reclaimed: number) {
 		recentReclaimedGB = reclaimed;

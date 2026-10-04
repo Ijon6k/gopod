@@ -84,82 +84,41 @@ export const initialRegistries: ContainerRegistry[] = [
 ];
 
 class DataStore {
-	projects = $state<Project[]>(projectsJson as Project[]);
-	services = $state<Service[]>([
-		// Ensure AeroChat has a rich Pod service for testing Pod-specific operations
-		{
-			id: 'aerochat-realtime',
-			projectId: 'aerochat',
-			name: 'realtime',
-			type: 'pod',
-			status: 'running',
-			source: '',
-			domain: 'ws.example.com',
-			port: 8080,
-			cpu: 2.5,
-			memory: 328,
-			restartPolicy: 'always',
-			health: 'healthy',
-			replicas: 1,
-			description: 'Podman Pod grouping WebSocket listener, cache worker, and telemetry',
-			workloads: [
-				{ name: 'ws-gateway', image: 'quay.io/joko/aerochat-ws:v3.2', status: 'running', cpu: 1.4, memory: 180, ports: '8080' },
-				{ name: 'redis-cache', image: 'redis:7-alpine', status: 'running', cpu: 0.3, memory: 48, ports: '6379' },
-				{ name: 'metrics-exporter', image: 'prom/statsd-exporter:latest', status: 'running', cpu: 0.1, memory: 32 }
-			],
-			envVars: [
-				{ key: 'PORT', value: '8080', secret: false },
-				{ key: 'REDIS_HOST', value: '127.0.0.1', secret: false },
-				{ key: 'LOG_LEVEL', value: 'info', secret: false }
-			],
-			secretMounts: [
-				{ secretId: 'sec-2', secretName: 'jwt_secret', type: 'env', envVar: 'JWT_SECRET' }
-			],
-			deployments: [],
-			createdAt: '2024-10-12',
-			advanced: {
-				runtime: {
-					mode: 'rootless',
-					userNamespace: 'keep-id',
-					devices: []
-				},
-				lifecycle: {
-					quadletEnabled: true,
-					systemdUnitName: 'aerochat-realtime.pod',
-					restartPolicy: 'always'
-				},
-				security: {
-					privileged: false,
-					selinuxLabel: 'container_file_t',
-					capAdd: ['NET_BIND_SERVICE'],
-					capDrop: ['ALL'],
-					noNewPrivileges: true
-				},
-				storage: {
-					volumes: [{ source: 'redis_data', target: '/data', options: 'Z' }]
-				},
-				resources: {
-					cpuLimit: '2.0',
-					memoryLimit: '512MB',
-					pidsLimit: 2048,
-					swapLimit: '0'
-				}
-			}
-		},
-		...(servicesJson as Service[])
-	]);
-	deployments = $state<Deployment[]>(deploymentsJson as Deployment[]);
-	containers = $state<Container[]>(containersJson as Container[]);
-	pods = $state<Pod[]>(podsJson as Pod[]);
-	images = $state<Image[]>(imagesJson as Image[]);
-	volumes = $state<Volume[]>(volumesJson as Volume[]);
-	networks = $state<Network[]>(networksJson as Network[]);
-	domains = $state<Domain[]>(domainsJson as Domain[]);
-	server = $state<Server>(serverJson as Server);
-	ports = $state<PortMapping[]>(portsJson as PortMapping[]);
-	accessLogs = $state<CaddyAccessLog[]>(accessLogsJson as CaddyAccessLog[]);
-	volumeSnapshots = $state<VolumeSnapshot[]>(volumeSnapshotsJson as VolumeSnapshot[]);
-	volumeSchedules = $state<VolumeBackupSchedule[]>(volumeSchedulesJson as VolumeBackupSchedule[]);
+	projects = $state<Project[]>([]);
+	services = $state<Service[]>([]);
+	deployments = $state<Deployment[]>([]);
+	containers = $state<Container[]>([]);
+	pods = $state<Pod[]>([]);
+	images = $state<Image[]>([]);
+	volumes = $state<Volume[]>([]);
+	networks = $state<Network[]>([]);
+	domains = $state<Domain[]>([]);
+	server = $state<Server>({
+		hostname: 'localhost',
+		ip: '127.0.0.1',
+		os: 'Linux',
+		kernel: '—',
+		vcpu: 4,
+		memory: 16,
+		storage: 100,
+		storageUsed: 20,
+		memoryUsed: 2,
+		cpuUsage: 5,
+		status: 'online',
+		podmanVersion: '5.x',
+		rootless: true,
+		systemd: true,
+		quadlet: true,
+		caddy: '2.x',
+		podmanHealth: 'healthy',
+		networkHealth: 'healthy',
+		storageHealth: 'healthy',
+		uptime: 'Active'
+	});
+	ports = $state<PortMapping[]>([]);
+	accessLogs = $state<CaddyAccessLog[]>([]);
+	volumeSnapshots = $state<VolumeSnapshot[]>([]);
+	volumeSchedules = $state<VolumeBackupSchedule[]>([]);
 	podmanSecrets = $state<PodmanSecret[]>(initialPodmanSecrets);
 	sshKeys = $state<SSHKey[]>(initialSSHKeys);
 	registries = $state<ContainerRegistry[]>(initialRegistries);
@@ -430,7 +389,75 @@ class DataStore {
 				this.domains = domainsData;
 			}
 		} catch (err) {
-			// Retain dummy mock data as fallback
+			// Ignore
+		}
+
+		await Promise.all([
+			this.fetchRuntimeData(),
+			this.fetchLiveStats()
+		]);
+	}
+
+	async fetchRuntimeData() {
+		try {
+			const [podsData, imagesData, volumesData, networksData] = await Promise.all([
+				api.runtime.pods.list().catch(() => []),
+				api.runtime.images.list().catch(() => []),
+				api.runtime.volumes.list().catch(() => []),
+				api.runtime.networks.list().catch(() => [])
+			]);
+
+			if (Array.isArray(podsData)) {
+				this.pods = podsData.map((p: any) => ({
+					id: p.id,
+					name: p.name,
+					projectId: 'system',
+					projectName: 'Podman Pod',
+					containers: p.containers || [],
+					status: p.status?.toLowerCase() === 'running' ? 'running' : 'stopped',
+					network: p.network || 'bridge',
+					createdAt: p.created || 'Recent'
+				}));
+			}
+
+			if (Array.isArray(imagesData)) {
+				this.images = imagesData.map((img: any) => ({
+					id: img.id,
+					name: img.name || img.repository || 'image',
+					tag: img.tag || 'latest',
+					size: img.size || '—',
+					usedBy: 'Active',
+					createdAt: img.createdAt || 'Recent'
+				}));
+			}
+
+			if (Array.isArray(volumesData)) {
+				this.volumes = volumesData.map((v: any) => ({
+					id: v.name,
+					name: v.name,
+					projectId: 'system',
+					projectName: 'Host Storage',
+					serviceId: 'volume',
+					serviceName: v.driver || 'local',
+					mount: v.mount || v.mountPoint || '—',
+					size: v.size || 'Active',
+					status: 'mounted'
+				}));
+			}
+
+			if (Array.isArray(networksData)) {
+				this.networks = networksData.map((n: any) => ({
+					id: n.id,
+					name: n.name,
+					driver: n.driver || 'bridge',
+					projects: [n.name],
+					containers: 0,
+					subnet: n.subnet || '—',
+					gateway: n.gateway || '—'
+				}));
+			}
+		} catch (e) {
+			console.warn('Error fetching runtime data:', e);
 		}
 	}
 
@@ -494,39 +521,27 @@ class DataStore {
 		for (const s of stats) {
 			const found = this.containers.find((c) => c.name === s.name || c.id === s.id);
 			if (found) {
-				found.cpu = s.cpuPercent ?? found.cpu;
+				found.cpu = s.cpuPercent ? parseFloat(s.cpuPercent.toFixed(1)) : found.cpu;
 				found.pids = s.pids ?? found.pids;
-			} else {
-				this.containers.unshift({
-					id: s.id,
-					name: s.name,
-					projectId: 'system',
-					projectName: 'System Host',
-					serviceId: s.name,
-					serviceName: s.name,
-					image: s.name,
-					status: 'running',
-					cpu: s.cpuPercent || 0.1,
-					memory: Math.round((s.memUsage || 0) / (1024 * 1024)) || 32,
-					memoryLimit: Math.round((s.memLimit || 0) / (1024 * 1024)) || 512,
-					ports: '—',
-					startedAt: 'Active',
-					netRx: s.netDisplay?.split('/')[0]?.trim() || '—',
-					netTx: s.netDisplay?.split('/')[1]?.trim() || '—',
-					blockRead: '—',
-					blockWrite: '—',
-					pids: s.pids || 1,
-					restarts: 0,
-					uptime: 'Active'
-				});
+				if (s.memUsage) {
+					found.memory = Math.round(s.memUsage / (1024 * 1024));
+				}
+				if (s.memLimit) {
+					found.memoryLimit = Math.round(s.memLimit / (1024 * 1024));
+				}
+				if (s.netDisplay) {
+					found.netRx = s.netDisplay.split('/')[0]?.trim();
+					found.netTx = s.netDisplay.split('/')[1]?.trim();
+				}
 			}
 		}
 	}
 
 	async fetchLiveStats() {
 		try {
-			const [sys, stats] = await Promise.all([
+			const [sys, rawContainers, stats] = await Promise.all([
 				api.system.info().catch(() => null),
+				api.runtime.containers.list().catch(() => null),
 				api.system.stats().catch(() => null)
 			]);
 
@@ -547,11 +562,70 @@ class DataStore {
 				};
 			}
 
-			if (stats && Array.isArray(stats) && stats.length > 0) {
+			if (rawContainers && Array.isArray(rawContainers)) {
+				const statsMap = new Map<string, any>();
+				if (stats && Array.isArray(stats)) {
+					for (const s of stats) {
+						if (s.id) statsMap.set(s.id, s);
+						if (s.name) statsMap.set(s.name, s);
+					}
+				}
+
+				this.containers = rawContainers.map((rc: any) => {
+					const name = rc.names && rc.names.length > 0 ? rc.names[0].replace(/^\//, '') : rc.id;
+					const stat = statsMap.get(rc.id) || statsMap.get(name);
+
+					let projName = 'System Host';
+					let projId = 'system';
+					let servName = name;
+					let servId = name;
+
+					const parts = name.split('-');
+					if (parts.length >= 3) {
+						const potentialProj = this.projects.find((p) => p.id === parts[0] || p.name.toLowerCase() === parts[0]);
+						if (potentialProj) {
+							projId = potentialProj.id;
+							projName = potentialProj.name;
+							servName = parts.slice(1, parts.length - 1).join('-');
+							servId = `${projId}-${servName}`;
+						}
+					} else if (name.startsWith('todo-') || name.startsWith('todo_')) {
+						projId = 'todo';
+						projName = 'Todo App';
+						servName = name.replace(/^todo[-_]/, '');
+						servId = name;
+					}
+
+					const isRunning = rc.state === 'running' || (rc.status && rc.status.toLowerCase().includes('up'));
+
+					return {
+						id: rc.id,
+						name: name,
+						projectId: projId,
+						projectName: projName,
+						serviceId: servId,
+						serviceName: servName,
+						image: rc.image || 'unknown',
+						status: isRunning ? 'running' : 'stopped',
+						cpu: stat?.cpuPercent ? parseFloat(stat.cpuPercent.toFixed(1)) : 0,
+						memory: stat?.memUsage ? Math.round(stat.memUsage / (1024 * 1024)) : 0,
+						memoryLimit: stat?.memLimit ? Math.round(stat.memLimit / (1024 * 1024)) : 512,
+						ports: rc.ports || '—',
+						startedAt: rc.status || (isRunning ? 'Active' : 'Stopped'),
+						netRx: stat?.netDisplay ? stat.netDisplay.split('/')[0]?.trim() : '—',
+						netTx: stat?.netDisplay ? stat.netDisplay.split('/')[1]?.trim() : '—',
+						blockRead: '—',
+						blockWrite: '—',
+						pids: stat?.pids || (isRunning ? 1 : 0),
+						restarts: 0,
+						uptime: rc.status || (isRunning ? 'Active' : 'Stopped')
+					};
+				});
+			} else if (stats && Array.isArray(stats) && stats.length > 0) {
 				this.applyStatsUpdate(stats);
 			}
 		} catch (e) {
-			// Silently fallback to mock data
+			// Silently ignore
 		}
 	}
 }

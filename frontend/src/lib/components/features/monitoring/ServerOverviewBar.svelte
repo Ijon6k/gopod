@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { server, containers } from '$lib/data';
+	import { dataStore } from '$lib/stores/data.svelte';
 	import { Cpu, HardDrive, Gauge, ShieldCheck, Pulse } from 'phosphor-svelte';
 
 	interface Props {
@@ -9,11 +9,14 @@
 
 	let { activeTab = '', onSelectTab }: Props = $props();
 
+	let server = $derived(dataStore.server);
+	let containers = $derived(dataStore.containers);
+
 	let activeContainers = $derived(containers.filter((c) => c.status === 'running' || c.status === 'healthy').length);
 	let failedContainers = $derived(containers.filter((c) => c.status === 'failed').length);
 
-	const memPercent = $derived(((server.memoryUsed / server.memory) * 100).toFixed(0));
-	const diskPercent = $derived(((server.storageUsed / server.storage) * 100).toFixed(0));
+	const memPercent = $derived(((server.memoryUsed / (server.memory || 1)) * 100).toFixed(0));
+	const diskPercent = $derived(((server.storageUsed / (server.storage || 1)) * 100).toFixed(0));
 </script>
 
 <div class="w-full flex flex-col gap-3">
@@ -46,8 +49,10 @@
 			</div>
 
 			<div class="flex items-center justify-between text-[10.5px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-				<span>Load: 0.28, 0.42 <span class="font-mono text-[var(--text-secondary)]">({((0.28 / server.vcpu) * 100).toFixed(0)}% cap)</span></span>
-				<span class="text-[var(--status-green)] font-medium">Optimal</span>
+				<span>Load: <span class="font-mono text-[var(--text-secondary)]">{server.cpuUsage.toFixed(1)}% ({((server.cpuUsage / (server.vcpu || 1))).toFixed(1)}% / core)</span></span>
+				<span class="{server.cpuUsage > 80 ? 'text-[var(--status-red)]' : server.cpuUsage > 50 ? 'text-[var(--status-amber)]' : 'text-[var(--status-green)]'} font-medium">
+					{server.cpuUsage > 80 ? 'High' : server.cpuUsage > 50 ? 'Moderate' : 'Optimal'}
+				</span>
 			</div>
 		</div>
 
@@ -146,7 +151,7 @@
 
 			<div class="flex items-center gap-1.5 text-[11px]">
 				<span class="w-2 h-2 rounded-full bg-[var(--status-green)] shrink-0"></span>
-				<span class="text-[var(--text-secondary)] truncate">Podman v{server.podmanVersion} (Rootless)</span>
+				<span class="text-[var(--text-secondary)] truncate">Podman v{server.podmanVersion} ({server.rootless ? 'Rootless' : 'Root'})</span>
 			</div>
 
 			<div class="flex items-center justify-between text-[10.5px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">

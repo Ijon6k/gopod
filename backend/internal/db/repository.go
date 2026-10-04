@@ -68,10 +68,10 @@ func (r *Repository) ListServices(ctx context.Context, projectID string) ([]Serv
 	var query string
 	var args []interface{}
 	if projectID != "" {
-		query = "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, env_vars, created_at FROM services WHERE project_id = ? ORDER BY created_at ASC"
+		query = "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services WHERE project_id = ? ORDER BY created_at ASC"
 		args = append(args, projectID)
 	} else {
-		query = "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, env_vars, created_at FROM services ORDER BY created_at ASC"
+		query = "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services ORDER BY created_at ASC"
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -84,7 +84,7 @@ func (r *Repository) ListServices(ctx context.Context, projectID string) ([]Serv
 	for rows.Next() {
 		var s Service
 		var envJSON string
-		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &envJSON, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
@@ -96,8 +96,23 @@ func (r *Repository) ListServices(ctx context.Context, projectID string) ([]Serv
 func (r *Repository) GetService(ctx context.Context, id string) (*Service, error) {
 	var s Service
 	var envJSON string
-	err := r.db.QueryRowContext(ctx, "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, env_vars, created_at FROM services WHERE id = ?", id).
-		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &envJSON, &s.CreatedAt)
+	err := r.db.QueryRowContext(ctx, "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services WHERE id = ?", id).
+		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+	return &s, nil
+}
+
+func (r *Repository) GetServiceByWebhookToken(ctx context.Context, token string) (*Service, error) {
+	var s Service
+	var envJSON string
+	err := r.db.QueryRowContext(ctx, "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services WHERE webhook_token = ?", token).
+		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -111,9 +126,9 @@ func (r *Repository) GetService(ctx context.Context, id string) (*Service, error
 func (r *Repository) CreateService(ctx context.Context, s Service) error {
 	envBytes, _ := json.Marshal(s.EnvVars)
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO services (id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, env_vars)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.CPULimit, s.MemoryLimit, s.RestartPolicy, string(envBytes),
+		`INSERT INTO services (id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.CPULimit, s.MemoryLimit, s.RestartPolicy, s.WebhookToken, s.GitRepo, s.GitBranch, s.DockerfilePath, s.SSHKeyID, string(envBytes),
 	)
 	return err
 }
@@ -245,5 +260,117 @@ func (r *Repository) ListVolumeSchedules(ctx context.Context, projectID string) 
 
 func (r *Repository) ToggleVolumeSchedule(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, "UPDATE volume_schedules SET enabled = NOT enabled WHERE id = ?", id)
+	return err
+}
+
+// ── SSH Keys ──
+
+func (r *Repository) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id, name, public_key, private_key, fingerprint, type, created_at FROM ssh_keys ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var keys []SSHKey
+	for rows.Next() {
+		var k SSHKey
+		if err := rows.Scan(&k.ID, &k.Name, &k.PublicKey, &k.PrivateKey, &k.Fingerprint, &k.Type, &k.CreatedAt); err != nil {
+			return nil, err
+		}
+		keys = append(keys, k)
+	}
+	return keys, rows.Err()
+}
+
+func (r *Repository) GetSSHKey(ctx context.Context, id string) (*SSHKey, error) {
+	var k SSHKey
+	err := r.db.QueryRowContext(ctx, "SELECT id, name, public_key, private_key, fingerprint, type, created_at FROM ssh_keys WHERE id = ?", id).
+		Scan(&k.ID, &k.Name, &k.PublicKey, &k.PrivateKey, &k.Fingerprint, &k.Type, &k.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &k, nil
+}
+
+func (r *Repository) CreateSSHKey(ctx context.Context, k SSHKey) error {
+	_, err := r.db.ExecContext(ctx,
+		"INSERT INTO ssh_keys (id, name, public_key, private_key, fingerprint, type) VALUES (?, ?, ?, ?, ?, ?)",
+		k.ID, k.Name, k.PublicKey, k.PrivateKey, k.Fingerprint, k.Type,
+	)
+	return err
+}
+
+func (r *Repository) DeleteSSHKey(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM ssh_keys WHERE id = ?", id)
+	return err
+}
+
+// ── Container Registries ──
+
+func (r *Repository) ListRegistries(ctx context.Context) ([]ContainerRegistry, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id, name, url, username, token, created_at FROM container_registries ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var regs []ContainerRegistry
+	for rows.Next() {
+		var reg ContainerRegistry
+		if err := rows.Scan(&reg.ID, &reg.Name, &reg.URL, &reg.Username, &reg.Token, &reg.CreatedAt); err != nil {
+			return nil, err
+		}
+		regs = append(regs, reg)
+	}
+	return regs, rows.Err()
+}
+
+func (r *Repository) CreateRegistry(ctx context.Context, reg ContainerRegistry) error {
+	_, err := r.db.ExecContext(ctx,
+		"INSERT INTO container_registries (id, name, url, username, token) VALUES (?, ?, ?, ?, ?)",
+		reg.ID, reg.Name, reg.URL, reg.Username, reg.Token,
+	)
+	return err
+}
+
+func (r *Repository) DeleteRegistry(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM container_registries WHERE id = ?", id)
+	return err
+}
+
+// ── Secrets ──
+
+func (r *Repository) ListSecrets(ctx context.Context) ([]Secret, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id, name, value, driver, created_at FROM secrets ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var secrets []Secret
+	for rows.Next() {
+		var s Secret
+		if err := rows.Scan(&s.ID, &s.Name, &s.Value, &s.Driver, &s.CreatedAt); err != nil {
+			return nil, err
+		}
+		secrets = append(secrets, s)
+	}
+	return secrets, rows.Err()
+}
+
+func (r *Repository) CreateSecret(ctx context.Context, s Secret) error {
+	_, err := r.db.ExecContext(ctx,
+		"INSERT INTO secrets (id, name, value, driver) VALUES (?, ?, ?, ?)",
+		s.ID, s.Name, s.Value, s.Driver,
+	)
+	return err
+}
+
+func (r *Repository) DeleteSecret(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM secrets WHERE id = ?", id)
 	return err
 }

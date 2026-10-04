@@ -20,6 +20,7 @@
 		HardDrives,
 		ShareNetwork,
 		GearSix,
+		Key,
 		ClockCounterClockwise,
 		CaretDown,
 		X
@@ -59,6 +60,7 @@
 			]
 		},
 		{ label: 'Deployments', path: '/deployments', icon: 'GitBranch' },
+		{ label: 'Credentials', path: '/credentials', icon: 'Key' },
 		{ label: 'Monitoring', path: '/monitoring', icon: 'ChartBar' },
 		{ label: 'Servers', path: '/servers', icon: 'HardDrives' },
 		{ label: 'Topology', path: '/topology', icon: 'ShareNetwork' },
@@ -81,6 +83,7 @@
 		TreeStructure,
 		ChartLineUp,
 		GitBranch,
+		Key,
 		ChartBar,
 		HardDrives,
 		ShareNetwork,

@@ -12,7 +12,11 @@
 
 	let autoDeploy = $state(true);
 	let watchPaths = $state('');
-	let webhookUrl = $derived(`https://gopod.my.id/api/webhooks/deploy/${service.id}?token=${service.webhookToken || 'sec_82194'}`);
+	let webhookUrl = $derived(
+		typeof window !== 'undefined'
+			? `${window.location.protocol}//${window.location.host}/api/deploy/webhook/${service.webhookToken || service.id}`
+			: `/api/deploy/webhook/${service.webhookToken || service.id}`
+	);
 	let copied = $state(false);
 	let saveStatus = $state<'idle' | 'saved'>('idle');
 

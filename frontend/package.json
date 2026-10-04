@@ -36,6 +36,7 @@
 		"vite": "^8.0.16"
 	},
 	"dependencies": {
+		"axios": "^1.20.0",
 		"bits-ui": "^2.19.2",
 		"clsx": "^2.1.1",
 		"layerchart": "^2.5.0",

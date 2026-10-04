@@ -62,14 +62,15 @@ type ContainerStat struct {
 
 // ContainerItem represents a container listing.
 type ContainerItem struct {
-	ID      string         `json:"id"`
-	Names   []string       `json:"names"`
-	Image   string         `json:"image"`
-	Status  string         `json:"status"`
-	State   string         `json:"state"`
-	Created string         `json:"created"`
-	Ports   string         `json:"ports"`
-	Stats   *ContainerStat `json:"stats,omitempty"`
+	ID      string            `json:"id"`
+	Names   []string          `json:"names"`
+	Image   string            `json:"image"`
+	Status  string            `json:"status"`
+	State   string            `json:"state"`
+	Created string            `json:"created"`
+	Ports   string            `json:"ports"`
+	Labels  map[string]string `json:"labels,omitempty"`
+	Stats   *ContainerStat    `json:"stats,omitempty"`
 }
 
 // NewClient creates a new Podman client discovering available sockets.
@@ -160,6 +161,9 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 						MemFree        int64  `json:"memFree"`
 						CgroupVersion  string `json:"cgroupVersion"`
 						Uptime         string `json:"uptime"`
+						Security struct {
+							Rootless bool `json:"rootless"`
+						} `json:"security"`
 						CPUUtilization struct {
 							UserPercent   float64 `json:"userPercent"`
 							SystemPercent float64 `json:"systemPercent"`
@@ -176,9 +180,6 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 							Stopped int `json:"stopped"`
 						} `json:"containerStore"`
 					} `json:"store"`
-					Security struct {
-						Rootless bool `json:"rootless"`
-					} `json:"security"`
 					Version struct {
 						Version string `json:"version"`
 					} `json:"version"`
@@ -207,7 +208,7 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 						MemUsedGB:     float64(memUsed) / (1024 * 1024 * 1024),
 						MemTotalGB:    float64(raw.Host.MemTotal) / (1024 * 1024 * 1024),
 						PodmanVersion: raw.Version.Version,
-						Rootless:      raw.Security.Rootless,
+						Rootless:      raw.Host.Security.Rootless,
 						RunningCount:  raw.Store.ContainerStore.Running,
 						StoppedCount:  raw.Store.ContainerStore.Stopped,
 						TotalCount:    raw.Store.ContainerStore.Number,
@@ -407,12 +408,13 @@ func (c *Client) GetContainers(ctx context.Context) ([]ContainerItem, error) {
 			if err == nil && resp.StatusCode == http.StatusOK {
 				defer resp.Body.Close()
 				var rawList []struct {
-					ID      string   `json:"Id"`
-					Names   []string `json:"Names"`
-					Image   string   `json:"Image"`
-					State   string   `json:"State"`
-					Status  string   `json:"Status"`
-					Created string   `json:"Created"`
+					ID      string            `json:"Id"`
+					Names   []string          `json:"Names"`
+					Image   string            `json:"Image"`
+					State   string            `json:"State"`
+					Status  string            `json:"Status"`
+					Created string            `json:"Created"`
+					Labels  map[string]string `json:"Labels"`
 					Ports   []struct {
 						HostPort      int    `json:"host_port"`
 						ContainerPort int    `json:"container_port"`
@@ -446,6 +448,7 @@ func (c *Client) GetContainers(ctx context.Context) ([]ContainerItem, error) {
 							State:   cItem.State,
 							Created: cItem.Created,
 							Ports:   strings.Join(ports, ", "),
+							Labels:  cItem.Labels,
 						}
 
 						if s, ok := statsMap[idShort]; ok {

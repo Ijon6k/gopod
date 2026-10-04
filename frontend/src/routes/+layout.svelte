@@ -47,9 +47,9 @@
 		// Check route upon mounting
 		routeGuard(authStore.isInitialized, authStore.isAuthenticated, page.url.pathname);
 
-		// Polling stats only when authenticated
+		// Initial data and live stats when authenticated
 		if (authStore.isAuthenticated) {
-			dataStore.fetchLiveStats();
+			dataStore.fetchInitialData();
 		}
 		const interval = setInterval(() => {
 			if (authStore.isAuthenticated) {
@@ -62,6 +62,9 @@
 	$effect(() => {
 		if (initialCheckDone) {
 			routeGuard(authStore.isInitialized, authStore.isAuthenticated, page.url.pathname);
+			if (authStore.isAuthenticated) {
+				dataStore.fetchInitialData();
+			}
 		}
 	});
 </script>

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { dataStore } from '$lib/data';
-	import type { Container } from '$lib/types';
+	import type { Container, Project, Service } from '$lib/types';
 	import { StatusBadge, SearchInput } from '$lib/components/ui';
 	import {
 		MagnifyingGlass,
@@ -41,44 +41,28 @@
 		}
 	});
 
-	// Collapsed state for tree nodes
-	let openProjects = $state<Record<string, boolean>>({
-		aerochat: true,
-		ngumpulhost: true,
-		portfolio: true,
-		minecraft: true,
-		homelab: true
-	});
-
-	let openServices = $state<Record<string, boolean>>({
-		'aerochat-web': true,
-		'aerochat-ws': true,
-		'aerochat-redis': true,
-		'homelab-metube': true,
-		'homelab-stack': true,
-		'ngumpul-frontend': true,
-		'ngumpul-backend': true,
-		'portfolio-web': true,
-		'minecraft-server': true,
-		'minecraft-rcon': true
-	});
+	// Collapsed state for tree nodes (true = open, false = closed)
+	let openProjects = $state<Record<string, boolean>>({});
+	let openServices = $state<Record<string, boolean>>({});
 
 	function toggleProject(id: string) {
-		openProjects[id] = !openProjects[id];
+		openProjects[id] = openProjects[id] === false ? true : false;
 	}
 
 	function toggleService(id: string) {
-		openServices[id] = !openServices[id];
+		openServices[id] = openServices[id] === false ? true : false;
 	}
 
 	let isAllExpanded = $derived(
-		dataStore.projects.every((p) => openProjects[p.id] !== false)
+		projectTree.every((p) => openProjects[p.project.id] !== false)
 	);
 
 	function toggleAllExpanded() {
 		const nextState = !isAllExpanded;
-		dataStore.projects.forEach((p) => (openProjects[p.id] = nextState));
-		dataStore.services.forEach((s) => (openServices[s.id] = nextState));
+		projectTree.forEach((p) => {
+			openProjects[p.project.id] = nextState;
+			p.serviceNodes.forEach((s) => (openServices[s.service.id] = nextState));
+		});
 	}
 
 	function handleSort(column: 'cpu' | 'memory' | 'name' | 'pids') {
@@ -86,79 +70,19 @@
 			sortDesc = !sortDesc;
 		} else {
 			sortBy = column;
-			sortDesc = column === 'name' ? false : true;
 		}
 	}
 
-	// System daemons data
-	const systemContainers: Container[] = [
-		{
-			id: 'sys-traefik',
-			name: 'gopod-traefik',
-			projectId: 'system',
-			projectName: 'System Daemons',
-			serviceId: 'ingress',
-			serviceName: 'Reverse Proxy',
-			image: 'traefik:v3.1',
-			status: 'running',
-			cpu: 0.3,
-			memory: 64,
-			memoryLimit: 256,
-			ports: '80:80, 443:443',
-			startedAt: '14 days ago',
-			netRx: '184 MB',
-			netTx: '242 MB',
-			blockRead: '1.2 MB',
-			blockWrite: '2.4 MB',
-			pids: 8,
-			restarts: 0,
-			uptime: '14d 7h'
-		},
-		{
-			id: 'sys-podman',
-			name: 'podman-engine',
-			projectId: 'system',
-			projectName: 'System Daemons',
-			serviceId: 'daemon',
-			serviceName: 'Container Engine',
-			image: 'podman:v5.3.1 (host socket)',
-			status: 'running',
-			cpu: 0.2,
-			memory: 42,
-			memoryLimit: 256,
-			ports: '/run/user/1000/podman.sock',
-			startedAt: '14 days ago',
-			netRx: '—',
-			netTx: '—',
-			blockRead: '0.4 MB',
-			blockWrite: '0.8 MB',
-			pids: 4,
-			restarts: 0,
-			uptime: '14d 7h'
-		},
-		{
-			id: 'sys-quadlet',
-			name: 'systemd-generator',
-			projectId: 'system',
-			projectName: 'System Daemons',
-			serviceId: 'quadlet-mgr',
-			serviceName: 'Quadlet Generator',
-			image: 'systemd-quadlet:rootless',
-			status: 'running',
-			cpu: 0.1,
-			memory: 24,
-			memoryLimit: 128,
-			ports: 'dbus:session',
-			startedAt: '14 days ago',
-			netRx: '—',
-			netTx: '—',
-			blockRead: '0.1 MB',
-			blockWrite: '0.1 MB',
-			pids: 2,
-			restarts: 0,
-			uptime: '14d 7h'
-		}
-	];
+	// Dynamic system / host infrastructure containers
+	let systemContainers = $derived(
+		dataStore.containers.filter(
+			(c) =>
+				c.projectId === 'system' ||
+				c.name.includes('gopod') ||
+				c.name.includes('caddy') ||
+				c.name.includes('traefik')
+		)
+	);
 
 	// Filtered container lists
 	let allContainers = $derived(viewMode === 'system' ? systemContainers : dataStore.containers);
@@ -200,16 +124,73 @@
 
 	// Build hierarchical structure: Project -> Service -> Containers
 	let projectTree = $derived.by(() => {
-		const projects = dataStore.projects;
+		const projects = [...dataStore.projects];
 		const query = searchQuery.toLowerCase().trim();
+
+		// Check if there are containers that don't belong to any project in dataStore.projects
+		const registeredProjectIds = new Set(projects.map((p) => p.id));
+		const unassignedContainers = dataStore.containers.filter(
+			(c) => !c.projectId || c.projectId === 'system' || !registeredProjectIds.has(c.projectId)
+		);
+
+		// If there are unassigned or system containers, add a virtual "System Host & Standalone" project
+		if (unassignedContainers.length > 0) {
+			const hostProject: Project = {
+				id: 'system',
+				name: 'System Host & Standalone',
+				description: 'Host infrastructure, daemons, and standalone containers',
+				status: 'active',
+				services: [],
+				domains: [],
+				cpu: 0,
+				memory: 0,
+				memoryTotal: 0,
+				createdAt: 'Host'
+			};
+			projects.unshift(hostProject);
+		}
 
 		let result = projects
 			.map((project) => {
-				const services = dataStore.getProjectServices(project.id);
+				let services: Service[] = [];
+				if (project.id === 'system') {
+					// Group unassigned containers by serviceName/stack
+					const serviceGroups = new Map<string, Container[]>();
+					for (const c of unassignedContainers) {
+						const groupKey = c.serviceName || c.name;
+						if (!serviceGroups.has(groupKey)) {
+							serviceGroups.set(groupKey, []);
+						}
+						serviceGroups.get(groupKey)!.push(c);
+					}
+
+					services = Array.from(serviceGroups.entries()).map(([name, conts]) => ({
+						id: `sys-${name}`,
+						projectId: 'system',
+						name: name,
+						type: conts.length > 1 ? 'stack' : 'container',
+						status: conts.some((c) => c.status === 'running') ? 'running' : 'stopped',
+						source: 'local',
+						port: 0,
+						cpu: 0,
+						memory: 0,
+						restartPolicy: 'unless-stopped',
+						health: 'healthy',
+						replicas: conts.length,
+						envVars: [],
+						deployments: [],
+						createdAt: 'Host'
+					}));
+				} else {
+					services = dataStore.getProjectServices(project.id);
+				}
 
 				let serviceNodes = services
 					.map((service) => {
-						let containers = dataStore.containers.filter((c) => c.serviceId === service.id);
+						let containers = project.id === 'system'
+							? unassignedContainers.filter((c) => (c.serviceName || c.name) === service.name)
+							: dataStore.containers.filter((c) => c.serviceId === service.id);
+
 						if (filterAnomaliesOnly) {
 							containers = containers.filter(isAnomaly);
 						}

@@ -1,14 +1,26 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { PageHeader, Tabs, DataTable, StatusBadge } from '$lib/components/ui';
-	import { containers, pods, images, volumes, networks } from '$lib/data';
+	import { dataStore } from '$lib/stores/data.svelte';
 
 	let tabParam = $derived(page.params.tab ?? 'containers');
 	let activeTab = $state('containers');
 
+	let containers = $derived(dataStore.containers);
+	let pods = $derived(dataStore.pods);
+	let images = $derived(dataStore.images);
+	let volumes = $derived(dataStore.volumes);
+	let networks = $derived(dataStore.networks);
+
 	$effect(() => {
 		activeTab = tabParam;
+	});
+
+	onMount(() => {
+		dataStore.fetchRuntimeData();
+		dataStore.fetchLiveStats();
 	});
 
 	const tabs = [

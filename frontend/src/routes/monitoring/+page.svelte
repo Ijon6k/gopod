@@ -3,10 +3,11 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { PageHeader, AreaChart } from '$lib/components/ui';
-	import { server, monitoringData, dataStore } from '$lib/data';
+	import { monitoringData, dataStore } from '$lib/data';
 	import { ServerOverviewBar, ProcessTaskManager, PodmanStorageManager, ContainerTerminalModal } from '$lib/components/features/monitoring';
 	import { TreeStructure, Stack, HardDrive, ChartLineUp, ArrowClockwise } from 'phosphor-svelte';
 
+	let server = $derived(dataStore.server);
 	let urlView = $derived(page.url.searchParams.get('view'));
 	let activeView = $state<'tree' | 'system' | 'storage' | 'charts'>('tree');
 	let isRefreshing = $state(false);

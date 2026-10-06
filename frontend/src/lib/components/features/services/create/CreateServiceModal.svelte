@@ -85,7 +85,7 @@
 				description: desc || 'Application deployed from Git repository',
 				envVars: [{ key: 'NODE_ENV', value: 'production', secret: false }],
 				deployments: [],
-				createdAt: new Date().toISOString().split('T')[0]
+				createdAt: new Date().toISOString()
 			};
 		} else if (selectedType === 'quadlet') {
 			let defaultUnit = `[Unit]\nDescription=${sName} Service\nAfter=network-online.target\n\n[Container]\nImage=docker.io/library/nginx:alpine\nPublishPort=8080:80\nAutoUpdate=registry\nRestart=always\n\n[Service]\nRestart=always\n\n[Install]\nWantedBy=default.target`;
@@ -109,7 +109,7 @@
 				runtimeTarget: 'quadlet',
 				envVars: [],
 				deployments: [],
-				createdAt: new Date().toISOString().split('T')[0]
+				createdAt: new Date().toISOString()
 			};
 		} else if (selectedType === 'database') {
 			const dbMap: Record<string, { image: string; port: number }> = {
@@ -140,7 +140,7 @@
 					{ key: `${dbEngine.toUpperCase()}_PASSWORD`, value: 'generated_secret', secret: true }
 				],
 				deployments: [],
-				createdAt: new Date().toISOString().split('T')[0]
+				createdAt: new Date().toISOString()
 			};
 		} else {
 			// Stack / Compose
@@ -164,7 +164,7 @@
 				workloads: [{ name: sSlug || 'app', image: 'nginx:alpine', status: 'stopped' }],
 				envVars: [],
 				deployments: [],
-				createdAt: new Date().toISOString().split('T')[0]
+				createdAt: new Date().toISOString()
 			};
 		}
 

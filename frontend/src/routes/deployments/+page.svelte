@@ -56,34 +56,12 @@
 		isLogsModalOpen = true;
 	}
 
-	function handleRollback(dep: Deployment) {
-		const newDep: Deployment = {
-			id: `dep-${Date.now()}`,
-			projectId: dep.projectId,
-			projectName: dep.projectName,
-			serviceId: dep.serviceId,
-			serviceName: dep.serviceName,
-			number: (allDeployments[0]?.number ?? 0) + 1,
-			version: dep.version,
-			commit: dep.commit,
-			commitMessage: `Rollback to #${dep.number} (${dep.commit.substring(0, 7)})`,
-			branch: dep.branch,
-			status: 'deploying',
-			duration: 'Rolling back…',
-			timeAgo: 'Just now',
-			startedAt: new Date().toISOString(),
-			finishedAt: '',
-			trigger: 'rollback',
-			author: 'operator'
-		};
-
-		dataStore.deployments.unshift(newDep);
-
-		setTimeout(() => {
-			newDep.status = 'running';
-			newDep.duration = '28s';
-			newDep.finishedAt = new Date().toISOString();
-		}, 2500);
+	async function handleRollback(dep: Deployment) {
+		try {
+			await dataStore.deployService(dep.serviceId);
+		} catch (err) {
+			console.error('Rollback deploy error:', err);
+		}
 	}
 
 	function handleCancel(dep: Deployment) {

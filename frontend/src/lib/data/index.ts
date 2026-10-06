@@ -105,7 +105,7 @@ export const networks = createArrayProxy(() => dataStore.networks);
 export const domains = createArrayProxy(() => dataStore.domains);
 export const server = createObjectProxy(() => dataStore.server);
 
-export const auditLogs = dummyAuditLogsJson as AuditLog[];
+export const auditLogs: AuditLog[] = [];
 
 export const podmanSecrets = createArrayProxy(() => dataStore.podmanSecrets);
 export const sshKeys = createArrayProxy(() => dataStore.sshKeys);
@@ -169,22 +169,8 @@ export function updateService(service: Service): Promise<Service> {
 	return dataStore.updateService(service);
 }
 
-// ── Monitoring time series (generated) ──
+// ── Monitoring live metrics series (proxied to live dataStore stream) ──
 
-function generateSeries(base: number, variance: number, points: number = 48): TimeSeriesPoint[] {
-	return Array.from({ length: points }, (_, i) => {
-		const t = new Date(Date.now() - (points - i) * 30 * 60 * 1000);
-		return {
-			time: t.toISOString(),
-			label: `${t.getHours().toString().padStart(2, '0')}:${t.getMinutes().toString().padStart(2, '0')}`,
-			value: Math.max(0, base + (Math.random() - 0.5) * variance)
-		};
-	});
-}
-
-export const monitoringData: Record<string, TimeSeriesPoint[]> = {
-	cpu: generateSeries(14, 12),
-	memory: generateSeries(38, 8),
-	storage: generateSeries(30.6, 1),
-	network: generateSeries(12, 18)
-};
+export const monitoringData: Record<string, TimeSeriesPoint[]> = createObjectProxy(
+	() => dataStore.monitoringData
+);

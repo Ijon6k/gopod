@@ -10,3 +10,6 @@ export { default as MetricCard } from './MetricCard.svelte';
 export { default as AreaChart } from './AreaChart.svelte';
 export { default as CodeEditor } from './CodeEditor.svelte';
 export { default as TerminalView } from './TerminalView.svelte';
+
+// Re-export Level 0 Atomic Primitives for convenience & unified imports
+export * from '../primitives';

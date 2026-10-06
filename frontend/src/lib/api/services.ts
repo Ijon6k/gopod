@@ -57,6 +57,14 @@ export const servicesApi = {
 	async deploy(id: string): Promise<DeployResponse> {
 		const res = await apiClient.post<DeployResponse>(`/services/${id}/deploy`);
 		return res.data;
+	},
+
+	/**
+	 * List deployment rollout records for a service
+	 */
+	async deployments(id: string): Promise<any[]> {
+		const res = await apiClient.get<any[]>(`/services/${id}/deployments`);
+		return res.data;
 	}
 };
 

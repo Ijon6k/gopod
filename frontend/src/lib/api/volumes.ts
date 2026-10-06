@@ -35,8 +35,10 @@ export const volumesApi = {
 	/**
 	 * List automated volume backup schedules
 	 */
-	async listSchedules(): Promise<VolumeBackupSchedule[]> {
-		const res = await apiClient.get<VolumeBackupSchedule[]>('/volumes/schedules');
+	async listSchedules(projectId?: string): Promise<VolumeBackupSchedule[]> {
+		const res = await apiClient.get<VolumeBackupSchedule[]>('/volumes/schedules', {
+			params: projectId ? { projectId } : undefined
+		});
 		return res.data;
 	},
 

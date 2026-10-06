@@ -3,6 +3,7 @@
 	import { Button, Input, Chip } from '$lib/components/primitives';
 	import { SearchInput } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
+	import { api } from '$lib/api';
 	import { DeploymentCard, DeploymentLogsModal, WebhookDeployModal } from '$lib/components/features/deployments';
 	import {
 		ArrowClockwise,
@@ -32,69 +33,48 @@
 
 	// Deployments from store
 	let rawDeployments = $derived.by(() => {
-		const list = dataStore.getServiceDeployments(service.id);
-		if (list.length > 0) return list;
-		// Fallback mock history if empty
-		return [
-			{
-				id: `dep-${service.id}-1`,
-				projectId: service.projectId,
-				projectName: service.projectId,
-				serviceId: service.id,
-				serviceName: service.name,
-				number: 24,
-				version: service.image?.split(':').pop() ?? 'v1.8.0',
-				commit: '4b89c02',
-				commitMessage: 'feat: add thread reactions and emoji picker',
-				branch: service.branch ?? 'main',
-				status: 'running',
-				duration: '1m 42s',
-				timeAgo: '8 min ago',
-				startedAt: new Date(Date.now() - 8 * 60 * 1000).toISOString(),
-				finishedAt: new Date().toISOString(),
-				trigger: 'git-push',
-				author: 'pixy',
-				isCurrent: true
-			},
-			{
-				id: `dep-${service.id}-2`,
-				projectId: service.projectId,
-				projectName: service.projectId,
-				serviceId: service.id,
-				serviceName: service.name,
-				number: 23,
-				version: 'v1.7.9',
-				commit: 'f92c10b',
-				commitMessage: 'perf: optimize cache eviction and connection pool',
-				branch: service.branch ?? 'main',
-				status: 'running',
-				duration: '48s',
-				timeAgo: '1 d ago',
-				startedAt: new Date(Date.now() - 24 * 3600 * 1000).toISOString(),
-				finishedAt: new Date(Date.now() - 24 * 3600 * 1000 + 48000).toISOString(),
-				trigger: 'git-push',
-				author: 'pixy'
-			},
-			{
-				id: `dep-${service.id}-3`,
-				projectId: service.projectId,
-				projectName: service.projectId,
-				serviceId: service.id,
-				serviceName: service.name,
-				number: 22,
-				version: 'v1.7.8',
-				commit: '8b31ea4',
-				commitMessage: 'fix: resolve connection timeout during quadlet reload',
-				branch: service.branch ?? 'main',
-				status: 'failed',
-				duration: '45s',
-				timeAgo: '2 d ago',
-				startedAt: new Date(Date.now() - 48 * 3600 * 1000).toISOString(),
-				finishedAt: new Date(Date.now() - 48 * 3600 * 1000 + 45000).toISOString(),
-				trigger: 'manual',
-				author: 'pixy'
+		return dataStore.getServiceDeployments(service.id);
+	});
+
+	let isDeploying = $state(false);
+
+	async function loadDeployments() {
+		try {
+			const list = await api.services.deployments(service.id);
+			if (Array.isArray(list)) {
+				for (const item of list) {
+					const existing = dataStore.deployments.find((d) => d.id === item.id);
+					if (!existing) {
+						dataStore.deployments.unshift({
+							id: item.id,
+							projectId: item.projectId,
+							projectName: item.projectId,
+							serviceId: item.serviceId,
+							serviceName: service.name,
+							number: dataStore.deployments.length + 1,
+							version: item.version || 'v1',
+							commit: item.commitHash || 'HEAD',
+							commitMessage: item.commitMessage || 'Manual rollout',
+							branch: service.branch || 'main',
+							status: item.status || 'running',
+							duration: item.duration || '0s',
+							timeAgo: 'Recently',
+							startedAt: item.startedAt || new Date().toISOString(),
+							finishedAt: item.finishedAt || '',
+							trigger: 'manual',
+							author: 'operator'
+						});
+					}
+				}
 			}
-		] as Deployment[];
+		} catch (err) {
+			// ignore
+		}
+	}
+
+	import { onMount } from 'svelte';
+	onMount(() => {
+		loadDeployments();
 	});
 
 	// Filtered deployments
@@ -134,72 +114,33 @@
 		return { total, running, building, failed };
 	});
 
-	function handleTriggerDeploy() {
+	async function handleTriggerDeploy() {
 		if (onRedeploy) {
 			onRedeploy();
 			return;
 		}
 
-		// Built-in deployment trigger
-		const newNumber = (rawDeployments[0]?.number ?? 0) + 1;
-		const newDep: Deployment = {
-			id: `dep-${service.id}-${Date.now()}`,
-			projectId: service.projectId,
-			projectName: service.projectId,
-			serviceId: service.id,
-			serviceName: service.name,
-			number: newNumber,
-			version: service.image?.split(':').pop() ?? `v1.${newNumber}.0`,
-			commit: Math.random().toString(16).substring(2, 9),
-			commitMessage: 'Triggered manual rollout via dashboard',
-			branch: service.branch ?? 'main',
-			status: 'deploying',
-			duration: 'Building…',
-			timeAgo: 'Just now',
-			startedAt: new Date().toISOString(),
-			finishedAt: '',
-			trigger: 'manual',
-			author: 'operator'
-		};
-
-		dataStore.deployments.unshift(newDep);
-
-		setTimeout(() => {
-			newDep.status = 'running';
-			newDep.duration = '32s';
-			newDep.finishedAt = new Date().toISOString();
-		}, 3000);
+		isDeploying = true;
+		try {
+			await dataStore.deployService(service.id);
+			await loadDeployments();
+		} catch (err) {
+			console.error('Deploy error:', err);
+		} finally {
+			isDeploying = false;
+		}
 	}
 
-	function handleRollback(dep: Deployment) {
-		const newNumber = (rawDeployments[0]?.number ?? 0) + 1;
-		const rollbackDep: Deployment = {
-			id: `dep-${service.id}-${Date.now()}`,
-			projectId: service.projectId,
-			projectName: service.projectId,
-			serviceId: service.id,
-			serviceName: service.name,
-			number: newNumber,
-			version: dep.version,
-			commit: dep.commit,
-			commitMessage: `Rollback to #${dep.number} (${dep.commit.substring(0, 7)})`,
-			branch: dep.branch,
-			status: 'deploying',
-			duration: 'Rolling back…',
-			timeAgo: 'Just now',
-			startedAt: new Date().toISOString(),
-			finishedAt: '',
-			trigger: 'rollback',
-			author: 'operator'
-		};
-
-		dataStore.deployments.unshift(rollbackDep);
-
-		setTimeout(() => {
-			rollbackDep.status = 'running';
-			rollbackDep.duration = '24s';
-			rollbackDep.finishedAt = new Date().toISOString();
-		}, 2500);
+	async function handleRollback(dep: Deployment) {
+		isDeploying = true;
+		try {
+			await dataStore.deployService(service.id);
+			await loadDeployments();
+		} catch (err) {
+			console.error('Rollback error:', err);
+		} finally {
+			isDeploying = false;
+		}
 	}
 
 	function handleCancel(dep: Deployment) {

@@ -4,6 +4,7 @@
 	import { AppShell } from '$lib/components/layout';
 	import { dataStore } from '$lib/stores/data.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
+	import { api } from '$lib/api';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 
@@ -36,7 +37,7 @@
 	}
 
 	onMount(() => {
-		let interval: ReturnType<typeof setInterval> | undefined;
+		let heartbeatTimer: ReturnType<typeof setInterval> | undefined;
 
 		(async () => {
 			try {
@@ -50,28 +51,29 @@
 			// Check route upon mounting
 			routeGuard(authStore.isInitialized, authStore.isAuthenticated, page.url.pathname);
 
-			// Initial data and live stats when authenticated
+			// Initial data load when authenticated (once upon login/mount)
 			if (authStore.isAuthenticated) {
 				dataStore.fetchInitialData();
 			}
-			interval = setInterval(() => {
-				if (authStore.isAuthenticated) {
-					dataStore.fetchLiveStats();
+
+			// Lightweight 60-second system status heartbeat (Dokploy & Coolify standard), paused when tab hidden
+			heartbeatTimer = setInterval(() => {
+				if (authStore.isAuthenticated && typeof document !== 'undefined' && document.visibilityState === 'visible') {
+					api.system.info().then((sys: any) => {
+						if (sys) dataStore.applySystemUpdate(sys);
+					}).catch(() => {});
 				}
-			}, 4000);
+			}, 60000);
 		})();
 
 		return () => {
-			if (interval) clearInterval(interval);
+			if (heartbeatTimer) clearInterval(heartbeatTimer);
 		};
 	});
 
 	$effect(() => {
 		if (initialCheckDone) {
 			routeGuard(authStore.isInitialized, authStore.isAuthenticated, page.url.pathname);
-			if (authStore.isAuthenticated) {
-				dataStore.fetchInitialData();
-			}
 		}
 	});
 </script>

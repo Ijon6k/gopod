@@ -1,5 +1,6 @@
 // ──────────────────────────────────────────────
-// GOPOD — Reactive Data Store (Svelte 5)
+// GOPOD — Unified Reactive Data Coordinator (Svelte 5)
+// Coordinates domain-driven stores with modular architecture
 // ──────────────────────────────────────────────
 
 import type {
@@ -13,6 +14,7 @@ import type {
 	Network,
 	Domain,
 	Server,
+	TimeSeriesPoint,
 	PodmanSecret,
 	SSHKey,
 	ContainerRegistry,
@@ -23,585 +25,282 @@ import type {
 } from '$lib/types';
 
 import { api } from '$lib/api';
+import { ProjectsDomainStore } from './domains/projects.svelte';
+import { RuntimeDomainStore } from './domains/runtime.svelte';
+import { CredentialsDomainStore } from './domains/credentials.svelte';
+import { StorageDomainStore } from './domains/storage.svelte';
+import { TelemetryDomainStore } from './domains/telemetry.svelte';
 
+export class DataStore {
+	private projectsStore = new ProjectsDomainStore();
+	private runtimeStore = new RuntimeDomainStore();
+	private credentialsStore = new CredentialsDomainStore();
+	private storageStore = new StorageDomainStore();
+	private telemetryStore = new TelemetryDomainStore();
 
-import projectsJson from '$lib/data/mock/dummy_projects.json';
-import servicesJson from '$lib/data/mock/dummy_services.json';
-import deploymentsJson from '$lib/data/mock/dummy_deployments.json';
-import containersJson from '$lib/data/mock/dummy_containers.json';
-import podsJson from '$lib/data/mock/dummy_pods.json';
-import imagesJson from '$lib/data/mock/dummy_images.json';
-import volumesJson from '$lib/data/mock/dummy_volumes.json';
-import networksJson from '$lib/data/mock/dummy_networks.json';
-import domainsJson from '$lib/data/mock/dummy_domains.json';
-import serverJson from '$lib/data/mock/dummy_server.json';
-import portsJson from '$lib/data/mock/dummy_ports.json';
-import accessLogsJson from '$lib/data/mock/dummy_accessLogs.json';
-import volumeSnapshotsJson from '$lib/data/mock/dummy_volumeSnapshots.json';
-import volumeSchedulesJson from '$lib/data/mock/dummy_volumeSchedules.json';
-
-export const initialPodmanSecrets: PodmanSecret[] = [
-	{ id: 'sec-1', name: 'db_password', createdAt: '2025-01-15T08:00:00Z', driver: 'file' },
-	{ id: 'sec-2', name: 'jwt_secret', createdAt: '2025-01-15T08:05:00Z', driver: 'file' },
-	{ id: 'sec-3', name: 'session_key', createdAt: '2025-02-01T12:00:00Z', driver: 'file' },
-	{ id: 'sec-4', name: 'redis_auth', createdAt: '2025-02-10T14:30:00Z', driver: 'file' }
-];
-
-export const initialSSHKeys: SSHKey[] = [
-	{
-		id: 'key-1',
-		name: 'Default Deployment Key',
-		publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIInJ8tO01n9eW4M8pY2jV7qB5c0z6X1aF3gT7hU9kL2m gopod-deploy',
-		fingerprint: 'SHA256:d8a2f1b0c9e8d7c6b5a4938271605f4e',
-		type: 'ed25519',
-		createdAt: '2025-01-10T10:00:00Z'
-	},
-	{
-		id: 'key-2',
-		name: 'Personal GitHub (ed25519)',
-		publicKey: 'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKmP5oQ2rS4tU6vW8xY0zA1bC3dE5fG7hI9jK1lM3nO5 pixy@workstation',
-		fingerprint: 'SHA256:4a3b2c1d0e9f8a7b6c5d4e3f2a1b0c9d',
-		type: 'ed25519',
-		createdAt: '2025-02-14T08:30:00Z'
+	// ── Reactive Getters ──
+	get projects(): Project[] {
+		return this.projectsStore.projects;
 	}
-];
-
-export const initialRegistries: ContainerRegistry[] = [
-	{
-		id: 'reg-1',
-		name: 'Docker Hub (Default)',
-		url: 'docker.io',
-		username: 'ijon6k',
-		createdAt: '2025-01-12T12:00:00Z'
-	},
-	{
-		id: 'reg-2',
-		name: 'GitHub Packages (ghcr.io)',
-		url: 'ghcr.io',
-		username: 'ijon6k',
-		createdAt: '2025-02-01T09:15:00Z'
-	}
-];
-
-class DataStore {
-	projects = $state<Project[]>([]);
-	services = $state<Service[]>([]);
-	deployments = $state<Deployment[]>([]);
-	containers = $state<Container[]>([]);
-	pods = $state<Pod[]>([]);
-	images = $state<Image[]>([]);
-	volumes = $state<Volume[]>([]);
-	networks = $state<Network[]>([]);
-	domains = $state<Domain[]>([]);
-	server = $state<Server>({
-		hostname: 'localhost',
-		ip: '127.0.0.1',
-		os: 'Linux',
-		kernel: '—',
-		vcpu: 4,
-		memory: 16,
-		storage: 100,
-		storageUsed: 20,
-		memoryUsed: 2,
-		cpuUsage: 5,
-		status: 'online',
-		podmanVersion: '5.x',
-		rootless: true,
-		systemd: true,
-		quadlet: true,
-		caddy: '2.x',
-		podmanHealth: 'healthy',
-		networkHealth: 'healthy',
-		storageHealth: 'healthy',
-		uptime: 'Active'
-	});
-	ports = $state<PortMapping[]>([]);
-	accessLogs = $state<CaddyAccessLog[]>([]);
-	volumeSnapshots = $state<VolumeSnapshot[]>([]);
-	volumeSchedules = $state<VolumeBackupSchedule[]>([]);
-	podmanSecrets = $state<PodmanSecret[]>(initialPodmanSecrets);
-	sshKeys = $state<SSHKey[]>(initialSSHKeys);
-	registries = $state<ContainerRegistry[]>(initialRegistries);
-
-	addSSHKey(key: Omit<SSHKey, 'id' | 'createdAt'>) {
-		const newKey: SSHKey = {
-			...key,
-			id: `key-${Date.now()}`,
-			createdAt: new Date().toISOString()
-		};
-		this.sshKeys.push(newKey);
-		return newKey;
+	set projects(val: Project[]) {
+		this.projectsStore.projects = val;
 	}
 
-	deleteSSHKey(id: string) {
-		this.sshKeys = this.sshKeys.filter((k) => k.id !== id);
+	get services(): Service[] {
+		return this.projectsStore.services;
+	}
+	set services(val: Service[]) {
+		this.projectsStore.services = val;
 	}
 
-	addRegistry(reg: Omit<ContainerRegistry, 'id' | 'createdAt'>) {
-		const newReg: ContainerRegistry = {
-			...reg,
-			id: `reg-${Date.now()}`,
-			createdAt: new Date().toISOString()
-		};
-		this.registries.push(newReg);
-		return newReg;
+	get deployments(): Deployment[] {
+		return this.projectsStore.deployments;
+	}
+	set deployments(val: Deployment[]) {
+		this.projectsStore.deployments = val;
 	}
 
-	deleteRegistry(id: string) {
-		this.registries = this.registries.filter((r) => r.id !== id);
+	get domains(): Domain[] {
+		return this.projectsStore.domains;
+	}
+	set domains(val: Domain[]) {
+		this.projectsStore.domains = val;
 	}
 
-	getProjectServices(projectId: string): Service[] {
-		return this.services.filter((s) => s.projectId === projectId);
+	get containers(): Container[] {
+		return this.runtimeStore.containers;
+	}
+	set containers(val: Container[]) {
+		this.runtimeStore.containers = val;
 	}
 
-	getProjectDomains(projectId: string): Domain[] {
-		return this.domains.filter((d) => d.projectId === projectId);
+	get pods(): Pod[] {
+		return this.runtimeStore.pods;
+	}
+	set pods(val: Pod[]) {
+		this.runtimeStore.pods = val;
 	}
 
-	getProjectDeployments(projectId: string): Deployment[] {
-		return this.deployments.filter((d) => d.projectId === projectId);
+	get images(): Image[] {
+		return this.runtimeStore.images;
+	}
+	set images(val: Image[]) {
+		this.runtimeStore.images = val;
 	}
 
-	getServiceDeployments(serviceId: string): Deployment[] {
-		return this.deployments.filter((d) => d.serviceId === serviceId);
+	get volumes(): Volume[] {
+		return this.runtimeStore.volumes;
+	}
+	set volumes(val: Volume[]) {
+		this.runtimeStore.volumes = val;
 	}
 
-	deleteDeployment(deploymentId: string) {
-		this.deployments = this.deployments.filter((d) => d.id !== deploymentId);
+	get networks(): Network[] {
+		return this.runtimeStore.networks;
+	}
+	set networks(val: Network[]) {
+		this.runtimeStore.networks = val;
 	}
 
+	get ports(): PortMapping[] {
+		return this.runtimeStore.ports;
+	}
+	set ports(val: PortMapping[]) {
+		this.runtimeStore.ports = val;
+	}
+
+	get sshKeys(): SSHKey[] {
+		return this.credentialsStore.sshKeys;
+	}
+	set sshKeys(val: SSHKey[]) {
+		this.credentialsStore.sshKeys = val;
+	}
+
+	get registries(): ContainerRegistry[] {
+		return this.credentialsStore.registries;
+	}
+	set registries(val: ContainerRegistry[]) {
+		this.credentialsStore.registries = val;
+	}
+
+	get podmanSecrets(): PodmanSecret[] {
+		return this.credentialsStore.podmanSecrets;
+	}
+	set podmanSecrets(val: PodmanSecret[]) {
+		this.credentialsStore.podmanSecrets = val;
+	}
+
+	get volumeSnapshots(): VolumeSnapshot[] {
+		return this.storageStore.volumeSnapshots;
+	}
+	set volumeSnapshots(val: VolumeSnapshot[]) {
+		this.storageStore.volumeSnapshots = val;
+	}
+
+	get volumeSchedules(): VolumeBackupSchedule[] {
+		return this.storageStore.volumeSchedules;
+	}
+	set volumeSchedules(val: VolumeBackupSchedule[]) {
+		this.storageStore.volumeSchedules = val;
+	}
+
+	get server(): Server {
+		return this.telemetryStore.server;
+	}
+	set server(val: Server) {
+		this.telemetryStore.server = val;
+	}
+
+	get accessLogs(): CaddyAccessLog[] {
+		return this.telemetryStore.accessLogs;
+	}
+	set accessLogs(val: CaddyAccessLog[]) {
+		this.telemetryStore.accessLogs = val;
+	}
+
+	get isStreaming(): boolean {
+		return this.telemetryStore.isStreaming;
+	}
+
+	get monitoringData(): Record<string, TimeSeriesPoint[]> {
+		return this.telemetryStore.monitoringData;
+	}
+
+	// ── Projects Domain Actions ──
+	getProjectServices(projectId: string) {
+		return this.projectsStore.getProjectServices(projectId);
+	}
+	getProjectDomains(projectId: string) {
+		return this.projectsStore.getProjectDomains(projectId);
+	}
+	getProjectDeployments(projectId: string) {
+		return this.projectsStore.getProjectDeployments(projectId);
+	}
+	getServiceDeployments(serviceId: string) {
+		return this.projectsStore.getServiceDeployments(serviceId);
+	}
+	deleteDeployment(id: string) {
+		this.projectsStore.deleteDeployment(id);
+	}
 	clearServiceDeployments(serviceId: string, keepActive = true) {
-		const serviceDeps = this.getServiceDeployments(serviceId);
-		if (serviceDeps.length === 0) return;
-
-		if (keepActive) {
-			// Keep the most recent deployment (or running one)
-			const activeId = serviceDeps[0]?.id;
-			this.deployments = this.deployments.filter(
-				(d) => d.serviceId !== serviceId || d.id === activeId
-			);
-		} else {
-			this.deployments = this.deployments.filter((d) => d.serviceId !== serviceId);
-		}
+		this.projectsStore.clearServiceDeployments(serviceId, keepActive);
 	}
-
-	cancelDeployment(deploymentId: string) {
-		const dep = this.deployments.find((d) => d.id === deploymentId);
-		if (dep && (dep.status === 'deploying' || dep.status === 'building')) {
-			dep.status = 'cancelled';
-			dep.duration = 'Cancelled';
-			dep.finishedAt = new Date().toISOString();
-		}
+	cancelDeployment(id: string) {
+		this.projectsStore.cancelDeployment(id);
 	}
-
-	getServiceContainers(serviceId: string): Container[] {
-		return this.containers.filter((c) => c.serviceId === serviceId);
+	getProjectById(id: string) {
+		return this.projectsStore.getProjectById(id);
 	}
-
-	getProjectById(projectId: string): Project | undefined {
-		return this.projects.find((p) => p.id === projectId);
+	createProject(data: { name: string; description?: string }) {
+		return this.projectsStore.createProject(data);
 	}
-
-	async createProject(data: { name: string; description?: string }): Promise<Project> {
-		const res = await api.projects.create(data);
-		const newProject: Project = {
-			id: res.id,
-			name: res.name,
-			description: res.description || '',
-			status: 'healthy',
-			services: [],
-			domains: [],
-			cpu: 0,
-			memory: 0,
-			memoryTotal: 0,
-			createdAt: res.createdAt || new Date().toISOString()
-		};
-		const idx = this.projects.findIndex((p) => p.id === newProject.id);
-		if (idx >= 0) {
-			this.projects[idx] = newProject;
-		} else {
-			this.projects.push(newProject);
-		}
-		return newProject;
+	deleteProject(id: string) {
+		return this.projectsStore.deleteProject(id);
 	}
-
-	async deleteProject(id: string): Promise<void> {
-		await api.projects.delete(id);
-		this.projects = this.projects.filter((p) => p.id !== id);
+	getServiceById(id: string) {
+		return this.projectsStore.getServiceById(id);
 	}
-
-	getServiceById(serviceId: string): Service | undefined {
-		return this.services.find((s) => s.id === serviceId);
+	addService(service: Service) {
+		return this.projectsStore.addService(service);
 	}
-
-	async addService(service: Service): Promise<Service> {
-		try {
-			const res = await api.services.create(service);
-			const fullService: Service = {
-				...service,
-				...res,
-				quadletConfig: service.quadletConfig || (res as any).quadletConfig,
-				composeYaml: service.composeYaml || (res as any).composeYaml,
-				k8sYaml: service.k8sYaml || (res as any).k8sYaml,
-				description: service.description || res.description || '',
-				deployments: service.deployments || []
-			};
-			const idx = this.services.findIndex((s) => s.id === fullService.id);
-			if (idx >= 0) {
-				this.services[idx] = fullService;
-			} else {
-				this.services.unshift(fullService);
-			}
-
-			// If it has domain, add it to domains
-			if (service.domain) {
-				this.addDomain({
-					id: `d-${Date.now()}`,
-					hostname: service.domain,
-					projectId: service.projectId,
-					serviceId: fullService.id,
-					serviceName: service.name,
-					tls: true,
-					status: 'active',
-					proxyPort: 8000 + Math.floor(Math.random() * 900),
-					containerPort: service.port || 3000,
-					publishedPort: service.port || 3000
-				});
-			}
-			// If it's a pod, add to pods
-			if (service.type === 'pod') {
-				this.pods.unshift({
-					id: `pod-${fullService.id}`,
-					name: service.name,
-					projectId: service.projectId,
-					projectName: this.getProjectById(service.projectId)?.name ?? service.projectId,
-					containers: service.workloads?.map((w) => `${fullService.id}-${w.name}`) ?? [service.name],
-					status: service.status,
-					network: `${service.projectId}-network`,
-					createdAt: service.createdAt
-				});
-			}
-			return fullService;
-		} catch (err) {
-			const idx = this.services.findIndex((s) => s.id === service.id);
-			if (idx < 0) {
-				this.services.unshift(service);
-			}
-			throw err;
-		}
+	updateService(service: Service) {
+		return this.projectsStore.updateService(service);
 	}
-
-	async updateService(updated: Service): Promise<Service> {
-		const idx = this.services.findIndex((s) => s.id === updated.id);
-		if (idx !== -1) {
-			this.services[idx] = { ...updated };
-		}
-		try {
-			const res = await api.services.update(updated.id, updated);
-			return res;
-		} catch (err) {
-			console.warn('Failed to sync service update to backend:', err);
-			return updated;
-		}
+	deleteService(id: string) {
+		return this.projectsStore.deleteService(id);
 	}
-
-	async deleteService(id: string): Promise<void> {
-		try {
-			await api.services.delete(id);
-		} catch (err) {
-			console.warn('Failed to delete service on backend:', err);
-		}
-		this.services = this.services.filter((s) => s.id !== id);
-		this.domains = this.domains.filter((d) => d.serviceId !== id);
+	deployService(serviceId: string) {
+		return this.projectsStore.deployService(serviceId);
 	}
-
-	async deployService(serviceId: string) {
-		const svc = this.services.find((s) => s.id === serviceId);
-		if (svc) {
-			svc.status = 'deploying';
-		}
-		try {
-			const res = await api.services.deploy(serviceId);
-			if (svc) {
-				svc.status = 'running';
-			}
-			return res;
-		} catch (err) {
-			console.error('Service deployment error:', err);
-			if (svc) {
-				svc.status = 'failed';
-			}
-			throw err;
-		}
-	}
-
 	addDomain(domain: Domain) {
-		this.domains.unshift(domain);
-		api.domains.create(domain).catch((err) => console.warn('Failed to sync domain:', err));
+		this.projectsStore.addDomain(domain);
+	}
+	updateDomain(domain: Domain) {
+		this.projectsStore.updateDomain(domain);
+	}
+	deleteDomain(id: string) {
+		this.projectsStore.deleteDomain(id);
 	}
 
-	updateDomain(updated: Domain) {
-		const idx = this.domains.findIndex((d) => d.id === updated.id);
-		if (idx !== -1) {
-			this.domains[idx] = { ...updated };
-		}
-		api.domains.update(updated.id, updated).catch((err) => console.warn('Failed to sync domain update:', err));
+	// ── Runtime Domain Actions ──
+	getServiceContainers(serviceId: string) {
+		return this.runtimeStore.getServiceContainers(serviceId);
+	}
+	startContainer(id: string) {
+		return this.runtimeStore.startContainer(id);
+	}
+	stopContainer(id: string) {
+		return this.runtimeStore.stopContainer(id);
+	}
+	restartContainer(id: string) {
+		return this.runtimeStore.restartContainer(id);
+	}
+	deleteContainer(id: string, force = false) {
+		return this.runtimeStore.deleteContainer(id, force);
+	}
+	pruneImages(all = false) {
+		return this.runtimeStore.pruneImages(all);
+	}
+	pruneVolumes() {
+		return this.runtimeStore.pruneVolumes();
+	}
+	pruneSystem() {
+		return this.runtimeStore.pruneSystem();
+	}
+	fetchRuntimeData() {
+		return this.runtimeStore.fetchRuntimeData();
 	}
 
-	deleteDomain(domainId: string) {
-		this.domains = this.domains.filter((d) => d.id !== domainId);
-		api.domains.delete(domainId).catch((err) => console.warn('Failed to sync domain delete:', err));
+	// ── Credentials Domain Actions ──
+	addSSHKey(key: Omit<SSHKey, 'id' | 'createdAt'>) {
+		return this.credentialsStore.addSSHKey(key);
+	}
+	deleteSSHKey(id: string) {
+		return this.credentialsStore.deleteSSHKey(id);
+	}
+	addRegistry(reg: Omit<ContainerRegistry, 'id' | 'createdAt'>) {
+		return this.credentialsStore.addRegistry(reg);
+	}
+	deleteRegistry(id: string) {
+		return this.credentialsStore.deleteRegistry(id);
+	}
+	addSecret(name: string, value = '') {
+		return this.credentialsStore.addSecret(name, value);
 	}
 
-	getProjectVolumeSnapshots(projectId: string): VolumeSnapshot[] {
-		return this.volumeSnapshots.filter((s) => s.projectId === projectId);
+	// ── Storage Domain Actions ──
+	getProjectVolumeSnapshots(projectId: string) {
+		return this.storageStore.getProjectVolumeSnapshots(projectId);
 	}
-
-	getProjectVolumeSchedules(projectId: string): VolumeBackupSchedule[] {
-		return this.volumeSchedules.filter((s) => s.projectId === projectId);
+	getProjectVolumeSchedules(projectId: string) {
+		return this.storageStore.getProjectVolumeSchedules(projectId);
 	}
-
-	createVolumeSnapshot(volumeName: string, projectId: string, serviceId: string): VolumeSnapshot {
-		const dateStr = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 16);
-		const newSnapshot: VolumeSnapshot = {
-			id: `snap-${Date.now()}`,
-			volumeName,
-			projectId,
-			serviceId,
-			filename: `${volumeName}_${dateStr}.tar.zst`,
-			size: 'Calculating...',
-			sizeBytes: 1024 * 1024 * 50,
-			createdAt: new Date().toISOString(),
-			timeAgo: 'Just now',
-			status: 'completed',
-			compression: 'zstd'
-		};
-		this.volumeSnapshots.unshift(newSnapshot);
-		api.volumes.createSnapshot({ volumeName, projectId, serviceId }).catch(() => null);
-		return newSnapshot;
+	createVolumeSnapshot(volumeName: string, projectId: string, serviceId: string) {
+		return this.storageStore.createVolumeSnapshot(volumeName, projectId, serviceId);
 	}
-
 	deleteVolumeSnapshot(id: string) {
-		this.volumeSnapshots = this.volumeSnapshots.filter((s) => s.id !== id);
-		api.volumes.deleteSnapshot(id).catch(() => null);
+		return this.storageStore.deleteVolumeSnapshot(id);
 	}
-
 	toggleVolumeSchedule(id: string) {
-		const sched = this.volumeSchedules.find((s) => s.id === id);
-		if (sched) {
-			sched.enabled = !sched.enabled;
-		}
-		api.volumes.toggleSchedule(id).catch(() => null);
+		return this.storageStore.toggleVolumeSchedule(id);
 	}
 
-	async startContainer(id: string) {
-		const found = this.containers.find((c) => c.id === id);
-		if (found) found.status = 'running';
-		await api.runtime.containers.start(id);
-	}
-
-	async stopContainer(id: string) {
-		const found = this.containers.find((c) => c.id === id);
-		if (found) found.status = 'stopped';
-		await api.runtime.containers.stop(id);
-	}
-
-	async restartContainer(id: string) {
-		await api.runtime.containers.restart(id);
-	}
-
-	async deleteContainer(id: string, force = false) {
-		this.containers = this.containers.filter((c) => c.id !== id);
-		await api.runtime.containers.delete(id, force);
-	}
-
-	async pruneImages(all = false) {
-		await api.runtime.images.prune(all);
-	}
-
-	async pruneVolumes() {
-		await api.runtime.volumes.prune();
-	}
-
-	async pruneSystem() {
-		await api.system.prune();
-	}
-
-	addSecret(name: string) {
-		const newSecret: PodmanSecret = {
-			id: `sec-${Date.now()}`,
-			name,
-			createdAt: new Date().toISOString(),
-			driver: 'file'
-		};
-		this.podmanSecrets.push(newSecret);
-		return newSecret;
-	}
-
-	async fetchInitialData() {
-		try {
-			const [projectsData, servicesData, domainsData] = await Promise.all([
-				api.projects.list().catch(() => null),
-				api.services.list().catch(() => null),
-				api.domains.list().catch(() => null)
-			]);
-
-			if (projectsData && projectsData.length > 0) {
-				this.projects = projectsData.map((p: any) => ({
-					id: p.id,
-					name: p.name,
-					description: p.description || '',
-					status: (p.status || 'healthy') as any,
-					services: [],
-					domains: [],
-					cpu: p.cpu || 0,
-					memory: p.memory || 0,
-					memoryTotal: p.memoryTotal || 0,
-					createdAt: p.createdAt || new Date().toISOString()
-				}));
-			}
-			if (servicesData && servicesData.length > 0) {
-				this.services = servicesData;
-			}
-			if (domainsData && domainsData.length > 0) {
-				this.domains = domainsData;
-			}
-		} catch (err) {
-			// Ignore
-		}
-
-		await Promise.all([
-			this.fetchRuntimeData(),
-			this.fetchLiveStats()
-		]);
-	}
-
-	async fetchRuntimeData() {
-		try {
-			const [podsData, imagesData, volumesData, networksData] = await Promise.all([
-				api.runtime.pods.list().catch(() => []),
-				api.runtime.images.list().catch(() => []),
-				api.runtime.volumes.list().catch(() => []),
-				api.runtime.networks.list().catch(() => [])
-			]);
-
-			if (Array.isArray(podsData)) {
-				this.pods = podsData.map((p: any) => ({
-					id: p.id,
-					name: p.name,
-					projectId: 'system',
-					projectName: 'Podman Pod',
-					containers: p.containers || [],
-					status: p.status?.toLowerCase() === 'running' ? 'running' : 'stopped',
-					network: p.network || 'bridge',
-					createdAt: p.created || 'Recent'
-				}));
-			}
-
-			if (Array.isArray(imagesData)) {
-				this.images = imagesData.map((img: any) => ({
-					id: img.id,
-					name: img.name || img.repository || 'image',
-					tag: img.tag || 'latest',
-					size: img.size || '—',
-					usedBy: 'Active',
-					createdAt: img.createdAt || 'Recent'
-				}));
-			}
-
-			if (Array.isArray(volumesData)) {
-				this.volumes = volumesData.map((v: any) => ({
-					id: v.name,
-					name: v.name,
-					projectId: 'system',
-					projectName: 'Host Storage',
-					serviceId: 'volume',
-					serviceName: v.driver || 'local',
-					mount: v.mount || v.mountPoint || '—',
-					size: v.size || 'Active',
-					status: 'mounted'
-				}));
-			}
-
-			if (Array.isArray(networksData)) {
-				this.networks = networksData.map((n: any) => ({
-					id: n.id,
-					name: n.name,
-					driver: n.driver || 'bridge',
-					projects: [n.name],
-					containers: 0,
-					subnet: n.subnet || '—',
-					gateway: n.gateway || '—'
-				}));
-			}
-		} catch (e) {
-			console.warn('Error fetching runtime data:', e);
-		}
-	}
-
-	private sseSource: EventSource | null = null;
-	isStreaming = $state<boolean>(false);
-
+	// ── Telemetry & Live Polling Actions ──
 	startStreamingStats() {
-		if (typeof window === 'undefined') return;
-		if (this.sseSource) return;
-
-		try {
-			this.sseSource = new EventSource('/api/stats/stream');
-			this.isStreaming = true;
-
-			this.sseSource.onmessage = (event) => {
-				try {
-					const data = JSON.parse(event.data);
-					if (data.system) {
-						const sys = data.system;
-						this.server = {
-							...this.server,
-							hostname: sys.hostname || this.server.hostname,
-							os: sys.os || this.server.os,
-							kernel: sys.kernel || this.server.kernel,
-							vcpu: sys.vcpu || this.server.vcpu,
-							memory: parseFloat(sys.memoryTotalGB?.toFixed(1)) || this.server.memory,
-							memoryUsed: parseFloat(sys.memoryUsedGB?.toFixed(1)) || this.server.memoryUsed,
-							memoryAvailable: sys.memoryAvailableGB != null ? parseFloat(sys.memoryAvailableGB.toFixed(1)) : (this.server.memory - this.server.memoryUsed),
-							swapUsed: sys.swapUsedMB != null ? sys.swapUsedMB : this.server.swapUsed,
-							swapTotal: sys.swapTotalGB != null ? sys.swapTotalGB : this.server.swapTotal,
-							cpuUsage: parseFloat(sys.cpuUsage?.toFixed(1)) || this.server.cpuUsage,
-							podmanVersion: sys.podmanVersion || this.server.podmanVersion,
-							rootless: sys.rootless ?? this.server.rootless,
-							uptime: sys.uptime || this.server.uptime,
-							status: 'online'
-						};
-					}
-
-					if (data.stats && Array.isArray(data.stats) && data.stats.length > 0) {
-						this.applyStatsUpdate(data.stats);
-					}
-				} catch (e) {
-					// Ignore parse error
-				}
-			};
-
-			this.sseSource.onerror = () => {
-				// EventSource reconnects automatically
-			};
-		} catch (e) {
-			this.fetchLiveStats();
-		}
+		this.telemetryStore.startStreamingStats((stats) => {
+			this.applyStatsUpdate(stats);
+		});
 	}
-
 	stopStreamingStats() {
-		if (this.sseSource) {
-			this.sseSource.close();
-			this.sseSource = null;
-			this.isStreaming = false;
-		}
+		this.telemetryStore.stopStreamingStats();
+	}
+	applySystemUpdate(sys: any) {
+		this.telemetryStore.applySystemUpdate(sys);
 	}
 
 	private applyStatsUpdate(stats: any[]) {
 		for (const s of stats) {
-			const found = this.containers.find((c) => c.name === s.name || c.id === s.id);
+			const found = this.runtimeStore.containers.find((c) => c.name === s.name || c.id === s.id);
 			if (found) {
 				found.cpu = s.cpuPercent ? parseFloat(s.cpuPercent.toFixed(1)) : found.cpu;
 				found.pids = s.pids ?? found.pids;
@@ -621,31 +320,10 @@ class DataStore {
 
 	async fetchLiveStats() {
 		try {
-			const [sys, rawContainers, stats] = await Promise.all([
-				api.system.info().catch(() => null),
+			const [rawContainers, stats] = await Promise.all([
 				api.runtime.containers.list().catch(() => null),
-				api.system.stats().catch(() => null)
+				this.telemetryStore.fetchLiveStats()
 			]);
-
-			if (sys) {
-				this.server = {
-					...this.server,
-					hostname: sys.hostname || this.server.hostname,
-					os: sys.os || this.server.os,
-					kernel: sys.kernel || this.server.kernel,
-					vcpu: sys.vcpu || this.server.vcpu,
-					memory: parseFloat(sys.memoryTotalGB?.toFixed(1)) || this.server.memory,
-					memoryUsed: parseFloat(sys.memoryUsedGB?.toFixed(1)) || this.server.memoryUsed,
-					memoryAvailable: sys.memoryAvailableGB != null ? parseFloat(sys.memoryAvailableGB.toFixed(1)) : (this.server.memory - this.server.memoryUsed),
-					swapUsed: sys.swapUsedMB != null ? sys.swapUsedMB : this.server.swapUsed,
-					swapTotal: sys.swapTotalGB != null ? sys.swapTotalGB : this.server.swapTotal,
-					cpuUsage: parseFloat(sys.cpuUsage?.toFixed(1)) || this.server.cpuUsage,
-					podmanVersion: sys.podmanVersion || this.server.podmanVersion,
-					rootless: sys.rootless ?? this.server.rootless,
-					uptime: sys.uptime || this.server.uptime,
-					status: 'online'
-				};
-			}
 
 			if (rawContainers && Array.isArray(rawContainers)) {
 				const statsMap = new Map<string, any>();
@@ -656,7 +334,7 @@ class DataStore {
 					}
 				}
 
-				this.containers = rawContainers.map((rc: any) => {
+				this.runtimeStore.containers = rawContainers.map((rc: any) => {
 					const name = rc.names && rc.names.length > 0 ? rc.names[0].replace(/^\//, '') : rc.id;
 					const stat = statsMap.get(rc.id) || statsMap.get(name);
 
@@ -665,20 +343,25 @@ class DataStore {
 					let servName = name;
 					let servId = name;
 
-					const parts = name.split('-');
-					if (parts.length >= 3) {
-						const potentialProj = this.projects.find((p) => p.id === parts[0] || p.name.toLowerCase() === parts[0]);
-						if (potentialProj) {
-							projId = potentialProj.id;
-							projName = potentialProj.name;
-							servName = parts.slice(1, parts.length - 1).join('-');
-							servId = `${projId}-${servName}`;
+					// Label-first association, then fallback to name convention
+					if (rc.labels && rc.labels['io.gopod.project']) {
+						projId = rc.labels['io.gopod.project'];
+						servId = rc.labels['io.gopod.service'] || name;
+						servName = rc.labels['io.gopod.name'] || name;
+						projName = this.projectsStore.getProjectById(projId)?.name || projId;
+					} else {
+						const parts = name.split('-');
+						if (parts.length >= 3) {
+							const potentialProj = this.projectsStore.projects.find(
+								(p) => p.id === parts[0] || p.name.toLowerCase() === parts[0]
+							);
+							if (potentialProj) {
+								projId = potentialProj.id;
+								projName = potentialProj.name;
+								servName = parts.slice(1, parts.length - 1).join('-');
+								servId = `${projId}-${servName}`;
+							}
 						}
-					} else if (name.startsWith('todo-') || name.startsWith('todo_')) {
-						projId = 'todo';
-						projName = 'Todo App';
-						servName = name.replace(/^todo[-_]/, '');
-						servId = name;
 					}
 
 					const isRunning = rc.state === 'running' || (rc.status && rc.status.toLowerCase().includes('up'));
@@ -712,6 +395,17 @@ class DataStore {
 		} catch (e) {
 			// Silently ignore
 		}
+	}
+
+	async fetchInitialData() {
+		await Promise.all([
+			this.projectsStore.fetchProjectsData(),
+			this.runtimeStore.fetchRuntimeData(),
+			this.credentialsStore.fetchCredentials(),
+			this.storageStore.fetchStorageData(),
+			this.telemetryStore.fetchTrafficLogs(),
+			this.fetchLiveStats()
+		]);
 	}
 }
 

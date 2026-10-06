@@ -53,11 +53,11 @@ export function getDeploymentLogs(dep: Deployment): string[] {
 		return dep.logs;
 	}
 
-	const timeStr = dep.startedAt ? dep.startedAt.substring(11, 19) : '10:14:02';
+	const timeStr = dep.startedAt ? dep.startedAt.substring(11, 19) : new Date().toTimeString().substring(0, 8);
 	const sName = dep.serviceName || dep.serviceId;
-	const commitShort = dep.commit || '4b89c02';
+	const commitShort = dep.commit || 'HEAD';
 	const branch = dep.branch || 'main';
-	const image = dep.image || `ghcr.io/joko/${sName}:${dep.version || 'latest'}`;
+	const image = dep.image || `${sName}:${dep.version || 'latest'}`;
 
 	if (dep.status === 'cancelled') {
 		return [

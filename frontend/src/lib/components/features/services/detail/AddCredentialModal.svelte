@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { dataStore } from '$lib/data';
-	import { Button, Input } from '$lib/components/primitives';
-	import { X, Key, Package, Copy, Check } from 'phosphor-svelte';
+	import { Button, Input, CopyButton } from '$lib/components/primitives';
+	import { X, Key, Package } from 'phosphor-svelte';
 
 	interface Props {
 		open?: boolean;
@@ -18,7 +18,6 @@
 	let keyName = $state('');
 	let keyType = $state<'ed25519' | 'rsa'>('ed25519');
 	let generatedPublicKey = $state('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) + ' gopod-deploy');
-	let copied = $state(false);
 
 	// Registry Form
 	let regName = $state('');
@@ -29,19 +28,12 @@
 	$effect(() => {
 		if (open) {
 			activeTab = initialTab;
-			copied = false;
 		}
 	});
 
-	function handleCopy() {
-		navigator.clipboard.writeText(generatedPublicKey);
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
-	}
-
-	function handleSaveSSH() {
+	async function handleSaveSSH() {
 		if (!keyName.trim()) return;
-		const created = dataStore.addSSHKey({
+		const created = await dataStore.addSSHKey({
 			name: keyName.trim(),
 			publicKey: generatedPublicKey,
 			fingerprint: `SHA256:${Math.random().toString(16).substring(2, 14)}...`,
@@ -53,9 +45,9 @@
 		keyName = '';
 	}
 
-	function handleSaveRegistry() {
+	async function handleSaveRegistry() {
 		if (!regName.trim() || !regUsername.trim()) return;
-		const created = dataStore.addRegistry({
+		const created = await dataStore.addRegistry({
 			name: regName.trim(),
 			url: regUrl.trim(),
 			username: regUsername.trim(),
@@ -148,23 +140,17 @@
 					<div class="flex flex-col gap-1.5">
 						<div class="flex items-center justify-between">
 							<span class="text-xs font-medium text-[var(--text-secondary)]">Public Key</span>
-							<button
-								type="button"
-								onclick={handleCopy}
-								class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer p-0"
-							>
-								{#if copied}
-									<Check size={12} class="text-[var(--status-green)]" /> Copied!
-								{:else}
-									<Copy size={12} /> Copy Public Key
-								{/if}
-							</button>
+							<CopyButton
+								text={generatedPublicKey}
+								label="Copy Public Key"
+								variant="inline"
+							/>
 						</div>
 						<div class="p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] break-all select-all">
 							{generatedPublicKey}
 						</div>
 						<span class="text-[11px] text-[var(--text-tertiary)]">
-							Tambahkan public key ini ke repository Anda (GitHub → Settings → Deploy Keys).
+							Add this public key to your repository (GitHub → Settings → Deploy Keys).
 						</span>
 					</div>
 				{:else}

@@ -333,6 +333,9 @@ export interface Server {
 	storage: number;
 	storageUsed: number;
 	memoryUsed: number;
+	memoryAvailable?: number;
+	swapUsed?: number;
+	swapTotal?: number;
 	cpuUsage: number;
 	status: 'online' | 'offline';
 	podmanVersion: string;

@@ -24,15 +24,74 @@
 		Database,
 		GitBranch,
 		ShareNetwork,
-		CornersOut
+		CornersOut,
+		SpinnerGap
 	} from 'phosphor-svelte';
-	import type { Service } from '$lib/types';
+	import type { Service, Project } from '$lib/types';
+	import { api } from '$lib/api';
+	import { dataStore } from '$lib/data';
 
 	let projectId = $derived(page.params.projectId ?? '');
-	let project = $derived(projectId ? getProjectById(projectId) : undefined);
+	let directProject = $state<Project | null>(null);
+	let isProjectLoading = $state(true);
+
+	let project = $derived(directProject ?? (projectId ? getProjectById(projectId) : undefined));
 	let services = $derived(projectId ? getProjectServices(projectId) : []);
 	let projectDomains = $derived(projectId ? getProjectDomains(projectId) : []);
 	let projectDeployments = $derived(projectId ? getProjectDeployments(projectId) : []);
+
+	$effect(() => {
+		const pId = projectId;
+		if (!pId) return;
+
+		let active = true;
+
+		async function resolveProject() {
+			const existing = getProjectById(pId);
+			if (existing) {
+				directProject = existing;
+				isProjectLoading = false;
+				return;
+			}
+
+			isProjectLoading = true;
+			try {
+				const p = await api.projects.get(pId);
+				if (!active) return;
+				if (p) {
+					const fullProj: Project = {
+						id: p.id,
+						name: p.name,
+						description: p.description || '',
+						status: 'healthy',
+						services: [],
+						domains: [],
+						cpu: 0,
+						memory: 0,
+						memoryTotal: 0,
+						createdAt: p.createdAt || new Date().toISOString()
+					};
+					directProject = fullProj;
+					const idx = dataStore.projects.findIndex((item) => item.id === fullProj.id);
+					if (idx >= 0) {
+						dataStore.projects[idx] = fullProj;
+					} else {
+						dataStore.projects.push(fullProj);
+					}
+				}
+			} catch (_) {
+				// Silently handle
+			} finally {
+				if (active) isProjectLoading = false;
+			}
+		}
+
+		resolveProject();
+
+		return () => {
+			active = false;
+		};
+	});
 
 	let activeTab = $state<'services' | 'backups' | 'deployments'>('services');
 	let projectTabs = $derived([
@@ -148,7 +207,12 @@
 	<title>{project?.name ?? 'Project'} — GOPOD</title>
 </svelte:head>
 
-{#if project}
+{#if isProjectLoading && !project}
+	<div class="flex flex-col items-center justify-center py-24 gap-3 text-[var(--text-tertiary)]">
+		<SpinnerGap size={24} class="animate-spin text-[var(--accent)]" />
+		<span class="text-xs">Loading project…</span>
+	</div>
+{:else if project}
 	<div class="w-full flex flex-col gap-8">
 		<!-- Project Identity Header -->
 		<PageHeader title={project.name} subtitle={project.description}>
@@ -433,7 +497,7 @@
 						</Card>
 					{/each}
 				</div>
-			{:else}
+			{:else if viewMode === 'table'}
 				<!-- Table / List View -->
 				<div class="flex flex-col divide-y divide-[var(--border-subtle)] border border-[var(--border)] rounded-[var(--radius-card)] bg-[var(--bg-panel)] overflow-hidden">
 					{#each filteredServices as svc}

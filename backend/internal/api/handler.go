@@ -55,6 +55,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/services", h.handleListServices)
 	mux.HandleFunc("POST /api/services", h.handleCreateService)
 	mux.HandleFunc("GET /api/services/{id}", h.handleGetService)
+	mux.HandleFunc("PUT /api/services/{id}", h.handleUpdateService)
 	mux.HandleFunc("DELETE /api/services/{id}", h.handleDeleteService)
 	mux.HandleFunc("POST /api/services/{id}/deploy", h.handleDeployService)
 

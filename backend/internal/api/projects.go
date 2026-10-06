@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -29,12 +30,35 @@ func (h *Handler) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, "Invalid request body")
 		return
 	}
+
+	p.Name = strings.TrimSpace(p.Name)
+	if p.Name == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "Project name is required")
+		return
+	}
+
 	if p.ID == "" {
-		p.ID = strings.ToLower(strings.ReplaceAll(p.Name, " ", "-"))
+		clean := strings.ToLower(p.Name)
+		var b strings.Builder
+		for _, r := range clean {
+			if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+				b.WriteRune(r)
+			} else if r == ' ' || r == '_' {
+				b.WriteRune('-')
+			}
+		}
+		p.ID = strings.Trim(b.String(), "-")
+		if p.ID == "" {
+			p.ID = fmt.Sprintf("proj-%d", time.Now().Unix())
+		}
 	}
 	p.CreatedAt = time.Now()
 
 	if err := h.repo.CreateProject(r.Context(), p); err != nil {
+		if strings.Contains(err.Error(), "UNIQUE constraint failed") {
+			httputil.WriteError(w, http.StatusConflict, "A project with this name or identifier already exists")
+			return
+		}
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

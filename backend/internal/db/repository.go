@@ -64,14 +64,16 @@ func (r *Repository) DeleteProject(ctx context.Context, id string) error {
 
 // ── Services ──
 
+const serviceSelectCols = "id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at"
+
 func (r *Repository) ListServices(ctx context.Context, projectID string) ([]Service, error) {
 	var query string
 	var args []interface{}
 	if projectID != "" {
-		query = "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services WHERE project_id = ? ORDER BY created_at ASC"
+		query = "SELECT " + serviceSelectCols + " FROM services WHERE project_id = ? ORDER BY created_at ASC"
 		args = append(args, projectID)
 	} else {
-		query = "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services ORDER BY created_at ASC"
+		query = "SELECT " + serviceSelectCols + " FROM services ORDER BY created_at ASC"
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -84,7 +86,7 @@ func (r *Repository) ListServices(ctx context.Context, projectID string) ([]Serv
 	for rows.Next() {
 		var s Service
 		var envJSON string
-		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
@@ -96,8 +98,8 @@ func (r *Repository) ListServices(ctx context.Context, projectID string) ([]Serv
 func (r *Repository) GetService(ctx context.Context, id string) (*Service, error) {
 	var s Service
 	var envJSON string
-	err := r.db.QueryRowContext(ctx, "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services WHERE id = ?", id).
-		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
+	err := r.db.QueryRowContext(ctx, "SELECT "+serviceSelectCols+" FROM services WHERE id = ?", id).
+		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -111,8 +113,8 @@ func (r *Repository) GetService(ctx context.Context, id string) (*Service, error
 func (r *Repository) GetServiceByWebhookToken(ctx context.Context, token string) (*Service, error) {
 	var s Service
 	var envJSON string
-	err := r.db.QueryRowContext(ctx, "SELECT id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at FROM services WHERE webhook_token = ?", token).
-		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
+	err := r.db.QueryRowContext(ctx, "SELECT "+serviceSelectCols+" FROM services WHERE webhook_token = ?", token).
+		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -126,9 +128,19 @@ func (r *Repository) GetServiceByWebhookToken(ctx context.Context, token string)
 func (r *Repository) CreateService(ctx context.Context, s Service) error {
 	envBytes, _ := json.Marshal(s.EnvVars)
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO services (id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.CPULimit, s.MemoryLimit, s.RestartPolicy, s.WebhookToken, s.GitRepo, s.GitBranch, s.DockerfilePath, s.SSHKeyID, string(envBytes),
+		`INSERT INTO services (id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.CPULimit, s.MemoryLimit, s.RestartPolicy, s.Description, s.QuadletConfig, s.ComposeYaml, s.K8sYaml, s.RuntimeTarget, s.WebhookToken, s.GitRepo, s.GitBranch, s.DockerfilePath, s.SSHKeyID, string(envBytes),
+	)
+	return err
+}
+
+func (r *Repository) UpdateService(ctx context.Context, s Service) error {
+	envBytes, _ := json.Marshal(s.EnvVars)
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE services SET name = ?, type = ?, status = ?, source = ?, branch = ?, image = ?, port = ?, cpu_limit = ?, memory_limit = ?, restart_policy = ?, description = ?, quadlet_config = ?, compose_yaml = ?, k8s_yaml = ?, runtime_target = ?, git_repo = ?, git_branch = ?, dockerfile_path = ?, ssh_key_id = ?, env_vars = ?
+		 WHERE id = ?`,
+		s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.CPULimit, s.MemoryLimit, s.RestartPolicy, s.Description, s.QuadletConfig, s.ComposeYaml, s.K8sYaml, s.RuntimeTarget, s.GitRepo, s.GitBranch, s.DockerfilePath, s.SSHKeyID, string(envBytes), s.ID,
 	)
 	return err
 }

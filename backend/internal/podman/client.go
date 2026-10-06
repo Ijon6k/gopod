@@ -1,6 +1,7 @@
 package podman
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -24,23 +25,30 @@ type Client struct {
 
 // SystemInfo represents host & engine metrics.
 type SystemInfo struct {
-	Hostname      string  `json:"hostname"`
-	OS            string  `json:"os"`
-	Kernel        string  `json:"kernel"`
-	VCPU          int     `json:"vcpu"`
-	CPUUsage      float64 `json:"cpuUsage"`
-	MemoryTotal   int64   `json:"memoryTotal"`
-	MemoryFree    int64   `json:"memoryFree"`
-	MemoryUsed    int64   `json:"memoryUsed"`
-	MemUsedGB     float64 `json:"memoryUsedGB"`
-	MemTotalGB    float64 `json:"memoryTotalGB"`
-	PodmanVersion string  `json:"podmanVersion"`
-	Rootless      bool    `json:"rootless"`
-	RunningCount  int     `json:"runningCount"`
-	StoppedCount  int     `json:"stoppedCount"`
-	TotalCount    int     `json:"totalCount"`
-	Uptime        string  `json:"uptime"`
-	CgroupVersion string  `json:"cgroupVersion"`
+	Hostname        string  `json:"hostname"`
+	OS              string  `json:"os"`
+	Kernel          string  `json:"kernel"`
+	VCPU            int     `json:"vcpu"`
+	CPUUsage        float64 `json:"cpuUsage"`
+	MemoryTotal     int64   `json:"memoryTotal"`
+	MemoryFree      int64   `json:"memoryFree"`
+	MemoryAvailable int64   `json:"memoryAvailable"`
+	MemoryUsed      int64   `json:"memoryUsed"`
+	MemUsedGB       float64 `json:"memoryUsedGB"`
+	MemTotalGB      float64 `json:"memoryTotalGB"`
+	MemAvailableGB  float64 `json:"memoryAvailableGB"`
+	SwapTotal       int64   `json:"swapTotal"`
+	SwapFree        int64   `json:"swapFree"`
+	SwapUsed        int64   `json:"swapUsed"`
+	SwapUsedMB      float64 `json:"swapUsedMB"`
+	SwapTotalGB     float64 `json:"swapTotalGB"`
+	PodmanVersion   string  `json:"podmanVersion"`
+	Rootless        bool    `json:"rootless"`
+	RunningCount    int     `json:"runningCount"`
+	StoppedCount    int     `json:"stoppedCount"`
+	TotalCount      int     `json:"totalCount"`
+	Uptime          string  `json:"uptime"`
+	CgroupVersion   string  `json:"cgroupVersion"`
 }
 
 // ContainerStat represents resource consumption for a container.
@@ -144,6 +152,59 @@ func detectSocket(custom string) string {
 	return ""
 }
 
+// HostMemoryInfo represents memory metrics read from /proc/meminfo.
+type HostMemoryInfo struct {
+	MemTotal     int64
+	MemFree      int64
+	MemAvailable int64
+	Buffers      int64
+	Cached       int64
+	SReclaimable int64
+	SwapTotal    int64
+	SwapFree     int64
+}
+
+func readHostMemInfo() (*HostMemoryInfo, error) {
+	data, err := os.ReadFile("/proc/meminfo")
+	if err != nil {
+		return nil, err
+	}
+	info := &HostMemoryInfo{}
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	for scanner.Scan() {
+		line := scanner.Text()
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		key := strings.TrimSuffix(parts[0], ":")
+		val, err := strconv.ParseInt(parts[1], 10, 64)
+		if err != nil {
+			continue
+		}
+		valBytes := val * 1024
+		switch key {
+		case "MemTotal":
+			info.MemTotal = valBytes
+		case "MemFree":
+			info.MemFree = valBytes
+		case "MemAvailable":
+			info.MemAvailable = valBytes
+		case "Buffers":
+			info.Buffers = valBytes
+		case "Cached":
+			info.Cached = valBytes
+		case "SReclaimable":
+			info.SReclaimable = valBytes
+		case "SwapTotal":
+			info.SwapTotal = valBytes
+		case "SwapFree":
+			info.SwapFree = valBytes
+		}
+	}
+	return info, nil
+}
+
 // GetSystemInfo retrieves system & podman info.
 func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 	if c.httpClient != nil {
@@ -159,6 +220,8 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 						Kernel         string `json:"kernel"`
 						MemTotal       int64  `json:"memTotal"`
 						MemFree        int64  `json:"memFree"`
+						SwapTotal      int64  `json:"swapTotal"`
+						SwapFree       int64  `json:"swapFree"`
 						CgroupVersion  string `json:"cgroupVersion"`
 						Uptime         string `json:"uptime"`
 						Security struct {
@@ -185,10 +248,36 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 					} `json:"version"`
 				}
 				if err := json.NewDecoder(resp.Body).Decode(&raw); err == nil {
-					memUsed := raw.Host.MemTotal - raw.Host.MemFree
+					memTotal := raw.Host.MemTotal
+					memFree := raw.Host.MemFree
+					var memAvailable int64
+					swapTotal := raw.Host.SwapTotal
+					swapFree := raw.Host.SwapFree
+
+					if memInfo, err := readHostMemInfo(); err == nil && memInfo.MemTotal > 0 {
+						memTotal = memInfo.MemTotal
+						memFree = memInfo.MemFree
+						memAvailable = memInfo.MemAvailable
+						if memAvailable <= 0 {
+							memAvailable = memInfo.MemFree + memInfo.Buffers + memInfo.Cached + memInfo.SReclaimable
+						}
+						if memInfo.SwapTotal > 0 {
+							swapTotal = memInfo.SwapTotal
+							swapFree = memInfo.SwapFree
+						}
+					} else {
+						memAvailable = memFree
+					}
+
+					memUsed := memTotal - memAvailable
 					if memUsed < 0 {
 						memUsed = 0
 					}
+					swapUsed := swapTotal - swapFree
+					if swapUsed < 0 {
+						swapUsed = 0
+					}
+
 					cpuUsed := raw.Host.CPUUtilization.UserPercent + raw.Host.CPUUtilization.SystemPercent
 
 					osName := raw.Host.Distribution.Distribution
@@ -197,23 +286,30 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 					}
 
 					return &SystemInfo{
-						Hostname:      raw.Host.Hostname,
-						OS:            osName,
-						Kernel:        raw.Host.Kernel,
-						VCPU:          raw.Host.CPUs,
-						CPUUsage:      cpuUsed,
-						MemoryTotal:   raw.Host.MemTotal,
-						MemoryFree:    raw.Host.MemFree,
-						MemoryUsed:    memUsed,
-						MemUsedGB:     float64(memUsed) / (1024 * 1024 * 1024),
-						MemTotalGB:    float64(raw.Host.MemTotal) / (1024 * 1024 * 1024),
-						PodmanVersion: raw.Version.Version,
-						Rootless:      raw.Host.Security.Rootless,
-						RunningCount:  raw.Store.ContainerStore.Running,
-						StoppedCount:  raw.Store.ContainerStore.Stopped,
-						TotalCount:    raw.Store.ContainerStore.Number,
-						Uptime:        raw.Host.Uptime,
-						CgroupVersion: raw.Host.CgroupVersion,
+						Hostname:        raw.Host.Hostname,
+						OS:              osName,
+						Kernel:          raw.Host.Kernel,
+						VCPU:            raw.Host.CPUs,
+						CPUUsage:        cpuUsed,
+						MemoryTotal:     memTotal,
+						MemoryFree:      memFree,
+						MemoryAvailable: memAvailable,
+						MemoryUsed:      memUsed,
+						MemUsedGB:       float64(memUsed) / (1024 * 1024 * 1024),
+						MemTotalGB:      float64(memTotal) / (1024 * 1024 * 1024),
+						MemAvailableGB:  float64(memAvailable) / (1024 * 1024 * 1024),
+						SwapTotal:       swapTotal,
+						SwapFree:        swapFree,
+						SwapUsed:        swapUsed,
+						SwapUsedMB:      float64(swapUsed) / (1024 * 1024),
+						SwapTotalGB:     float64(swapTotal) / (1024 * 1024 * 1024),
+						PodmanVersion:   raw.Version.Version,
+						Rootless:        raw.Host.Security.Rootless,
+						RunningCount:    raw.Store.ContainerStore.Running,
+						StoppedCount:    raw.Store.ContainerStore.Stopped,
+						TotalCount:      raw.Store.ContainerStore.Number,
+						Uptime:          raw.Host.Uptime,
+						CgroupVersion:   raw.Host.CgroupVersion,
 					}, nil
 				}
 			}
@@ -245,9 +341,32 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 	cpus := int(getFloat(host, "cpus"))
 	memTotal := int64(getFloat(host, "memTotal"))
 	memFree := int64(getFloat(host, "memFree"))
-	memUsed := memTotal - memFree
+	var memAvailable int64
+	swapTotal := int64(getFloat(host, "swapTotal"))
+	swapFree := int64(getFloat(host, "swapFree"))
+
+	if memInfo, err := readHostMemInfo(); err == nil && memInfo.MemTotal > 0 {
+		memTotal = memInfo.MemTotal
+		memFree = memInfo.MemFree
+		memAvailable = memInfo.MemAvailable
+		if memAvailable <= 0 {
+			memAvailable = memInfo.MemFree + memInfo.Buffers + memInfo.Cached + memInfo.SReclaimable
+		}
+		if memInfo.SwapTotal > 0 {
+			swapTotal = memInfo.SwapTotal
+			swapFree = memInfo.SwapFree
+		}
+	} else {
+		memAvailable = memFree
+	}
+
+	memUsed := memTotal - memAvailable
 	if memUsed < 0 {
 		memUsed = 0
+	}
+	swapUsed := swapTotal - swapFree
+	if swapUsed < 0 {
+		swapUsed = 0
 	}
 
 	cpuUtil, _ := host["cpuUtilization"].(map[string]interface{})
@@ -262,23 +381,30 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 	cstore, _ := store["containerStore"].(map[string]interface{})
 
 	return &SystemInfo{
-		Hostname:      getString(host, "hostname"),
-		OS:            osName,
-		Kernel:        getString(host, "kernel"),
-		VCPU:          cpus,
-		CPUUsage:      cpuUsed,
-		MemoryTotal:   memTotal,
-		MemoryFree:    memFree,
-		MemoryUsed:    memUsed,
-		MemUsedGB:     float64(memUsed) / (1024 * 1024 * 1024),
-		MemTotalGB:    float64(memTotal) / (1024 * 1024 * 1024),
-		PodmanVersion: getString(ver, "Version"),
-		Rootless:      getBool(sec, "rootless"),
-		RunningCount:  int(getFloat(cstore, "running")),
-		StoppedCount:  int(getFloat(cstore, "stopped")),
-		TotalCount:    int(getFloat(cstore, "number")),
-		Uptime:        getString(host, "uptime"),
-		CgroupVersion: getString(host, "cgroupVersion"),
+		Hostname:        getString(host, "hostname"),
+		OS:              osName,
+		Kernel:          getString(host, "kernel"),
+		VCPU:            cpus,
+		CPUUsage:        cpuUsed,
+		MemoryTotal:     memTotal,
+		MemoryFree:      memFree,
+		MemoryAvailable: memAvailable,
+		MemoryUsed:      memUsed,
+		MemUsedGB:       float64(memUsed) / (1024 * 1024 * 1024),
+		MemTotalGB:      float64(memTotal) / (1024 * 1024 * 1024),
+		MemAvailableGB:  float64(memAvailable) / (1024 * 1024 * 1024),
+		SwapTotal:       swapTotal,
+		SwapFree:        swapFree,
+		SwapUsed:        swapUsed,
+		SwapUsedMB:      float64(swapUsed) / (1024 * 1024),
+		SwapTotalGB:     float64(swapTotal) / (1024 * 1024 * 1024),
+		PodmanVersion:   getString(ver, "Version"),
+		Rootless:        getBool(sec, "rootless"),
+		RunningCount:    int(getFloat(cstore, "running")),
+		StoppedCount:    int(getFloat(cstore, "stopped")),
+		TotalCount:      int(getFloat(cstore, "number")),
+		Uptime:          getString(host, "uptime"),
+		CgroupVersion:   getString(host, "cgroupVersion"),
 	}, nil
 }
 

@@ -90,6 +90,11 @@ func (d *DB) migrate() error {
 		cpu_limit REAL DEFAULT 0,
 		memory_limit INTEGER DEFAULT 0,
 		restart_policy TEXT DEFAULT 'always',
+		description TEXT DEFAULT '',
+		quadlet_config TEXT DEFAULT '',
+		compose_yaml TEXT DEFAULT '',
+		k8s_yaml TEXT DEFAULT '',
+		runtime_target TEXT DEFAULT '',
 		env_vars TEXT DEFAULT '[]',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
@@ -205,13 +210,18 @@ func (d *DB) migrate() error {
 		return err
 	}
 
-	// Safe column additions for service Git and Webhook support
+	// Safe column additions for service Git, Quadlet, and Webhook support
 	newCols := []string{
 		"ALTER TABLE services ADD COLUMN webhook_token TEXT DEFAULT '';",
 		"ALTER TABLE services ADD COLUMN git_repo TEXT DEFAULT '';",
 		"ALTER TABLE services ADD COLUMN git_branch TEXT DEFAULT 'main';",
 		"ALTER TABLE services ADD COLUMN dockerfile_path TEXT DEFAULT 'Dockerfile';",
 		"ALTER TABLE services ADD COLUMN ssh_key_id TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN description TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN quadlet_config TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN compose_yaml TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN k8s_yaml TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN runtime_target TEXT DEFAULT '';",
 	}
 	for _, q := range newCols {
 		_, _ = d.Exec(q)

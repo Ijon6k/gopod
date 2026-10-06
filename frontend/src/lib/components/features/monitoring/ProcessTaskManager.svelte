@@ -53,18 +53,6 @@
 		openServices[id] = openServices[id] === false ? true : false;
 	}
 
-	let isAllExpanded = $derived(
-		projectTree.every((p) => openProjects[p.project.id] !== false)
-	);
-
-	function toggleAllExpanded() {
-		const nextState = !isAllExpanded;
-		projectTree.forEach((p) => {
-			openProjects[p.project.id] = nextState;
-			p.serviceNodes.forEach((s) => (openServices[s.service.id] = nextState));
-		});
-	}
-
 	function handleSort(column: 'cpu' | 'memory' | 'name' | 'pids') {
 		if (sortBy === column) {
 			sortDesc = !sortDesc;
@@ -168,7 +156,7 @@
 						id: `sys-${name}`,
 						projectId: 'system',
 						name: name,
-						type: conts.length > 1 ? 'stack' : 'container',
+						type: (conts.length > 1 ? 'compose' : 'image') as import('$lib/types').ServiceType,
 						status: conts.some((c) => c.status === 'running') ? 'running' : 'stopped',
 						source: 'local',
 						port: 0,
@@ -272,6 +260,18 @@
 
 		return result;
 	});
+
+	let isAllExpanded = $derived(
+		projectTree.every((p) => openProjects[p.project.id] !== false)
+	);
+
+	function toggleAllExpanded() {
+		const nextState = !isAllExpanded;
+		projectTree.forEach((p) => {
+			openProjects[p.project.id] = nextState;
+			p.serviceNodes.forEach((s) => (openServices[s.service.id] = nextState));
+		});
+	}
 
 	function getCpuColor(cpu: number): string {
 		if (cpu >= 5.0) return 'bg-[var(--status-red)]';

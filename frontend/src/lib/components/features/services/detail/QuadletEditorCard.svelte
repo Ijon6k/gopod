@@ -360,7 +360,7 @@ WantedBy=default.target`
 
 			<!-- Monospace Code Editor -->
 			<div class="rounded-md border border-[var(--border)] overflow-hidden shadow-inner">
-				<CodeEditor bind:value={quadletConfig} language="ini" height="340px" />
+				<CodeEditor bind:value={quadletConfig} language="quadlet" height="340px" />
 			</div>
 
 			<!-- Systemd Generator Preview Drawer -->

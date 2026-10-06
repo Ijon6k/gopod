@@ -2,10 +2,34 @@
 	import { goto } from '$app/navigation';
 	import { PageHeader } from '$lib/components/ui';
 	import { Button, Input } from '$lib/components/primitives';
-	import { Plus } from 'phosphor-svelte';
+	import { dataStore } from '$lib/data';
+	import { Plus, ArrowClockwise } from 'phosphor-svelte';
 
 	let name = $state('');
 	let description = $state('');
+	let isSubmitting = $state(false);
+	let error = $state<string | null>(null);
+
+	async function handleSubmit(e?: Event) {
+		if (e) e.preventDefault();
+		const trimmedName = name.trim();
+		if (!trimmedName || isSubmitting) return;
+
+		isSubmitting = true;
+		error = null;
+		try {
+			const project = await dataStore.createProject({
+				name: trimmedName,
+				description: description.trim()
+			});
+			goto(`/projects/${project.id}`);
+		} catch (err: any) {
+			console.error('Failed to create project:', err);
+			error = err?.response?.data?.error || err?.message || 'Failed to create project. Please try again.';
+		} finally {
+			isSubmitting = false;
+		}
+	}
 </script>
 
 <svelte:head>
@@ -13,28 +37,41 @@
 </svelte:head>
 
 <div class="w-full max-w-[640px]">
-	<PageHeader title="New Project" subtitle="Create a new project workspace." />
+	<PageHeader title="New Project" subtitle="Create a new logical workspace for your services and workloads." />
 
-	<div class="flex flex-col gap-6">
+	<form onsubmit={handleSubmit} class="flex flex-col gap-6">
+		{#if error}
+			<div class="p-3 text-xs rounded border border-[var(--status-red)]/30 bg-[var(--status-red-muted)] text-[var(--status-red)]">
+				{error}
+			</div>
+		{/if}
+
 		<div class="flex flex-col gap-2">
 			<label class="text-xs text-[var(--text-secondary)] font-medium" for="project-name">Project name</label>
 			<div class="px-3 py-2.5 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input bind:value={name} placeholder="my-project" />
+				<Input id="project-name" bind:value={name} placeholder="e.g. backend-api, my-workspace" required />
 			</div>
+			<p class="text-[11px] text-[var(--text-tertiary)]">A descriptive name to identify your project.</p>
 		</div>
 
 		<div class="flex flex-col gap-2">
 			<label class="text-xs text-[var(--text-secondary)] font-medium" for="project-desc">Description</label>
 			<div class="px-3 py-2.5 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input bind:value={description} placeholder="A short description for your project" />
+				<Input id="project-desc" bind:value={description} placeholder="A short description for your project" />
 			</div>
+			<p class="text-[11px] text-[var(--text-tertiary)]">Optional purpose or notes for this workspace.</p>
 		</div>
 
 		<div class="flex gap-3 pt-2">
-			<Button variant="ghost" onclick={() => goto('/projects')}>Cancel</Button>
-			<Button variant="primary" disabled={!name.trim()}>
-				<Plus size={13} /> Create project
+			<Button type="button" variant="ghost" onclick={() => goto('/projects')}>Cancel</Button>
+			<Button type="submit" variant="primary" disabled={!name.trim() || isSubmitting}>
+				{#if isSubmitting}
+					<ArrowClockwise class="animate-spin" size={13} /> Creating...
+				{:else}
+					<Plus size={13} /> Create project
+				{/if}
 			</Button>
 		</div>
-	</div>
+	</form>
 </div>
+

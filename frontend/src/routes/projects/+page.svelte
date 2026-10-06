@@ -11,7 +11,7 @@
 
 	let filtered = $derived(
 		projects.filter((p) =>
-			`${p.name} ${p.description}`.toLowerCase().includes(search.toLowerCase())
+			`${p.name ?? ''} ${p.description ?? ''}`.toLowerCase().includes(search.toLowerCase())
 		)
 	);
 </script>
@@ -55,9 +55,12 @@
 
 		<!-- Rows -->
 		{#each filtered as project}
-			{@const svcCount = getProjectServices(project.id).length}
+			{@const projServices = getProjectServices(project.id)}
+			{@const svcCount = projServices.length}
 			{@const domCount = getProjectDomains(project.id).length}
-			{@const memory = formatMemory(project.memory)}
+			{@const cpuTotal = projServices.reduce((sum, s) => sum + (s.cpu || 0), 0) || (project.cpu || 0)}
+			{@const memTotal = projServices.reduce((sum, s) => sum + (s.memory || 0), 0) || (project.memory || 0)}
+			{@const memory = formatMemory(memTotal)}
 			<button
 				onclick={() => goto(`/projects/${project.id}`)}
 				class="group w-full grid grid-cols-[minmax(260px,2.2fr)_minmax(100px,0.8fr)_80px_80px_minmax(160px,1fr)_20px] gap-[18px] items-center min-h-[74px] px-0.5 py-[11px] border-0 border-t border-[var(--border-subtle)] bg-transparent text-[var(--text-secondary)] text-xs font-[var(--font-sans)] text-left cursor-pointer transition-all duration-150 hover:bg-[var(--bg-panel)] hover:px-2 max-[760px]:grid-cols-[minmax(0,1fr)_auto_18px] max-[760px]:min-h-[70px] max-[760px]:gap-3"
@@ -67,16 +70,16 @@
 					<small
 						class="text-[var(--text-tertiary)] text-sm overflow-hidden text-ellipsis whitespace-nowrap"
 					>
-						{project.description}
+						{project.description || 'No description provided'}
 					</small>
 				</span>
-				<StatusBadge status={project.status} size="sm" />
+				<StatusBadge status={project.status || 'healthy'} size="sm" />
 				<span class="max-[760px]:hidden">{svcCount}</span>
 				<span class="max-[760px]:hidden">{domCount}</span>
 				<span
 					class="text-[var(--text-tertiary)] whitespace-nowrap tabular-nums max-[760px]:hidden"
 				>
-					<b class="text-[var(--text-secondary)] font-medium">{project.cpu.toFixed(1)}%</b> CPU · {memory}
+					<b class="text-[var(--text-secondary)] font-medium">{cpuTotal.toFixed(1)}%</b> CPU · {memory}
 				</span>
 				<span
 					class="text-[var(--text-tertiary)] opacity-0 transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0.5 max-[760px]:opacity-100"

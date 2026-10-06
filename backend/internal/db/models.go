@@ -24,6 +24,11 @@ type Service struct {
 	CPULimit       float64   `json:"cpuLimit"`
 	MemoryLimit    int       `json:"memoryLimit"`
 	RestartPolicy  string    `json:"restartPolicy"`
+	Description    string    `json:"description,omitempty"`
+	QuadletConfig  string    `json:"quadletConfig,omitempty"`
+	ComposeYaml    string    `json:"composeYaml,omitempty"`
+	K8sYaml        string    `json:"k8sYaml,omitempty"`
+	RuntimeTarget  string    `json:"runtimeTarget,omitempty"`
 	WebhookToken   string    `json:"webhookToken,omitempty"`
 	GitRepo        string    `json:"gitRepo,omitempty"`
 	GitBranch      string    `json:"gitBranch,omitempty"`

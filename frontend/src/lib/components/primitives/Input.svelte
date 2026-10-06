@@ -9,7 +9,7 @@
 		disabled?: boolean;
 		readonly?: boolean;
 		required?: boolean;
-		autocomplete?: string;
+		autocomplete?: import('svelte/elements').HTMLInputAttributes['autocomplete'];
 		error?: string | boolean;
 		size?: 'sm' | 'md' | 'lg';
 		class?: string;

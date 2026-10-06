@@ -60,7 +60,7 @@
 		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3">
 			<div class="flex items-center justify-between">
 				<span class="text-xs font-medium text-[var(--text-secondary)]">Memory (RAM)</span>
-				<div class="p-1 rounded bg-[var(--status-green-muted)] text-[var(--status-green)]">
+				<div class="p-1 rounded {Number(memPercent) > 85 ? 'bg-[var(--status-red-muted)] text-[var(--status-red)]' : Number(memPercent) > 70 ? 'bg-[var(--status-amber-muted)] text-[var(--status-amber)]' : 'bg-[var(--status-green-muted)] text-[var(--status-green)]'}">
 					<Gauge size={15} />
 				</div>
 			</div>
@@ -77,14 +77,14 @@
 			<!-- Memory Progress bar -->
 			<div class="w-full h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden">
 				<div
-					class="h-full rounded-full transition-all duration-500 bg-[var(--status-green)]"
+					class="h-full rounded-full transition-all duration-500 {Number(memPercent) > 85 ? 'bg-[var(--status-red)]' : Number(memPercent) > 70 ? 'bg-[var(--status-amber)]' : 'bg-[var(--status-green)]'}"
 					style="width: {memPercent}%;"
 				></div>
 			</div>
 
 			<div class="flex items-center justify-between text-[10.5px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-				<span>Available: {(server.memory - server.memoryUsed).toFixed(1)} GB</span>
-				<span>Swap: 0 MB used</span>
+				<span>Available: {(server.memoryAvailable != null ? server.memoryAvailable.toFixed(1) : (server.memory - server.memoryUsed).toFixed(1))} GB</span>
+				<span>Swap: {server.swapUsed != null && server.swapUsed > 0 ? `${server.swapUsed.toFixed(0)} MB` : '0 MB'} used</span>
 			</div>
 		</div>
 

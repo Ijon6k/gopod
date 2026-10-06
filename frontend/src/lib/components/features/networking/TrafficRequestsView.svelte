@@ -354,7 +354,7 @@
 					<option value={14}>14 Days</option>
 					<option value={30}>30 Days</option>
 				</select>
-				<Button variant="secondary" size="xs" onclick={() => (isRetentionModalOpen = false)}>
+				<Button variant="secondary" size="sm" onclick={() => (isRetentionModalOpen = false)}>
 					Apply
 				</Button>
 			</div>

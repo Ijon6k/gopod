@@ -52,6 +52,21 @@ func (h *Handler) handleGetService(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, s)
 }
 
+func (h *Handler) handleUpdateService(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var s db.Service
+	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+		return
+	}
+	s.ID = id
+	if err := h.repo.UpdateService(r.Context(), s); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, s)
+}
+
 func (h *Handler) handleDeleteService(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.repo.DeleteService(r.Context(), id); err != nil {

@@ -8,9 +8,16 @@ export interface SystemInfoResponse {
 	cpuUsage: number;
 	memoryTotal: number;
 	memoryFree: number;
+	memoryAvailable?: number;
 	memoryUsed: number;
 	memoryUsedGB: number;
 	memoryTotalGB: number;
+	memoryAvailableGB?: number;
+	swapTotal?: number;
+	swapFree?: number;
+	swapUsed?: number;
+	swapUsedMB?: number;
+	swapTotalGB?: number;
 	podmanVersion: string;
 	rootless: boolean;
 	runningCount: number;

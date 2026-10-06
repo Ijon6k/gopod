@@ -155,7 +155,7 @@
 
 							<Button
 								variant="secondary"
-								size="xs"
+								size="sm"
 								disabled={isCreatingSnapshot && snapshotTargetVolume === vol.name}
 								onclick={() => handleCreateSnapshot(vol.name, vol.serviceId)}
 							>

@@ -35,28 +35,35 @@
 		}
 	}
 
-	onMount(async () => {
-		try {
-			await authStore.checkStatus();
-		} catch (e) {
-			console.error('Failed to verify authentication status:', e);
-		} finally {
-			initialCheckDone = true;
-		}
+	onMount(() => {
+		let interval: ReturnType<typeof setInterval> | undefined;
 
-		// Check route upon mounting
-		routeGuard(authStore.isInitialized, authStore.isAuthenticated, page.url.pathname);
-
-		// Initial data and live stats when authenticated
-		if (authStore.isAuthenticated) {
-			dataStore.fetchInitialData();
-		}
-		const interval = setInterval(() => {
-			if (authStore.isAuthenticated) {
-				dataStore.fetchLiveStats();
+		(async () => {
+			try {
+				await authStore.checkStatus();
+			} catch (e) {
+				console.error('Failed to verify authentication status:', e);
+			} finally {
+				initialCheckDone = true;
 			}
-		}, 4000);
-		return () => clearInterval(interval);
+
+			// Check route upon mounting
+			routeGuard(authStore.isInitialized, authStore.isAuthenticated, page.url.pathname);
+
+			// Initial data and live stats when authenticated
+			if (authStore.isAuthenticated) {
+				dataStore.fetchInitialData();
+			}
+			interval = setInterval(() => {
+				if (authStore.isAuthenticated) {
+					dataStore.fetchLiveStats();
+				}
+			}, 4000);
+		})();
+
+		return () => {
+			if (interval) clearInterval(interval);
+		};
 	});
 
 	$effect(() => {

@@ -203,49 +203,117 @@ class DataStore {
 		return this.projects.find((p) => p.id === projectId);
 	}
 
+	async createProject(data: { name: string; description?: string }): Promise<Project> {
+		const res = await api.projects.create(data);
+		const newProject: Project = {
+			id: res.id,
+			name: res.name,
+			description: res.description || '',
+			status: 'healthy',
+			services: [],
+			domains: [],
+			cpu: 0,
+			memory: 0,
+			memoryTotal: 0,
+			createdAt: res.createdAt || new Date().toISOString()
+		};
+		const idx = this.projects.findIndex((p) => p.id === newProject.id);
+		if (idx >= 0) {
+			this.projects[idx] = newProject;
+		} else {
+			this.projects.push(newProject);
+		}
+		return newProject;
+	}
+
+	async deleteProject(id: string): Promise<void> {
+		await api.projects.delete(id);
+		this.projects = this.projects.filter((p) => p.id !== id);
+	}
+
 	getServiceById(serviceId: string): Service | undefined {
 		return this.services.find((s) => s.id === serviceId);
 	}
 
-	addService(service: Service) {
-		this.services.unshift(service);
-		api.services.create(service).catch((err) => console.warn('Failed to sync service:', err));
+	async addService(service: Service): Promise<Service> {
+		try {
+			const res = await api.services.create(service);
+			const fullService: Service = {
+				...service,
+				...res,
+				quadletConfig: service.quadletConfig || (res as any).quadletConfig,
+				composeYaml: service.composeYaml || (res as any).composeYaml,
+				k8sYaml: service.k8sYaml || (res as any).k8sYaml,
+				description: service.description || res.description || '',
+				deployments: service.deployments || []
+			};
+			const idx = this.services.findIndex((s) => s.id === fullService.id);
+			if (idx >= 0) {
+				this.services[idx] = fullService;
+			} else {
+				this.services.unshift(fullService);
+			}
 
-		// If it has domain, add it to domains
-		if (service.domain) {
-			this.addDomain({
-				id: `d-${Date.now()}`,
-				hostname: service.domain,
-				projectId: service.projectId,
-				serviceId: service.id,
-				serviceName: service.name,
-				tls: true,
-				status: 'active',
-				proxyPort: 8000 + Math.floor(Math.random() * 900),
-				containerPort: service.port || 3000,
-				publishedPort: service.port || 3000
-			});
-		}
-		// If it's a pod, add to pods
-		if (service.type === 'pod') {
-			this.pods.unshift({
-				id: `pod-${service.id}`,
-				name: service.name,
-				projectId: service.projectId,
-				projectName: this.getProjectById(service.projectId)?.name ?? service.projectId,
-				containers: service.workloads?.map((w) => `${service.id}-${w.name}`) ?? [service.name],
-				status: service.status,
-				network: `${service.projectId}-network`,
-				createdAt: service.createdAt
-			});
+			// If it has domain, add it to domains
+			if (service.domain) {
+				this.addDomain({
+					id: `d-${Date.now()}`,
+					hostname: service.domain,
+					projectId: service.projectId,
+					serviceId: fullService.id,
+					serviceName: service.name,
+					tls: true,
+					status: 'active',
+					proxyPort: 8000 + Math.floor(Math.random() * 900),
+					containerPort: service.port || 3000,
+					publishedPort: service.port || 3000
+				});
+			}
+			// If it's a pod, add to pods
+			if (service.type === 'pod') {
+				this.pods.unshift({
+					id: `pod-${fullService.id}`,
+					name: service.name,
+					projectId: service.projectId,
+					projectName: this.getProjectById(service.projectId)?.name ?? service.projectId,
+					containers: service.workloads?.map((w) => `${fullService.id}-${w.name}`) ?? [service.name],
+					status: service.status,
+					network: `${service.projectId}-network`,
+					createdAt: service.createdAt
+				});
+			}
+			return fullService;
+		} catch (err) {
+			const idx = this.services.findIndex((s) => s.id === service.id);
+			if (idx < 0) {
+				this.services.unshift(service);
+			}
+			throw err;
 		}
 	}
 
-	updateService(updated: Service) {
+	async updateService(updated: Service): Promise<Service> {
 		const idx = this.services.findIndex((s) => s.id === updated.id);
 		if (idx !== -1) {
 			this.services[idx] = { ...updated };
 		}
+		try {
+			const res = await api.services.update(updated.id, updated);
+			return res;
+		} catch (err) {
+			console.warn('Failed to sync service update to backend:', err);
+			return updated;
+		}
+	}
+
+	async deleteService(id: string): Promise<void> {
+		try {
+			await api.services.delete(id);
+		} catch (err) {
+			console.warn('Failed to delete service on backend:', err);
+		}
+		this.services = this.services.filter((s) => s.id !== id);
+		this.domains = this.domains.filter((d) => d.serviceId !== id);
 	}
 
 	async deployService(serviceId: string) {
@@ -380,7 +448,18 @@ class DataStore {
 			]);
 
 			if (projectsData && projectsData.length > 0) {
-				this.projects = projectsData;
+				this.projects = projectsData.map((p: any) => ({
+					id: p.id,
+					name: p.name,
+					description: p.description || '',
+					status: (p.status || 'healthy') as any,
+					services: [],
+					domains: [],
+					cpu: p.cpu || 0,
+					memory: p.memory || 0,
+					memoryTotal: p.memoryTotal || 0,
+					createdAt: p.createdAt || new Date().toISOString()
+				}));
 			}
 			if (servicesData && servicesData.length > 0) {
 				this.services = servicesData;
@@ -485,6 +564,9 @@ class DataStore {
 							vcpu: sys.vcpu || this.server.vcpu,
 							memory: parseFloat(sys.memoryTotalGB?.toFixed(1)) || this.server.memory,
 							memoryUsed: parseFloat(sys.memoryUsedGB?.toFixed(1)) || this.server.memoryUsed,
+							memoryAvailable: sys.memoryAvailableGB != null ? parseFloat(sys.memoryAvailableGB.toFixed(1)) : (this.server.memory - this.server.memoryUsed),
+							swapUsed: sys.swapUsedMB != null ? sys.swapUsedMB : this.server.swapUsed,
+							swapTotal: sys.swapTotalGB != null ? sys.swapTotalGB : this.server.swapTotal,
 							cpuUsage: parseFloat(sys.cpuUsage?.toFixed(1)) || this.server.cpuUsage,
 							podmanVersion: sys.podmanVersion || this.server.podmanVersion,
 							rootless: sys.rootless ?? this.server.rootless,
@@ -554,6 +636,9 @@ class DataStore {
 					vcpu: sys.vcpu || this.server.vcpu,
 					memory: parseFloat(sys.memoryTotalGB?.toFixed(1)) || this.server.memory,
 					memoryUsed: parseFloat(sys.memoryUsedGB?.toFixed(1)) || this.server.memoryUsed,
+					memoryAvailable: sys.memoryAvailableGB != null ? parseFloat(sys.memoryAvailableGB.toFixed(1)) : (this.server.memory - this.server.memoryUsed),
+					swapUsed: sys.swapUsedMB != null ? sys.swapUsedMB : this.server.swapUsed,
+					swapTotal: sys.swapTotalGB != null ? sys.swapTotalGB : this.server.swapTotal,
 					cpuUsage: parseFloat(sys.cpuUsage?.toFixed(1)) || this.server.cpuUsage,
 					podmanVersion: sys.podmanVersion || this.server.podmanVersion,
 					rootless: sys.rootless ?? this.server.rootless,

@@ -36,6 +36,14 @@ export const servicesApi = {
 	},
 
 	/**
+	 * Update an existing service
+	 */
+	async update(id: string, service: Partial<Service>): Promise<Service> {
+		const res = await apiClient.put<Service>(`/services/${id}`, service);
+		return res.data;
+	},
+
+	/**
 	 * Delete a service by ID
 	 */
 	async delete(id: string): Promise<{ message: string }> {

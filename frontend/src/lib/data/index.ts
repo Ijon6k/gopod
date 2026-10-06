@@ -50,109 +50,70 @@ import { dataStore } from '$lib/stores/data.svelte';
 // Typed exports — dynamic proxies delegating to live reactive dataStore
 export { dataStore };
 
-export const projects = new Proxy([] as Project[], {
-	get(_, prop) {
-		return (dataStore.projects as any)[prop];
-	}
-});
+function createArrayProxy<T>(getArray: () => T[]): T[] {
+	return new Proxy([] as T[], {
+		get(_, prop) {
+			const arr = getArray();
+			const val = Reflect.get(arr, prop, arr);
+			if (typeof val === 'function') {
+				return val.bind(arr);
+			}
+			return val;
+		},
+		has(_, prop) {
+			return Reflect.has(getArray(), prop);
+		},
+		ownKeys(_) {
+			return Reflect.ownKeys(getArray());
+		},
+		getOwnPropertyDescriptor(_, prop) {
+			return Reflect.getOwnPropertyDescriptor(getArray(), prop);
+		}
+	});
+}
 
-export const services = new Proxy([] as Service[], {
-	get(_, prop) {
-		return (dataStore.services as any)[prop];
-	}
-});
+function createObjectProxy<T extends object>(getObject: () => T): T {
+	return new Proxy({} as T, {
+		get(_, prop) {
+			const obj = getObject();
+			const val = Reflect.get(obj, prop, obj);
+			if (typeof val === 'function') {
+				return val.bind(obj);
+			}
+			return val;
+		},
+		has(_, prop) {
+			return Reflect.has(getObject(), prop);
+		},
+		ownKeys(_) {
+			return Reflect.ownKeys(getObject());
+		},
+		getOwnPropertyDescriptor(_, prop) {
+			return Reflect.getOwnPropertyDescriptor(getObject(), prop);
+		}
+	});
+}
 
-export const deployments = new Proxy([] as Deployment[], {
-	get(_, prop) {
-		return (dataStore.deployments as any)[prop];
-	}
-});
-
-export const containers = new Proxy([] as Container[], {
-	get(_, prop) {
-		return (dataStore.containers as any)[prop];
-	}
-});
-
-export const pods = new Proxy([] as Pod[], {
-	get(_, prop) {
-		return (dataStore.pods as any)[prop];
-	}
-});
-
-export const images = new Proxy([] as Image[], {
-	get(_, prop) {
-		return (dataStore.images as any)[prop];
-	}
-});
-
-export const volumes = new Proxy([] as Volume[], {
-	get(_, prop) {
-		return (dataStore.volumes as any)[prop];
-	}
-});
-
-export const networks = new Proxy([] as Network[], {
-	get(_, prop) {
-		return (dataStore.networks as any)[prop];
-	}
-});
-
-export const domains = new Proxy([] as Domain[], {
-	get(_, prop) {
-		return (dataStore.domains as any)[prop];
-	}
-});
-
-export const server = new Proxy({} as Server, {
-	get(_, prop) {
-		return (dataStore.server as any)[prop];
-	}
-});
+export const projects = createArrayProxy(() => dataStore.projects);
+export const services = createArrayProxy(() => dataStore.services);
+export const deployments = createArrayProxy(() => dataStore.deployments);
+export const containers = createArrayProxy(() => dataStore.containers);
+export const pods = createArrayProxy(() => dataStore.pods);
+export const images = createArrayProxy(() => dataStore.images);
+export const volumes = createArrayProxy(() => dataStore.volumes);
+export const networks = createArrayProxy(() => dataStore.networks);
+export const domains = createArrayProxy(() => dataStore.domains);
+export const server = createObjectProxy(() => dataStore.server);
 
 export const auditLogs = dummyAuditLogsJson as AuditLog[];
 
-export const podmanSecrets = new Proxy([] as PodmanSecret[], {
-	get(_, prop) {
-		return (dataStore.podmanSecrets as any)[prop];
-	}
-});
-
-export const sshKeys = new Proxy([] as SSHKey[], {
-	get(_, prop) {
-		return (dataStore.sshKeys as any)[prop];
-	}
-});
-
-export const registries = new Proxy([] as ContainerRegistry[], {
-	get(_, prop) {
-		return (dataStore.registries as any)[prop];
-	}
-});
-
-export const ports = new Proxy([] as PortMapping[], {
-	get(_, prop) {
-		return (dataStore.ports as any)[prop];
-	}
-});
-
-export const accessLogs = new Proxy([] as CaddyAccessLog[], {
-	get(_, prop) {
-		return (dataStore.accessLogs as any)[prop];
-	}
-});
-
-export const volumeSnapshots = new Proxy([] as VolumeSnapshot[], {
-	get(_, prop) {
-		return (dataStore.volumeSnapshots as any)[prop];
-	}
-});
-
-export const volumeSchedules = new Proxy([] as VolumeBackupSchedule[], {
-	get(_, prop) {
-		return (dataStore.volumeSchedules as any)[prop];
-	}
-});
+export const podmanSecrets = createArrayProxy(() => dataStore.podmanSecrets);
+export const sshKeys = createArrayProxy(() => dataStore.sshKeys);
+export const registries = createArrayProxy(() => dataStore.registries);
+export const ports = createArrayProxy(() => dataStore.ports);
+export const accessLogs = createArrayProxy(() => dataStore.accessLogs);
+export const volumeSnapshots = createArrayProxy(() => dataStore.volumeSnapshots);
+export const volumeSchedules = createArrayProxy(() => dataStore.volumeSchedules);
 
 // ── Helper functions ──
 
@@ -188,8 +149,24 @@ export function getProjectById(projectId: string): Project | undefined {
 	return dataStore.getProjectById(projectId);
 }
 
+export function createProject(data: { name: string; description?: string }): Promise<Project> {
+	return dataStore.createProject(data);
+}
+
+export function deleteProject(id: string): Promise<void> {
+	return dataStore.deleteProject(id);
+}
+
 export function getServiceById(serviceId: string): Service | undefined {
 	return dataStore.getServiceById(serviceId);
+}
+
+export function deleteService(id: string): Promise<void> {
+	return dataStore.deleteService(id);
+}
+
+export function updateService(service: Service): Promise<Service> {
+	return dataStore.updateService(service);
 }
 
 // ── Monitoring time series (generated) ──

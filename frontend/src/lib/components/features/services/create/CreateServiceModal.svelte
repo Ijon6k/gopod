@@ -38,6 +38,8 @@
 
 	let serviceName = $state('');
 	let serviceDescription = $state('');
+	let isCreating = $state(false);
+	let createError = $state<string | null>(null);
 
 	let isFormValid = $derived(serviceName.trim().length > 0);
 
@@ -49,8 +51,10 @@
 			.replace(/-+/g, '-');
 	}
 
-	function handleCreate() {
-		if (!isFormValid) return;
+	async function handleCreate() {
+		if (!isFormValid || isCreating) return;
+		isCreating = true;
+		createError = null;
 
 		const targetProj = selectedProjectId;
 		const sName = serviceName.trim();
@@ -164,11 +168,16 @@
 			};
 		}
 
-		dataStore.addService(newService);
-		open = false;
-		onclose?.();
-
-		goto(`/projects/${targetProj}/services/${newService.id}`);
+		try {
+			await dataStore.addService(newService);
+			open = false;
+			onclose?.();
+			await goto(`/projects/${targetProj}/services/${newService.id}`);
+		} catch (err: any) {
+			createError = err?.message || 'Failed to create service';
+		} finally {
+			isCreating = false;
+		}
 	}
 
 	function handleCancel() {
@@ -396,12 +405,22 @@
 							</span>
 						{/if}
 					</div>
+
+					{#if createError}
+						<div class="rounded-md p-2.5 bg-[var(--status-red-subtle)] border border-[var(--status-red)] text-xs text-[var(--status-red)]">
+							{createError}
+						</div>
+					{/if}
 				</div>
 
 				<div class="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-end gap-2">
-					<Button variant="ghost" size="sm" onclick={handleCancel}>Cancel</Button>
-					<Button variant="primary" size="sm" disabled={!isFormValid} onclick={handleCreate}>
-						Create & Configure <ArrowRight size={13} />
+					<Button variant="ghost" size="sm" onclick={handleCancel} disabled={isCreating}>Cancel</Button>
+					<Button variant="primary" size="sm" disabled={!isFormValid || isCreating} onclick={handleCreate}>
+						{#if isCreating}
+							Creating…
+						{:else}
+							Create & Configure <ArrowRight size={13} />
+						{/if}
 					</Button>
 				</div>
 			</div>

@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { Service, Domain } from '$lib/types';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Button, Input, CopyButton } from '$lib/components/primitives';
 	import { StatusBadge } from '$lib/components/ui';
 	import { dataStore, server } from '$lib/data';
-	import { Globe, Plus, Trash, ShieldCheck, ArrowRight, ArrowSquareOut, Copy, Check, CaretDown, CaretUp, PencilSimple } from 'phosphor-svelte';
+	import { Globe, Plus, Trash, ShieldCheck, ArrowRight, ArrowSquareOut, CaretDown, CaretUp, PencilSimple } from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
@@ -34,14 +34,7 @@
 	let basicAuthUser = $state('');
 	let basicAuthPass = $state('');
 
-	let ipCopied = $state(false);
 	let serverIp = $derived(server.ip || '49.12.84.112');
-
-	function copyIp() {
-		navigator.clipboard.writeText(serverIp);
-		ipCopied = true;
-		setTimeout(() => (ipCopied = false), 2000);
-	}
 
 	function startEdit(d: Domain) {
 		editingDomainId = d.id;
@@ -108,23 +101,17 @@
 		<div class="flex items-center gap-2 text-[var(--text-secondary)]">
 			<Globe size={16} class="text-[var(--accent)] shrink-0" />
 			<span>
-				Arahkan <strong>A-Record</strong> domain Anda di penyedia DNS (Cloudflare, Namecheap, dll) ke IP Host:
+				Point your domain's <strong>A-Record</strong> at your DNS provider (Cloudflare, Namecheap, etc.) to the host IP:
 			</span>
 			<code class="px-2 py-0.5 rounded bg-[var(--bg-panel)] font-[var(--font-mono)] text-[var(--text-primary)] font-semibold border border-[var(--border)]">
 				{serverIp}
 			</code>
 		</div>
-		<button
-			type="button"
-			onclick={copyIp}
-			class="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer text-[11px] font-medium transition-colors w-fit"
-		>
-			{#if ipCopied}
-				<Check size={12} class="text-[var(--status-green)]" /> Copied!
-			{:else}
-				<Copy size={12} /> Copy Server IP
-			{/if}
-		</button>
+		<CopyButton
+			text={serverIp}
+			label="Copy Server IP"
+			variant="button"
+		/>
 	</div>
 
 	<!-- Header -->

@@ -2,7 +2,7 @@
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { CodeEditor } from '$lib/components/ui';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Button, Input, CopyButton } from '$lib/components/primitives';
 	import {
 		FileText,
 		Eye,
@@ -10,7 +10,6 @@
 		ShieldCheck,
 		GitBranch,
 		Lightning,
-		Copy,
 		Plus,
 		FileCode
 	} from 'phosphor-svelte';
@@ -48,7 +47,6 @@ WantedBy=default.target`
 
 	let previewOpen = $state(false);
 	let saveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
-	let copiedPath = $state(false);
 
 	let unitPath = $derived(`~/.config/containers/systemd/${service.name}.container`);
 
@@ -151,12 +149,6 @@ WantedBy=default.target`
 
 	function insertSnippet(snippet: string) {
 		quadletConfig += `\n${snippet}`;
-	}
-
-	function copyUnitPath() {
-		navigator.clipboard.writeText(unitPath);
-		copiedPath = true;
-		setTimeout(() => (copiedPath = false), 2000);
 	}
 
 	function handleSave() {
@@ -340,18 +332,13 @@ WantedBy=default.target`
 				<div class="flex items-center gap-2 min-w-0">
 					<span class="text-[var(--text-tertiary)] shrink-0">Host Path:</span>
 					<span class="text-[var(--text-primary)] truncate font-semibold">{unitPath}</span>
-					<button
-						type="button"
-						onclick={copyUnitPath}
-						class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer p-0 shrink-0"
+					<CopyButton
+						text={unitPath}
 						title="Copy unit file path"
-					>
-						{#if copiedPath}
-							<Check size={13} class="text-[var(--status-green)]" />
-						{:else}
-							<Copy size={13} />
-						{/if}
-					</button>
+						variant="icon"
+						size={13}
+						class="p-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+					/>
 				</div>
 				<span class="text-[var(--status-green)] flex items-center gap-1 shrink-0">
 					<ShieldCheck size={14} /> Rootless systemd (--user)

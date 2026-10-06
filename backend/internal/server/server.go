@@ -1,6 +1,7 @@
 package server
 
 import (
+	"database/sql"
 	"io"
 	"io/fs"
 	"log"
@@ -8,11 +9,16 @@ import (
 	"strings"
 	"time"
 
-	"gopod/internal/api"
-	"gopod/internal/caddy"
+	"gopod/internal/audit"
+	"gopod/internal/auth"
+	"gopod/internal/credentials"
 	"gopod/internal/db"
+	"gopod/internal/ingress"
 	"gopod/internal/podman"
-	"gopod/internal/runner"
+	"gopod/internal/projects"
+	"gopod/internal/runtime"
+	"gopod/internal/services"
+	"gopod/internal/storage"
 )
 
 // Config holds server configuration.
@@ -24,7 +30,7 @@ type Config struct {
 	DistFS       fs.FS
 }
 
-// NewServer configures http.Handler with API routes and SPA fallback.
+// NewServer configures http.Handler with domain API routes and SPA fallback.
 func NewServer(cfg Config) http.Handler {
 	podmanClient := podman.NewClient(cfg.PodmanSocket)
 
@@ -33,22 +39,62 @@ func NewServer(cfg Config) http.Handler {
 		log.Printf("[ERROR] Failed to open SQLite database: %v", err)
 	}
 
-	var repo *db.Repository
+	var sqlDB *sql.DB
 	if database != nil {
-		repo = db.NewRepository(database)
+		sqlDB = database.DB
 	}
 
-	caddyReconciler := caddy.NewReconciler(cfg.CaddyAdmin, "")
-	deployer := runner.NewDeployer(podmanClient)
+	// ── Domain Layer Initialization ──
+	authRepo := auth.NewSQLiteRepository(sqlDB)
+	authService := auth.NewService(authRepo)
+	authMiddleware := auth.NewMiddleware(authService)
+	authHandler := auth.NewHandler(authService)
 
-	apiHandler := api.NewHandler(podmanClient, repo, caddyReconciler, deployer)
+	projectRepo := projects.NewSQLiteRepository(sqlDB)
+	projectService := projects.NewService(projectRepo)
+	projectHandler := projects.NewHandler(projectService, authMiddleware)
+
+	credentialsRepo := credentials.NewSQLiteRepository(sqlDB)
+	credentialsService := credentials.NewService(credentialsRepo)
+	credentialsHandler := credentials.NewHandler(credentialsService, authMiddleware)
+
+	serviceRepo := services.NewSQLiteRepository(sqlDB)
+	deployer := services.NewDeployer(podmanClient, credentialsService)
+	workloadService := services.NewWorkloadService(serviceRepo, deployer)
+	serviceHandler := services.NewHandler(workloadService, authMiddleware)
+
+	runtimeService := runtime.NewService(podmanClient)
+	runtimeHandler := runtime.NewHandler(runtimeService, authMiddleware)
+
+	caddyReconciler := ingress.NewReconciler(cfg.CaddyAdmin, "")
+	ingressRepo := ingress.NewSQLiteRepository(sqlDB)
+	ingressService := ingress.NewService(ingressRepo, caddyReconciler)
+	ingressHandler := ingress.NewHandler(ingressService, authMiddleware)
+
+	storageRepo := storage.NewSQLiteRepository(sqlDB)
+	storageService := storage.NewService(storageRepo)
+	storageHandler := storage.NewHandler(storageService, authMiddleware)
+
+	auditRepo := audit.NewSQLiteRepository(sqlDB)
+	auditService := audit.NewService(auditRepo)
+	auditHandler := audit.NewHandler(auditService, authMiddleware)
+
+	authService.SetAuditRecorder(auditService)
+	workloadService.SetAuditRecorder(auditService)
 
 	mux := http.NewServeMux()
 
-	// Register API endpoints
-	apiHandler.RegisterRoutes(mux)
+	// ── Register Domain Routes ──
+	authHandler.RegisterRoutes(mux)
+	projectHandler.RegisterRoutes(mux)
+	serviceHandler.RegisterRoutes(mux)
+	runtimeHandler.RegisterRoutes(mux)
+	ingressHandler.RegisterRoutes(mux)
+	credentialsHandler.RegisterRoutes(mux)
+	storageHandler.RegisterRoutes(mux)
+	auditHandler.RegisterRoutes(mux)
 
-	// SPA & Static Files Handler
+	// ── SPA & Static Files Handler ──
 	if cfg.DistFS != nil {
 		fileServer := http.FileServer(http.FS(cfg.DistFS))
 
@@ -76,7 +122,7 @@ func NewServer(cfg Config) http.Handler {
 				}
 			}
 
-			// SPA Fallback: serve index.html for any route
+			// SPA Fallback: serve index.html for any client-side route
 			indexFile, err := cfg.DistFS.Open("index.html")
 			if err != nil {
 				http.Error(w, "SPA index.html not found in build", http.StatusInternalServerError)
@@ -110,8 +156,13 @@ func withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
-		// CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin != "" {
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+		} else {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 
@@ -123,7 +174,6 @@ func withMiddleware(next http.Handler) http.Handler {
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
 		next.ServeHTTP(wrapped, r)
 
-		// Log API requests
 		if strings.HasPrefix(r.URL.Path, "/api/") {
 			log.Printf("%s %s %d %s", r.Method, r.URL.Path, wrapped.statusCode, time.Since(start))
 		}

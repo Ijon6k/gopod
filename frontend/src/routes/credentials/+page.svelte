@@ -1,25 +1,18 @@
 <script lang="ts">
 	import { PageHeader, Tabs } from '$lib/components/ui';
-	import { Button } from '$lib/components/primitives';
+	import { Button, CopyButton } from '$lib/components/primitives';
 	import { dataStore } from '$lib/data';
-	import { Key, Package, ShieldCheck, Plus, Trash, Copy, Check } from 'phosphor-svelte';
+	import { Key, Package, ShieldCheck, Plus, Trash } from 'phosphor-svelte';
 	import AddCredentialModal from '$lib/components/features/services/detail/AddCredentialModal.svelte';
 
 	let activeTab = $state<'ssh' | 'registries' | 'secrets'>('ssh');
 	let isModalOpen = $state(false);
-	let copiedKeyId = $state<string | null>(null);
 
 	const tabs = [
 		{ id: 'ssh', label: 'SSH Deploy Keys' },
 		{ id: 'registries', label: 'Container Registries' },
 		{ id: 'secrets', label: 'Podman Secrets' }
 	];
-
-	function copyPublicKey(id: string, keyText: string) {
-		navigator.clipboard.writeText(keyText);
-		copiedKeyId = id;
-		setTimeout(() => (copiedKeyId = null), 2000);
-	}
 </script>
 
 <svelte:head>
@@ -95,19 +88,13 @@
 									</td>
 									<td class="py-3.5 px-4 text-right">
 										<div class="flex items-center justify-end gap-1.5">
-											<button
-												type="button"
-												onclick={() => copyPublicKey(key.id, key.publicKey)}
-												class="p-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+											<CopyButton
+												text={key.publicKey}
 												title="Copy Public Key"
-												aria-label="Copy Public Key"
-											>
-												{#if copiedKeyId === key.id}
-													<Check size={14} class="text-[var(--status-green)]" />
-												{:else}
-													<Copy size={14} />
-												{/if}
-											</button>
+												variant="icon"
+												size={14}
+												class="border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+											/>
 											<button
 												type="button"
 												onclick={() => dataStore.deleteSSHKey(key.id)}

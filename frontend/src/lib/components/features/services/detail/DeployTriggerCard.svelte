@@ -1,8 +1,8 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Button, Input, CopyButton } from '$lib/components/primitives';
 	import { dataStore } from '$lib/data';
-	import { Lightning, Copy, Check } from 'phosphor-svelte';
+	import { Lightning, Check } from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
@@ -17,19 +17,12 @@
 			? `${window.location.protocol}//${window.location.host}/api/deploy/webhook/${service.webhookToken || service.id}`
 			: `/api/deploy/webhook/${service.webhookToken || service.id}`
 	);
-	let copied = $state(false);
 	let saveStatus = $state<'idle' | 'saved'>('idle');
 
 	$effect(() => {
 		autoDeploy = service.autoDeploy ?? true;
 		watchPaths = service.watchPaths || '';
 	});
-
-	function handleCopy() {
-		navigator.clipboard.writeText(webhookUrl);
-		copied = true;
-		setTimeout(() => (copied = false), 2000);
-	}
 
 	function handleSave() {
 		service.autoDeploy = autoDeploy;
@@ -57,17 +50,11 @@
 		<div class="flex flex-col gap-1.5">
 			<div class="flex items-center justify-between">
 				<label for="trig-webhook-url" class="text-xs font-medium text-[var(--text-secondary)]">Webhook URL</label>
-				<button
-					type="button"
-					onclick={handleCopy}
-					class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer p-0"
-				>
-					{#if copied}
-						<Check size={12} class="text-[var(--status-green)]" /> Copied!
-					{:else}
-						<Copy size={12} /> Copy Webhook URL
-					{/if}
-				</button>
+				<CopyButton
+					text={webhookUrl}
+					label="Copy Webhook URL"
+					variant="inline"
+				/>
 			</div>
 
 			<div class="p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] break-all select-all">

@@ -2,7 +2,10 @@
 	import type { Service, Workload } from '$lib/types';
 	import { SearchInput } from '$lib/components/ui';
 	import { Button } from '$lib/components/primitives';
-	import { ArrowDown, Trash } from 'phosphor-svelte';
+	import { dataStore } from '$lib/data';
+	import { api } from '$lib/api';
+	import { ArrowClockwise, ArrowDown, Trash } from 'phosphor-svelte';
+	import { onMount } from 'svelte';
 
 	interface Props {
 		service: Service;
@@ -11,63 +14,102 @@
 	let { service }: Props = $props();
 
 	let isPod = $derived(service.type === 'pod' || (service.workloads && service.workloads.length > 1));
-	let workloads = $derived<Workload[]>(service.workloads ?? [{ name: service.name, image: service.image ?? '—', status: service.status }]);
+	let workloads = $derived<Workload[]>(
+		service.workloads ?? [{ name: service.name, image: service.image ?? '—', status: service.status }]
+	);
 
 	let selectedContainer = $state('all');
 	let searchQuery = $state('');
 	let follow = $state(true);
+	let isLoading = $state(false);
+	let rawLogsText = $state<string>('');
+	let logsContainer = $state<HTMLDivElement | null>(null);
 
-	// Generate realistic logs
-	function generateLogs(containerName: string) {
-		const baseTimes = [
-			'10:14:02.104',
-			'10:14:03.250',
-			'10:14:04.890',
-			'10:15:10.012',
-			'10:15:42.511',
-			'10:16:01.300',
-			'10:16:22.784',
-			'10:17:05.120',
-			'10:17:34.901'
-		];
+	// Find active container(s) for this service
+	let matchingContainers = $derived.by(() => {
+		return dataStore.containers.filter(
+			(c) =>
+				c.serviceId === service.id ||
+				c.name === service.name ||
+				c.name.startsWith(`${service.projectId}-${service.name}`) ||
+				c.name.includes(service.name)
+		);
+	});
 
-		const entries = [
-			{ level: 'INFO', text: `[${containerName}] Container initialized with Podman cgroups v2` },
-			{ level: 'INFO', text: `[${containerName}] Starting runtime daemon on 0.0.0.0:${service.port || 3000}` },
-			{ level: 'INFO', text: `[${containerName}] Environment loaded: NODE_ENV=production, PORT=${service.port || 3000}` },
-			{ level: 'INFO', text: `[${containerName}] Connected to database cluster successfully` },
-			{ level: 'INFO', text: `[${containerName}] GET /health 200 OK (1.2ms)` },
-			{ level: 'WARN', text: `[${containerName}] Cache latency slightly elevated: 12ms` },
-			{ level: 'INFO', text: `[${containerName}] Inbound WebSocket connection established (client_id=c_910)` },
-			{ level: 'INFO', text: `[${containerName}] Health probe passed: status=UP` },
-			{ level: 'INFO', text: `[${containerName}] HTTP request completed: 200 OK (0.8ms)` }
-		];
-
-		return entries.map((e, idx) => ({
-			time: baseTimes[idx] ?? '10:18:00.000',
-			container: containerName,
-			level: e.level,
-			text: e.text
-		}));
+	interface LogEntry {
+		time: string;
+		container: string;
+		level: string;
+		text: string;
 	}
 
-	let allLogs = $derived.by(() => {
-		if (!isPod || selectedContainer === 'all') {
-			return workloads.flatMap((w) => generateLogs(w.name)).sort((a, b) => a.time.localeCompare(b.time));
-		}
-		return generateLogs(selectedContainer);
+	let parsedLogs = $derived.by(() => {
+		if (!rawLogsText.trim()) return [] as LogEntry[];
+		const lines = rawLogsText.split('\n').filter((l) => l.trim().length > 0);
+		return lines.map((line, idx) => {
+			let level = 'INFO';
+			if (/err|error|fail|fatal/i.test(line)) level = 'ERROR';
+			else if (/warn|warning/i.test(line)) level = 'WARN';
+
+			// Check for ISO timestamp at start
+			const isoMatch = line.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d+)?Z?)\s*(.*)/);
+			let time = '';
+			let text = line;
+			if (isoMatch) {
+				time = isoMatch[1].substring(11, 23);
+				text = isoMatch[3] || line;
+			} else {
+				time = new Date().toISOString().substring(11, 23);
+			}
+
+			const targetContainer = matchingContainers[0]?.name || service.name;
+
+			return {
+				time,
+				container: targetContainer,
+				level,
+				text
+			};
+		});
 	});
 
 	let filteredLogs = $derived.by(() => {
-		if (!searchQuery.trim()) return allLogs;
+		if (!searchQuery.trim()) return parsedLogs;
 		const q = searchQuery.toLowerCase().trim();
-		return allLogs.filter((l) => l.text.toLowerCase().includes(q) || l.container.toLowerCase().includes(q));
+		return parsedLogs.filter((l) => l.text.toLowerCase().includes(q) || l.container.toLowerCase().includes(q));
 	});
 
-	let logsContainer = $state<HTMLDivElement | null>(null);
+	async function fetchLogs() {
+		isLoading = true;
+		try {
+			// Determine which container to query
+			const target = matchingContainers[0]?.id || matchingContainers[0]?.name || service.name;
+			const res = await api.runtime.containers.logs(target, 200);
+			if (res && res.logs != null) {
+				rawLogsText = res.logs;
+			}
+		} catch (err) {
+			// Container might not be currently running
+			if (!rawLogsText) {
+				rawLogsText = `[system] Service '${service.name}' status: ${service.status}\n[system] No active container running or container has not emitted stdout/stderr yet.`;
+			}
+		} finally {
+			isLoading = false;
+		}
+	}
+
+	onMount(() => {
+		fetchLogs();
+		const interval = setInterval(() => {
+			if (follow) {
+				fetchLogs();
+			}
+		}, 3000);
+		return () => clearInterval(interval);
+	});
 
 	$effect(() => {
-		if (follow && logsContainer) {
+		if (follow && logsContainer && parsedLogs.length) {
 			logsContainer.scrollTop = logsContainer.scrollHeight;
 		}
 	});
@@ -101,9 +143,14 @@
 
 		<!-- Right actions -->
 		<div class="flex items-center gap-3">
+			<Button variant="ghost" size="sm" onclick={fetchLogs} disabled={isLoading}>
+				<ArrowClockwise class="w-3.5 h-3.5 mr-1.5 {isLoading ? 'animate-spin' : ''}" />
+				Refresh
+			</Button>
+
 			<label class="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer select-none">
 				<input type="checkbox" bind:checked={follow} class="accent-[var(--accent)]" />
-				<span>Follow logs</span>
+				<span>Live follow</span>
 			</label>
 
 			<Button variant="ghost" size="sm" onclick={() => (searchQuery = '')}>
@@ -138,7 +185,13 @@
 
 		{#if filteredLogs.length === 0}
 			<div class="p-8 text-center text-xs text-[var(--text-tertiary)]">
-				No log lines matching "{searchQuery}".
+				{#if isLoading}
+					Fetching container logs from Podman engine…
+				{:else if searchQuery}
+					No log lines matching "{searchQuery}".
+				{:else}
+					No logs emitted by container yet.
+				{/if}
 			</div>
 		{/if}
 	</div>

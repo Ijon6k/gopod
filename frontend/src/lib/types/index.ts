@@ -365,12 +365,13 @@ export interface NavItem {
 export interface AuditLog {
 	id: string;
 	action: string;
-	category: 'deployment' | 'runtime' | 'settings' | 'security' | 'network';
+	category: 'deployment' | 'runtime' | 'settings' | 'security' | 'network' | string;
 	actor: string;
 	target: string;
-	status: 'healthy' | 'failed' | 'running';
+	status: 'success' | 'failed' | 'healthy' | 'running' | 'warning' | string;
 	ip: string;
 	timeAgo: string;
-	timestamp: string;
+	timestamp?: string;
+	createdAt?: string;
 }
 

@@ -3,6 +3,7 @@
 # Stage 1: Build SvelteKit Frontend
 FROM docker.io/oven/bun:1 AS frontend-builder
 WORKDIR /app/frontend
+RUN mkdir -p /app/backend
 
 COPY frontend/package.json frontend/bun.lock ./
 RUN bun install --frozen-lockfile
@@ -27,7 +28,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/gopod ./cmd/serve
 FROM docker.io/library/alpine:3.21
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata git podman
 
 COPY --from=backend-builder /app/gopod /app/gopod
 

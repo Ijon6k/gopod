@@ -279,6 +279,7 @@ export interface Container {
 	pids?: number;
 	restarts?: number;
 	uptime?: string;
+	labels?: Record<string, string>;
 }
 
 export interface Pod {

@@ -48,7 +48,7 @@
 				<div class="flex items-center gap-2 min-w-0">
 					<Cube size={15} class="text-[var(--accent)] shrink-0" />
 					<div class="flex items-baseline gap-2 min-w-0">
-						<span class="font-mono text-[13px] font-semibold text-[var(--text-primary)] truncate">
+						<span class="font-mono text-[13px] font-medium text-[var(--text-primary)] truncate" title={c.name}>
 							{c.name}
 						</span>
 						<span class="text-[11px] text-[var(--text-tertiary)] font-mono truncate">

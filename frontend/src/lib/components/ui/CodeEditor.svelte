@@ -238,7 +238,7 @@
 		<!-- EDITABLE MODE: Synchronized backdrop + invisible textarea with matching line-height -->
 		<div
 			class="relative w-full flex {height === 'auto' ? '' : 'h-full overflow-hidden'}"
-			style={height === 'auto' ? `min-height: ${Math.max(120, lines.length * 20 + 24)}px;` : ''}
+			style={height === 'auto' ? `min-height: ${Math.max(140, lines.length * 20 + 28)}px; height: ${Math.max(140, lines.length * 20 + 28)}px;` : ''}
 		>
 			{#if lineNumbers}
 				<div

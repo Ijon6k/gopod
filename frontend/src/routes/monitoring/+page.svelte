@@ -45,11 +45,12 @@
 	}
 
 	onMount(() => {
-		// When monitoring page is opened, start real-time SSE stream
+		// When monitoring page is opened, ensure complete projects & service topology is loaded
+		dataStore.fetchInitialData();
+
 		if (refreshRate !== 'paused') {
 			dataStore.startStreamingStats();
 		}
-		dataStore.fetchLiveStats();
 
 		const secTimer = setInterval(() => {
 			if (refreshRate !== 'paused') {

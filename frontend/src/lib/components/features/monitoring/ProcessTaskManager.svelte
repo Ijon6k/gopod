@@ -186,7 +186,7 @@
 					type="button"
 					onclick={() => (filterAnomaliesOnly = !filterAnomaliesOnly)}
 					class="px-2.5 py-1 rounded-[var(--radius-sm)] text-xs transition-colors border cursor-pointer flex items-center gap-1.5 {filterAnomaliesOnly
-						? 'bg-[var(--status-amber)]/20 border-[var(--status-amber)] text-[var(--status-amber)] font-medium'
+						? 'bg-[var(--status-amber-muted)] border-[var(--status-amber)] text-[var(--status-amber)] font-medium'
 						: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--status-amber)]'}"
 				>
 					<Warning size={13} class="text-[var(--status-amber)]" />

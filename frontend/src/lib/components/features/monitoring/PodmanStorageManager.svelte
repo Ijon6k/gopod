@@ -10,19 +10,21 @@
 		ImageSquare,
 		Cube,
 		Database,
-		Wrench,
 		Broom,
 		ArrowRight,
 		CheckCircle,
-		HardDrive
+		ChartPieSlice,
+		ChartBar
 	} from 'phosphor-svelte';
+
+	import { bytesToGB, parsePct, formatBytes } from '$lib/utils/format';
 
 	let isPruneModalOpen = $state(false);
 	let recentReclaimedGB = $state<number | null>(null);
 	let dfData = $state<SystemDiskUsage[]>([]);
 	let isLoadingDf = $state(false);
+	let chartMode = $state<'donut' | 'bar'>('donut');
 
-	let server = $derived(dataStore.server);
 	let images = $derived(dataStore.images);
 	let volumes = $derived(dataStore.volumes);
 	let containers = $derived(dataStore.containers);
@@ -52,25 +54,6 @@
 	let volumeUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('volume')));
 	let containerUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('container')));
 
-	function bytesToGB(bytes?: number): number {
-		if (!bytes || bytes <= 0) return 0;
-		return parseFloat((bytes / (1024 * 1024 * 1024)).toFixed(2));
-	}
-
-	function parsePct(reclaimStr?: string): number {
-		if (!reclaimStr) return 0;
-		const match = reclaimStr.match(/\((\d+)%\)/);
-		return match ? parseInt(match[1], 10) : 0;
-	}
-
-	function formatBytes(bytes: number): string {
-		if (bytes <= 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-	}
-
 	let storageCategories = $derived([
 		{
 			id: 'images',
@@ -83,8 +66,8 @@
 			sizeGB: imageUsage ? bytesToGB(imageUsage.rawSize) : parseFloat((images.length * 0.35).toFixed(1)),
 			reclaimableDisplay: imageUsage?.reclaimable || '0 B',
 			reclaimableGB: imageUsage ? bytesToGB(imageUsage.rawReclaimable) : 0,
-			reclaimablePct: imageUsage ? parsePct(imageUsage.reclaimable) : 0,
-			color: 'bg-[var(--accent)]',
+			colorClass: 'bg-[var(--accent)]',
+			strokeColor: 'var(--accent)',
 			viewPath: '/runtime/images',
 			viewLabel: 'Images'
 		},
@@ -99,8 +82,8 @@
 			sizeGB: volumeUsage ? bytesToGB(volumeUsage.rawSize) : parseFloat((volumes.length * 0.25).toFixed(1)),
 			reclaimableDisplay: volumeUsage?.reclaimable || '0 B',
 			reclaimableGB: volumeUsage ? bytesToGB(volumeUsage.rawReclaimable) : 0,
-			reclaimablePct: volumeUsage ? parsePct(volumeUsage.reclaimable) : 0,
-			color: 'bg-[var(--status-amber)]',
+			colorClass: 'bg-[var(--status-amber)]',
+			strokeColor: 'var(--status-amber)',
 			viewPath: '/runtime/volumes',
 			viewLabel: 'Volumes'
 		},
@@ -115,8 +98,8 @@
 			sizeGB: containerUsage ? bytesToGB(containerUsage.rawSize) : parseFloat((containers.length * 0.1).toFixed(1)),
 			reclaimableDisplay: containerUsage?.reclaimable || '0 B',
 			reclaimableGB: containerUsage ? bytesToGB(containerUsage.rawReclaimable) : 0,
-			reclaimablePct: containerUsage ? parsePct(containerUsage.reclaimable) : (stoppedContainers > 0 ? 30 : 0),
-			color: 'bg-[var(--status-green)]',
+			colorClass: 'bg-[var(--status-green)]',
+			strokeColor: 'var(--status-green)',
 			viewPath: '/runtime/containers',
 			viewLabel: 'Containers'
 		}
@@ -141,6 +124,28 @@
 	let totalPodmanNum = $derived(
 		storageCategories.reduce((acc, c) => acc + c.sizeGB, 0)
 	);
+
+	// Donut SVG parameters
+	const donutRadius = 65;
+	const donutCircumference = 2 * Math.PI * donutRadius; // ~408.4
+
+	let donutSegments = $derived.by(() => {
+		const total = totalPodmanNum > 0 ? totalPodmanNum : 1;
+		let accumulated = 0;
+		return storageCategories.map((cat) => {
+			const pct = totalPodmanNum > 0 ? (cat.sizeGB / total) * 100 : 0;
+			const dash = (pct / 100) * donutCircumference;
+			const offset = -accumulated;
+			accumulated += dash;
+			return {
+				...cat,
+				pct: Math.round(pct),
+				dash,
+				gap: Math.max(0, donutCircumference - dash),
+				offset
+			};
+		});
+	});
 
 	// Top largest storage consumers from real images and volumes
 	let topConsumers = $derived.by(() => {
@@ -179,7 +184,7 @@
 	<!-- Flash Feedback if recently pruned -->
 	{#if recentReclaimedGB}
 		<div
-			class="flex items-center justify-between px-4 py-3 rounded-[var(--radius-card)] bg-[var(--status-green-muted)] border border-[var(--status-green)]/30 text-xs text-[var(--status-green)]"
+			class="flex items-center justify-between px-4 py-3 rounded-[var(--radius-card)] bg-[var(--status-green-muted)] border border-[var(--status-green)] text-xs text-[var(--status-green)]"
 		>
 			<div class="flex items-center gap-2">
 				<CheckCircle size={16} class="shrink-0" />
@@ -195,16 +200,16 @@
 		</div>
 	{/if}
 
-	<!-- 1. Single Unified Master Panel: Podman Storage Breakdown (No Card Clutter) -->
+	<!-- Master Storage Allocation Panel with Toggleable Donut & Bar Views -->
 	<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden shadow-xs">
-		<!-- Master Header with Actions -->
+		<!-- Header with Title, Toggle, and Actions -->
 		<div class="p-5 border-b border-[var(--border)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
 			<div class="flex flex-col gap-1">
-				<div class="flex items-center gap-2.5">
+				<div class="flex items-center gap-2.5 flex-wrap">
 					<h3 class="text-sm font-semibold text-[var(--text-primary)] font-[var(--font-sans)]">
 						Podman Storage Allocation
 					</h3>
-					<span class="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--status-green-muted)] text-[var(--status-green)] border border-[var(--status-green)]/30 font-medium">
+					<span class="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--status-green-muted)] text-[var(--status-green)] border border-[var(--status-green)] font-medium">
 						{totalReclaimableDisplay} Reclaimable
 					</span>
 				</div>
@@ -213,61 +218,177 @@
 				</p>
 			</div>
 
-			<Button
-				variant="primary"
-				size="sm"
-				onclick={() => (isPruneModalOpen = true)}
-			>
-				<Broom size={14} />
-				<span>Prune Storage...</span>
-			</Button>
+			<div class="flex items-center gap-2.5">
+				<!-- Donut / Bar Visualization Toggle -->
+				<div class="inline-flex items-center p-0.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)]">
+					<button
+						type="button"
+						onclick={() => (chartMode = 'donut')}
+						class="px-2.5 py-1 rounded text-xs transition-colors border-0 cursor-pointer flex items-center gap-1.5 {chartMode === 'donut'
+							? 'bg-[var(--bg-panel)] text-[var(--text-primary)] font-medium shadow-xs'
+							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+						title="Circular Donut chart view"
+					>
+						<ChartPieSlice size={13} />
+						<span>Donut</span>
+					</button>
+					<button
+						type="button"
+						onclick={() => (chartMode = 'bar')}
+						class="px-2.5 py-1 rounded text-xs transition-colors border-0 cursor-pointer flex items-center gap-1.5 {chartMode === 'bar'
+							? 'bg-[var(--bg-panel)] text-[var(--text-primary)] font-medium shadow-xs'
+							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+						title="Horizontal Bar chart view"
+					>
+						<ChartBar size={13} />
+						<span>Bar</span>
+					</button>
+				</div>
+
+				<Button
+					variant="primary"
+					size="sm"
+					onclick={() => (isPruneModalOpen = true)}
+				>
+					<Broom size={14} />
+					<span>Prune Storage...</span>
+				</Button>
+			</div>
 		</div>
 
-		<!-- Proportional Distribution Bar -->
-		<div class="px-5 pt-5 pb-4 flex flex-col gap-3">
-			<div class="w-full h-2 rounded-full bg-[var(--bg-surface)] overflow-hidden flex">
-				{#each storageCategories as cat}
-					{#if cat.sizeGB > 0}
-						<div
-							class="h-full {cat.color}"
-							style="width: {(cat.sizeGB / (totalPodmanNum || 1)) * 100}%;"
-							title="{cat.name}: {cat.sizeDisplay}"
-						></div>
-					{/if}
-				{/each}
-			</div>
+		<!-- Interactive Visualization Body -->
+		<div class="p-6">
+			{#if chartMode === 'donut'}
+				<!-- DONUT CHART VIEW -->
+				<div class="flex flex-col md:flex-row items-center justify-around gap-6">
+					<!-- SVG Donut -->
+					<div class="relative w-[190px] h-[190px] shrink-0">
+						<svg width="190" height="190" viewBox="0 0 190 190" class="overflow-visible">
+							<!-- Background Track -->
+							<circle
+								cx="95"
+								cy="95"
+								r={donutRadius}
+								fill="transparent"
+								stroke="var(--bg-surface)"
+								stroke-width="20"
+							/>
+							<!-- Segments with rotate(-90) to start from top -->
+							<g transform="rotate(-90 95 95)">
+								{#each donutSegments as seg}
+									{#if seg.sizeGB > 0}
+										<circle
+											cx="95"
+											cy="95"
+											r={donutRadius}
+											fill="transparent"
+											stroke={seg.strokeColor}
+											stroke-width="20"
+											stroke-dasharray="{seg.dash} {seg.gap}"
+											stroke-dashoffset={seg.offset}
+											class="transition-all duration-700"
+										/>
+									{/if}
+								{/each}
+							</g>
+						</svg>
 
-			<!-- Sleek Inline Legend -->
-			<div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-xs text-[var(--text-tertiary)] font-mono">
-				{#each storageCategories as cat}
-					<div class="flex items-center gap-1.5">
-						<span class="w-2 h-2 rounded-full {cat.color}"></span>
-						<span>{cat.name.split(' ')[0]}: <strong class="text-[var(--text-primary)]">{cat.sizeDisplay}</strong></span>
+						<!-- Donut Center Label -->
+						<div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none select-none text-center">
+							<span class="text-xl font-bold font-mono text-[var(--text-primary)] tracking-tight">
+								{totalPodmanDisplay}
+							</span>
+							<span class="text-[10.5px] uppercase font-semibold text-[var(--text-tertiary)] tracking-wider">
+								Allocated
+							</span>
+							<span class="text-[10px] font-mono text-[var(--status-green)] font-medium mt-0.5">
+								{totalReclaimableDisplay} freeable
+							</span>
+						</div>
 					</div>
-				{/each}
-			</div>
+
+					<!-- Beside Donut: Clean Semantic Cards -->
+					<div class="flex-1 w-full grid grid-cols-1 sm:grid-cols-3 gap-3">
+						{#each donutSegments as seg}
+							<div class="p-3.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] flex flex-col justify-between gap-2.5">
+								<div class="flex items-center justify-between">
+									<div class="flex items-center gap-2">
+										<span class="w-2.5 h-2.5 rounded-full {seg.colorClass}"></span>
+										<span class="text-xs font-semibold text-[var(--text-primary)]">{seg.name}</span>
+									</div>
+									<span class="text-xs font-mono font-bold text-[var(--text-secondary)]">{seg.pct}%</span>
+								</div>
+
+								<div class="flex items-baseline justify-between">
+									<span class="text-base font-bold font-mono text-[var(--text-primary)]">{seg.sizeDisplay}</span>
+									<span class="text-[11px] font-mono text-[var(--text-tertiary)]">{seg.totalCount} items</span>
+								</div>
+
+								<div class="text-[11px] text-[var(--text-tertiary)] flex items-center justify-between pt-1.5 border-t border-[var(--border-subtle)] font-mono">
+									<span>Reclaimable:</span>
+									<span class={seg.reclaimableDisplay && seg.reclaimableDisplay !== '0 B' ? 'text-[var(--status-green)] font-semibold' : 'text-[var(--text-tertiary)]'}>
+										~{seg.reclaimableDisplay}
+									</span>
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{:else}
+				<!-- HORIZONTAL BAR VIEW -->
+				<div class="flex flex-col gap-4">
+					<div class="w-full h-3 rounded-full bg-[var(--bg-surface)] overflow-hidden flex">
+						{#each storageCategories as cat}
+							{#if cat.sizeGB > 0}
+								<div
+									class="h-full {cat.colorClass} transition-all duration-500"
+									style="width: {(cat.sizeGB / (totalPodmanNum || 1)) * 100}%;"
+									title="{cat.name}: {cat.sizeDisplay}"
+								></div>
+							{/if}
+						{/each}
+					</div>
+
+					<!-- Legend Badges -->
+					<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+						{#each storageCategories as cat}
+							{@const pct = Math.round((cat.sizeGB / (totalPodmanNum || 1)) * 100)}
+							<div class="flex items-center justify-between p-2.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] text-xs">
+								<div class="flex items-center gap-2">
+									<span class="w-2 h-2 rounded-full {cat.colorClass}"></span>
+									<span class="text-[var(--text-secondary)]">{cat.name.split(' ')[0]}</span>
+								</div>
+								<div class="flex items-center gap-2 font-mono">
+									<strong class="text-[var(--text-primary)]">{cat.sizeDisplay}</strong>
+									<span class="text-[var(--text-tertiary)]">({pct}%)</span>
+								</div>
+							</div>
+						{/each}
+					</div>
+				</div>
+			{/if}
 		</div>
 
-		<!-- Clean Subsystem Table (Replaces 4 Bloated Box Cards) -->
-		<div class="border-t border-[var(--border-subtle)] overflow-x-auto">
+		<!-- Clean Subsystem Table (UI Standards Parity) -->
+		<div class="border-t border-[var(--border)] overflow-x-auto">
 			<table class="w-full text-left border-collapse text-xs">
 				<thead>
 					<tr class="bg-[var(--bg-table-header)] text-[var(--text-tertiary)] font-medium text-[11px] border-b border-[var(--border)]">
-						<th class="py-2 px-5 font-medium">Subsystem</th>
-						<th class="py-2 px-4 font-medium">Artifacts</th>
-						<th class="py-2 px-4 font-medium">Size</th>
-						<th class="py-2 px-4 font-medium">Reclaimable</th>
-						<th class="py-2 px-5 font-medium text-right">Action</th>
+						<th class="py-2.5 px-5 font-medium">Subsystem</th>
+						<th class="py-2.5 px-4 font-medium">Artifacts</th>
+						<th class="py-2.5 px-4 font-medium">Allocated Size</th>
+						<th class="py-2.5 px-4 font-medium">Reclaimable</th>
+						<th class="py-2.5 px-5 font-medium text-right">Quick Action</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-[var(--border-subtle)]">
-					{#each storageCategories as cat}
+					{#each storageCategories as cat, idx}
 						{@const Icon = cat.icon}
-						<tr class="hover:bg-[var(--bg-table-row-hover)] transition-colors">
+						<tr class="transition-colors hover:bg-[var(--bg-table-row-hover)] {idx % 2 === 1 ? 'bg-[var(--bg-table-row-alt)]' : 'bg-[var(--bg-table-row)]'}">
 							<!-- Subsystem -->
 							<td class="py-3 px-5">
 								<div class="flex items-center gap-2.5">
-									<span class="text-[var(--text-secondary)]">
+									<span class="text-[var(--accent)]">
 										<Icon size={15} />
 									</span>
 									<span class="font-medium text-[var(--text-primary)]">
@@ -278,14 +399,14 @@
 
 							<!-- Artifacts Count & Status -->
 							<td class="py-3 px-4 text-[var(--text-secondary)]">
-								<span class="font-mono">{cat.totalCount}</span>
+								<span class="font-mono font-medium text-[var(--text-primary)]">{cat.totalCount}</span>
 								<span class="text-[var(--text-tertiary)] text-[11px] ml-1">
 									({cat.activeText} · {cat.inactiveText})
 								</span>
 							</td>
 
 							<!-- Size -->
-							<td class="py-3 px-4 font-mono font-semibold text-[var(--text-primary)]">
+							<td class="py-3 px-4 font-mono font-bold text-[var(--text-primary)]">
 								{cat.sizeDisplay}
 							</td>
 
@@ -306,7 +427,7 @@
 									<button
 										type="button"
 										onclick={() => goto(cat.viewPath!)}
-										class="text-[11.5px] text-[var(--accent)] hover:underline inline-flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+										class="text-[11.5px] text-[var(--accent)] hover:underline inline-flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 font-medium"
 									>
 										Manage {cat.viewLabel} <ArrowRight size={11} />
 									</button>
@@ -314,7 +435,7 @@
 									<button
 										type="button"
 										onclick={() => (isPruneModalOpen = true)}
-										class="text-[11.5px] text-[var(--accent)] hover:underline inline-flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+										class="text-[11.5px] text-[var(--accent)] hover:underline inline-flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 font-medium"
 									>
 										Clear Cache <ArrowRight size={11} />
 									</button>
@@ -342,16 +463,16 @@
 			<table class="w-full text-left border-collapse text-xs">
 				<thead>
 					<tr class="bg-[var(--bg-table-header)] text-[var(--text-tertiary)] font-medium text-[11px] border-b border-[var(--border)]">
-						<th class="py-2 px-5 font-medium">Artifact Name</th>
-						<th class="py-2 px-4 font-medium">Type</th>
-						<th class="py-2 px-4 font-medium">Context / Owner</th>
-						<th class="py-2 px-4 font-medium">Size</th>
-						<th class="py-2 px-5 font-medium text-right">State</th>
+						<th class="py-2.5 px-5 font-medium">Artifact Name</th>
+						<th class="py-2.5 px-4 font-medium">Type</th>
+						<th class="py-2.5 px-4 font-medium">Context / Owner</th>
+						<th class="py-2.5 px-4 font-medium">Size</th>
+						<th class="py-2.5 px-5 font-medium text-right">State</th>
 					</tr>
 				</thead>
 				<tbody class="divide-y divide-[var(--border-subtle)]">
-					{#each topConsumers as item}
-						<tr class="hover:bg-[var(--bg-table-row-hover)] transition-colors">
+					{#each topConsumers as item, idx}
+						<tr class="transition-colors hover:bg-[var(--bg-table-row-hover)] {idx % 2 === 1 ? 'bg-[var(--bg-table-row-alt)]' : 'bg-[var(--bg-table-row)]'}">
 							<td class="py-2.5 px-5 font-mono text-[11.5px] text-[var(--text-primary)] truncate max-w-[280px]" title={item.name}>
 								{item.name}
 							</td>
@@ -368,11 +489,11 @@
 							</td>
 							<td class="py-2.5 px-5 text-right">
 								{#if item.reclaimable}
-									<span class="text-[10px] font-mono font-medium text-[var(--status-green)] bg-[var(--status-green-muted)] px-1.5 py-0.5 rounded">
+									<span class="text-[10px] font-mono font-medium text-[var(--status-green)] bg-[var(--status-green-muted)] px-1.5 py-0.5 rounded border border-[var(--status-green)]">
 										Reclaimable
 									</span>
 								{:else}
-									<span class="text-[10px] font-mono text-[var(--text-tertiary)] bg-[var(--bg-surface)] px-1.5 py-0.5 rounded">
+									<span class="text-[10px] font-mono text-[var(--text-tertiary)] bg-[var(--bg-surface)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)]">
 										In-use
 									</span>
 								{/if}

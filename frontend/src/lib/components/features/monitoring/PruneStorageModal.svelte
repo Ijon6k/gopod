@@ -14,6 +14,8 @@
 		Wrench
 	} from 'phosphor-svelte';
 
+	import { formatBytes } from '$lib/utils/format';
+
 	interface Props {
 		open: boolean;
 		onclose: () => void;
@@ -66,14 +68,6 @@
 	});
 
 	let anySelected = $derived(pruneImages || pruneContainers || pruneVolumes || pruneBuildCache);
-
-	function formatBytes(bytes: number): string {
-		if (bytes <= 0) return '0 B';
-		const k = 1024;
-		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
-		const i = Math.floor(Math.log(bytes) / Math.log(k));
-		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
-	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && !isPruning) {

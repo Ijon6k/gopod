@@ -1,19 +1,17 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Service, Workload, TimeSeriesPoint, Container } from '$lib/types';
-	import { AreaChart, StatusBadge } from '$lib/components/ui';
+	import { StatusBadge } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { MicroWorkloadTable } from '$lib/components/features/monitoring';
+	import { formatMemory, parseNetToMb } from '$lib/utils/format';
+	import TelemetryMetricCards from './TelemetryMetricCards.svelte';
+	import TelemetryChartsGrid from './TelemetryChartsGrid.svelte';
 	import {
-		Cpu,
-		Gauge,
-		HardDrive,
-		Pulse,
 		ArrowClockwise,
 		Warning,
-		CheckCircle,
-		ArrowsDownUp
+		CheckCircle
 	} from 'phosphor-svelte';
 
 	interface Props {
@@ -23,10 +21,18 @@
 
 	let { service, onNavigateTab }: Props = $props();
 
-	// Match actual containers from Podman runtime store
+	// Match actual containers from Podman runtime store (Dokploy multi-container parity)
 	let matchingContainers = $derived.by<Container[]>(() => {
 		return dataStore.containers.filter(
-			(c) => c.serviceId === service.id || c.name.startsWith(service.id) || (c.serviceName && c.serviceName === service.name)
+			(c) =>
+				c.serviceId === service.id ||
+				c.name === service.name ||
+				c.name.startsWith(service.id) ||
+				(c.serviceName && c.serviceName === service.name) ||
+				(c.labels &&
+					(c.labels['com.docker.compose.project'] === service.name ||
+						c.labels['io.podman.compose.project'] === service.name ||
+						c.labels['io.gopod.service'] === service.id))
 		);
 	});
 
@@ -123,22 +129,6 @@
 		service.status === 'degraded' ||
 		currentStatus === 'stopped'
 	);
-
-	function formatMemory(mb: number): string {
-		return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb} MB`;
-	}
-
-	function parseNetToMb(netStr: string): number {
-		if (!netStr || netStr === '—') return 0;
-		const parts = netStr.match(/([0-9.]+)\s*([a-zA-Z]+)/);
-		if (!parts) return 0;
-		const val = parseFloat(parts[1]);
-		const unit = parts[2].toLowerCase();
-		if (unit.startsWith('g')) return val * 1024;
-		if (unit.startsWith('m')) return val;
-		if (unit.startsWith('k')) return val / 1024;
-		return val / (1024 * 1024);
-	}
 
 	// Dynamic Rolling Telemetry Buffers for Live Container Charts (Dokploy Parity)
 	function initSeries(baseVal: number, count = 20): TimeSeriesPoint[] {
@@ -325,12 +315,12 @@
 
 	<!-- Real-Time Anomaly & Threshold Status Banner -->
 	{#if isUnhealthy}
-		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-[var(--radius-card)] bg-rose-500/10 border border-rose-500/30 text-xs shadow-xs">
-			<div class="flex items-center gap-2.5 text-rose-300">
-				<Warning size={16} class="text-rose-400 shrink-0" />
+		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-[var(--radius-card)] bg-[var(--status-red-muted)] border border-[var(--status-red)] text-xs shadow-xs">
+			<div class="flex items-center gap-2.5 text-[var(--status-red)]">
+				<Warning size={16} class="shrink-0" />
 				<div>
 					<span class="font-bold">Service inactive or degraded:</span>
-					<span class="text-rose-200/90 ml-1">
+					<span class="text-[var(--text-secondary)] ml-1">
 						{matchingContainers.length === 0 ? 'No container running for this workload. Click Deploy or Start to initialize.' : 'Container process exited or healthcheck is degraded.'}
 					</span>
 				</div>
@@ -338,18 +328,18 @@
 			<button
 				type="button"
 				onclick={() => onNavigateTab?.('logs')}
-				class="px-2.5 py-1 rounded bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 font-mono text-[11px] border border-rose-500/30 cursor-pointer self-start sm:self-auto shrink-0 transition-colors"
+				class="px-2.5 py-1 rounded bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--status-red)] font-mono text-[11px] border border-[var(--status-red)] cursor-pointer self-start sm:self-auto shrink-0 transition-colors"
 			>
 				Inspect Logs →
 			</button>
 		</div>
 	{:else if isElevatedMem || isElevatedCpu}
-		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-[var(--radius-card)] bg-amber-500/10 border border-amber-500/30 text-xs shadow-xs">
-			<div class="flex items-center gap-2.5 text-amber-200">
-				<Warning size={16} class="text-amber-400 shrink-0" />
+		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-[var(--radius-card)] bg-[var(--status-amber-muted)] border border-[var(--status-amber)] text-xs shadow-xs">
+			<div class="flex items-center gap-2.5 text-[var(--status-amber)]">
+				<Warning size={16} class="shrink-0" />
 				<div>
 					<span class="font-bold">Elevated Resource Consumption:</span>
-					<span class="text-amber-100/90 ml-1">
+					<span class="text-[var(--text-secondary)] ml-1">
 						{#if isElevatedMem}
 							Memory allocation is at {memPercent}% of {memLimit} MB budget ({formatMemory(currentMem)}). Close to cgroup threshold.
 						{:else}
@@ -361,208 +351,53 @@
 			<button
 				type="button"
 				onclick={() => onNavigateTab?.('advanced')}
-				class="px-2.5 py-1 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 font-mono text-[11px] border border-amber-500/30 cursor-pointer self-start sm:self-auto shrink-0 transition-colors"
+				class="px-2.5 py-1 rounded bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--status-amber)] font-mono text-[11px] border border-[var(--status-amber)] cursor-pointer self-start sm:self-auto shrink-0 transition-colors"
 			>
 				Adjust Cgroups Limit →
 			</button>
 		</div>
 	{:else}
-		<div class="flex items-center justify-between px-3.5 py-2.5 rounded-[var(--radius-card)] bg-emerald-500/5 border border-emerald-500/20 text-xs text-[var(--text-secondary)] shadow-xs">
+		<div class="flex items-center justify-between px-3.5 py-2.5 rounded-[var(--radius-card)] bg-[var(--status-green-muted)] border border-[var(--status-green)] text-xs text-[var(--text-secondary)] shadow-xs">
 			<div class="flex items-center gap-2.5 flex-wrap">
-				<CheckCircle size={15} class="text-emerald-400 shrink-0" />
+				<CheckCircle size={15} class="text-[var(--status-green)] shrink-0" />
 				<span class="font-semibold text-[var(--text-primary)]">Workload operating nominally</span>
 				<span class="text-[var(--text-tertiary)]">•</span>
 				<span>{formatMemory(currentMem)} / {memLimit} MB allocated</span>
 				<span class="text-[var(--text-tertiary)]">•</span>
 				<span>{matchingContainers.length} {matchingContainers.length > 1 ? 'containers active' : 'container active'}</span>
 				<span class="text-[var(--text-tertiary)]">•</span>
-				<span class="text-emerald-400 font-mono">cgroups v2 live</span>
+				<span class="text-[var(--status-green)] font-mono">cgroups v2 live</span>
 			</div>
-			<span class="text-[11px] font-mono text-emerald-400 shrink-0 hidden sm:inline">Podman 5.x OK</span>
+			<span class="text-[11px] font-mono text-[var(--status-green)] shrink-0 hidden sm:inline">Podman 5.x OK</span>
 		</div>
 	{/if}
 
-	<!-- 4 Contextual Metric Cards with Progress Bars (Dokploy Live Parity) -->
-	<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-		<!-- 1. CPU Card -->
-		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<span class="text-[10px] uppercase font-semibold text-[var(--text-tertiary)] tracking-wider">CPU Utilization</span>
-				<div class="p-1 rounded bg-[var(--accent-muted)] text-[var(--accent)]">
-					<Cpu size={14} />
-				</div>
-			</div>
-
-			<div class="flex items-baseline justify-between gap-2">
-				<strong class="text-2xl font-bold text-[var(--text-primary)] font-[var(--font-mono)] tracking-tight tabular-nums">
-					{currentCpu.toFixed(1)}%
-				</strong>
-				<span class="text-xs font-mono text-[var(--text-secondary)]">cgroup</span>
-			</div>
-
-			<!-- Capacity Bar -->
-			<div class="w-full h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden">
-				<div
-					class="h-full rounded-full transition-all duration-500 {currentCpu > 5 ? 'bg-rose-500' : currentCpu > 2 ? 'bg-amber-400' : 'bg-[var(--accent)]'}"
-					style="width: {Math.min(currentCpu * 10, 100)}%;"
-				></div>
-			</div>
-
-			<div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-				<span>Current: {currentCpu.toFixed(1)}%</span>
-				<span class={currentCpu > 5 ? 'text-amber-400 font-medium' : 'text-emerald-400 font-medium'}>
-					{currentCpu > 5 ? 'Elevated' : 'Optimal'}
-				</span>
-			</div>
-		</div>
-
-		<!-- 2. Memory Card -->
-		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<span class="text-[10px] uppercase font-semibold text-[var(--text-tertiary)] tracking-wider">Memory Allocation</span>
-				<div class="p-1 rounded bg-emerald-500/10 text-emerald-400">
-					<Gauge size={14} />
-				</div>
-			</div>
-
-			<div class="flex items-baseline justify-between gap-2">
-				<strong class="text-2xl font-bold text-[var(--text-primary)] font-[var(--font-mono)] tracking-tight tabular-nums">
-					{formatMemory(currentMem)}
-				</strong>
-				<span class="text-xs font-mono text-[var(--text-secondary)]">{memPercent}% used</span>
-			</div>
-
-			<!-- Capacity Bar -->
-			<div class="w-full h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden">
-				<div
-					class="h-full rounded-full transition-all duration-500 {memPercent > 85 ? 'bg-rose-500' : memPercent > 70 ? 'bg-amber-400' : 'bg-emerald-400'}"
-					style="width: {memPercent}%;"
-				></div>
-			</div>
-
-			<div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-				<span>Limit: {memLimit} MB</span>
-				<span>Free: {Math.max(0, memLimit - currentMem)} MB</span>
-			</div>
-		</div>
-
-		<!-- 3. Network Throughput Card -->
-		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<span class="text-[10px] uppercase font-semibold text-[var(--text-tertiary)] tracking-wider">Network I/O</span>
-				<div class="p-1 rounded bg-amber-500/10 text-amber-400">
-					<ArrowsDownUp size={14} />
-				</div>
-			</div>
-
-			<div class="flex items-baseline justify-between gap-2">
-				<strong class="text-lg font-bold text-[var(--text-primary)] font-[var(--font-mono)] tracking-tight tabular-nums truncate">
-					{currentNetRx}
-				</strong>
-				<span class="text-xs font-mono text-[var(--text-secondary)]">Rx</span>
-			</div>
-
-			<div class="w-full h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden">
-				<div class="h-full rounded-full bg-amber-400" style="width: {matchingContainers.length > 0 ? '45%' : '0%'};"></div>
-			</div>
-
-			<div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-				<span class="truncate">Tx: {currentNetTx}</span>
-				<span class="text-emerald-400 font-medium">Socket IO</span>
-			</div>
-		</div>
-
-		<!-- 4. Health & Lifecycle Card -->
-		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col justify-between gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<span class="text-[10px] uppercase font-semibold text-[var(--text-tertiary)] tracking-wider">Health & Lifecycle</span>
-				<div class="p-1 rounded bg-[var(--accent-muted)] text-[var(--accent)]">
-					<Pulse size={14} />
-				</div>
-			</div>
-
-			<div class="flex items-center justify-between gap-2">
-				<StatusBadge status={currentStatus === 'running' ? 'healthy' : 'stopped'} size="sm" />
-				<span class="text-xs font-mono text-[var(--text-secondary)]">{currentPids} PIDs</span>
-			</div>
-
-			<div class="w-full h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden">
-				<div class="h-full rounded-full {currentStatus === 'running' ? 'bg-emerald-400' : 'bg-zinc-600'}" style="width: {currentStatus === 'running' ? '100%' : '0%'};"></div>
-			</div>
-
-			<div class="flex items-center justify-between text-[11px] text-[var(--text-tertiary)] pt-1 border-t border-[var(--border-subtle)]">
-				<span class="truncate">Status: {currentStatus}</span>
-				<span class="text-[var(--text-tertiary)] font-mono">{service.restartPolicy || 'always'}</span>
-			</div>
-		</div>
-	</div>
+	<!-- Contextual Metric Cards with Progress Bars -->
+	<TelemetryMetricCards
+		{currentCpu}
+		{currentMem}
+		{memLimit}
+		{memPercent}
+		{currentNetRx}
+		{currentNetTx}
+		hasContainers={matchingContainers.length > 0}
+	/>
 
 	<!-- 2x2 Metric Charts Grid with Live Per-Container Time Series (Dokploy Parity) -->
-	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
-		<!-- CPU Chart -->
-		<div class="p-5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="text-xs font-semibold text-[var(--text-primary)]">CPU Utilization</span>
-					<span class="text-[11px] font-mono text-[var(--text-tertiary)]">({timeRange})</span>
-				</div>
-				<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
-					<span>Cur: <strong class="text-[var(--text-primary)]">{currentCpu.toFixed(1)}%</strong></span>
-					<span>•</span>
-					<span>Peak: <strong class="text-[var(--text-secondary)]">{Math.max(...cpuHistory.map((p) => p.value), currentCpu).toFixed(1)}%</strong></span>
-				</div>
-			</div>
-			<AreaChart data={cpuHistory} height={150} />
-		</div>
-
-		<!-- Memory Chart -->
-		<div class="p-5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="text-xs font-semibold text-[var(--text-primary)]">Memory Utilization</span>
-					<span class="text-[11px] font-mono text-[var(--text-tertiary)]">({timeRange})</span>
-				</div>
-				<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
-					<span>Cur: <strong class="text-[var(--text-primary)]">{formatMemory(currentMem)}</strong></span>
-					<span>•</span>
-					<span>Limit: {memLimit} MB</span>
-				</div>
-			</div>
-			<AreaChart data={memoryHistory} height={150} strokeColor="#4C9A72" fillColor="#4C9A72" />
-		</div>
-
-		<!-- Network Chart -->
-		<div class="p-5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="text-xs font-semibold text-[var(--text-primary)]">Network Traffic</span>
-					<span class="text-[11px] font-mono text-[var(--text-tertiary)]">({timeRange})</span>
-				</div>
-				<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
-					<span>Rx: <strong class="text-[var(--text-secondary)]">{currentNetRx}</strong></span>
-					<span>•</span>
-					<span>Tx: <strong class="text-[var(--text-secondary)]">{currentNetTx}</strong></span>
-				</div>
-			</div>
-			<AreaChart data={networkHistory} height={150} strokeColor="#7680B5" fillColor="#7680B5" />
-		</div>
-
-		<!-- Storage / Host I/O Chart -->
-		<div class="p-5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-3 shadow-xs">
-			<div class="flex items-center justify-between">
-				<div class="flex items-center gap-2">
-					<span class="text-xs font-semibold text-[var(--text-primary)]">System Host Storage</span>
-					<span class="text-[11px] font-mono text-[var(--text-tertiary)]">({timeRange})</span>
-				</div>
-				<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
-					<span>Usage: <strong class="text-[var(--text-secondary)]">{dataStore.server.storageUsed} GB</strong></span>
-					<span>•</span>
-					<span>Total: <strong class="text-[var(--text-secondary)]">{dataStore.server.storage} GB</strong></span>
-				</div>
-			</div>
-			<AreaChart data={dataStore.monitoringData.storage} height={150} strokeColor="#B8893B" fillColor="#B8893B" />
-		</div>
-	</div>
+	<TelemetryChartsGrid
+		{timeRange}
+		{cpuHistory}
+		{currentCpu}
+		{memoryHistory}
+		{currentMem}
+		{memLimit}
+		{networkHistory}
+		{currentNetRx}
+		{currentNetTx}
+		storageHistory={dataStore.monitoringData.storage}
+		storageUsed={dataStore.server.storageUsed}
+		storageTotal={dataStore.server.storage}
+	/>
 
 	<!-- Micro-Workloads & Container Cgroups Breakdown -->
 	<MicroWorkloadTable

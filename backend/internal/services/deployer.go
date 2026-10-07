@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gopod/internal/podman"
@@ -139,202 +140,7 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 	return d.deployImage(ctx, s, depID, logLine)
 }
 
-// deployCompose manages Docker/Podman Compose deployment via CLI with -p project name flag (Dokploy parity).
-func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger string, logLine func(string)) (*DeployResult, error) {
-	projectName := s.ID
-	if projectName == "" {
-		projectName = GenerateContainerName(s.ProjectID, s.Name)
-	}
 
-	composeDir := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName)
-	if err := os.MkdirAll(composeDir, 0755); err != nil {
-		logLine(fmt.Sprintf("❌ Failed to create compose workspace dir: %v", err))
-		return nil, err
-	}
-
-	composeFile := filepath.Join(composeDir, "docker-compose.yml")
-	content := strings.TrimSpace(s.ComposeYaml)
-	if content == "" {
-		content = fmt.Sprintf("version: '3.8'\nservices:\n  %s:\n    image: %s\n    restart: always\n", s.Name, s.Image)
-	}
-
-	if err := os.WriteFile(composeFile, []byte(content), 0644); err != nil {
-		logLine(fmt.Sprintf("❌ Failed to write compose file: %v", err))
-		return nil, err
-	}
-
-	logLine(fmt.Sprintf("📄 Compose file written to %s (project: %s)", composeFile, projectName))
-
-	if trigger == "fresh-volumes" {
-		logLine("🧹 Fresh Volumes requested: purging ephemeral containers and volumes (down -v)...")
-		downCmd := exec.CommandContext(ctx, "podman-compose", "-p", projectName, "-f", composeFile, "down", "-v")
-		d.setupCmdEnv(downCmd)
-		dStdout, _ := downCmd.StdoutPipe()
-		dStderr, _ := downCmd.StderrPipe()
-		if err := downCmd.Start(); err == nil {
-			d.streamPipes(dStdout, dStderr, logLine)
-			_ = downCmd.Wait()
-		}
-	}
-
-	var runner string
-	var args []string
-	if _, err := exec.LookPath("podman-compose"); err == nil {
-		runner = "podman-compose"
-		args = []string{"-p", projectName, "-f", composeFile, "up", "-d"}
-	} else {
-		runner = "podman"
-		args = []string{"compose", "-p", projectName, "-f", composeFile, "up", "-d"}
-	}
-
-	logLine(fmt.Sprintf("⏳ Executing: %s %s...", runner, strings.Join(args, " ")))
-
-	cmd := exec.CommandContext(ctx, runner, args...)
-	d.setupCmdEnv(cmd)
-
-	stdout, _ := cmd.StdoutPipe()
-	stderr, _ := cmd.StderrPipe()
-	if err := cmd.Start(); err != nil {
-		logLine(fmt.Sprintf("⚠️ %s start error: %v. Retrying with alternate runner...", runner, err))
-		if runner == "podman-compose" {
-			runner = "podman"
-			args = []string{"compose", "-p", projectName, "-f", composeFile, "up", "-d"}
-		} else {
-			runner = "podman-compose"
-			args = []string{"-p", projectName, "-f", composeFile, "up", "-d"}
-		}
-		cmd = exec.CommandContext(ctx, runner, args...)
-		d.setupCmdEnv(cmd)
-		stdout, _ = cmd.StdoutPipe()
-		stderr, _ = cmd.StderrPipe()
-		if err2 := cmd.Start(); err2 != nil {
-			logLine(fmt.Sprintf("❌ All compose runners failed: %v", err2))
-			return nil, err2
-		}
-	}
-
-	d.streamPipes(stdout, stderr, logLine)
-
-	if err := cmd.Wait(); err != nil {
-		logLine(fmt.Sprintf("❌ Compose execution exited with error: %v", err))
-		return nil, err
-	}
-
-	logLine("✅ Compose stack deployed successfully and containers are active.")
-	return &DeployResult{
-		ContainerName: projectName,
-		CommitHash:    "",
-		CommitMessage: "Compose stack rollout",
-		Version:       "compose",
-	}, nil
-}
-
-// deployGit clones repository, builds image with Podman, and starts container.
-func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
-	containerName := s.ID
-	if containerName == "" {
-		containerName = GenerateContainerName(s.ProjectID, s.Name)
-	}
-	repoUrl := s.GitRepo
-	if repoUrl == "" {
-		repoUrl = s.Source
-	}
-	branch := s.GitBranch
-	if branch == "" {
-		branch = s.Branch
-	}
-	if branch == "" {
-		branch = "main"
-	}
-
-	tmpDir := filepath.Join(os.TempDir(), "gopod-builds", fmt.Sprintf("%s-%s", s.ID, depID))
-	_ = os.RemoveAll(tmpDir)
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create build temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	// Prepare SSH deploy key if configured
-	var sshKeyFile string
-	if s.SSHKeyID != "" && d.sshKeyProvider != nil {
-		privKey, err := d.sshKeyProvider.GetPrivateKey(ctx, s.SSHKeyID)
-		if err == nil && strings.TrimSpace(privKey) != "" {
-			keyPath := filepath.Join(tmpDir, "deploy_id_ed25519")
-			if err := os.WriteFile(keyPath, []byte(strings.TrimSpace(privKey)+"\n"), 0600); err == nil {
-				sshKeyFile = keyPath
-			}
-		}
-	}
-
-	logLine(fmt.Sprintf("📥 Cloning %s (branch: %s)...", repoUrl, branch))
-	cloneCmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "-b", branch, repoUrl, tmpDir)
-	cloneEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
-	if sshKeyFile != "" {
-		cloneEnv = append(cloneEnv, fmt.Sprintf("GIT_SSH_COMMAND=ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new", sshKeyFile))
-	}
-	cloneCmd.Env = cloneEnv
-
-	stdout, _ := cloneCmd.StdoutPipe()
-	stderr, _ := cloneCmd.StderrPipe()
-	if err := cloneCmd.Start(); err != nil {
-		logLine(fmt.Sprintf("❌ Git clone start failed: %v", err))
-		return nil, err
-	}
-	d.streamPipes(stdout, stderr, logLine)
-	if err := cloneCmd.Wait(); err != nil {
-		logLine(fmt.Sprintf("❌ Git clone failed: %v", err))
-		return nil, err
-	}
-
-	// Extract real Git commit SHA, message, and author
-	commitHash := ""
-	commitMsg := ""
-	if out, err := exec.CommandContext(ctx, "git", "-C", tmpDir, "rev-parse", "--short", "HEAD").Output(); err == nil {
-		commitHash = strings.TrimSpace(string(out))
-	}
-	if out, err := exec.CommandContext(ctx, "git", "-C", tmpDir, "log", "-1", "--pretty=%s").Output(); err == nil {
-		commitMsg = strings.TrimSpace(string(out))
-	}
-	logLine(fmt.Sprintf("📌 Git HEAD: %s (%s)", commitHash, commitMsg))
-
-	dockerfile := s.DockerfilePath
-	if dockerfile == "" {
-		dockerfile = "Dockerfile"
-	}
-
-	imageTag := fmt.Sprintf("gopod-%s-%s:latest", strings.ToLower(s.ProjectID), strings.ToLower(s.Name))
-	logLine(fmt.Sprintf("🔨 Building container image: %s using %s...", imageTag, dockerfile))
-
-	buildCmd := exec.CommandContext(ctx, "podman", "build", "-t", imageTag, "-f", filepath.Join(tmpDir, dockerfile), tmpDir)
-	d.setupCmdEnv(buildCmd)
-	bStdout, _ := buildCmd.StdoutPipe()
-	bStderr, _ := buildCmd.StderrPipe()
-	if err := buildCmd.Start(); err != nil {
-		logLine(fmt.Sprintf("❌ Podman build start error: %v", err))
-		return nil, err
-	}
-	d.streamPipes(bStdout, bStderr, logLine)
-	if err := buildCmd.Wait(); err != nil {
-		logLine(fmt.Sprintf("❌ Podman build failed: %v", err))
-		return nil, err
-	}
-	logLine(fmt.Sprintf("✅ Built image %s successfully", imageTag))
-
-	// Stop previous container right before starting new one
-	d.stopPreviousContainer(ctx, s, logLine)
-
-	if err := d.runContainer(ctx, s, containerName, imageTag, logLine); err != nil {
-		return nil, err
-	}
-
-	return &DeployResult{
-		ContainerName: containerName,
-		CommitHash:    commitHash,
-		CommitMessage: commitMsg,
-		Image:         imageTag,
-		Version:       commitHash,
-	}, nil
-}
 
 // deployImage pulls container image and starts container.
 func (d *Deployer) deployImage(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
@@ -377,40 +183,7 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID string, log
 	}, nil
 }
 
-// deployQuadlet writes Quadlet systemd unit and generates declarative service.
-func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
-	quadletDir := filepath.Join(d.dataDir, "quadlets")
-	_ = os.MkdirAll(quadletDir, 0755)
 
-	unitFile := filepath.Join(quadletDir, fmt.Sprintf("%s.container", s.Name))
-	content := strings.TrimSpace(s.QuadletConfig)
-	if content == "" {
-		content = fmt.Sprintf("[Unit]\nDescription=%s Quadlet Service\nAfter=network-online.target\n\n[Container]\nImage=%s\nPublishPort=%d:80\nRestart=always\n\n[Service]\nRestart=always\n\n[Install]\nWantedBy=default.target\n", s.Name, s.Image, s.Port)
-	}
-
-	if err := os.WriteFile(unitFile, []byte(content), 0644); err != nil {
-		logLine(fmt.Sprintf("❌ Failed to write quadlet file: %v", err))
-		return nil, err
-	}
-	logLine(fmt.Sprintf("📄 Quadlet unit written to %s", unitFile))
-
-	// Attempt systemd reload if systemctl is available
-	if _, err := exec.LookPath("systemctl"); err == nil {
-		logLine("⚙️ Executing: systemctl --user daemon-reload...")
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "restart", fmt.Sprintf("%s.service", s.Name)).Run()
-		logLine(fmt.Sprintf("✅ Reloaded systemd user daemon for %s.service", s.Name))
-	} else {
-		logLine("ℹ️ Quadlet unit generated and verified. Ready for host systemd activation.")
-	}
-
-	return &DeployResult{
-		ContainerName: s.Name,
-		CommitHash:    "",
-		CommitMessage: "Quadlet unit compiled",
-		Version:       "quadlet",
-	}, nil
-}
 
 func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, imageToRun string, logLine func(string)) error {
 	ports := []string{}
@@ -474,23 +247,39 @@ func (d *Deployer) stopPreviousContainer(ctx context.Context, s Service, logLine
 	}
 }
 
-func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) {
+func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) []string {
+	var errLines []string
+	var mu sync.Mutex
 	done := make(chan bool, 2)
-	stream := func(r io.Reader) {
+	stream := func(r io.Reader, isErr bool) {
 		if r == nil {
 			done <- true
 			return
 		}
 		scanner := bufio.NewScanner(r)
 		for scanner.Scan() {
-			logLine(scanner.Text())
+			text := scanner.Text()
+			logLine(text)
+			lower := strings.ToLower(text)
+			if isErr || strings.HasPrefix(text, "Error:") ||
+				strings.Contains(lower, "requested access to the resource is denied") ||
+				strings.Contains(lower, "cannot be used as a dependency") ||
+				strings.Contains(lower, "no such container") ||
+				strings.Contains(lower, "failed to start") {
+				if !strings.Contains(lower, "warning") && !strings.Contains(lower, "resolving") {
+					mu.Lock()
+					errLines = append(errLines, text)
+					mu.Unlock()
+				}
+			}
 		}
 		done <- true
 	}
-	go stream(stdout)
-	go stream(stderr)
+	go stream(stdout, false)
+	go stream(stderr, true)
 	<-done
 	<-done
+	return errLines
 }
 
 // StartService powers on workload containers or units according to service workload type.

@@ -1,8 +1,9 @@
 <script lang="ts">
-	import type { Service } from '$lib/types';
+	import type { Service, Container } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { StatusBadge } from '$lib/components/ui';
 	import { Chip } from '$lib/components/primitives';
+	import { getCpuColor, getMemPercent, getMemColor } from '$lib/utils/format';
 	import { Cube, Terminal, FileText } from 'phosphor-svelte';
 
 	interface Props {
@@ -13,10 +14,18 @@
 
 	let { service, onOpenTerminal, onOpenLogs }: Props = $props();
 
-	// Match containers from dataStore for this service (serviceId, prefix match, or service name)
-	let serviceContainers = $derived.by(() => {
+	// Match containers from dataStore for this service (serviceId, compose project, prefix, or service name)
+	let serviceContainers = $derived.by<Container[]>(() => {
 		const storeContainers = dataStore.containers.filter(
-			(c) => c.serviceId === service.id || c.name.startsWith(service.id) || (c.serviceName && c.serviceName === service.name)
+			(c) =>
+				c.serviceId === service.id ||
+				c.name === service.name ||
+				c.name.startsWith(service.id) ||
+				(c.serviceName && c.serviceName === service.name) ||
+				(c.labels &&
+					(c.labels['com.docker.compose.project'] === service.name ||
+						c.labels['io.podman.compose.project'] === service.name ||
+						c.labels['io.gopod.service'] === service.id))
 		);
 		if (storeContainers.length > 0) return storeContainers;
 
@@ -48,27 +57,11 @@
 			uptime: service.status === 'running' ? 'Active' : 'Stopped'
 		}));
 	});
-
-	function getCpuColor(cpu: number): string {
-		if (cpu >= 5.0) return 'bg-rose-500';
-		if (cpu >= 2.0) return 'bg-amber-400';
-		return 'bg-[var(--accent)]';
-	}
-
-	function getMemPercent(used: number, limit: number): number {
-		return Math.min(Math.round((used / (limit || 512)) * 100), 100);
-	}
-
-	function getMemColor(percent: number): string {
-		if (percent >= 85) return 'bg-rose-500';
-		if (percent >= 70) return 'bg-amber-400';
-		return 'bg-emerald-400';
-	}
 </script>
 
 <div class="w-full flex flex-col gap-3">
 	<!-- Section Header -->
-	<div class="flex items-center justify-between pb-1 border-b border-[var(--border-subtle)]">
+	<div class="flex items-center justify-between pb-1 border-b border-[var(--border)]">
 		<div class="flex items-center gap-2">
 			<span class="text-xs font-semibold text-[var(--text-primary)]">
 				Micro-Workloads & Container Cgroups
@@ -79,15 +72,15 @@
 		</div>
 
 		<div class="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)] font-mono">
-			<span class="text-emerald-400">● cgroups v2 active</span>
+			<span class="text-[var(--status-green)]">● cgroups v2 active</span>
 			<span>•</span>
 			<span>userns: {service.advanced?.runtime.userNamespace || 'keep-id'}</span>
 		</div>
 	</div>
 
-	<!-- Container Table with Inline Visual Sparkbars (Refactoring UI: Scannable Data & Sub-second Outlier Spotting) -->
+	<!-- Container Table with Inline Visual Sparkbars (Table Design Standards & Zero Slop) -->
 	<div class="w-full overflow-x-auto md:overflow-x-visible rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs">
-		<table class="w-full border-collapse min-w-[700px]">
+		<table class="w-full border-collapse min-w-[720px]">
 			<thead class="sticky top-0 z-20">
 				<tr class="border-b border-[var(--border)] bg-[var(--bg-table-header)]">
 					<th class="px-4 py-2.5 text-[11px] font-semibold text-[var(--text-tertiary)] tracking-wider uppercase text-left bg-[var(--bg-table-header)] sticky top-0 z-20">
@@ -121,11 +114,11 @@
 						<td class="px-4 py-2.5 text-[13px] text-[var(--text-primary)] align-middle whitespace-nowrap">
 							<div class="flex items-center justify-between min-w-0 pr-1">
 								<div class="flex items-center gap-2.5 min-w-0">
-									<div class="p-1.5 rounded bg-[var(--accent-muted)] text-[var(--accent)] shrink-0">
+									<div class="p-1.5 rounded-[var(--radius-sm)] bg-[var(--accent-muted)] text-[var(--accent)] shrink-0">
 										<Cube size={15} />
 									</div>
 									<div class="flex flex-col min-w-0">
-										<span class="font-mono text-[13px] font-semibold text-[var(--text-primary)] truncate">
+										<span class="font-mono text-[13px] font-medium text-[var(--text-primary)] truncate">
 											{c.name}
 										</span>
 										<span class="font-mono text-[11px] text-[var(--text-tertiary)] truncate" title={c.image}>
@@ -140,7 +133,7 @@
 										<button
 											type="button"
 											onclick={() => onOpenTerminal?.(c.name)}
-											class="p-1.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] hover:bg-[var(--accent)] hover:text-black border border-[var(--border)] text-[var(--text-secondary)] cursor-pointer transition-colors shadow-xs"
+											class="p-1.5 min-w-[28px] min-h-[28px] rounded-[var(--radius-sm)] bg-[var(--bg-panel)] hover:bg-[var(--accent)] hover:text-black border border-[var(--border)] text-[var(--text-secondary)] cursor-pointer transition-colors shadow-xs flex items-center justify-center"
 											title="Open container terminal"
 											aria-label="Open container terminal"
 										>
@@ -151,7 +144,7 @@
 										<button
 											type="button"
 											onclick={() => onOpenLogs?.(c.name)}
-											class="p-1.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] hover:bg-[var(--accent)] hover:text-black border border-[var(--border)] text-[var(--text-secondary)] cursor-pointer transition-colors shadow-xs"
+											class="p-1.5 min-w-[28px] min-h-[28px] rounded-[var(--radius-sm)] bg-[var(--bg-panel)] hover:bg-[var(--accent)] hover:text-black border border-[var(--border)] text-[var(--text-secondary)] cursor-pointer transition-colors shadow-xs flex items-center justify-center"
 											title="View container logs"
 											aria-label="View container logs"
 										>
@@ -162,49 +155,49 @@
 							</div>
 						</td>
 
-						<!-- Status -->
-						<td class="px-3.5 py-2.5 align-middle whitespace-nowrap">
+						<!-- Status Badge -->
+						<td class="px-3.5 py-2.5 text-[13px] align-middle whitespace-nowrap">
 							<StatusBadge status={c.status} size="sm" />
 						</td>
 
-						<!-- CPU with Micro Sparkbar (Scannable outlier detection) -->
-						<td class="px-4 py-2.5 text-right font-mono align-middle whitespace-nowrap">
+						<!-- CPU Metric + Linear Progress Bar -->
+						<td class="px-4 py-2.5 text-[13px] align-middle text-right whitespace-nowrap">
 							<div class="flex items-center justify-end gap-2.5">
-								<div class="w-16 h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden hidden sm:block shrink-0">
+								<div class="w-16 h-1 rounded-full bg-[var(--bg-surface)] overflow-hidden hidden sm:block">
 									<div
 										class="h-full rounded-full transition-all duration-300 {getCpuColor(c.cpu)}"
-										style="width: {Math.min(c.cpu * 12, 100)}%;"
+										style="width: {Math.min((c.cpu || 0) * 10, 100)}%;"
 									></div>
 								</div>
-								<span class="text-[13px] font-semibold tabular-nums text-[var(--text-primary)]">
-									{c.cpu.toFixed(1)}%
+								<span class="font-mono text-[12px] font-semibold text-[var(--text-primary)] tabular-nums min-w-[42px]">
+									{(c.cpu || 0).toFixed(1)}%
 								</span>
 							</div>
 						</td>
 
-						<!-- Memory with Micro Sparkbar -->
-						<td class="px-4 py-2.5 text-right font-mono align-middle whitespace-nowrap">
+						<!-- Memory Metric + Limit Sparkbar -->
+						<td class="px-4 py-2.5 text-[13px] align-middle text-right whitespace-nowrap">
 							<div class="flex items-center justify-end gap-2.5">
-								<div class="w-16 h-1.5 rounded-full bg-[var(--bg-surface)] overflow-hidden hidden sm:block shrink-0">
+								<div class="w-16 h-1 rounded-full bg-[var(--bg-surface)] overflow-hidden hidden sm:block">
 									<div
 										class="h-full rounded-full transition-all duration-300 {getMemColor(memPct)}"
 										style="width: {memPct}%;"
 									></div>
 								</div>
-								<span class="text-[13px] tabular-nums text-[var(--text-primary)]">
-									{c.memory} <span class="text-[11px] text-[var(--text-tertiary)]">/ {limit} MB</span>
+								<span class="font-mono text-[12px] font-medium text-[var(--text-secondary)] tabular-nums">
+									<strong class="text-[var(--text-primary)] font-semibold">{c.memory || 0}</strong> / {limit} MB
 								</span>
 							</div>
 						</td>
 
 						<!-- PIDs -->
-						<td class="px-3.5 py-2.5 text-center text-[13px] font-mono text-[var(--text-secondary)] tabular-nums align-middle whitespace-nowrap">
-							{c.pids || 4}
+						<td class="px-3 py-2.5 text-[13px] align-middle text-center whitespace-nowrap font-mono text-[12px] text-[var(--text-secondary)]">
+							{c.pids ?? (c.status === 'running' ? 1 : 0)}
 						</td>
 
 						<!-- Uptime -->
-						<td class="px-4 py-2.5 text-right text-[13px] font-mono text-[var(--text-secondary)] tabular-nums align-middle whitespace-nowrap">
-							{c.uptime || 'Up 8d'}
+						<td class="px-4 py-2.5 text-[13px] align-middle text-right whitespace-nowrap font-mono text-[11px] text-[var(--text-tertiary)]">
+							{c.uptime || c.startedAt || 'Active'}
 						</td>
 					</tr>
 				{/each}

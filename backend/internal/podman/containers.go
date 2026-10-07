@@ -118,6 +118,15 @@ func (c *Client) getContainersCLI(ctx context.Context, statsMap map[string]Conta
 			}
 		}
 
+		labelsMap := make(map[string]string)
+		if rawLabels, ok := raw["Labels"].(map[string]interface{}); ok {
+			for k, v := range rawLabels {
+				if s, ok := v.(string); ok {
+					labelsMap[k] = s
+				}
+			}
+		}
+
 		item := ContainerItem{
 			ID:      id,
 			Names:   names,
@@ -125,6 +134,7 @@ func (c *Client) getContainersCLI(ctx context.Context, statsMap map[string]Conta
 			Status:  getString(raw, "Status"),
 			State:   getString(raw, "State"),
 			Created: getString(raw, "Created"),
+			Labels:  labelsMap,
 		}
 
 		if s, ok := statsMap[id]; ok {

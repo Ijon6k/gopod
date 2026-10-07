@@ -346,67 +346,16 @@ export class DataStore {
 				this.runtimeStore.containers = rawContainers.map((rc: any) => {
 					const name = rc.names && rc.names.length > 0 ? rc.names[0].replace(/^\//, '') : rc.id;
 					const stat = statsMap.get(rc.id) || statsMap.get(name);
-
-					let projName = 'System Host';
-					let projId = 'system';
-					let servName = name;
-					let servId = name;
-
-					// Label-first association, then compose project label, then prefix / name matching
-					if (rc.labels && rc.labels['io.gopod.project']) {
-						projId = rc.labels['io.gopod.project'];
-						servId = rc.labels['io.gopod.service'] || name;
-						servName = rc.labels['io.gopod.name'] || name;
-						projName = this.projectsStore.getProjectById(projId)?.name || projId;
-					} else if (rc.labels && rc.labels['com.docker.compose.project']) {
-						const composeProject = rc.labels['com.docker.compose.project'];
-						const matchedService = this.services.find(
-							(s: Service) => s.id === composeProject || s.name === composeProject
-						);
-						if (matchedService) {
-							servId = matchedService.id;
-							servName = rc.labels['com.docker.compose.service'] || matchedService.name;
-							projId = matchedService.projectId;
-							projName = this.projectsStore.getProjectById(projId)?.name || projId;
-						} else {
-							servId = composeProject;
-							servName = rc.labels['com.docker.compose.service'] || name;
-						}
-					} else {
-						// Service ID / name prefix matching
-						const matchedService = this.services.find(
-							(s: Service) => (s.id && (name.startsWith(s.id) || name.includes(s.id))) || (s.name && (name.startsWith(s.name) || name.includes(s.name)))
-						);
-						if (matchedService) {
-							servId = matchedService.id;
-							servName = matchedService.name;
-							projId = matchedService.projectId;
-							projName = this.projectsStore.getProjectById(projId)?.name || projId;
-						} else {
-							const parts = name.split('-');
-							if (parts.length >= 3) {
-								const potentialProj = this.projectsStore.projects.find(
-									(p) => p.id === parts[0] || p.name.toLowerCase() === parts[0]
-								);
-								if (potentialProj) {
-									projId = potentialProj.id;
-									projName = potentialProj.name;
-									servName = parts.slice(1, parts.length - 1).join('-');
-									servId = `${projId}-${servName}`;
-								}
-							}
-						}
-					}
-
+					const meta = this.resolveContainerMetadata(name, rc.labels);
 					const isRunning = rc.state === 'running' || (rc.status && rc.status.toLowerCase().includes('up'));
 
 					return {
 						id: rc.id,
 						name: name,
-						projectId: projId,
-						projectName: projName,
-						serviceId: servId,
-						serviceName: servName,
+						projectId: meta.projId,
+						projectName: meta.projName,
+						serviceId: meta.servId,
+						serviceName: meta.servName,
 						image: rc.image || 'unknown',
 						status: isRunning ? 'running' : 'stopped',
 						cpu: stat?.cpuPercent ? parseFloat(stat.cpuPercent.toFixed(1)) : 0,
@@ -420,7 +369,8 @@ export class DataStore {
 						blockWrite: '—',
 						pids: stat?.pids || (isRunning ? 1 : 0),
 						restarts: 0,
-						uptime: rc.status || (isRunning ? 'Active' : 'Stopped')
+						uptime: rc.status || (isRunning ? 'Active' : 'Stopped'),
+						labels: rc.labels || {}
 					};
 				});
 			} else if (stats && Array.isArray(stats) && stats.length > 0) {
@@ -431,15 +381,148 @@ export class DataStore {
 		}
 	}
 
+	resolveContainerMetadata(name: string, labels?: Record<string, string>): { projId: string; projName: string; servId: string; servName: string } {
+		let projName = 'System Host';
+		let projId = 'system';
+		let servName = name;
+		let servId = name;
+
+		// 1. Explicit GOPOD metadata labels
+		if (labels && labels['io.gopod.project']) {
+			projId = labels['io.gopod.project'];
+			servId = labels['io.gopod.service'] || name;
+			servName = labels['io.gopod.name'] || name;
+			projName = this.projectsStore.getProjectById(projId)?.name || projId;
+			return { projId, projName, servId, servName };
+		}
+
+		// 2. Compose Project labels (Docker & Podman Compose parity)
+		const composeProj = labels?.['com.docker.compose.project'] || labels?.['io.podman.compose.project'];
+		const composeServ = labels?.['com.docker.compose.service'] || labels?.['io.podman.compose.service'];
+
+		if (composeProj) {
+			const matched = this.services.find(
+				(s: Service) =>
+					s.id === composeProj ||
+					s.name === composeProj ||
+					s.id.endsWith(`-${composeProj}`) ||
+					composeProj.includes(s.name) ||
+					(s.projectId && composeProj.startsWith(s.projectId))
+			);
+			if (matched) {
+				servId = matched.id;
+				servName = composeServ || matched.name;
+				projId = matched.projectId;
+				projName = this.projectsStore.getProjectById(projId)?.name || projId;
+				return { projId, projName, servId, servName };
+			}
+		}
+
+		// 3. Compose working directory or config file paths
+		const composeWorkDir = labels?.['com.docker.compose.project.working_dir'] || labels?.['com.docker.compose.project.config_files'];
+		if (composeWorkDir) {
+			for (const p of this.projectsStore.projects) {
+				if (composeWorkDir.includes(`/${p.id}/`) || composeWorkDir.includes(`/${p.name}/`)) {
+					projId = p.id;
+					projName = p.name;
+					const pServices = this.getProjectServices(p.id);
+					for (const s of pServices) {
+						if (composeWorkDir.includes(`/${s.name}`) || composeWorkDir.includes(`/${s.id}`) || (composeProj && (s.id === composeProj || s.name === composeProj))) {
+							servId = s.id;
+							servName = composeServ || s.name;
+							return { projId, projName, servId, servName };
+						}
+					}
+					break;
+				}
+			}
+		}
+
+		// 4. Podman systemd unit label (e.g. podman-compose@song.service)
+		const systemdUnit = labels?.['PODMAN_SYSTEMD_UNIT'];
+		if (systemdUnit) {
+			const unitMatch = systemdUnit.match(/podman-compose@([^.]+)\.service/);
+			if (unitMatch) {
+				const unitName = unitMatch[1];
+				const matched = this.services.find((s) => s.id === unitName || s.name === unitName || s.id.endsWith(`-${unitName}`));
+				if (matched) {
+					servId = matched.id;
+					servName = composeServ || matched.name;
+					projId = matched.projectId;
+					projName = this.projectsStore.getProjectById(projId)?.name || projId;
+					return { projId, projName, servId, servName };
+				}
+			}
+		}
+
+		// 5. Container name prefixes / substrings matching services
+		const matchedByPrefix = this.services.find(
+			(s: Service) =>
+				(s.id && (name.startsWith(s.id) || name.includes(s.id))) ||
+				(s.name && (name.startsWith(s.name) || name.includes(s.name) || name.startsWith(`${s.name}-`) || name.startsWith(`${s.name}_`)))
+		);
+		if (matchedByPrefix) {
+			servId = matchedByPrefix.id;
+			servName = matchedByPrefix.name;
+			projId = matchedByPrefix.projectId;
+			projName = this.projectsStore.getProjectById(projId)?.name || projId;
+			return { projId, projName, servId, servName };
+		}
+
+		// 6. Project name prefix in container name (e.g., self-hosted-redis-...)
+		const parts = name.split(/[-_]/);
+		if (parts.length >= 2) {
+			const potentialProj = this.projectsStore.projects.find(
+				(p) => p.id === parts[0] || p.name.toLowerCase() === parts[0]
+			);
+			if (potentialProj) {
+				projId = potentialProj.id;
+				projName = potentialProj.name;
+				const matchedServInProj = this.getProjectServices(potentialProj.id).find(
+					(s) => name.includes(s.name) || name.includes(s.id)
+				);
+				if (matchedServInProj) {
+					servId = matchedServInProj.id;
+					servName = matchedServInProj.name;
+				} else {
+					servName = parts.slice(1).join('-');
+					servId = `${projId}-${servName}`;
+				}
+			}
+		}
+
+		return { projId, projName, servId, servName };
+	}
+
+	relinkContainers() {
+		if (!this.runtimeStore.containers.length || !this.services.length) return;
+		this.runtimeStore.containers = this.runtimeStore.containers.map((c) => {
+			const meta = this.resolveContainerMetadata(c.name, c.labels);
+			return {
+				...c,
+				projectId: meta.projId,
+				projectName: meta.projName,
+				serviceId: meta.servId,
+				serviceName: meta.servName
+			};
+		});
+	}
+
 	async fetchInitialData() {
+		// 1. Fetch projects and services first to avoid container matching race condition
+		await this.projectsStore.fetchProjectsData();
+
+		// 2. Fetch runtime data, credentials, storage, traffic, and live stats
 		await Promise.all([
-			this.projectsStore.fetchProjectsData(),
 			this.runtimeStore.fetchRuntimeData(),
 			this.credentialsStore.fetchCredentials(),
 			this.storageStore.fetchStorageData(),
 			this.telemetryStore.fetchTrafficLogs(),
 			this.fetchLiveStats()
 		]);
+
+		// 3. Ensure any loaded containers are immediately re-linked to known projects/services
+		this.relinkContainers();
 	}
 }
 

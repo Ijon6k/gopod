@@ -1,4 +1,7 @@
 import type { Container, Project, Service } from '$lib/types';
+import { getCpuColor, getMemPercent, getMemColor } from '$lib/utils/format';
+
+export { getCpuColor, getMemPercent, getMemColor };
 
 export interface ServiceNode {
 	service: Service;
@@ -6,6 +9,7 @@ export interface ServiceNode {
 	totalCpu: number;
 	totalMem: number;
 	totalPids: number;
+	matchesQuery?: boolean;
 }
 
 export interface ProjectNode {
@@ -14,26 +18,11 @@ export interface ProjectNode {
 	totalCpu: number;
 	totalMem: number;
 	totalContainers: number;
+	matchesQuery?: boolean;
 }
 
 export function isAnomaly(c: Container): boolean {
 	return (c.cpu ?? 0) >= 2.0 || (c.memory ?? 0) >= 400 || (c.status !== 'running' && c.status !== 'healthy');
-}
-
-export function getCpuColor(cpu: number): string {
-	if (cpu >= 5.0) return 'bg-[var(--status-red)]';
-	if (cpu >= 2.0) return 'bg-[var(--status-amber)]';
-	return 'bg-[var(--accent)]';
-}
-
-export function getMemPercent(used: number, limit: number): number {
-	return Math.min(Math.round((used / (limit || 512)) * 100), 100);
-}
-
-export function getMemColor(percent: number): string {
-	if (percent >= 85) return 'bg-[var(--status-red)]';
-	if (percent >= 70) return 'bg-[var(--status-amber)]';
-	return 'bg-[var(--status-green)]';
 }
 
 export function buildProjectTree(
@@ -107,7 +96,11 @@ export function buildProjectTree(
 				.map((service) => {
 					let containers = project.id === 'system'
 						? unassignedContainers.filter((c) => (c.serviceName || c.name) === service.name)
-						: allContainers.filter((c) => c.serviceId === service.id);
+						: allContainers.filter(
+								(c) =>
+									c.serviceId === service.id ||
+									(c.projectId === project.id && (c.serviceName === service.name || c.name.startsWith(service.id)))
+							);
 
 					if (filterAnomaliesOnly) {
 						containers = containers.filter(isAnomaly);

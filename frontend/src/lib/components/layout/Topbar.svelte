@@ -16,6 +16,15 @@
 
 	let search = $state('');
 	let projectMenuOpen = $state(false);
+	let serviceMenuOpen = $state(false);
+
+	function handleClickOutside(e: MouseEvent) {
+		const target = e.target as HTMLElement;
+		if (!target.closest('.dropdown-container')) {
+			projectMenuOpen = false;
+			serviceMenuOpen = false;
+		}
+	}
 
 	// Breadcrumb logic
 	const labels: Record<string, string[]> = {
@@ -41,9 +50,10 @@
 				? parts[1]
 				: undefined;
 		const project = projects.find((p) => p.id === projectId);
-		const service = services.find((s) => s.id === parts[3]);
+		const serviceId = parts[2] === 'services' ? parts[3] : undefined;
+		const service = services.find((s) => s.id === serviceId);
 
-		if (labels[pathname]) return { items: labels[pathname], project: undefined };
+		if (labels[pathname]) return { items: labels[pathname], project: undefined, service: undefined };
 
 		if (project) {
 			const items = [
@@ -51,12 +61,18 @@
 				project.name,
 				...(parts[2] === 'new-service' ? ['New service'] : service ? [service.name] : [])
 			];
-			return { items, project };
+			return { items, project, service };
 		}
 
-		return { items: parts.length ? [parts[0]] : ['Home'], project: undefined };
+		return { items: parts.length ? [parts[0]] : ['Home'], project: undefined, service: undefined };
 	});
+
+	let projectServices = $derived(
+		crumbs.project ? services.filter((s) => s.projectId === crumbs.project?.id) : []
+	);
 </script>
+
+<svelte:window onclick={handleClickOutside} />
 
 <div
 	class="h-[var(--topbar-height)] flex items-center gap-2.5 px-3.5 border-b border-[var(--border)] bg-[var(--bg-shell)] shrink-0"
@@ -93,18 +109,21 @@
 					<i class="not-italic text-[var(--text-tertiary)] text-sm">/</i>
 				{/if}
 				{#if crumbs.project && crumb === crumbs.project.name}
-					<span class="relative">
+					<span class="relative dropdown-container">
 						<button
-							onclick={() => (projectMenuOpen = !projectMenuOpen)}
+							onclick={() => {
+								projectMenuOpen = !projectMenuOpen;
+								serviceMenuOpen = false;
+							}}
 							aria-expanded={projectMenuOpen}
-							class="flex items-center gap-[3px] border-0 bg-transparent text-[var(--text-primary)] font-[var(--font-sans)] font-medium text-base cursor-pointer px-1 py-[3px]"
+							class="flex items-center gap-[3px] border-0 bg-transparent text-[var(--text-primary)] font-[var(--font-sans)] font-medium text-base cursor-pointer px-1 py-[3px] hover:text-[var(--accent)] transition-colors"
 						>
 							{crumbs.project.name}
 							<CaretDown size={13} />
 						</button>
 						{#if projectMenuOpen}
 							<span
-								class="absolute top-[calc(100%+7px)] left-[-4px] z-70 w-[196px] p-1 bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-sm)]"
+								class="absolute top-[calc(100%+7px)] left-[-4px] z-70 w-[196px] p-1 bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-sm)] shadow-lg"
 							>
 								{#each projects as item}
 									<button
@@ -116,7 +135,7 @@
 									>
 										<span>{item.name}</span>
 										{#if item.id === crumbs.project?.id}
-											<Check size={13} />
+											<Check size={13} class="text-[var(--accent)] shrink-0" />
 										{/if}
 									</button>
 								{/each}
@@ -139,6 +158,61 @@
 								>
 									<Plus size={13} />
 									New project
+								</button>
+							</span>
+						{/if}
+					</span>
+				{:else if crumbs.service && crumb === crumbs.service.name}
+					<span class="relative dropdown-container">
+						<button
+							onclick={() => {
+								serviceMenuOpen = !serviceMenuOpen;
+								projectMenuOpen = false;
+							}}
+							aria-expanded={serviceMenuOpen}
+							class="flex items-center gap-[3px] border-0 bg-transparent text-[var(--text-primary)] font-[var(--font-sans)] font-medium text-base cursor-pointer px-1 py-[3px] hover:text-[var(--accent)] transition-colors"
+						>
+							{crumbs.service.name}
+							<CaretDown size={13} />
+						</button>
+						{#if serviceMenuOpen}
+							<span
+								class="absolute top-[calc(100%+7px)] left-[-4px] z-70 w-[210px] p-1 bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-sm)] shadow-lg"
+							>
+								{#each projectServices as item}
+									<button
+										onclick={() => {
+											serviceMenuOpen = false;
+											goto(`/projects/${crumbs.project?.id}/services/${item.id}`);
+										}}
+										class="flex w-full items-center justify-between gap-2 px-2 py-[7px] border-0 rounded bg-transparent text-[var(--text-secondary)] text-xs font-[var(--font-sans)] text-left cursor-pointer hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+									>
+										<div class="flex items-center gap-1.5 truncate">
+											<span class="truncate">{item.name}</span>
+											<span class="text-[10px] font-mono text-[var(--text-tertiary)] bg-[var(--bg-panel)] px-1 rounded border border-[var(--border-subtle)]">
+												{item.type}
+											</span>
+										</div>
+										{#if item.id === crumbs.service?.id}
+											<Check size={13} class="text-[var(--accent)] shrink-0" />
+										{/if}
+									</button>
+								{/each}
+								{#if projectServices.length === 0}
+									<div class="px-2 py-1.5 text-xs text-[var(--text-tertiary)] font-mono">
+										No services in project
+									</div>
+								{/if}
+								<hr class="h-px my-1 mx-0.5 border-0 bg-[var(--border-subtle)]" />
+								<button
+									onclick={() => {
+										serviceMenuOpen = false;
+										goto(`/projects/${crumbs.project?.id}/new-service`);
+									}}
+									class="flex w-full items-center gap-2 px-2 py-[7px] border-0 rounded bg-transparent text-[var(--accent)] text-xs font-[var(--font-sans)] text-left cursor-pointer hover:bg-[var(--bg-hover)]"
+								>
+									<Plus size={13} />
+									New service
 								</button>
 							</span>
 						{/if}

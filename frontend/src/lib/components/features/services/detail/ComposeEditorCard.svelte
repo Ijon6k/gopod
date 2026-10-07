@@ -223,7 +223,7 @@
 		<div class="p-5 flex flex-col gap-4">
 			<!-- Monospace Code Editor -->
 			<div class="rounded-md border border-[var(--border)] overflow-hidden shadow-inner">
-				<CodeEditor bind:value={composeYaml} language="yaml" height="360px" />
+				<CodeEditor bind:value={composeYaml} language="yaml" height="auto" />
 			</div>
 
 			<!-- Compose Preview Drawer -->

@@ -171,15 +171,19 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 	return b.String()
 }
 
-// ReadAccessLogs reads parsed JSON logs from disk or returns recent samples.
+// ReadAccessLogs reads parsed JSON logs from disk.
 func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 	if limit <= 0 {
 		limit = 50
 	}
 
+	if r.logFilePath == "" {
+		return []AccessLogItem{}
+	}
+
 	file, err := os.Open(r.logFilePath)
 	if err != nil {
-		return r.fallbackLogs()
+		return []AccessLogItem{}
 	}
 	defer file.Close()
 
@@ -225,26 +229,10 @@ func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 		}
 	}
 
-	if len(logs) == 0 {
-		return r.fallbackLogs()
+	if logs == nil {
+		return []AccessLogItem{}
 	}
 	return logs
-}
-
-func (r *Reconciler) fallbackLogs() []AccessLogItem {
-	now := time.Now()
-	return []AccessLogItem{
-		{
-			ID: "log-1", Timestamp: now.Add(-10 * time.Second).Format(time.RFC3339),
-			TimeAgo: "10s ago", ClientIP: "194.26.29.112", Method: "GET", Host: "chat.example.com",
-			URI: "/api/v1/conversations/active", Status: 200, DurationMs: 14.2, BytesSent: "2.4 KB", Upstream: "127.0.0.1:3000",
-		},
-		{
-			ID: "log-2", Timestamp: now.Add(-30 * time.Second).Format(time.RFC3339),
-			TimeAgo: "30s ago", ClientIP: "88.198.44.12", Method: "GET", Host: "ws.example.com",
-			URI: "/socket.io/?EIO=4&transport=websocket", Status: 101, DurationMs: 4.1, BytesSent: "512 B", Upstream: "127.0.0.1:8080",
-		},
-	}
 }
 
 func timeAgo(t time.Time) string {

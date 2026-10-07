@@ -2,6 +2,7 @@
 	import type { Deployment } from '$lib/types';
 	import { Button } from '$lib/components/primitives';
 	import { StatusBadge, SearchInput } from '$lib/components/ui';
+	import { api } from '$lib/api';
 	import { getDeploymentSteps, getDeploymentLogs } from '$lib/utils/deploymentLogs';
 	import {
 		X,
@@ -29,13 +30,69 @@
 	let copiedLogs = $state(false);
 	let logContainer = $state<HTMLDivElement | null>(null);
 
+	let fetchedLogs = $state<string[]>([]);
+	let isLogsLoading = $state(false);
+
 	let steps = $derived(deployment ? getDeploymentSteps(deployment) : []);
-	let logs = $derived(deployment ? getDeploymentLogs(deployment) : []);
+	let logs = $derived.by(() => {
+		if (fetchedLogs.length > 0) return fetchedLogs;
+		if (deployment?.logs && deployment.logs.length > 0) return deployment.logs;
+		return deployment ? getDeploymentLogs(deployment) : [];
+	});
 
 	let filteredLogs = $derived.by(() => {
 		if (!searchQuery.trim()) return logs;
 		const q = searchQuery.toLowerCase().trim();
 		return logs.filter((l) => l.toLowerCase().includes(q));
+	});
+
+	$effect(() => {
+		if (open && deployment) {
+			const depId = deployment.id;
+			let isSubscribed = true;
+			isLogsLoading = true;
+
+			// Fetch stored log file
+			api.services.deploymentLogs(depId)
+				.then((res) => {
+					if (!isSubscribed) return;
+					if (res?.logs) {
+						fetchedLogs = res.logs.split('\n').filter((line: string) => line.length > 0);
+					}
+				})
+				.catch((err) => {
+					console.warn('Could not load stored deployment logs:', err);
+				})
+				.finally(() => {
+					if (isSubscribed) isLogsLoading = false;
+				});
+
+			// If active building/deploying, subscribe to SSE stream
+			let es: EventSource | null = null;
+			if (deployment.status === 'building' || deployment.status === 'deploying') {
+				try {
+					es = new EventSource(`/api/deployments/${depId}/logs/stream`);
+					es.onmessage = (event) => {
+						if (!isSubscribed) return;
+						if (event.data) {
+							fetchedLogs = [...fetchedLogs, event.data];
+						}
+					};
+					es.onerror = () => {
+						es?.close();
+					};
+				} catch (e) {
+					console.warn('SSE stream error:', e);
+				}
+			}
+
+			return () => {
+				isSubscribed = false;
+				if (es) es.close();
+			};
+		} else {
+			fetchedLogs = [];
+		}
 	});
 
 	$effect(() => {

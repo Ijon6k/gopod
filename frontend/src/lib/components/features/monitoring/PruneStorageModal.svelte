@@ -1,5 +1,7 @@
 <script lang="ts">
 	import { Button } from '$lib/components/primitives';
+	import { api } from '$lib/api';
+	import type { SystemDiskUsage } from '$lib/api/system';
 	import {
 		X,
 		Broom,
@@ -28,23 +30,50 @@
 	let isPruning = $state(false);
 	let pruneSuccess = $state(false);
 	let currentStep = $state('');
+	let dfData = $state<SystemDiskUsage[]>([]);
+	let isLoadingDf = $state(false);
 
-	// Estimated size per category
-	const SIZES = {
-		images: 2.9,
-		containers: 0.42,
-		volumes: 0.68,
-		buildCache: 1.4
-	};
+	async function loadDiskUsage() {
+		try {
+			isLoadingDf = true;
+			const data = await api.system.df();
+			if (Array.isArray(data)) {
+				dfData = data;
+			}
+		} catch (err) {
+			console.error('Failed to load Podman disk usage:', err);
+		} finally {
+			isLoadingDf = false;
+		}
+	}
 
-	let totalReclaimable = $derived.by(() => {
+	$effect(() => {
+		if (open) {
+			loadDiskUsage();
+		}
+	});
+
+	let imageUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('image')));
+	let containerUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('container')));
+	let volumeUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('volume')));
+
+	let totalReclaimableBytes = $derived.by(() => {
 		let total = 0;
-		if (pruneImages) total += SIZES.images;
-		if (pruneContainers) total += SIZES.containers;
-		if (pruneVolumes) total += SIZES.volumes;
-		if (pruneBuildCache) total += SIZES.buildCache;
+		if (pruneImages && imageUsage) total += imageUsage.rawReclaimable || 0;
+		if (pruneContainers && containerUsage) total += containerUsage.rawReclaimable || 0;
+		if (pruneVolumes && volumeUsage) total += volumeUsage.rawReclaimable || 0;
 		return total;
 	});
+
+	let anySelected = $derived(pruneImages || pruneContainers || pruneVolumes || pruneBuildCache);
+
+	function formatBytes(bytes: number): string {
+		if (bytes <= 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+	}
 
 	function handleKeydown(e: KeyboardEvent) {
 		if (e.key === 'Escape' && !isPruning) {
@@ -53,32 +82,39 @@
 	}
 
 	async function executePrune() {
-		if (totalReclaimable <= 0) return;
+		if (!anySelected) return;
 		isPruning = true;
 		pruneSuccess = false;
 
-		const steps: string[] = [];
-		if (pruneContainers) steps.push('Pruning exited containers (podman container prune)...');
-		if (pruneImages) steps.push('Pruning untagged & unused images (podman image prune -a)...');
-		if (pruneBuildCache) steps.push('Clearing Buildah build cache layers...');
-		if (pruneVolumes) steps.push('Pruning unreferenced local storage volumes...');
+		const reclaimedGB = parseFloat((totalReclaimableBytes / (1024 * 1024 * 1024)).toFixed(2));
 
-		for (const step of steps) {
-			currentStep = step;
-			await new Promise((r) => setTimeout(r, 600));
+		try {
+			if (pruneContainers || pruneBuildCache) {
+				currentStep = 'Pruning stopped containers & cache (podman system prune)...';
+				await api.system.prune();
+			}
+			if (pruneImages) {
+				currentStep = 'Pruning unused container images (podman image prune -a)...';
+				await api.runtime.images.prune(true);
+			}
+			if (pruneVolumes) {
+				currentStep = 'Pruning unreferenced volumes (podman volume prune)...';
+				await api.runtime.volumes.prune();
+			}
+
+			currentStep = 'Storage catalog optimized.';
+			pruneSuccess = true;
+			onpruned?.(reclaimedGB);
+
+			setTimeout(() => {
+				pruneSuccess = false;
+				onclose();
+			}, 1400);
+		} catch (err) {
+			console.error('Podman storage prune error:', err);
+		} finally {
+			isPruning = false;
 		}
-
-		currentStep = 'Optimizing rootless storage catalog...';
-		await new Promise((r) => setTimeout(r, 500));
-
-		isPruning = false;
-		pruneSuccess = true;
-		onpruned?.(Number(totalReclaimable.toFixed(2)));
-
-		setTimeout(() => {
-			pruneSuccess = false;
-			onclose();
-		}, 1400);
 	}
 </script>
 
@@ -131,7 +167,7 @@
 						<div class="flex flex-col gap-1">
 							<h4 class="text-base font-semibold text-[var(--text-primary)]">Storage Cleaned Successfully</h4>
 							<p class="text-xs text-[var(--text-secondary)]">
-								Recovered <strong class="text-[var(--status-green)] font-mono">{totalReclaimable.toFixed(2)} GB</strong> of disk space.
+								Recovered <strong class="text-[var(--status-green)] font-mono">{totalReclaimableBytes > 0 ? formatBytes(totalReclaimableBytes) : 'storage cache'}</strong> of disk space.
 							</p>
 						</div>
 					</div>
@@ -166,11 +202,11 @@
 										<span>Unused & Dangling Images</span>
 									</div>
 									<span class="font-mono text-xs font-semibold text-[var(--status-green)]">
-										~{SIZES.images} GB
+										{imageUsage?.reclaimable ? `~${imageUsage.reclaimable}` : '0 B'}
 									</span>
 								</div>
 								<p class="text-[11px] text-[var(--text-tertiary)] mt-0.5">
-									Deletes untagged <code class="text-[10px]">&lt;none&gt;</code> layers and images not used by running containers (<code class="text-[10px]">podman image prune -a</code>).
+									Deletes untagged <code class="text-[10px]">&lt;none&gt;</code> layers and unreferenced images ({imageUsage?.total ?? 0} total images).
 								</p>
 							</div>
 						</label>
@@ -191,11 +227,11 @@
 										<span>Stopped / Exited Containers</span>
 									</div>
 									<span class="font-mono text-xs font-semibold text-[var(--status-green)]">
-										~{(SIZES.containers * 1024).toFixed(0)} MB
+										{containerUsage?.reclaimable ? `~${containerUsage.reclaimable}` : '0 B'}
 									</span>
 								</div>
 								<p class="text-[11px] text-[var(--text-tertiary)] mt-0.5">
-									Removes ephemeral writable layers from 3 containers in stopped/exited states.
+									Removes ephemeral writable layers from {Math.max(0, (containerUsage?.total ?? 0) - (containerUsage?.active ?? 0))} stopped/exited containers.
 								</p>
 							</div>
 						</label>
@@ -216,7 +252,7 @@
 										<span>Buildah / Build Cache</span>
 									</div>
 									<span class="font-mono text-xs font-semibold text-[var(--status-green)]">
-										~{SIZES.buildCache} GB
+										Clean
 									</span>
 								</div>
 								<p class="text-[11px] text-[var(--text-tertiary)] mt-0.5">
@@ -241,12 +277,12 @@
 										<span>Unused Volumes (Caution)</span>
 									</div>
 									<span class="font-mono text-xs font-semibold text-[var(--status-amber)]">
-										~{(SIZES.volumes * 1024).toFixed(0)} MB
+										{volumeUsage?.reclaimable ? `~${volumeUsage.reclaimable}` : '0 B'}
 									</span>
 								</div>
 								<p class="text-[11px] text-[var(--status-amber)]/90 mt-0.5 flex items-center gap-1">
 									<Warning size={12} class="shrink-0" />
-									<span>Destructive: Removes local storage volumes not actively mounted by any container.</span>
+									<span>Destructive: Removes local storage volumes not actively mounted ({Math.max(0, (volumeUsage?.total ?? 0) - (volumeUsage?.active ?? 0))} unused).</span>
 								</p>
 							</div>
 						</label>
@@ -255,8 +291,8 @@
 					<!-- Calculation Summary Bar -->
 					<div class="flex items-center justify-between p-3 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-xs">
 						<span class="text-[var(--text-secondary)] font-medium">Estimated Recoverable Space:</span>
-						<span class="font-mono text-sm font-bold {totalReclaimable > 0 ? 'text-[var(--status-green)]' : 'text-[var(--text-tertiary)]'}">
-							{totalReclaimable > 0 ? `~${totalReclaimable.toFixed(2)} GB` : '0 GB'}
+						<span class="font-mono text-sm font-bold {totalReclaimableBytes > 0 ? 'text-[var(--status-green)]' : 'text-[var(--text-tertiary)]'}">
+							{totalReclaimableBytes > 0 ? `~${formatBytes(totalReclaimableBytes)}` : (isLoadingDf ? 'Calculating...' : '0 B')}
 						</span>
 					</div>
 				{/if}
@@ -272,11 +308,11 @@
 					<Button
 						variant="primary"
 						size="sm"
-						disabled={totalReclaimable <= 0}
+						disabled={!anySelected}
 						onclick={executePrune}
 					>
 						<Broom size={14} />
-						<span>Prune Selected ({totalReclaimable.toFixed(1)} GB)</span>
+						<span>Prune Selected {totalReclaimableBytes > 0 ? `(~${formatBytes(totalReclaimableBytes)})` : ''}</span>
 					</Button>
 				</div>
 			{/if}

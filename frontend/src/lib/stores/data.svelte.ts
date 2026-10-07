@@ -209,8 +209,17 @@ export class DataStore {
 	deleteService(id: string) {
 		return this.projectsStore.deleteService(id);
 	}
-	deployService(serviceId: string) {
-		return this.projectsStore.deployService(serviceId);
+	deployService(serviceId: string, trigger = 'manual') {
+		return this.projectsStore.deployService(serviceId, trigger);
+	}
+	startService(serviceId: string) {
+		return this.projectsStore.startService(serviceId);
+	}
+	stopService(serviceId: string) {
+		return this.projectsStore.stopService(serviceId);
+	}
+	restartService(serviceId: string) {
+		return this.projectsStore.restartService(serviceId);
 	}
 	addDomain(domain: Domain) {
 		this.projectsStore.addDomain(domain);
@@ -343,23 +352,48 @@ export class DataStore {
 					let servName = name;
 					let servId = name;
 
-					// Label-first association, then fallback to name convention
+					// Label-first association, then compose project label, then prefix / name matching
 					if (rc.labels && rc.labels['io.gopod.project']) {
 						projId = rc.labels['io.gopod.project'];
 						servId = rc.labels['io.gopod.service'] || name;
 						servName = rc.labels['io.gopod.name'] || name;
 						projName = this.projectsStore.getProjectById(projId)?.name || projId;
+					} else if (rc.labels && rc.labels['com.docker.compose.project']) {
+						const composeProject = rc.labels['com.docker.compose.project'];
+						const matchedService = this.services.find(
+							(s: Service) => s.id === composeProject || s.name === composeProject
+						);
+						if (matchedService) {
+							servId = matchedService.id;
+							servName = rc.labels['com.docker.compose.service'] || matchedService.name;
+							projId = matchedService.projectId;
+							projName = this.projectsStore.getProjectById(projId)?.name || projId;
+						} else {
+							servId = composeProject;
+							servName = rc.labels['com.docker.compose.service'] || name;
+						}
 					} else {
-						const parts = name.split('-');
-						if (parts.length >= 3) {
-							const potentialProj = this.projectsStore.projects.find(
-								(p) => p.id === parts[0] || p.name.toLowerCase() === parts[0]
-							);
-							if (potentialProj) {
-								projId = potentialProj.id;
-								projName = potentialProj.name;
-								servName = parts.slice(1, parts.length - 1).join('-');
-								servId = `${projId}-${servName}`;
+						// Service ID / name prefix matching
+						const matchedService = this.services.find(
+							(s: Service) => (s.id && (name.startsWith(s.id) || name.includes(s.id))) || (s.name && (name.startsWith(s.name) || name.includes(s.name)))
+						);
+						if (matchedService) {
+							servId = matchedService.id;
+							servName = matchedService.name;
+							projId = matchedService.projectId;
+							projName = this.projectsStore.getProjectById(projId)?.name || projId;
+						} else {
+							const parts = name.split('-');
+							if (parts.length >= 3) {
+								const potentialProj = this.projectsStore.projects.find(
+									(p) => p.id === parts[0] || p.name.toLowerCase() === parts[0]
+								);
+								if (potentialProj) {
+									projId = potentialProj.id;
+									projName = potentialProj.name;
+									servName = parts.slice(1, parts.length - 1).join('-');
+									servId = `${projId}-${servName}`;
+								}
 							}
 						}
 					}

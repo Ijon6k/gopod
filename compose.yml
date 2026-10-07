@@ -8,6 +8,8 @@ services:
     environment:
       - PORT=8085
       - PODMAN_SOCKET=/run/podman/podman.sock
+      - CONTAINER_HOST=unix:///run/podman/podman.sock
+      - DOCKER_HOST=unix:///run/podman/podman.sock
       - GOPOD_DB_PATH=/app/data/gopod.db
       - CADDY_ADMIN_URL=http://caddy:2019
     volumes:

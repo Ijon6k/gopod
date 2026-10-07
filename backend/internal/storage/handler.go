@@ -29,7 +29,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/storage/snapshots/{id}", h.middleware.RequireAuth(h.handleDeleteSnapshot))
 
 	mux.HandleFunc("GET /api/storage/schedules", h.middleware.RequireAuth(h.handleListSchedules))
-  	m ux.HandleFunc("POST /api/storage/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
+	mux.HandleFunc("POST /api/storage/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
 	mux.HandleFunc("DELETE /api/storage/schedules/{id}", h.middleware.RequireAuth(h.handleDeleteSchedule))
 
 	// Frontend compatibility aliases (/api/volumes/*)

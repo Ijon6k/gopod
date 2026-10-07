@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onDestroy } from 'svelte';
 	import { Button } from '$lib/components/primitives';
 	import { Terminal, ArrowClockwise } from 'phosphor-svelte';
 
@@ -37,15 +38,73 @@
 
 	let commandInput = $state('');
 	let historyContainer = $state<HTMLDivElement | null>(null);
+	let ws = $state<WebSocket | null>(null);
+	let isConnected = $state(false);
 
-	let history = $state<HistoryItem[]>([
-		{ type: 'output', text: `Linux podman-host 6.6.14-200.fc39.x86_64 #1 SMP PREEMPT_DYNAMIC` },
-		{ type: 'output', text: `Connected to container session (user: app, rootless)` },
-		{ type: 'cmd', text: 'whoami' },
-		{ type: 'output', text: 'app (uid=1000 gid=1000)' },
-		{ type: 'cmd', text: 'uname -a' },
-		{ type: 'output', text: 'Linux container 6.6.14 x86_64 Linux' }
-	]);
+	let history = $state<HistoryItem[]>([]);
+
+	function connectWebSocket(target: string) {
+		if (typeof window === 'undefined') return;
+		if (ws) {
+			ws.close();
+			ws = null;
+		}
+
+		const containerTarget = target || selectedWorkload || title;
+		if (!containerTarget) return;
+
+		const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+		const url = `${protocol}//${location.host}/api/containers/${encodeURIComponent(containerTarget)}/exec`;
+		try {
+			const socket = new WebSocket(url);
+			socket.binaryType = 'arraybuffer';
+			socket.onopen = () => {
+				isConnected = true;
+				history.push({ type: 'output', text: `🚀 Connected to container session: ${containerTarget}` });
+			};
+			socket.onmessage = (e) => {
+				let text = '';
+				if (typeof e.data === 'string') {
+					text = e.data;
+				} else if (e.data instanceof ArrayBuffer) {
+					text = new TextDecoder().decode(e.data);
+				}
+				if (text) {
+					history.push({ type: 'output', text: text.trimEnd() });
+					requestAnimationFrame(() => {
+						if (historyContainer) historyContainer.scrollTop = historyContainer.scrollHeight;
+					});
+				}
+			};
+			socket.onclose = () => {
+				isConnected = false;
+				history.push({ type: 'output', text: `[Session closed]` });
+			};
+			socket.onerror = () => {
+				isConnected = false;
+			};
+			ws = socket;
+		} catch (err) {
+			console.warn('Exec websocket error:', err);
+		}
+	}
+
+	$effect(() => {
+		const target = selectedWorkload || title;
+		if (target) {
+			connectWebSocket(target);
+		}
+		return () => {
+			if (ws) {
+				ws.close();
+				ws = null;
+			}
+		};
+	});
+
+	onDestroy(() => {
+		if (ws) ws.close();
+	});
 
 	function runCommand(cmd: string) {
 		const trimmed = cmd.trim();
@@ -53,32 +112,14 @@
 
 		history.push({ type: 'cmd', text: trimmed });
 
-		if (oncommand) {
+		if (trimmed === 'clear') {
+			history = [];
+		} else if (oncommand) {
 			oncommand(trimmed);
+		} else if (ws && ws.readyState === WebSocket.OPEN) {
+			ws.send(trimmed + '\n');
 		} else {
-			// Built-in command simulation
-			if (trimmed === 'clear') {
-				history = [];
-			} else if (trimmed === 'ps aux' || trimmed === 'ps') {
-				history.push({
-					type: 'output',
-					text: `USER       PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND\napp          1  0.2  0.8 124800 28400 ?        Ssl  10:14   0:02 node server.js\napp         42  0.0  0.1  14200  4200 pts/0    Ss   10:18   0:00 /bin/sh`
-				});
-			} else if (trimmed === 'env') {
-				history.push({
-					type: 'output',
-					text: `NODE_ENV=production\nPORT=3000\nHOSTNAME=${title || 'app'}\nHOME=/home/app\nPATH=/usr/local/bin:/usr/bin:/bin`
-				});
-			} else if (trimmed === 'df -h') {
-				history.push({
-					type: 'output',
-					text: `Filesystem      Size  Used Avail Use% Mounted on\noverlay          50G  8.4G   42G  17% /\ntmpfs            64M     0   64M   0% /dev\nshm              64M     0   64M   0% /dev/shm`
-				});
-			} else if (trimmed === 'whoami') {
-				history.push({ type: 'output', text: 'app (uid=1000 gid=1000)' });
-			} else {
-				history.push({ type: 'output', text: `Executed: ${trimmed} (exit code: 0)` });
-			}
+			history.push({ type: 'output', text: `Terminal not connected to active container.` });
 		}
 
 		commandInput = '';
@@ -99,9 +140,9 @@
 	export function resetSession(name?: string) {
 		const targetName = name || selectedWorkload || title || 'container';
 		history = [
-			{ type: 'output', text: `Reconnecting to container session: ${targetName}…` },
-			{ type: 'output', text: `Session connected (rootless)` }
+			{ type: 'output', text: `Reconnecting to container session: ${targetName}…` }
 		];
+		connectWebSocket(targetName);
 	}
 </script>
 

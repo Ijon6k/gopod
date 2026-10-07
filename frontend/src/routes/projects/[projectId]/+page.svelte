@@ -12,11 +12,13 @@
 	import type { WorkloadChoice } from '$lib/components/features/services/create/WorkloadTypeSelector.svelte';
 	import { Plus, SpinnerGap } from 'phosphor-svelte';
 	import type { Project } from '$lib/types';
+	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
 
 	let projectId = $derived(page.params.projectId ?? '');
 	let directProject = $state<Project | null>(null);
 	let isProjectLoading = $state(true);
+	let lastResolvedProjectId = '';
 
 	let project = $derived(directProject ?? (projectId ? getProjectById(projectId) : undefined));
 	let services = $derived(projectId ? getProjectServices(projectId) : []);
@@ -29,13 +31,17 @@
 
 		let active = true;
 
-		async function resolveProject() {
-			const existing = getProjectById(pId);
-			if (existing) {
-				directProject = existing;
-				isProjectLoading = false;
-				return;
-			}
+		untrack(() => {
+			if (lastResolvedProjectId === pId) return;
+			lastResolvedProjectId = pId;
+
+			async function resolveProject() {
+				const existing = getProjectById(pId);
+				if (existing) {
+					directProject = existing;
+					isProjectLoading = false;
+					return;
+				}
 
 			isProjectLoading = true;
 			try {
@@ -70,6 +76,7 @@
 		}
 
 		resolveProject();
+		});
 
 		return () => {
 			active = false;

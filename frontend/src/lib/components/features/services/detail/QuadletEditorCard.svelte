@@ -14,6 +14,9 @@
 		FileCode
 	} from 'phosphor-svelte';
 
+	import { QUADLET_TEMPLATES, type QuadletTemplate } from '../manifests/quadlet-templates';
+	import { getDefaultQuadletConfig } from '../manifests/defaults';
+
 	interface Props {
 		service: Service;
 	}
@@ -21,126 +24,29 @@
 	let { service }: Props = $props();
 
 	let providerTab = $state<'raw' | 'git' | 'templates'>('raw');
-	let gitRepoUrl = $state(service.source && service.source.endsWith('.git') ? service.source : '');
-	let gitBranch = $state(service.branch || 'main');
-	let gitFilePath = $state(`${service.name}.container`);
-
-	let quadletConfig = $state(
-		service.quadletConfig ||
-			`[Unit]
-Description=${service.name} Quadlet Service
-After=network-online.target
-
-[Container]
-Image=${service.image || 'docker.io/library/nginx:alpine'}
-PublishPort=${service.port || 8080}:80
-AutoUpdate=registry
-Restart=always
-
-[Service]
-Restart=always
-TimeoutStartSec=300
-
-[Install]
-WantedBy=default.target`
-	);
-
+	let gitRepoUrl = $state('');
+	let gitBranch = $state('main');
+	let gitFilePath = $state('');
+	let quadletConfig = $state('');
 	let previewOpen = $state(false);
 	let saveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
 
-	let unitPath = $derived(`~/.config/containers/systemd/${service.name}.container`);
+	let lastLoadedServiceId = $state<string | null>(null);
 
-	const templates = [
-		{
-			id: 'metube',
-			name: 'MeTube (YouTube Downloader)',
-			image: 'ghcr.io/alexta69/metube:latest',
-			port: 8081,
-			content: `[Unit]
-Description=MeTube Video Downloader Quadlet
-After=network-online.target
-
-[Container]
-Image=ghcr.io/alexta69/metube:latest
-PublishPort=8081:8081
-Volume=metube-downloads:/downloads:Z
-AutoUpdate=registry
-Restart=always
-
-[Service]
-Restart=always
-TimeoutStartSec=300
-
-[Install]
-WantedBy=default.target`
-		},
-		{
-			id: 'nginx',
-			name: 'Nginx Web Server',
-			image: 'docker.io/library/nginx:alpine',
-			port: 8080,
-			content: `[Unit]
-Description=Nginx Web Server Quadlet
-After=network-online.target
-
-[Container]
-Image=docker.io/library/nginx:alpine
-PublishPort=8080:80
-AutoUpdate=registry
-Restart=always
-
-[Service]
-Restart=always
-
-[Install]
-WantedBy=default.target`
-		},
-		{
-			id: 'postgres',
-			name: 'PostgreSQL 17 Database',
-			image: 'docker.io/library/postgres:17-alpine',
-			port: 5432,
-			content: `[Unit]
-Description=PostgreSQL Database Quadlet
-After=network-online.target
-
-[Container]
-Image=docker.io/library/postgres:17-alpine
-PublishPort=5432:5432
-Environment=POSTGRES_PASSWORD=postgres_secure_pass
-Volume=postgres-data:/var/lib/postgresql/data:Z
-Restart=always
-
-[Service]
-Restart=always
-TimeoutStartSec=600
-
-[Install]
-WantedBy=default.target`
-		},
-		{
-			id: 'redis',
-			name: 'Redis In-Memory Cache',
-			image: 'docker.io/library/redis:7-alpine',
-			port: 6379,
-			content: `[Unit]
-Description=Redis In-Memory Cache Quadlet
-After=network-online.target
-
-[Container]
-Image=docker.io/library/redis:7-alpine
-PublishPort=6379:6379
-Restart=always
-
-[Service]
-Restart=always
-
-[Install]
-WantedBy=default.target`
+	$effect(() => {
+		if (service.id !== lastLoadedServiceId) {
+			lastLoadedServiceId = service.id;
+			gitRepoUrl = service.source && service.source.endsWith('.git') ? service.source : '';
+			gitBranch = service.branch || 'main';
+			gitFilePath = `${service.name}.container`;
+			quadletConfig = service.quadletConfig || getDefaultQuadletConfig(service);
 		}
-	];
+	});
 
-	function applyTemplate(tpl: (typeof templates)[0]) {
+	let unitPath = $derived(`~/.config/containers/systemd/${service.name}.container`);
+	const templates = QUADLET_TEMPLATES;
+
+	function applyTemplate(tpl: QuadletTemplate) {
 		quadletConfig = tpl.content;
 		service.port = tpl.port;
 		service.image = tpl.image;
@@ -151,7 +57,7 @@ WantedBy=default.target`
 		quadletConfig += `\n${snippet}`;
 	}
 
-	function handleSave() {
+	async function handleSave() {
 		saveStatus = 'saving';
 		service.quadletConfig = quadletConfig;
 		if (providerTab === 'git') {
@@ -159,11 +65,14 @@ WantedBy=default.target`
 			service.branch = gitBranch;
 		}
 
-		setTimeout(() => {
-			dataStore.updateService(service);
+		try {
+			await dataStore.updateService(service);
 			saveStatus = 'saved';
 			setTimeout(() => (saveStatus = 'idle'), 2500);
-		}, 400);
+		} catch (err) {
+			console.error('Failed to save Quadlet config:', err);
+			saveStatus = 'idle';
+		}
 	}
 </script>
 

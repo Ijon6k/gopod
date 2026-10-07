@@ -72,6 +72,9 @@ type Deployment struct {
 	ID            string     `json:"id"`
 	ProjectID     string     `json:"projectId"`
 	ServiceID     string     `json:"serviceId"`
+	Number        int        `json:"number"`
+	Trigger       string     `json:"trigger"`
+	Image         string     `json:"image,omitempty"`
 	Version       string     `json:"version"`
 	CommitHash    string     `json:"commitHash"`
 	CommitMessage string     `json:"commitMessage"`

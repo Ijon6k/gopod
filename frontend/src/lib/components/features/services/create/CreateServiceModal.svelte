@@ -24,7 +24,7 @@
 
 	let projectOverride = $state<string | null>(null);
 	let selectedProjectId = $derived(projectOverride ?? (projectId || (projects[0]?.id ?? 'aerochat')));
-	let selectedType = $state<WorkloadChoice>(initialType);
+	let selectedType = $state<WorkloadChoice>('application');
 
 	$effect(() => {
 		if (initialType) {
@@ -59,7 +59,12 @@
 		const targetProj = selectedProjectId;
 		const sName = serviceName.trim();
 		const sSlug = slugify(sName);
-		const internalId = `${targetProj}-${sSlug}`;
+		const randomSuffix = typeof crypto !== 'undefined' && crypto.getRandomValues
+			? Array.from(crypto.getRandomValues(new Uint8Array(3)))
+					.map((b) => b.toString(16).padStart(2, '0'))
+					.join('')
+			: Math.random().toString(36).substring(2, 8);
+		const internalId = `${targetProj}-${sSlug}-${randomSuffix}`;
 		const desc = serviceDescription.trim();
 
 		let newService: Service;
@@ -137,7 +142,11 @@
 				replicas: 1,
 				description: desc || `${dbEngine.toUpperCase()} database preset`,
 				envVars: [
-					{ key: `${dbEngine.toUpperCase()}_PASSWORD`, value: 'generated_secret', secret: true }
+					{
+						key: `${dbEngine.toUpperCase()}_PASSWORD`,
+						value: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '').slice(0, 20) : Math.random().toString(36).slice(2, 12),
+						secret: true
+					}
 				],
 				deployments: [],
 				createdAt: new Date().toISOString()
@@ -229,7 +238,7 @@
 					</div>
 				{:else if selectedType === 'database'}
 					<div class="flex flex-col gap-1.5">
-						<label class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</label>
+						<span class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</span>
 						<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
 							{#each [
 								{ id: 'postgres', label: 'PostgreSQL' },
@@ -251,7 +260,7 @@
 					</div>
 				{:else if selectedType === 'compose'}
 					<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-						<label class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</label>
+						<span class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</span>
 						<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
 							{#each [
 								{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' },
@@ -339,7 +348,7 @@
 						</div>
 					{:else if selectedType === 'database'}
 						<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-							<label class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</label>
+							<span class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</span>
 							<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
 								{#each [
 									{ id: 'postgres', label: 'PostgreSQL' },
@@ -361,7 +370,7 @@
 						</div>
 					{:else if selectedType === 'compose'}
 						<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-							<label class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</label>
+							<span class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</span>
 							<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
 								{#each [
 									{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' },

@@ -168,6 +168,9 @@ func (d *DB) migrate() error {
 		"ALTER TABLE services ADD COLUMN runtime_target TEXT DEFAULT '';",
 		"ALTER TABLE deployments ADD COLUMN commit_hash TEXT DEFAULT '';",
 		"ALTER TABLE deployments ADD COLUMN commit_message TEXT DEFAULT '';",
+		"ALTER TABLE deployments ADD COLUMN trigger TEXT DEFAULT 'manual';",
+		"ALTER TABLE deployments ADD COLUMN number INTEGER DEFAULT 1;",
+		"ALTER TABLE deployments ADD COLUMN image TEXT DEFAULT '';",
 	}
 	for _, q := range newCols {
 		_, _ = d.Exec(q)

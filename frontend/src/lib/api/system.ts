@@ -43,6 +43,16 @@ export interface ContainerStatResponse {
 	pids: number;
 }
 
+export interface SystemDiskUsage {
+	type: string;
+	total: number;
+	active: number;
+	rawSize: number;
+	rawReclaimable: number;
+	size: string;
+	reclaimable: string;
+}
+
 export const systemApi = {
 	/**
 	 * Health check endpoint
@@ -73,6 +83,14 @@ export const systemApi = {
 	 */
 	async prune(): Promise<{ message: string }> {
 		const res = await apiClient.post<{ message: string }>('/system/prune');
+		return res.data;
+	},
+
+	/**
+	 * Get Podman disk usage breakdown across images, containers, and volumes
+	 */
+	async df(): Promise<SystemDiskUsage[]> {
+		const res = await apiClient.get<SystemDiskUsage[]>('/system/df');
 		return res.data;
 	}
 };

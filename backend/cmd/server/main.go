@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -42,6 +43,24 @@ func main() {
 
 	// Initialize Podman client to test connectivity
 	pClient := podman.NewClient(*socket)
+
+	// Propagate CONTAINER_HOST and DOCKER_HOST for subprocesses (podman CLI, podman-compose)
+	sockPath := *socket
+	if sockPath == "" {
+		sockPath = pClient.SocketPath()
+	}
+	if sockPath == "" {
+		sockPath = os.Getenv("PODMAN_SOCKET")
+	}
+	if sockPath == "" {
+		sockPath = "/run/podman/podman.sock"
+	}
+	sockClean := strings.TrimPrefix(sockPath, "unix://")
+	sockURL := fmt.Sprintf("unix://%s", sockClean)
+	_ = os.Setenv("PODMAN_SOCKET", sockClean)
+	_ = os.Setenv("CONTAINER_HOST", sockURL)
+	_ = os.Setenv("DOCKER_HOST", sockURL)
+
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 

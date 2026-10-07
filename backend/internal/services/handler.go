@@ -31,8 +31,16 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/services/{id}", h.middleware.RequireAuth(h.handleGet))
 	mux.HandleFunc("PUT /api/services/{id}", h.middleware.RequireAuth(h.handleUpdate))
 	mux.HandleFunc("DELETE /api/services/{id}", h.middleware.RequireAuth(h.handleDelete))
+
+	// Deployment control
 	mux.HandleFunc("POST /api/services/{id}/deploy", h.middleware.RequireAuth(h.handleDeploy))
+	mux.HandleFunc("POST /api/services/{id}/start", h.middleware.RequireAuth(h.handleStart))
+	mux.HandleFunc("POST /api/services/{id}/stop", h.middleware.RequireAuth(h.handleStop))
+	mux.HandleFunc("POST /api/services/{id}/restart", h.middleware.RequireAuth(h.handleRestart))
 	mux.HandleFunc("GET /api/services/{id}/deployments", h.middleware.RequireAuth(h.handleListDeployments))
+	mux.HandleFunc("GET /api/deployments/{id}", h.middleware.RequireAuth(h.handleGetDeployment))
+	mux.HandleFunc("GET /api/deployments/{id}/logs", h.middleware.RequireAuth(h.handleGetDeploymentLogs))
+	mux.HandleFunc("GET /api/deployments/{id}/logs/stream", h.middleware.RequireAuth(h.handleStreamDeploymentLogs))
 
 	// Public CI/CD webhook endpoint (authenticated via unguessable webhook token)
 	mux.HandleFunc("POST /api/deploy/webhook/{token}", h.handleWebhook)
@@ -104,20 +112,90 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	containerName, err := h.service.Deploy(r.Context(), id)
+	trigger := "manual"
+	var body struct {
+		Trigger string `json:"trigger"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Trigger != "" {
+		trigger = body.Trigger
+	}
+	dep, err := h.service.StartDeploy(r.Context(), id, trigger)
 	if err != nil {
-		httputil.WriteJSON(w, http.StatusInternalServerError, map[string]interface{}{
-			"status":    "error",
-			"error":     err.Error(),
-			"container": containerName,
-		})
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusAccepted, dep)
+}
+
+func (h *Handler) handleGetDeployment(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	dep, err := h.service.GetDeployment(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if dep == nil {
+		httputil.WriteError(w, http.StatusNotFound, "Deployment not found")
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, dep)
+}
+
+func (h *Handler) handleGetDeploymentLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	logs, err := h.service.GetDeploymentLogs(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"status":    "running",
-		"container": containerName,
-		"message":   "Service deployed successfully",
+		"deploymentId": id,
+		"logs":         logs,
 	})
+}
+
+func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	// Send current accumulated logs first
+	currentLogs, _ := h.service.GetDeploymentLogs(r.Context(), id)
+	if currentLogs != "" {
+		lines := strings.Split(strings.TrimSpace(currentLogs), "\n")
+		for _, l := range lines {
+			if l != "" {
+				data, _ := json.Marshal(map[string]string{"line": l})
+				fmt.Fprintf(w, "data: %s\n\n", data)
+			}
+		}
+		flusher.Flush()
+	}
+
+	ch, unsub := h.service.SubscribeLogs(id)
+	defer unsub()
+
+	notify := r.Context().Done()
+	for {
+		select {
+		case <-notify:
+			return
+		case line, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, _ := json.Marshal(map[string]string{"line": strings.TrimSuffix(line, "\n")})
+			fmt.Fprintf(w, "data: %s\n\n", data)
+			flusher.Flush()
+		}
+	}
 }
 
 // WebhookPushPayload matches standard GitHub, GitLab, and Gitea webhook push events.
@@ -184,3 +262,34 @@ func (h *Handler) handleListDeployments(w http.ResponseWriter, r *http.Request) 
 	}
 	httputil.WriteJSON(w, http.StatusOK, deployments)
 }
+
+func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	svc, err := h.service.StartService(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, svc)
+}
+
+func (h *Handler) handleStop(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	svc, err := h.service.StopService(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, svc)
+}
+
+func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	svc, err := h.service.RestartService(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, svc)
+}
+

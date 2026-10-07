@@ -290,3 +290,22 @@ func (c *Client) PruneSystem(ctx context.Context) error {
 	}
 	return exec.CommandContext(ctx, "podman", "system", "prune", "-f").Run()
 }
+
+// GetDiskUsage queries Podman disk usage across images, containers, and volumes.
+func (c *Client) GetDiskUsage(ctx context.Context) ([]SystemDiskUsage, error) {
+	cmd := exec.CommandContext(ctx, "podman", "system", "df", "--format", "json")
+	if c.socketPath != "" {
+		cmd.Env = append(os.Environ(), "CONTAINER_HOST=unix://"+c.socketPath)
+	}
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("podman system df failed: %w", err)
+	}
+
+	var rawList []SystemDiskUsage
+	if err := json.Unmarshal(out, &rawList); err != nil {
+		return nil, err
+	}
+	return rawList, nil
+}
+

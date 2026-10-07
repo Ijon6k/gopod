@@ -156,17 +156,131 @@ export class ProjectsDomainStore {
 		this.domains = this.domains.filter((d) => d.serviceId !== id);
 	}
 
-	async deployService(serviceId: string) {
+	async startService(serviceId: string): Promise<Service> {
+		const svc = this.services.find((s) => s.id === serviceId);
+		if (svc) {
+			svc.status = 'starting' as any;
+		}
+		try {
+			const res = await api.services.start(serviceId);
+			if (svc) {
+				svc.status = res.status || 'running';
+			}
+			return res;
+		} catch (err) {
+			if (svc) {
+				svc.status = 'failed';
+			}
+			throw err;
+		}
+	}
+
+	async stopService(serviceId: string): Promise<Service> {
+		const svc = this.services.find((s) => s.id === serviceId);
+		if (svc) {
+			svc.status = 'stopping' as any;
+		}
+		try {
+			const res = await api.services.stop(serviceId);
+			if (svc) {
+				svc.status = res.status || 'stopped';
+			}
+			return res;
+		} catch (err) {
+			if (svc) {
+				svc.status = 'running';
+			}
+			throw err;
+		}
+	}
+
+	async restartService(serviceId: string): Promise<Service> {
 		const svc = this.services.find((s) => s.id === serviceId);
 		if (svc) {
 			svc.status = 'deploying';
 		}
 		try {
-			const res = await api.services.deploy(serviceId);
+			const res = await api.services.restart(serviceId);
 			if (svc) {
-				svc.status = 'running';
+				svc.status = res.status || 'running';
 			}
 			return res;
+		} catch (err) {
+			if (svc) {
+				svc.status = 'failed';
+			}
+			throw err;
+		}
+	}
+
+	async deployService(serviceId: string, trigger = 'manual'): Promise<Deployment> {
+		const svc = this.services.find((s) => s.id === serviceId);
+		if (svc) {
+			svc.status = 'deploying';
+		}
+		try {
+			const res = await api.services.deploy(serviceId, trigger);
+			if (res && (res as any).id) {
+				const dep: Deployment = {
+					id: (res as any).id,
+					projectId: (res as any).projectId || svc?.projectId || '',
+					projectName: (res as any).projectId || svc?.projectId || '',
+					serviceId: (res as any).serviceId || serviceId,
+					serviceName: svc?.name || serviceId,
+					number: (res as any).number || this.deployments.length + 1,
+					version: (res as any).version || `#${this.deployments.length + 1}`,
+					commit: (res as any).commitHash || '',
+					commitMessage: (res as any).commitMessage || 'Deployment initiated',
+					branch: (res as any).branch || svc?.branch || 'main',
+					status: (res as any).status || 'building',
+					duration: (res as any).duration || 'Running…',
+					timeAgo: 'Just now',
+					startedAt: (res as any).startedAt || new Date().toISOString(),
+					finishedAt: (res as any).finishedAt || '',
+					trigger: (res as any).trigger || trigger,
+					image: (res as any).image || svc?.image
+				};
+				const existingIdx = this.deployments.findIndex((d) => d.id === dep.id);
+				if (existingIdx >= 0) {
+					this.deployments[existingIdx] = dep;
+				} else {
+					this.deployments.unshift(dep);
+				}
+
+				// Active watcher: Poll deployment & service status every 1.5s until finished
+				const depId = dep.id;
+				let attempts = 0;
+				const pollTimer = setInterval(async () => {
+					attempts++;
+					try {
+						const [updatedDep, updatedSvc] = await Promise.all([
+							api.services.getDeployment(depId).catch(() => null),
+							api.services.get(serviceId).catch(() => null)
+						]);
+						if (updatedDep) {
+							const dIdx = this.deployments.findIndex((d) => d.id === depId);
+							if (dIdx >= 0) {
+								this.deployments[dIdx].status = updatedDep.status;
+								this.deployments[dIdx].duration = updatedDep.duration || this.deployments[dIdx].duration;
+								this.deployments[dIdx].finishedAt = updatedDep.finishedAt || '';
+							}
+						}
+						if (updatedSvc && updatedSvc.status !== 'deploying') {
+							if (svc) {
+								svc.status = updatedSvc.status;
+							}
+							clearInterval(pollTimer);
+						}
+					} catch (_) {}
+
+					if (attempts > 300) {
+						clearInterval(pollTimer);
+					}
+				}, 1500);
+
+				return dep;
+			}
+			return res as any;
 		} catch (err) {
 			console.error('Service deployment error:', err);
 			if (svc) {

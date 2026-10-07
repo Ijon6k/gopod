@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { page } from '$app/state';
+	import { untrack } from 'svelte';
 	import { Tabs } from '$lib/components/ui';
 	import { getServiceById, getProjectById, dataStore } from '$lib/data';
 	import { api } from '$lib/api';
@@ -21,6 +22,7 @@
 	let directService = $state<Service | null>(null);
 	let directProject = $state<Project | null>(null);
 	let isLoading = $state(true);
+	let lastResolvedServiceId = '';
 
 	let service = $derived(directService ?? (serviceId ? getServiceById(serviceId) : undefined));
 	let project = $derived(directProject ?? (projectId ? getProjectById(projectId) : (service ? getProjectById(service.projectId) : undefined)));
@@ -32,91 +34,128 @@
 
 		let active = true;
 
-		async function resolveData() {
-			const storeSvc = getServiceById(sId);
-			const storeProj = pId ? getProjectById(pId) : (storeSvc ? getProjectById(storeSvc.projectId) : undefined);
+		untrack(() => {
+			if (lastResolvedServiceId === sId) return;
+			lastResolvedServiceId = sId;
 
-			if (storeSvc && storeProj) {
-				directService = storeSvc;
-				directProject = storeProj;
-				isLoading = false;
-				return;
-			}
+			async function resolveData() {
+				const storeSvc = getServiceById(sId);
+				const storeProj = pId ? getProjectById(pId) : (storeSvc ? getProjectById(storeSvc.projectId) : undefined);
 
-			isLoading = true;
-
-			try {
-				const [fetchedSvc, fetchedProj] = await Promise.all([
-					storeSvc ? Promise.resolve(storeSvc) : api.services.get(sId).catch(() => null),
-					storeProj ? Promise.resolve(storeProj) : (pId ? api.projects.get(pId).catch(() => null) : null)
-				]);
-
-				if (!active) return;
-
-				if (fetchedSvc) {
-					if (!fetchedSvc.deployments) fetchedSvc.deployments = [];
-					directService = fetchedSvc;
-
-					const idx = dataStore.services.findIndex((s) => s.id === fetchedSvc.id);
-					if (idx >= 0) {
-						dataStore.services[idx] = fetchedSvc;
-					} else {
-						dataStore.services.push(fetchedSvc);
-					}
+				if (storeSvc && storeProj) {
+					directService = storeSvc;
+					directProject = storeProj;
+					isLoading = false;
+					return;
 				}
 
-				if (fetchedProj) {
-					const fullProj: Project = {
-						id: fetchedProj.id,
-						name: fetchedProj.name,
-						description: fetchedProj.description || '',
-						status: 'healthy',
-						services: [],
-						domains: [],
-						cpu: 0,
-						memory: 0,
-						memoryTotal: 0,
-						createdAt: fetchedProj.createdAt || new Date().toISOString()
-					};
-					directProject = fullProj;
+				isLoading = true;
 
-					const pIdx = dataStore.projects.findIndex((p) => p.id === fullProj.id);
-					if (pIdx >= 0) {
-						dataStore.projects[pIdx] = fullProj;
-					} else {
-						dataStore.projects.push(fullProj);
-					}
-				} else if (fetchedSvc && !directProject) {
-					try {
-						const parentProj = await api.projects.get(fetchedSvc.projectId);
-						if (active && parentProj) {
-							const fullProj: Project = {
-								id: parentProj.id,
-								name: parentProj.name,
-								description: parentProj.description || '',
-								status: 'healthy',
-								services: [],
-								domains: [],
-								cpu: 0,
-								memory: 0,
-								memoryTotal: 0,
-								createdAt: parentProj.createdAt || new Date().toISOString()
-							};
-							directProject = fullProj;
+				try {
+					const [fetchedSvc, fetchedProj] = await Promise.all([
+						storeSvc ? Promise.resolve(storeSvc) : api.services.get(sId).catch(() => null),
+						storeProj ? Promise.resolve(storeProj) : (pId ? api.projects.get(pId).catch(() => null) : null)
+					]);
+
+					if (!active) return;
+
+					if (fetchedSvc) {
+						if (!fetchedSvc.deployments) fetchedSvc.deployments = [];
+						directService = fetchedSvc;
+
+						const idx = dataStore.services.findIndex((s) => s.id === fetchedSvc.id);
+						if (idx >= 0) {
+							dataStore.services[idx] = fetchedSvc;
+						} else {
+							dataStore.services.push(fetchedSvc);
 						}
-					} catch (_) {}
-				}
-			} catch (_) {
-				// Silently handle error
-			} finally {
-				if (active) isLoading = false;
-			}
-		}
+					}
 
-		resolveData();
+					if (fetchedProj) {
+						const fullProj: Project = {
+							id: fetchedProj.id,
+							name: fetchedProj.name,
+							description: fetchedProj.description || '',
+							status: 'healthy',
+							services: [],
+							domains: [],
+							cpu: 0,
+							memory: 0,
+							memoryTotal: 0,
+							createdAt: fetchedProj.createdAt || new Date().toISOString()
+						};
+						directProject = fullProj;
+
+						const pIdx = dataStore.projects.findIndex((p) => p.id === fullProj.id);
+						if (pIdx >= 0) {
+							dataStore.projects[pIdx] = fullProj;
+						} else {
+							dataStore.projects.push(fullProj);
+						}
+					} else if (fetchedSvc && !directProject) {
+						try {
+							const parentProj = await api.projects.get(fetchedSvc.projectId);
+							if (active && parentProj) {
+								const fullProj: Project = {
+									id: parentProj.id,
+									name: parentProj.name,
+									description: parentProj.description || '',
+									status: 'healthy',
+									services: [],
+									domains: [],
+									cpu: 0,
+									memory: 0,
+									memoryTotal: 0,
+									createdAt: parentProj.createdAt || new Date().toISOString()
+								};
+								directProject = fullProj;
+							}
+						} catch (_) {}
+					}
+				} catch (_) {
+					// Silently handle error
+				} finally {
+					if (active) isLoading = false;
+				}
+			}
+
+			resolveData();
+		});
 
 		return () => {
 			active = false;
+		};
+	});
+
+	// Auto-poll service status while deploying or building
+	$effect(() => {
+		const sId = serviceId;
+		const currentStatus = service?.status;
+		if (!sId || (currentStatus !== 'deploying' && currentStatus !== 'building')) {
+			return;
+		}
+
+		let active = true;
+		const interval = setInterval(async () => {
+			try {
+				const freshSvc = await api.services.get(sId);
+				if (!active) return;
+				if (freshSvc) {
+					directService = freshSvc;
+					const idx = dataStore.services.findIndex((s) => s.id === freshSvc.id);
+					if (idx >= 0) {
+						dataStore.services[idx] = freshSvc;
+					}
+					if (freshSvc.status !== 'deploying' && freshSvc.status !== 'building') {
+						clearInterval(interval);
+					}
+				}
+			} catch (_) {}
+		}, 1500);
+
+		return () => {
+			active = false;
+			clearInterval(interval);
 		};
 	});
 
@@ -132,37 +171,13 @@
 		{ id: 'advanced', label: 'Advanced' }
 	];
 
-	function handleRedeploy() {
+	async function handleRedeploy() {
 		if (!service) return;
-		service.status = 'deploying';
-
-		const newDep: import('$lib/types').Deployment = {
-			id: `dep-${service.id}-${Date.now()}`,
-			projectId: service.projectId,
-			projectName: project?.name ?? service.projectId,
-			serviceId: service.id,
-			serviceName: service.name,
-			number: (service.deployments?.length ?? 0) + 1,
-			version: `v1.${(service.deployments?.length ?? 0) + 1}.0`,
-			commit: Math.random().toString(16).substring(2, 9),
-			commitMessage: 'Triggered manual redeployment',
-			branch: service.branch ?? 'main',
-			status: 'deploying',
-			duration: 'Running…',
-			timeAgo: 'Just now',
-			startedAt: new Date().toISOString(),
-			finishedAt: ''
-		};
-
-		dataStore.deployments.unshift(newDep);
-
-		setTimeout(() => {
-			if (service) {
-				service.status = 'running';
-				newDep.status = 'running';
-				newDep.duration = '34s';
-			}
-		}, 1800);
+		try {
+			await dataStore.deployService(service.id, 'manual');
+		} catch (err: any) {
+			console.error('[GOPOD] Deployment trigger error:', err);
+		}
 	}
 </script>
 

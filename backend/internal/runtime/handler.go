@@ -50,6 +50,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/volumes/prune", h.middleware.RequireAuth(h.handlePruneVolumes))
 	mux.HandleFunc("GET /api/networks", h.middleware.RequireAuth(h.handleListNetworks))
 	mux.HandleFunc("POST /api/system/prune", h.middleware.RequireAuth(h.handlePruneSystem))
+	mux.HandleFunc("GET /api/system/df", h.middleware.RequireAuth(h.handleGetDiskUsage))
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -200,3 +201,13 @@ func (h *Handler) handlePruneSystem(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "System pruned successfully"})
 }
+
+func (h *Handler) handleGetDiskUsage(w http.ResponseWriter, r *http.Request) {
+	df, err := h.service.GetDiskUsage(r.Context())
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, df)
+}
+

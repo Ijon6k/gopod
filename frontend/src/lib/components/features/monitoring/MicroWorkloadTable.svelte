@@ -13,12 +13,14 @@
 
 	let { service, onOpenTerminal, onOpenLogs }: Props = $props();
 
-	// Match containers from dataStore for this service
+	// Match containers from dataStore for this service (serviceId, prefix match, or service name)
 	let serviceContainers = $derived.by(() => {
-		const storeContainers = dataStore.containers.filter((c) => c.serviceId === service.id);
+		const storeContainers = dataStore.containers.filter(
+			(c) => c.serviceId === service.id || c.name.startsWith(service.id) || (c.serviceName && c.serviceName === service.name)
+		);
 		if (storeContainers.length > 0) return storeContainers;
 
-		// Fallback from workloads or service identity
+		// Fallback from workloads or service identity (zero dummy numbers)
 		const workloads = service.workloads ?? [
 			{ name: service.name, image: service.image || 'app:latest', status: service.status, cpu: service.cpu, memory: service.memory }
 		];
@@ -31,19 +33,19 @@
 			serviceId: service.id,
 			serviceName: service.name,
 			image: w.image,
-			status: w.status,
-			cpu: w.cpu ?? 0.8,
-			memory: w.memory ?? 180,
+			status: service.status || w.status || 'stopped',
+			cpu: w.cpu ?? 0,
+			memory: w.memory ?? 0,
 			memoryLimit: 512,
-			ports: w.ports || `${service.port || 3000}:${service.port || 3000}`,
-			startedAt: '2 hours ago',
-			netRx: '4.2 MB',
-			netTx: '18.4 MB',
-			blockRead: '0.2 MB',
-			blockWrite: '0.6 MB',
-			pids: 14,
+			ports: w.ports || (service.port ? `${service.port}:${service.port}` : '—'),
+			startedAt: service.status === 'running' ? 'Active' : '—',
+			netRx: '0 B',
+			netTx: '0 B',
+			blockRead: '0 B',
+			blockWrite: '0 B',
+			pids: service.status === 'running' ? 1 : 0,
 			restarts: 0,
-			uptime: '8d 14h'
+			uptime: service.status === 'running' ? 'Active' : 'Stopped'
 		}));
 	});
 

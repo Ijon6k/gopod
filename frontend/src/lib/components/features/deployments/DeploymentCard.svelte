@@ -87,7 +87,7 @@
 
 			<!-- Row 2: Commit SHA, Branch, Trigger, Author -->
 			<div class="flex items-center flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
-				{#if deployment.commit && deployment.commit !== '—'}
+				{#if deployment.commit && deployment.commit !== '—' && deployment.commit.trim() !== ''}
 					<button
 						type="button"
 						onclick={copyCommit}
@@ -104,14 +104,16 @@
 					</button>
 				{/if}
 
-				{#if deployment.branch && deployment.branch !== '—'}
+				{#if deployment.branch && deployment.branch !== '—' && deployment.branch.trim() !== ''}
 					<span class="inline-flex items-center gap-1 font-[var(--font-mono)] text-[var(--text-secondary)]">
 						<GitBranch size={11} class="text-[var(--text-tertiary)]" />
 						{deployment.branch}
 					</span>
 				{/if}
 
-				<span class="text-[var(--border)]">•</span>
+				{#if (deployment.commit && deployment.commit !== '—' && deployment.commit.trim() !== '') || (deployment.branch && deployment.branch !== '—' && deployment.branch.trim() !== '')}
+					<span class="text-[var(--border)]">•</span>
+				{/if}
 
 				<!-- Trigger Type -->
 				<span class="inline-flex items-center gap-1">
@@ -121,12 +123,18 @@
 					{:else if deployment.trigger === 'webhook'}
 						<Globe size={11} class="text-[var(--accent)]" />
 						<span>Webhook</span>
-					{:else if deployment.trigger === 'manual'}
-						<User size={11} />
-						<span>Manual</span>
-					{:else}
+					{:else if deployment.trigger === 'compose'}
+						<Terminal size={11} class="text-[var(--accent)]" />
+						<span>Compose</span>
+					{:else if deployment.trigger === 'quadlet'}
+						<Terminal size={11} class="text-[var(--text-secondary)]" />
+						<span>Quadlet</span>
+					{:else if deployment.trigger === 'git-push' || (deployment.commit && deployment.commit !== '—' && deployment.commit.trim() !== '')}
 						<GitCommit size={11} />
 						<span>Git Push</span>
+					{:else}
+						<User size={11} />
+						<span>Manual</span>
 					{/if}
 				</span>
 

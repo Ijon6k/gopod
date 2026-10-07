@@ -27,6 +27,8 @@
 	});
 	let isDeploying = $state(false);
 	let isRebuilding = $state(false);
+	let isFreshingVolumes = $state(false);
+	let isTogglingPower = $state(false);
 	let feedbackMessage = $state<{ text: string; type: 'success' | 'info' } | null>(null);
 	let feedbackTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -72,86 +74,83 @@
 		}
 	});
 
-	function handleDeploy() {
+	async function handleDeploy() {
 		isDeploying = true;
-		service.status = 'deploying';
-
-		if (onRedeploy) {
-			onRedeploy();
-		} else {
-			const newDep: import('$lib/types').Deployment = {
-				id: `dep-${service.id}-${Date.now()}`,
-				projectId: service.projectId,
-				projectName: service.projectId,
-				serviceId: service.id,
-				serviceName: service.name,
-				number: (service.deployments?.length ?? 0) + 1,
-				version: `v1.${(service.deployments?.length ?? 0) + 1}.0`,
-				commit: Math.random().toString(16).substring(2, 9),
-				commitMessage:
-					service.type === 'quadlet'
-						? 'Triggered Quadlet systemd service reload & start'
-						: 'Triggered deployment from Deploy Settings',
-				branch: service.branch ?? 'main',
-				status: 'deploying',
-				duration: 'Running…',
-				timeAgo: 'Just now',
-				startedAt: new Date().toISOString(),
-				finishedAt: ''
-			};
-			dataStore.deployments.unshift(newDep);
-		}
-
 		showFeedback(
 			service.type === 'quadlet'
-				? 'Compiling unit & executing systemctl --user start...'
-				: 'Deployment initiated. Monitoring build logs...',
+				? 'Compiling Quadlet unit & generating systemd service...'
+				: 'Deployment initiated. Building and rolling out workload...',
 			'info'
 		);
 
-		setTimeout(() => {
-			service.status = 'running';
+		try {
+			if (onRedeploy) {
+				await onRedeploy();
+			} else {
+				await dataStore.deployService(service.id, 'manual');
+			}
+			showFeedback('Deployment queued and running. Live output streaming in Logs.', 'success');
+		} catch (err: any) {
+			showFeedback(err?.message || 'Deployment failed to initiate', 'info');
+		} finally {
 			isDeploying = false;
-			dataStore.updateService(service);
-			showFeedback(
-				service.type === 'quadlet'
-					? `Quadlet unit ${service.name}.service is now active (running)`
-					: 'Deployment completed successfully. Service is healthy.',
-				'success'
-			);
-		}, 1600);
-	}
-
-	function handleRebuild() {
-		isRebuilding = true;
-		service.status = 'building';
-		showFeedback('Pulling fresh image and rebuilding service...', 'info');
-
-		setTimeout(() => {
-			isRebuilding = false;
-			handleDeploy();
-		}, 1200);
-	}
-
-	function handleTogglePower() {
-		if (service.status === 'running' || service.status === 'healthy') {
-			service.status = 'stopped';
-			showFeedback(
-				service.type === 'quadlet'
-					? `Executed: systemctl --user stop ${service.name}`
-					: 'Container workload stopped.',
-				'info'
-			);
-		} else {
-			service.status = 'running';
-			showFeedback(
-				service.type === 'quadlet'
-					? `Executed: systemctl --user start ${service.name}`
-					: 'Container workload started.',
-				'success'
-			);
 		}
-		dataStore.updateService(service);
+	}
+
+	async function handleRebuild() {
+		isRebuilding = true;
+		showFeedback('Pulling fresh image layers and initiating rebuild...', 'info');
+
+		try {
+			if (onRedeploy) {
+				await onRedeploy();
+			} else {
+				await dataStore.deployService(service.id, 'rebuild');
+			}
+			showFeedback('Rebuild rollout started.', 'success');
+		} catch (err: any) {
+			showFeedback(err?.message || 'Rebuild failed', 'info');
+		} finally {
+			isRebuilding = false;
+		}
+	}
+
+	async function handleFreshVolumes() {
+		isFreshingVolumes = true;
+		showFeedback('Purging ephemeral volumes and triggering clean rollout...', 'info');
+
+		try {
+			await dataStore.deployService(service.id, 'fresh-volumes');
+			showFeedback('Fresh volumes rollout started.', 'success');
+		} catch (err: any) {
+			showFeedback(err?.message || 'Fresh volumes rollout failed', 'info');
+		} finally {
+			isFreshingVolumes = false;
+		}
+	}
+
+	async function handleTogglePower() {
+		if (isTogglingPower) return;
+		isTogglingPower = true;
+		const isRunning = service.status === 'running' || service.status === 'healthy';
+
+		try {
+			if (isRunning) {
+				showFeedback('Stopping service workload...', 'info');
+				await dataStore.stopService(service.id);
+				service.status = 'stopped';
+				showFeedback('Workload stopped successfully.', 'info');
+			} else {
+				showFeedback('Starting service workload...', 'info');
+				await dataStore.startService(service.id);
+				service.status = 'running';
+				showFeedback('Workload started successfully.', 'success');
+			}
+		} catch (err: any) {
+			showFeedback(err?.message || 'Failed to update service state', 'info');
+		} finally {
+			isTogglingPower = false;
+		}
 	}
 
 	function handleToggleAutodeploy() {
@@ -162,13 +161,6 @@
 			autoDeploy
 				? 'Autodeploy enabled: webhooks and registry updates will auto-deploy.'
 				: 'Autodeploy paused: deployments must be triggered manually.',
-			'info'
-		);
-	}
-
-	function handleFreshVolumes() {
-		showFeedback(
-			'Fresh Volumes: storage caches queued for reset. Next deployment will mount clean volumes.',
 			'info'
 		);
 	}
@@ -201,12 +193,12 @@
 				type="button"
 				onclick={handleDeploy}
 				disabled={isDeploying || service.status === 'deploying'}
-				class="flex items-center gap-2 px-4 py-2 rounded-md bg-white hover:bg-zinc-200 text-zinc-950 text-xs font-semibold cursor-pointer border-0 transition-all shadow-xs disabled:opacity-50"
+				class="flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--accent)] hover:opacity-90 text-[var(--bg-shell)] text-xs font-semibold cursor-pointer border-0 transition-all shadow-xs disabled:opacity-50"
 			>
 				{#if isDeploying || service.status === 'deploying'}
-					<ArrowClockwise size={15} class="animate-spin text-zinc-950" /> Deploying…
+					<ArrowClockwise size={15} class="animate-spin text-inherit" /> Deploying…
 				{:else}
-					<RocketLaunch size={15} weight="fill" class="text-zinc-950" /> Deploy
+					<RocketLaunch size={15} weight="fill" class="text-inherit" /> Deploy
 				{/if}
 			</button>
 
@@ -214,17 +206,22 @@
 			<button
 				type="button"
 				onclick={handleFreshVolumes}
-				class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+				disabled={isFreshingVolumes || isDeploying || service.status === 'deploying'}
+				class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors disabled:opacity-50"
 				title="Purge and mount fresh storage volumes"
 			>
-				<Database size={14} /> Fresh Volumes
+				{#if isFreshingVolumes}
+					<ArrowClockwise size={14} class="animate-spin text-inherit" /> Purging…
+				{:else}
+					<Database size={14} /> Fresh Volumes
+				{/if}
 			</button>
 
 			<!-- 3. Rebuild (Clean rebuild & image re-pull) -->
 			<button
 				type="button"
 				onclick={handleRebuild}
-				disabled={isRebuilding}
+				disabled={isRebuilding || isDeploying || service.status === 'deploying'}
 				class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors disabled:opacity-50"
 				title="Force rebuild container image and reload unit"
 			>
@@ -236,19 +233,29 @@
 				<button
 					type="button"
 					onclick={handleTogglePower}
-					class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-red-500/25 bg-red-500/10 hover:bg-red-500/20 text-xs font-medium text-red-400 cursor-pointer transition-colors"
-					title="Gracefully stop service container"
+					disabled={isTogglingPower}
+					class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--status-red)]/25 bg-[var(--status-red)]/10 hover:bg-[var(--status-red)]/20 text-xs font-medium text-[var(--status-red)] cursor-pointer transition-colors disabled:opacity-50"
+					title="Gracefully stop service workload"
 				>
-					<Stop size={14} weight="fill" /> Stop
+					{#if isTogglingPower}
+						<ArrowClockwise size={14} class="animate-spin" /> Stopping…
+					{:else}
+						<Stop size={14} weight="fill" /> Stop
+					{/if}
 				</button>
 			{:else}
 				<button
 					type="button"
 					onclick={handleTogglePower}
-					class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-emerald-500/25 bg-emerald-500/10 hover:bg-emerald-500/20 text-xs font-medium text-emerald-400 cursor-pointer transition-colors"
-					title="Start service container"
+					disabled={isTogglingPower || service.status === 'deploying'}
+					class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--status-green)]/25 bg-[var(--status-green)]/10 hover:bg-[var(--status-green)]/20 text-xs font-medium text-[var(--status-green)] cursor-pointer transition-colors disabled:opacity-50"
+					title="Start service workload"
 				>
-					<Play size={14} weight="fill" /> Start
+					{#if isTogglingPower}
+						<ArrowClockwise size={14} class="animate-spin" /> Starting…
+					{:else}
+						<Play size={14} weight="fill" /> Start
+					{/if}
 				</button>
 			{/if}
 

@@ -14,6 +14,8 @@
 		ArrowSquareOut
 	} from 'phosphor-svelte';
 
+	import { getDefaultComposeYaml } from '../manifests/defaults';
+
 	interface Props {
 		service: Service;
 	}
@@ -21,26 +23,25 @@
 	let { service }: Props = $props();
 
 	let providerTab = $state<'raw' | 'github' | 'gitlab' | 'git'>('raw');
-	let gitRepoUrl = $state(service.source || '');
-	let gitBranch = $state(service.branch || 'main');
+	let gitRepoUrl = $state('');
+	let gitBranch = $state('main');
 	let gitComposePath = $state('docker-compose.yml');
-
-	let composeYaml = $state(
-		service.composeYaml ||
-			service.k8sYaml ||
-			`version: "3.8"
-services:
-  ${service.name}:
-    image: ${service.image || 'nginx:alpine'}
-    restart: always
-    ports:
-      - "${service.port || 8080}:80"
-    environment:
-      - NODE_ENV=production`
-	);
+	let composeYaml = $state('');
 
 	let previewOpen = $state(false);
 	let saveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
+
+	let lastLoadedServiceId = $state<string | null>(null);
+
+	$effect(() => {
+		if (service.id !== lastLoadedServiceId) {
+			lastLoadedServiceId = service.id;
+			gitRepoUrl = service.source || '';
+			gitBranch = service.branch || 'main';
+			gitComposePath = 'docker-compose.yml';
+			composeYaml = service.composeYaml || service.k8sYaml || getDefaultComposeYaml(service);
+		}
+	});
 
 	// Simple parser for previewing services defined in Compose
 	let parsedServices = $derived.by(() => {
@@ -79,7 +80,7 @@ services:
 		}
 	});
 
-	function handleSave() {
+	async function handleSave() {
 		saveStatus = 'saving';
 		if (service.type === 'kubernetes') {
 			service.k8sYaml = composeYaml;
@@ -91,11 +92,14 @@ services:
 			service.branch = gitBranch;
 		}
 
-		setTimeout(() => {
-			dataStore.updateService(service);
+		try {
+			await dataStore.updateService(service);
 			saveStatus = 'saved';
 			setTimeout(() => (saveStatus = 'idle'), 2500);
-		}, 400);
+		} catch (err) {
+			console.error('Failed to save compose config:', err);
+			saveStatus = 'idle';
+		}
 	}
 </script>
 

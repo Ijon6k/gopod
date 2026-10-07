@@ -106,3 +106,15 @@ type RunContainerOptions struct {
 	CPULimit      float64           `json:"cpuLimit,omitempty"`
 	MemoryLimit   int               `json:"memoryLimit,omitempty"`
 }
+
+// SystemDiskUsage represents disk space usage of images, containers, and volumes.
+type SystemDiskUsage struct {
+	Type           string `json:"type"`
+	Total          int    `json:"total"`
+	Active         int    `json:"active"`
+	RawSize        int64  `json:"rawSize"`
+	RawReclaimable int64  `json:"rawReclaimable"`
+	Size           string `json:"size"`
+	Reclaimable    string `json:"reclaimable"`
+}
+

@@ -2,6 +2,9 @@
 	import { dataStore } from '$lib/stores/data.svelte';
 	import { Button } from '$lib/components/primitives';
 	import PruneStorageModal from './PruneStorageModal.svelte';
+	import { api } from '$lib/api';
+	import type { SystemDiskUsage } from '$lib/api/system';
+	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
 		ImageSquare,
@@ -16,26 +19,71 @@
 
 	let isPruneModalOpen = $state(false);
 	let recentReclaimedGB = $state<number | null>(null);
+	let dfData = $state<SystemDiskUsage[]>([]);
+	let isLoadingDf = $state(false);
 
 	let server = $derived(dataStore.server);
 	let images = $derived(dataStore.images);
 	let volumes = $derived(dataStore.volumes);
 	let containers = $derived(dataStore.containers);
 
+	async function loadDiskUsage() {
+		try {
+			isLoadingDf = true;
+			const data = await api.system.df();
+			if (Array.isArray(data)) {
+				dfData = data;
+			}
+		} catch (err) {
+			console.error('Failed to load Podman disk usage:', err);
+		} finally {
+			isLoadingDf = false;
+		}
+	}
+
+	onMount(() => {
+		loadDiskUsage();
+	});
+
 	let runningContainers = $derived(containers.filter((c) => c.status === 'running').length);
 	let stoppedContainers = $derived(containers.filter((c) => c.status !== 'running').length);
+
+	let imageUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('image')));
+	let volumeUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('volume')));
+	let containerUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('container')));
+
+	function bytesToGB(bytes?: number): number {
+		if (!bytes || bytes <= 0) return 0;
+		return parseFloat((bytes / (1024 * 1024 * 1024)).toFixed(2));
+	}
+
+	function parsePct(reclaimStr?: string): number {
+		if (!reclaimStr) return 0;
+		const match = reclaimStr.match(/\((\d+)%\)/);
+		return match ? parseInt(match[1], 10) : 0;
+	}
+
+	function formatBytes(bytes: number): string {
+		if (bytes <= 0) return '0 B';
+		const k = 1024;
+		const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+		const i = Math.floor(Math.log(bytes) / Math.log(k));
+		return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+	}
 
 	let storageCategories = $derived([
 		{
 			id: 'images',
 			name: 'Container Images',
 			icon: ImageSquare,
-			totalCount: images.length,
-			activeText: `${images.length} images`,
-			inactiveText: 'local store',
-			sizeGB: parseFloat((images.length * 0.35).toFixed(1)),
-			reclaimableGB: parseFloat((images.length * 0.1).toFixed(1)),
-			reclaimablePct: 25,
+			totalCount: imageUsage?.total ?? images.length,
+			activeText: `${imageUsage?.active ?? images.length} active`,
+			inactiveText: `${imageUsage ? Math.max(0, imageUsage.total - imageUsage.active) : 0} unreferenced`,
+			sizeDisplay: imageUsage?.size || (images.length > 0 ? `${bytesToGB(images.length * 350000000)} GB` : '0 B'),
+			sizeGB: imageUsage ? bytesToGB(imageUsage.rawSize) : parseFloat((images.length * 0.35).toFixed(1)),
+			reclaimableDisplay: imageUsage?.reclaimable || '0 B',
+			reclaimableGB: imageUsage ? bytesToGB(imageUsage.rawReclaimable) : 0,
+			reclaimablePct: imageUsage ? parsePct(imageUsage.reclaimable) : 0,
 			color: 'bg-[var(--accent)]',
 			viewPath: '/runtime/images',
 			viewLabel: 'Images'
@@ -44,12 +92,14 @@
 			id: 'volumes',
 			name: 'Local Volumes',
 			icon: Database,
-			totalCount: volumes.length,
-			activeText: `${volumes.length} volumes`,
-			inactiveText: 'local store',
-			sizeGB: parseFloat((volumes.length * 0.25).toFixed(1)),
-			reclaimableGB: 0.1,
-			reclaimablePct: 15,
+			totalCount: volumeUsage?.total ?? volumes.length,
+			activeText: `${volumeUsage?.active ?? volumes.length} active`,
+			inactiveText: `${volumeUsage ? Math.max(0, volumeUsage.total - volumeUsage.active) : 0} unreferenced`,
+			sizeDisplay: volumeUsage?.size || '0 B',
+			sizeGB: volumeUsage ? bytesToGB(volumeUsage.rawSize) : parseFloat((volumes.length * 0.25).toFixed(1)),
+			reclaimableDisplay: volumeUsage?.reclaimable || '0 B',
+			reclaimableGB: volumeUsage ? bytesToGB(volumeUsage.rawReclaimable) : 0,
+			reclaimablePct: volumeUsage ? parsePct(volumeUsage.reclaimable) : 0,
 			color: 'bg-[var(--status-amber)]',
 			viewPath: '/runtime/volumes',
 			viewLabel: 'Volumes'
@@ -58,24 +108,38 @@
 			id: 'containers',
 			name: 'Containers (RW Layers)',
 			icon: Cube,
-			totalCount: containers.length,
-			activeText: `${runningContainers} running`,
-			inactiveText: `${stoppedContainers} stopped`,
-			sizeGB: parseFloat((containers.length * 0.1).toFixed(1)),
-			reclaimableGB: parseFloat((stoppedContainers * 0.05).toFixed(1)),
-			reclaimablePct: stoppedContainers > 0 ? 30 : 0,
+			totalCount: containerUsage?.total ?? containers.length,
+			activeText: `${containerUsage?.active ?? runningContainers} running`,
+			inactiveText: `${containerUsage ? Math.max(0, containerUsage.total - containerUsage.active) : stoppedContainers} stopped`,
+			sizeDisplay: containerUsage?.size || '0 B',
+			sizeGB: containerUsage ? bytesToGB(containerUsage.rawSize) : parseFloat((containers.length * 0.1).toFixed(1)),
+			reclaimableDisplay: containerUsage?.reclaimable || '0 B',
+			reclaimableGB: containerUsage ? bytesToGB(containerUsage.rawReclaimable) : 0,
+			reclaimablePct: containerUsage ? parsePct(containerUsage.reclaimable) : (stoppedContainers > 0 ? 30 : 0),
 			color: 'bg-[var(--status-green)]',
 			viewPath: '/runtime/containers',
 			viewLabel: 'Containers'
 		}
 	]);
 
+	let totalRawSize = $derived(
+		dfData.length > 0
+			? dfData.reduce((acc, c) => acc + (c.rawSize || 0), 0)
+			: storageCategories.reduce((acc, c) => acc + c.sizeGB * 1024 * 1024 * 1024, 0)
+	);
+	let totalRawReclaimable = $derived(
+		dfData.reduce((acc, c) => acc + (c.rawReclaimable || 0), 0)
+	);
+
+	let totalPodmanDisplay = $derived(
+		dfData.length > 0 ? formatBytes(totalRawSize) : `${storageCategories.reduce((acc, c) => acc + c.sizeGB, 0).toFixed(1)} GB`
+	);
+	let totalReclaimableDisplay = $derived(
+		dfData.length > 0 ? formatBytes(totalRawReclaimable) : '0 B'
+	);
+
 	let totalPodmanNum = $derived(
 		storageCategories.reduce((acc, c) => acc + c.sizeGB, 0)
-	);
-	let totalPodmanGB = $derived(totalPodmanNum.toFixed(1));
-	let totalReclaimableGB = $derived(
-		storageCategories.reduce((acc, c) => acc + c.reclaimableGB, 0).toFixed(1)
 	);
 
 	// Top largest storage consumers from real images and volumes
@@ -102,8 +166,9 @@
 		return items;
 	});
 
-	function handlePruned(reclaimed: number) {
+	async function handlePruned(reclaimed: number) {
 		recentReclaimedGB = reclaimed;
+		await loadDiskUsage();
 		setTimeout(() => {
 			recentReclaimedGB = null;
 		}, 8000);
@@ -140,11 +205,11 @@
 						Podman Storage Allocation
 					</h3>
 					<span class="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--status-green-muted)] text-[var(--status-green)] border border-[var(--status-green)]/30 font-medium">
-						{totalReclaimableGB} GB Reclaimable
+						{totalReclaimableDisplay} Reclaimable
 					</span>
 				</div>
 				<p class="text-xs text-[var(--text-tertiary)]">
-					<strong class="text-[var(--text-secondary)] font-mono">{totalPodmanGB} GB</strong> allocated in <code class="font-mono text-[10.5px]">~/.local/share/containers/storage</code> (driver: overlay).
+					<strong class="text-[var(--text-secondary)] font-mono">{totalPodmanDisplay}</strong> allocated in <code class="font-mono text-[10.5px]">~/.local/share/containers/storage</code> (driver: overlay).
 				</p>
 			</div>
 
@@ -166,7 +231,7 @@
 						<div
 							class="h-full {cat.color}"
 							style="width: {(cat.sizeGB / (totalPodmanNum || 1)) * 100}%;"
-							title="{cat.name}: {cat.sizeGB} GB"
+							title="{cat.name}: {cat.sizeDisplay}"
 						></div>
 					{/if}
 				{/each}
@@ -177,7 +242,7 @@
 				{#each storageCategories as cat}
 					<div class="flex items-center gap-1.5">
 						<span class="w-2 h-2 rounded-full {cat.color}"></span>
-						<span>{cat.name.split(' ')[0]}: <strong class="text-[var(--text-primary)]">{cat.sizeGB} GB</strong></span>
+						<span>{cat.name.split(' ')[0]}: <strong class="text-[var(--text-primary)]">{cat.sizeDisplay}</strong></span>
 					</div>
 				{/each}
 			</div>
@@ -221,15 +286,14 @@
 
 							<!-- Size -->
 							<td class="py-3 px-4 font-mono font-semibold text-[var(--text-primary)]">
-								{cat.sizeGB} GB
+								{cat.sizeDisplay}
 							</td>
 
 							<!-- Reclaimable -->
 							<td class="py-3 px-4">
-								{#if cat.reclaimableGB > 0}
+								{#if cat.reclaimableDisplay && cat.reclaimableDisplay !== '0 B' && cat.reclaimableDisplay !== '0B (0%)'}
 									<span class="font-mono text-[11.5px] font-medium {cat.id === 'volumes' ? 'text-[var(--status-amber)]' : 'text-[var(--status-green)]'}">
-										~{cat.reclaimableGB >= 1 ? `${cat.reclaimableGB} GB` : `${(cat.reclaimableGB * 1024).toFixed(0)} MB`}
-										<span class="text-[10px] opacity-75 font-normal">({cat.reclaimablePct}%)</span>
+										~{cat.reclaimableDisplay}
 									</span>
 								{:else}
 									<span class="text-[var(--text-tertiary)] font-mono text-[11px]">—</span>

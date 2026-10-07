@@ -103,3 +103,9 @@ func (s *Service) GetNetworks(ctx context.Context) ([]podman.NetworkItem, error)
 func (s *Service) PruneSystem(ctx context.Context) error {
 	return s.client.PruneSystem(ctx)
 }
+
+// GetDiskUsage queries disk space metrics from Podman.
+func (s *Service) GetDiskUsage(ctx context.Context) ([]podman.SystemDiskUsage, error) {
+	return s.client.GetDiskUsage(ctx)
+}
+

@@ -28,7 +28,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/gopod ./cmd/serve
 FROM docker.io/library/alpine:3.21
 WORKDIR /app
 
-RUN apk add --no-cache ca-certificates tzdata git podman
+RUN apk add --no-cache ca-certificates tzdata git podman podman-compose
 
 COPY --from=backend-builder /app/gopod /app/gopod
 

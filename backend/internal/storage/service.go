@@ -6,6 +6,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"time"
 )
 
@@ -44,16 +47,40 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 	if snap.Filename == "" {
 		snap.Filename = fmt.Sprintf("%s-%d.tar.zst", snap.VolumeName, time.Now().Unix())
 	}
-	if snap.Size == "" {
-		snap.Size = "Pending"
-	}
-	if snap.Status == "" {
-		snap.Status = "completed"
-	}
 	if snap.Compression == "" {
 		snap.Compression = "zstd"
 	}
 	snap.CreatedAt = time.Now()
+
+	// Perform real Podman volume export
+	backupDir := "./data/backups"
+	_ = os.MkdirAll(backupDir, 0755)
+	filePath := filepath.Join(backupDir, snap.Filename)
+
+	outFile, err := os.Create(filePath)
+	if err == nil {
+		cmd := exec.CommandContext(ctx, "podman", "volume", "export", snap.VolumeName)
+		cmd.Stdout = outFile
+		if exportErr := cmd.Run(); exportErr == nil {
+			_ = outFile.Close()
+			if fi, statErr := os.Stat(filePath); statErr == nil {
+				snap.SizeBytes = fi.Size()
+				snap.Size = fmt.Sprintf("%.2f MB", float64(fi.Size())/(1024*1024))
+				snap.Status = "completed"
+			} else {
+				snap.Size = "0 MB"
+				snap.Status = "completed"
+			}
+		} else {
+			_ = outFile.Close()
+			_ = os.Remove(filePath)
+			snap.Size = "0 MB"
+			snap.Status = "failed"
+		}
+	} else {
+		snap.Size = "0 MB"
+		snap.Status = "failed"
+	}
 
 	if err := s.repo.CreateSnapshot(ctx, snap); err != nil {
 		return nil, err
@@ -64,6 +91,9 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
+	}
+	if snap, _ := s.repo.GetSnapshot(ctx, id); snap != nil && snap.Filename != "" {
+		_ = os.Remove(filepath.Join("./data/backups", snap.Filename))
 	}
 	return s.repo.DeleteSnapshot(ctx, id)
 }
@@ -81,8 +111,8 @@ func (s *Service) CreateSchedule(ctx context.Context, sched VolumeSchedule) (*Vo
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	if sched.VolumeName == "" || sched.Cron == "" {
-		return nil, errors.New("volumeName and cron expression are required")
+	if sched.VolumeName == "" {
+		return nil, errors.New("volumeName is required")
 	}
 
 	if sched.ID == "" {
@@ -90,7 +120,13 @@ func (s *Service) CreateSchedule(ctx context.Context, sched VolumeSchedule) (*Vo
 		_, _ = rand.Read(b)
 		sched.ID = fmt.Sprintf("sched-%s", hex.EncodeToString(b))
 	}
-	if sched.RetentionCount <= 0 {
+	if sched.Cron == "" {
+		sched.Cron = "0 2 * * *"
+	}
+	if sched.Label == "" {
+		sched.Label = "Daily at 02:00"
+	}
+	if sched.RetentionCount == 0 {
 		sched.RetentionCount = 7
 	}
 	sched.CreatedAt = time.Now()

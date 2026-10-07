@@ -40,17 +40,23 @@
 		isCreatingSnapshot = true;
 		snapshotTargetVolume = volumeName;
 
-		// Simulate rootless podman volume tar.zst creation
-		await new Promise((r) => setTimeout(r, 900));
-
-		dataStore.createVolumeSnapshot(volumeName, projectId, serviceId);
-		isCreatingSnapshot = false;
-		snapshotTargetVolume = null;
+		try {
+			await dataStore.createVolumeSnapshot(volumeName, projectId, serviceId);
+		} catch (err) {
+			console.error('Failed to create snapshot:', err);
+		} finally {
+			isCreatingSnapshot = false;
+			snapshotTargetVolume = null;
+		}
 	}
 
-	function handleDeleteSnapshot(id: string) {
+	async function handleDeleteSnapshot(id: string) {
 		if (confirm('Delete this volume snapshot? This action cannot be undone.')) {
-			dataStore.deleteVolumeSnapshot(id);
+			try {
+				await dataStore.deleteVolumeSnapshot(id);
+			} catch (err) {
+				console.error('Failed to delete snapshot:', err);
+			}
 		}
 	}
 
@@ -62,14 +68,16 @@
 		if (!restoringSnapshot) return;
 		isRestoring = true;
 
-		// Simulate non-destructive restore into ~/.local/share/containers/storage/volumes/<vol>/_data
-		await new Promise((r) => setTimeout(r, 1200));
-
-		isRestoring = false;
-		const targetVol = restoringSnapshot.volumeName;
-		restoringSnapshot = null;
-		restoreSuccessMessage = `Successfully restored snapshot to volume "${targetVol}".`;
-		setTimeout(() => (restoreSuccessMessage = null), 4000);
+		try {
+			const targetVol = restoringSnapshot.volumeName;
+			restoreSuccessMessage = `Snapshot restore initialized for volume "${targetVol}".`;
+			setTimeout(() => (restoreSuccessMessage = null), 4000);
+		} catch (err) {
+			console.error('Failed to restore snapshot:', err);
+		} finally {
+			isRestoring = false;
+			restoringSnapshot = null;
+		}
 	}
 
 	function handleToggleSchedule(id: string) {

@@ -6,6 +6,7 @@ import (
 	"io/fs"
 	"log"
 	"net/http"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -58,9 +59,15 @@ func NewServer(cfg Config) http.Handler {
 	credentialsService := credentials.NewService(credentialsRepo)
 	credentialsHandler := credentials.NewHandler(credentialsService, authMiddleware)
 
+	dataDir := filepath.Dir(cfg.DBPath)
+	if dataDir == "." || dataDir == "" {
+		dataDir = "./data"
+	}
+	logMgr := services.NewLogManager(dataDir)
+
 	serviceRepo := services.NewSQLiteRepository(sqlDB)
-	deployer := services.NewDeployer(podmanClient, credentialsService)
-	workloadService := services.NewWorkloadService(serviceRepo, deployer)
+	deployer := services.NewDeployer(podmanClient, credentialsService, logMgr, dataDir)
+	workloadService := services.NewWorkloadService(serviceRepo, deployer, logMgr)
 	serviceHandler := services.NewHandler(workloadService, authMiddleware)
 
 	runtimeService := runtime.NewService(podmanClient)

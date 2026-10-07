@@ -54,8 +54,32 @@ export const servicesApi = {
 	/**
 	 * Trigger a native container deployment for this service
 	 */
-	async deploy(id: string): Promise<DeployResponse> {
-		const res = await apiClient.post<DeployResponse>(`/services/${id}/deploy`);
+	async deploy(id: string, trigger = 'manual'): Promise<DeployResponse> {
+		const res = await apiClient.post<DeployResponse>(`/services/${id}/deploy`, { trigger });
+		return res.data;
+	},
+
+	/**
+	 * Power on service workload
+	 */
+	async start(id: string): Promise<Service> {
+		const res = await apiClient.post<Service>(`/services/${id}/start`);
+		return res.data;
+	},
+
+	/**
+	 * Power off / halt service workload
+	 */
+	async stop(id: string): Promise<Service> {
+		const res = await apiClient.post<Service>(`/services/${id}/stop`);
+		return res.data;
+	},
+
+	/**
+	 * Gracefully restart service workload
+	 */
+	async restart(id: string): Promise<Service> {
+		const res = await apiClient.post<Service>(`/services/${id}/restart`);
 		return res.data;
 	},
 
@@ -64,6 +88,22 @@ export const servicesApi = {
 	 */
 	async deployments(id: string): Promise<any[]> {
 		const res = await apiClient.get<any[]>(`/services/${id}/deployments`);
+		return res.data;
+	},
+
+	/**
+	 * Get a specific deployment record by ID
+	 */
+	async getDeployment(id: string): Promise<any> {
+		const res = await apiClient.get<any>(`/deployments/${id}`);
+		return res.data;
+	},
+
+	/**
+	 * Get plain text / stored logs for a specific deployment
+	 */
+	async deploymentLogs(id: string): Promise<{ deploymentId: string; logs: string }> {
+		const res = await apiClient.get<{ deploymentId: string; logs: string }>(`/deployments/${id}/logs`);
 		return res.data;
 	}
 };

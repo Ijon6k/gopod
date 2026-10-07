@@ -43,27 +43,33 @@
 			const list = await api.services.deployments(service.id);
 			if (Array.isArray(list)) {
 				for (const item of list) {
-					const existing = dataStore.deployments.find((d) => d.id === item.id);
-					if (!existing) {
-						dataStore.deployments.unshift({
-							id: item.id,
-							projectId: item.projectId,
-							projectName: item.projectId,
-							serviceId: item.serviceId,
-							serviceName: service.name,
-							number: dataStore.deployments.length + 1,
-							version: item.version || 'v1',
-							commit: item.commitHash || 'HEAD',
-							commitMessage: item.commitMessage || 'Manual rollout',
-							branch: service.branch || 'main',
-							status: item.status || 'running',
-							duration: item.duration || '0s',
-							timeAgo: 'Recently',
-							startedAt: item.startedAt || new Date().toISOString(),
-							finishedAt: item.finishedAt || '',
-							trigger: 'manual',
-							author: 'operator'
-						});
+					const existingIndex = dataStore.deployments.findIndex((d) => d.id === item.id);
+					const mapped: Deployment = {
+						id: item.id,
+						projectId: item.projectId || service.projectId,
+						projectName: item.projectId || service.projectId,
+						serviceId: item.serviceId || service.id,
+						serviceName: service.name,
+						number: item.number || (dataStore.deployments.length + 1),
+						version: item.version || (item.image ? item.image.split(':').pop() : 'latest'),
+						commit: item.commitHash || '',
+						commitMessage: item.commitMessage || (item.trigger === 'compose' ? 'Docker Compose rollout' : 'Deployment rollout'),
+						branch: service.branch || 'main',
+						status: item.status || 'running',
+						duration: item.duration || '0s',
+						timeAgo: item.startedAt ? 'Recently' : 'Just now',
+						startedAt: item.startedAt || new Date().toISOString(),
+						finishedAt: item.finishedAt || '',
+						trigger: item.trigger || 'manual',
+						author: 'operator'
+					};
+					if (existingIndex >= 0) {
+						dataStore.deployments[existingIndex] = {
+							...dataStore.deployments[existingIndex],
+							...mapped
+						};
+					} else {
+						dataStore.deployments.unshift(mapped);
 					}
 				}
 			}
@@ -75,6 +81,13 @@
 	import { onMount } from 'svelte';
 	onMount(() => {
 		loadDeployments();
+		const interval = setInterval(() => {
+			const hasActive = rawDeployments.some((d) => d.status === 'building' || d.status === 'deploying');
+			if (hasActive) {
+				loadDeployments();
+			}
+		}, 2500);
+		return () => clearInterval(interval);
 	});
 
 	// Filtered deployments

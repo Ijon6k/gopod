@@ -250,7 +250,7 @@ export interface Deployment {
 	timeAgo: string;
 	startedAt: string;
 	finishedAt: string;
-	trigger?: 'git-push' | 'manual' | 'rollback' | 'webhook' | 'cli';
+	trigger?: 'git-push' | 'manual' | 'rollback' | 'webhook' | 'cli' | 'compose' | 'quadlet' | string;
 	author?: string;
 	isCurrent?: boolean;
 	image?: string;

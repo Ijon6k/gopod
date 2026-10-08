@@ -17,11 +17,34 @@
 	let buildPath = $state('/');
 	let sshKeyId = $state('');
 
-	let imageName = $state('');
-	let registryId = $state('');
+	let rawImageName = $state('');
+	let selectedRegistry = $state('docker.io');
 
 	let dropFileName = $state<string | null>(null);
 	let saveStatus = $state<'idle' | 'saved'>('idle');
+
+	let resolvedImage = $derived.by(() => {
+		const clean = rawImageName.trim();
+		if (!clean) return '';
+		if (clean.includes('/') && (clean.startsWith('http') || clean.split('/')[0].includes('.'))) {
+			return clean;
+		}
+		if (selectedRegistry === 'docker.io') {
+			return clean.includes('/') ? `docker.io/${clean}` : `docker.io/library/${clean}`;
+		}
+		if (selectedRegistry === 'ghcr.io') {
+			return `ghcr.io/${clean}`;
+		}
+		if (selectedRegistry === 'quay.io') {
+			return `quay.io/${clean}`;
+		}
+		const customReg = dataStore.registries.find((r) => r.id === selectedRegistry);
+		if (customReg) {
+			const cleanUrl = customReg.url.replace(/^https?:\/\//, '').replace(/\/$/, '');
+			return `${cleanUrl}/${clean}`;
+		}
+		return clean;
+	});
 
 	$effect(() => {
 		sourceType = service.sourceType || (service.image ? 'image' : 'git');
@@ -29,8 +52,26 @@
 		branch = service.branch || 'main';
 		buildPath = service.buildPath || '/';
 		sshKeyId = service.sshKeyId || (dataStore.sshKeys[0]?.id ?? '');
-		imageName = service.image || '';
-		registryId = service.registryId || '';
+
+		const img = service.image || '';
+		if (service.registryId && dataStore.registries.some((r) => r.id === service.registryId)) {
+			selectedRegistry = service.registryId;
+			const regObj = dataStore.registries.find((r) => r.id === service.registryId);
+			const cleanUrl = regObj ? regObj.url.replace(/^https?:\/\//, '').replace(/\/$/, '') : '';
+			rawImageName = cleanUrl && img.startsWith(cleanUrl + '/') ? img.slice(cleanUrl.length + 1) : img;
+		} else if (img.startsWith('ghcr.io/')) {
+			selectedRegistry = 'ghcr.io';
+			rawImageName = img.replace(/^ghcr\.io\//, '');
+		} else if (img.startsWith('quay.io/')) {
+			selectedRegistry = 'quay.io';
+			rawImageName = img.replace(/^quay\.io\//, '');
+		} else if (img.startsWith('docker.io/')) {
+			selectedRegistry = 'docker.io';
+			rawImageName = img.replace(/^docker\.io\/(library\/)?/, '');
+		} else {
+			selectedRegistry = 'docker.io';
+			rawImageName = img;
+		}
 	});
 
 	function handleSave() {
@@ -41,8 +82,9 @@
 			service.buildPath = buildPath.trim();
 			service.sshKeyId = sshKeyId;
 		} else if (sourceType === 'image') {
-			service.image = imageName.trim();
-			service.registryId = registryId;
+			service.image = resolvedImage;
+			const isCustom = dataStore.registries.some((r) => r.id === selectedRegistry);
+			service.registryId = isCustom ? selectedRegistry : '';
 		}
 		dataStore.updateService(service);
 		saveStatus = 'saved';
@@ -171,7 +213,7 @@
 							class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
 						>
 							<option value="">None (Public Repository)</option>
-							{#each dataStore.sshKeys as k}
+							{#each dataStore.sshKeys as k (k.id)}
 								<option value={k.id}>{k.name} ({k.type})</option>
 							{/each}
 						</select>
@@ -180,45 +222,69 @@
 			</div>
 		{:else if sourceType === 'image'}
 			<div class="flex flex-col gap-4">
-				<div class="flex flex-col gap-1.5">
-					<label for="src-img-name" class="text-xs font-medium text-[var(--text-secondary)]">
-						Docker Image <span class="text-[var(--status-red)]">*</span>
-					</label>
-					<Input
-						id="src-img-name"
-						bind:value={imageName}
-						placeholder="docker.io/library/nginx:alpine or ghcr.io/org/app:latest"
-						class="text-xs font-[var(--font-mono)]"
-					/>
-				</div>
+				<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+					<!-- 1. Registry Dropdown (Docker Hub default) -->
+					<div class="flex flex-col gap-1.5">
+						<div class="flex items-center justify-between">
+							<label for="src-reg-select" class="text-xs font-medium text-[var(--text-secondary)]">
+								Registry
+							</label>
+							<button
+								type="button"
+								onclick={() => onOpenCredentialModal?.('registry')}
+								class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer p-0"
+								title="Add private container registry credentials"
+							>
+								<Plus size={11} /> Add Custom
+							</button>
+						</div>
 
-				<div class="flex flex-col gap-1.5">
-					<div class="flex items-center justify-between">
-						<label for="src-reg-id" class="text-xs font-medium text-[var(--text-secondary)]">
-							Registry Authentication
+						<div class="px-2.5 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
+							<select
+								id="src-reg-select"
+								bind:value={selectedRegistry}
+								class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
+							>
+								<optgroup label="Public Registries">
+									<option value="docker.io">Docker Hub (docker.io) — Default</option>
+									<option value="ghcr.io">GitHub (ghcr.io)</option>
+									<option value="quay.io">Red Hat Quay (quay.io)</option>
+								</optgroup>
+								{#if dataStore.registries.length > 0}
+									<optgroup label="Saved Private Registries">
+										{#each dataStore.registries as r (r.id)}
+											<option value={r.id}>{r.name} ({r.url})</option>
+										{/each}
+									</optgroup>
+								{/if}
+							</select>
+						</div>
+					</div>
+
+					<!-- 2. Image Name & Tag Input -->
+					<div class="sm:col-span-2 flex flex-col gap-1.5">
+						<label for="src-img-name" class="text-xs font-medium text-[var(--text-secondary)]">
+							Image Name & Tag <span class="text-[var(--status-red)]">*</span>
 						</label>
-						<button
-							type="button"
-							onclick={() => onOpenCredentialModal?.('registry')}
-							class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer p-0"
-						>
-							<Plus size={12} /> Add Registry
-						</button>
-					</div>
-
-					<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-						<select
-							id="src-reg-id"
-							bind:value={registryId}
-							class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
-						>
-							<option value="">Public Registry (No credentials)</option>
-							{#each dataStore.registries as r}
-								<option value={r.id}>{r.name} ({r.username})</option>
-							{/each}
-						</select>
+						<Input
+							id="src-img-name"
+							bind:value={rawImageName}
+							placeholder={selectedRegistry === 'docker.io' ? 'e.g. nginx:alpine or wardy784/erugo:latest' : selectedRegistry === 'ghcr.io' ? 'e.g. owner/repo:latest' : 'e.g. my-app:latest'}
+							class="text-xs font-[var(--font-mono)]"
+						/>
 					</div>
 				</div>
+
+				<!-- Live Resolved Pull Target Preview (Nielsen #1: Visibility of System Status) -->
+				{#if resolvedImage}
+					<div class="flex items-center justify-between p-2.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px]">
+						<div class="flex items-center gap-2 min-w-0">
+							<span class="text-[var(--text-tertiary)] shrink-0 font-medium">Resolved Podman target:</span>
+							<code class="font-mono text-[var(--accent)] font-semibold truncate select-all">{resolvedImage}</code>
+						</div>
+						<span class="text-[10px] text-[var(--status-green)] font-mono shrink-0 ml-2">✓ ready to pull</span>
+					</div>
+				{/if}
 			</div>
 		{:else}
 			<!-- Drop static site -->

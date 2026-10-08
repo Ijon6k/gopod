@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
-	import { PageHeader, StatusBadge, Tabs } from '$lib/components/ui';
+	import { goto } from '$app/navigation';
+	import { PageHeader, StatusBadge, Tabs, ConfirmDialog } from '$lib/components/ui';
 	import { Button } from '$lib/components/primitives';
 	import { getProjectById, getProjectServices, getProjectDomains, getProjectDeployments, dataStore } from '$lib/data';
 	import CreateServiceModal from '$lib/components/features/services/create/CreateServiceModal.svelte';
@@ -10,7 +11,7 @@
 		ProjectDeploymentsTab
 	} from '$lib/components/features/projects';
 	import type { WorkloadChoice } from '$lib/components/features/services/create/WorkloadTypeSelector.svelte';
-	import { Plus, SpinnerGap } from 'phosphor-svelte';
+	import { Plus, SpinnerGap, Trash, WarningCircle } from 'phosphor-svelte';
 	import type { Project } from '$lib/types';
 	import { untrack } from 'svelte';
 	import { api } from '$lib/api';
@@ -91,6 +92,7 @@
 	]);
 
 	let isCreateModalOpen = $state(false);
+	let isDeleteProjectOpen = $state(false);
 	let modalInitialType = $state<WorkloadChoice>('application');
 
 	function handleCreateService(type: WorkloadChoice = 'application') {
@@ -121,17 +123,57 @@
 				</div>
 			{/snippet}
 			{#snippet actions()}
-				{#if activeTab === 'services'}
-					<Button
-						variant="primary"
-						size="sm"
-						onclick={() => handleCreateService('application')}
+				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						onclick={() => (isDeleteProjectOpen = true)}
+						class="p-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-red-500/10 hover:border-red-500/30 text-[var(--text-tertiary)] hover:text-red-400 transition-colors cursor-pointer"
+						title="Delete project"
+						aria-label="Delete project"
 					>
-						<Plus size={13} /> New service
-					</Button>
-				{/if}
+						<Trash size={15} />
+					</button>
+					{#if activeTab === 'services'}
+						<Button
+							variant="primary"
+							size="sm"
+							onclick={() => handleCreateService('application')}
+						>
+							<Plus size={13} /> New service
+						</Button>
+					{/if}
+				</div>
 			{/snippet}
 		</PageHeader>
+
+		<!-- Clean, Modular Confirm Dialog for Project Deletion -->
+		<ConfirmDialog
+			open={isDeleteProjectOpen}
+			title={`Delete Project "${project.name}"?`}
+			description={services.length === 0
+				? 'This action cannot be undone. This will permanently delete the project record and its configurations.'
+				: undefined}
+			confirmText="Delete Project"
+			confirmDisabled={services.length > 0}
+			oncancel={() => (isDeleteProjectOpen = false)}
+			onconfirm={async () => {
+				await dataStore.deleteProject(project.id);
+				isDeleteProjectOpen = false;
+				goto('/projects');
+			}}
+		>
+			{#if services.length > 0}
+				<div class="flex items-start gap-3 p-3 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs leading-relaxed">
+					<WarningCircle size={18} class="shrink-0 mt-0.5" />
+					<div>
+						<strong class="font-semibold">Active services detected ({services.length})</strong>
+						<p class="m-0 mt-1 text-[var(--text-secondary)]">
+							Dokploy safety policy: You have active services in this project. Please terminate and delete all services first before deleting the project.
+						</p>
+					</div>
+				</div>
+			{/if}
+		</ConfirmDialog>
 
 		<!-- Project Tabs -->
 		<Tabs tabs={projectTabs} bind:active={activeTab} />

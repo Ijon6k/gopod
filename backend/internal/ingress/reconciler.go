@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/bcrypt"
 )
 
 // Reconciler synchronizes database domain routes into Caddy reverse proxy.
@@ -140,9 +142,25 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 			b.WriteString("    tls off\n")
 		}
 		if d.BasicAuth && d.BasicAuthUser != "" {
-			b.WriteString("    basicauth {\n")
-			b.WriteString("        " + d.BasicAuthUser + " " + d.BasicAuthPass + "\n")
-			b.WriteString("    }\n")
+			cleanUser := strings.Map(func(r rune) rune {
+				if r == '\n' || r == '\r' || r == '{' || r == '}' || r == '"' {
+					return -1
+				}
+				return r
+			}, strings.TrimSpace(d.BasicAuthUser))
+
+			passHash := strings.TrimSpace(d.BasicAuthPass)
+			if !strings.HasPrefix(passHash, "$2") && passHash != "" {
+				if h, err := bcrypt.GenerateFromPassword([]byte(passHash), bcrypt.DefaultCost); err == nil {
+					passHash = string(h)
+				}
+			}
+
+			if cleanUser != "" && passHash != "" {
+				b.WriteString("    basicauth {\n")
+				b.WriteString(fmt.Sprintf("        %s %s\n", cleanUser, passHash))
+				b.WriteString("    }\n")
+			}
 		}
 
 		targetUpstream := fmt.Sprintf("127.0.0.1:%d", d.ContainerPort)
@@ -152,14 +170,22 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 
 		if d.PathPrefix != "" && d.PathPrefix != "/" {
 			cleanPath := strings.TrimSpace(d.PathPrefix)
-			if d.StripPathPrefix {
-				b.WriteString(fmt.Sprintf("    handle_path %s* {\n", cleanPath))
-				b.WriteString(fmt.Sprintf("        reverse_proxy %s\n", targetUpstream))
-				b.WriteString("    }\n")
+			cleanPath = strings.ReplaceAll(cleanPath, "\n", "")
+			cleanPath = strings.ReplaceAll(cleanPath, "\r", "")
+			cleanPath = strings.ReplaceAll(cleanPath, "{", "")
+			cleanPath = strings.ReplaceAll(cleanPath, "}", "")
+			if cleanPath != "" && cleanPath != "/" {
+				if d.StripPathPrefix {
+					b.WriteString(fmt.Sprintf("    handle_path %s* {\n", cleanPath))
+					b.WriteString(fmt.Sprintf("        reverse_proxy %s\n", targetUpstream))
+					b.WriteString("    }\n")
+				} else {
+					b.WriteString(fmt.Sprintf("    handle %s* {\n", cleanPath))
+					b.WriteString(fmt.Sprintf("        reverse_proxy %s\n", targetUpstream))
+					b.WriteString("    }\n")
+				}
 			} else {
-				b.WriteString(fmt.Sprintf("    handle %s* {\n", cleanPath))
-				b.WriteString(fmt.Sprintf("        reverse_proxy %s\n", targetUpstream))
-				b.WriteString("    }\n")
+				b.WriteString(fmt.Sprintf("    reverse_proxy %s\n", targetUpstream))
 			}
 		} else {
 			b.WriteString(fmt.Sprintf("    reverse_proxy %s\n", targetUpstream))

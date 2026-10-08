@@ -16,7 +16,7 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 	return &SQLiteRepository{db: db}
 }
 
-const serviceSelectCols = "id, project_id, name, type, status, source, branch, image, port, cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at"
+const serviceSelectCols = "id, project_id, name, type, status, source, branch, image, port, COALESCE(host_port, 0), cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, env_vars, created_at"
 
 func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Service, error) {
 	var query string
@@ -38,7 +38,7 @@ func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Servic
 	for rows.Next() {
 		var s Service
 		var envJSON string
-		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.HostPort, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
@@ -55,7 +55,7 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error)
 	var envJSON string
 	err := r.db.QueryRowContext(ctx,
 		"SELECT "+serviceSelectCols+" FROM services WHERE id = ?", id).
-		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
+		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.HostPort, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -70,14 +70,14 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 	envJSON, _ := json.Marshal(s.EnvVars)
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO services (
-			id, project_id, name, type, status, source, branch, image, port,
+			id, project_id, name, type, status, source, branch, image, port, host_port,
 			cpu_limit, memory_limit, restart_policy, description, quadlet_config,
-			compose_yaml, k8s_yaml, runtime_target, webhook_token, git_repo,
+			compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo,
 			git_branch, dockerfile_path, ssh_key_id, env_vars, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.HostPort,
 		s.CPULimit, s.MemoryLimit, s.RestartPolicy, s.Description, s.QuadletConfig,
-		s.ComposeYaml, s.K8sYaml, s.RuntimeTarget, s.WebhookToken, s.GitRepo,
+		s.ComposeYaml, s.K8sYaml, s.RuntimeTarget, s.InPod, s.WebhookToken, s.GitRepo,
 		s.GitBranch, s.DockerfilePath, s.SSHKeyID, string(envJSON), s.CreatedAt,
 	)
 	return err
@@ -88,16 +88,16 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE services SET
 			name = ?, type = ?, status = ?, source = ?, branch = ?, image = ?,
-			port = ?, cpu_limit = ?, memory_limit = ?, restart_policy = ?,
+			port = ?, host_port = ?, cpu_limit = ?, memory_limit = ?, restart_policy = ?,
 			description = ?, quadlet_config = ?, compose_yaml = ?, k8s_yaml = ?,
-			runtime_target = ?, webhook_token = COALESCE(NULLIF(webhook_token, ''), ?),
+			runtime_target = ?, in_pod = ?, webhook_token = COALESCE(NULLIF(webhook_token, ''), ?),
 			git_repo = ?, git_branch = ?, dockerfile_path = ?, ssh_key_id = ?,
 			env_vars = ?
 		WHERE id = ?`,
 		s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image,
-		s.Port, s.CPULimit, s.MemoryLimit, s.RestartPolicy,
+		s.Port, s.HostPort, s.CPULimit, s.MemoryLimit, s.RestartPolicy,
 		s.Description, s.QuadletConfig, s.ComposeYaml, s.K8sYaml,
-		s.RuntimeTarget, s.WebhookToken, s.GitRepo, s.GitBranch,
+		s.RuntimeTarget, s.InPod, s.WebhookToken, s.GitRepo, s.GitBranch,
 		s.DockerfilePath, s.SSHKeyID, string(envJSON), s.ID,
 	)
 	return err
@@ -113,7 +113,7 @@ func (r *SQLiteRepository) GetByWebhookToken(ctx context.Context, token string) 
 	var envJSON string
 	err := r.db.QueryRowContext(ctx,
 		"SELECT "+serviceSelectCols+" FROM services WHERE webhook_token = ?", token).
-		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
+		Scan(&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image, &s.Port, &s.HostPort, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description, &s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.WebhookToken, &s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &envJSON, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}

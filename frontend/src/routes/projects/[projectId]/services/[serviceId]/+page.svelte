@@ -46,14 +46,13 @@
 					directService = storeSvc;
 					directProject = storeProj;
 					isLoading = false;
-					return;
+				} else {
+					isLoading = true;
 				}
-
-				isLoading = true;
 
 				try {
 					const [fetchedSvc, fetchedProj] = await Promise.all([
-						storeSvc ? Promise.resolve(storeSvc) : api.services.get(sId).catch(() => null),
+						api.services.get(sId).catch(() => null),
 						storeProj ? Promise.resolve(storeProj) : (pId ? api.projects.get(pId).catch(() => null) : null)
 					]);
 
@@ -127,31 +126,28 @@
 		};
 	});
 
-	// Auto-poll service status while deploying or building
+	// Periodic status polling to guarantee zero desynchronization with Podman daemon (Dokploy parity)
 	$effect(() => {
 		const sId = serviceId;
-		const currentStatus = service?.status;
-		if (!sId || (currentStatus !== 'deploying' && currentStatus !== 'building')) {
-			return;
-		}
+		if (!sId) return;
 
 		let active = true;
-		const interval = setInterval(async () => {
+		const poll = async () => {
 			try {
 				const freshSvc = await api.services.get(sId);
-				if (!active) return;
-				if (freshSvc) {
-					directService = freshSvc;
-					const idx = dataStore.services.findIndex((s) => s.id === freshSvc.id);
-					if (idx >= 0) {
-						dataStore.services[idx] = freshSvc;
-					}
-					if (freshSvc.status !== 'deploying' && freshSvc.status !== 'building') {
-						clearInterval(interval);
-					}
+				if (!active || !freshSvc) return;
+				if (directService && directService.status !== freshSvc.status) {
+					directService.status = freshSvc.status;
+				}
+				const idx = dataStore.services.findIndex((s) => s.id === freshSvc.id);
+				if (idx >= 0 && dataStore.services[idx].status !== freshSvc.status) {
+					dataStore.services[idx].status = freshSvc.status;
 				}
 			} catch (_) {}
-		}, 1500);
+		};
+
+		const isTransitional = service?.status === 'deploying' || service?.status === 'building';
+		const interval = setInterval(poll, isTransitional ? 1500 : 4000);
 
 		return () => {
 			active = false;

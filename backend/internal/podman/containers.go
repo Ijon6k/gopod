@@ -12,13 +12,20 @@ import (
 	"strings"
 )
 
-// GetContainers returns list of containers.
+// GetContainers returns list of containers without blocking on heavy stats.
 func (c *Client) GetContainers(ctx context.Context) ([]ContainerItem, error) {
+	return c.GetContainersWithStats(ctx, false)
+}
+
+// GetContainersWithStats returns list of containers with optional live stats.
+func (c *Client) GetContainersWithStats(ctx context.Context, includeStats bool) ([]ContainerItem, error) {
 	statsMap := make(map[string]ContainerStat)
-	if stats, err := c.GetContainerStats(ctx); err == nil {
-		for _, s := range stats {
-			statsMap[s.ID] = s
-			statsMap[s.Name] = s
+	if includeStats {
+		if stats, err := c.GetContainerStats(ctx); err == nil {
+			for _, s := range stats {
+				statsMap[s.ID] = s
+				statsMap[s.Name] = s
+			}
 		}
 	}
 

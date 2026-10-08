@@ -33,11 +33,29 @@
 	let fetchedLogs = $state<string[]>([]);
 	let isLogsLoading = $state(false);
 
+	function sanitizeLogLine(raw: string): string {
+		const trimmed = raw.trim();
+		if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+			try {
+				const parsed = JSON.parse(trimmed);
+				if (parsed && typeof parsed.line === 'string') {
+					return parsed.line;
+				}
+			} catch {
+				// plain text fallback
+			}
+		}
+		return raw;
+	}
+
 	let steps = $derived(deployment ? getDeploymentSteps(deployment) : []);
 	let logs = $derived.by(() => {
-		if (fetchedLogs.length > 0) return fetchedLogs;
-		if (deployment?.logs && deployment.logs.length > 0) return deployment.logs;
-		return deployment ? getDeploymentLogs(deployment) : [];
+		const source = fetchedLogs.length > 0
+			? fetchedLogs
+			: deployment?.logs && deployment.logs.length > 0
+				? deployment.logs
+				: deployment ? getDeploymentLogs(deployment) : [];
+		return source.map(sanitizeLogLine);
 	});
 
 	let filteredLogs = $derived.by(() => {
@@ -57,7 +75,10 @@
 				.then((res) => {
 					if (!isSubscribed) return;
 					if (res?.logs) {
-						fetchedLogs = res.logs.split('\n').filter((line: string) => line.length > 0);
+						fetchedLogs = res.logs
+							.split('\n')
+							.map(sanitizeLogLine)
+							.filter((line: string) => line.length > 0);
 					}
 				})
 				.catch((err) => {
@@ -75,7 +96,10 @@
 					es.onmessage = (event) => {
 						if (!isSubscribed) return;
 						if (event.data) {
-							fetchedLogs = [...fetchedLogs, event.data];
+							const clean = sanitizeLogLine(event.data);
+							if (!fetchedLogs.includes(clean)) {
+								fetchedLogs = [...fetchedLogs, clean];
+							}
 						}
 					};
 					es.onerror = () => {

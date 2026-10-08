@@ -42,9 +42,9 @@ func Open(customPath string) (*DB, error) {
 		return nil, fmt.Errorf("failed to open sqlite database: %w", err)
 	}
 
-	// Optimize connection pool for SQLite: single writer in WAL mode
-	conn.SetMaxOpenConns(1)
-	conn.SetMaxIdleConns(1)
+	// Optimize connection pool for SQLite: WAL mode supports concurrent readers
+	conn.SetMaxOpenConns(10)
+	conn.SetMaxIdleConns(5)
 
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping sqlite database: %w", err)

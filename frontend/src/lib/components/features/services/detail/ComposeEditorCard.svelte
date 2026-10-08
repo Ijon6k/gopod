@@ -33,6 +33,8 @@
 
 	let lastLoadedServiceId = $state<string | null>(null);
 
+	let inPod = $state(false);
+
 	$effect(() => {
 		if (service.id !== lastLoadedServiceId) {
 			lastLoadedServiceId = service.id;
@@ -40,8 +42,16 @@
 			gitBranch = service.branch || 'main';
 			gitComposePath = 'docker-compose.yml';
 			composeYaml = service.composeYaml || service.k8sYaml || getDefaultComposeYaml(service);
+			inPod = service.inPod || service.runtimeTarget === 'pod';
 		}
 	});
+
+	function toggleInPod() {
+		inPod = !inPod;
+		service.inPod = inPod;
+		service.runtimeTarget = inPod ? 'pod' : 'standalone';
+		dataStore.updateService(service);
+	}
 
 	// Simple parser for previewing services defined in Compose
 	let parsedServices = $derived.by(() => {
@@ -87,6 +97,8 @@
 		} else {
 			service.composeYaml = composeYaml;
 		}
+		service.inPod = inPod;
+		service.runtimeTarget = inPod ? 'pod' : 'standalone';
 		if (providerTab !== 'raw') {
 			service.source = gitRepoUrl;
 			service.branch = gitBranch;
@@ -221,6 +233,30 @@
 		</div>
 
 		<div class="p-5 flex flex-col gap-4">
+			<!-- Podman Pod Encapsulation Checkbox (Refactoring UI / UX Heuristics) -->
+			<div class="p-3.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+				<div class="flex items-start gap-3">
+					<input
+						type="checkbox"
+						id="compose-in-pod"
+						checked={inPod}
+						onchange={toggleInPod}
+						class="w-4 h-4 mt-0.5 rounded border-[var(--border)] accent-[var(--accent)] cursor-pointer"
+					/>
+					<label for="compose-in-pod" class="flex flex-col cursor-pointer select-none">
+						<span class="text-xs font-semibold text-[var(--text-primary)]">
+							Encapsulate stack inside Podman Pod
+						</span>
+						<span class="text-[11px] text-[var(--text-tertiary)] leading-relaxed">
+							When enabled, podman-compose creates an isolated Pod with shared localhost. Uncheck to run services as independent containers with bridge DNS.
+						</span>
+					</label>
+				</div>
+				<span class="text-[11px] font-[var(--font-mono)] px-2.5 py-1 rounded border border-[var(--border)] bg-[var(--bg-panel)] shrink-0 {inPod ? 'text-[var(--accent)] border-[var(--accent)]/40' : 'text-[var(--text-secondary)]'}">
+					{inPod ? 'Flag: --in-pod true' : 'Flag: --in-pod false'}
+				</span>
+			</div>
+
 			<!-- Monospace Code Editor -->
 			<div class="rounded-md border border-[var(--border)] overflow-hidden shadow-inner">
 				<CodeEditor bind:value={composeYaml} language="yaml" height="auto" />

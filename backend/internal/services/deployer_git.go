@@ -47,7 +47,7 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 	}
 
 	logLine(fmt.Sprintf("📥 Cloning %s (branch: %s)...", repoUrl, branch))
-	cloneCmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "-b", branch, repoUrl, tmpDir)
+	cloneCmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "-b", branch, "--", repoUrl, tmpDir)
 	cloneEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if sshKeyFile != "" {
 		cloneEnv = append(cloneEnv, fmt.Sprintf("GIT_SSH_COMMAND=ssh -i %s -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new", sshKeyFile))

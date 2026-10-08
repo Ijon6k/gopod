@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { StatusBadge } from '$lib/components/ui';
+	import { StatusBadge, ConfirmDialog } from '$lib/components/ui';
 	import type { Service, Project } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { Trash, HardDrives } from 'phosphor-svelte';
@@ -12,9 +12,11 @@
 		onRedeploy?: () => void;
 	}
 
-	let { service, project }: Props = $props();
+	let { service, project, onTerminalClick, onRedeploy }: Props = $props();
 
 	let deleteConfirmOpen = $state(false);
+	let deleteVolumes = $state(false);
+	let isDeleting = $state(false);
 
 	let workloadSubtitle = $derived.by(() => {
 		if (service.type === 'application') {
@@ -37,9 +39,18 @@
 		return `Container · ${service.image || 'image'} :${service.port || 8080}`;
 	});
 
-	function handleDeleteService() {
-		dataStore.deleteService(service.id);
-		goto(`/projects/${project.id}`);
+	async function handleDeleteService() {
+		if (isDeleting) return;
+		isDeleting = true;
+		try {
+			await dataStore.deleteService(service.id, deleteVolumes);
+			deleteConfirmOpen = false;
+			goto(`/projects/${project.id}`);
+		} catch (err) {
+			console.error('Failed to teardown service:', err);
+		} finally {
+			isDeleting = false;
+		}
 	}
 </script>
 
@@ -70,7 +81,10 @@
 		<!-- Delete Service Button -->
 		<button
 			type="button"
-			onclick={() => (deleteConfirmOpen = true)}
+			onclick={() => {
+				deleteVolumes = false;
+				deleteConfirmOpen = true;
+			}}
 			class="p-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-red-500/10 hover:border-red-500/30 text-[var(--text-tertiary)] hover:text-red-400 transition-colors cursor-pointer"
 			title="Delete service"
 			aria-label="Delete service"
@@ -80,40 +94,28 @@
 	</div>
 </div>
 
-<!-- Delete Confirmation Modal (100% English) -->
-{#if deleteConfirmOpen}
-	<div
-		class="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4"
-		role="dialog"
-		aria-modal="true"
-	>
-		<div class="w-full max-w-md rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-6 flex flex-col gap-4 shadow-xl">
-			<div class="flex items-center gap-3 text-red-400">
-				<Trash size={22} />
-				<h3 class="text-base font-semibold text-[var(--text-primary)] m-0">Delete Service "{service.name}"?</h3>
-			</div>
-
-			<p class="text-xs text-[var(--text-secondary)] leading-relaxed m-0">
-				This will stop the running container workload, purge its system configuration, and remove it from project
-				<strong>{project.name}</strong>. Persistent volumes will remain unattached.
-			</p>
-
-			<div class="flex items-center justify-end gap-2.5 pt-2">
-				<button
-					type="button"
-					onclick={() => (deleteConfirmOpen = false)}
-					class="px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] cursor-pointer"
-				>
-					Cancel
-				</button>
-				<button
-					type="button"
-					onclick={handleDeleteService}
-					class="px-4 py-2 rounded-md bg-red-600 hover:bg-red-500 text-white text-xs font-semibold cursor-pointer border-0"
-				>
-					Confirm Delete
-				</button>
-			</div>
+<!-- Clean, Modular Confirm Dialog for Service Teardown & Deletion -->
+<ConfirmDialog
+	open={deleteConfirmOpen}
+	title={`Delete Service "${service.name}"?`}
+	description={`This action cannot be undone. GOPOD will immediately stop and force-remove all running containers/pods, destroy Quadlet systemd service units, purge Caddy reverse proxy routes, and clean up workspace files for ${service.name}.`}
+	matchValue={service.name}
+	matchLabel="To confirm, type the exact service name below:"
+	confirmText="Confirm & Delete"
+	isConfirming={isDeleting}
+	oncancel={() => (deleteConfirmOpen = false)}
+	onconfirm={handleDeleteService}
+>
+	<!-- Dokploy-style Persistent Volumes Option Checkbox -->
+	<label class="flex items-center gap-2.5 p-3 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] cursor-pointer select-none">
+		<input
+			type="checkbox"
+			bind:checked={deleteVolumes}
+			class="w-4 h-4 rounded border-[var(--border)] text-red-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+		/>
+		<div class="flex flex-col gap-0.5">
+			<span class="text-xs font-medium text-[var(--text-primary)]">Purge persistent storage & volumes</span>
+			<span class="text-[11px] text-[var(--text-tertiary)]">Delete named storage volumes and local databases attached to this service</span>
 		</div>
-	</div>
-{/if}
+	</label>
+</ConfirmDialog>

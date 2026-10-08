@@ -12,54 +12,51 @@ export function getDeploymentSteps(dep: Deployment): DeploymentStep[] {
 
 	if (trigger === 'compose') {
 		return [
-			{ id: 'step-1', name: 'Initialize workspace & validate compose.yaml', status: 'success', duration: '0.2s' },
+			{ id: 'step-1', name: 'Initialize workspace & compose.yaml', status: 'success' },
 			{
 				id: 'step-2',
-				name: 'Podman compose orchestration (podman compose up -d)',
+				name: 'Podman compose orchestration (up -d)',
 				status: isBuilding ? 'running' : isFailed ? 'failed' : 'success',
-				duration: dep.duration || '2.4s'
+				duration: !isBuilding ? dep.duration : undefined
 			},
 			{
 				id: 'step-3',
-				name: 'Container health probe & port proxying',
-				status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success',
-				duration: isBuilding ? undefined : '0.5s'
+				name: 'Container health probe & network proxy',
+				status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success'
 			}
 		];
 	}
 
 	if (dep.commit && dep.commit !== '—') {
 		return [
-			{ id: 'step-1', name: 'Checkout git repository ref', status: 'success', duration: '0.5s' },
+			{ id: 'step-1', name: 'Checkout git repository ref', status: 'success' },
 			{
 				id: 'step-2',
 				name: 'Build rootless container image (podman build)',
 				status: isBuilding ? 'running' : isFailed ? 'failed' : 'success',
-				duration: dep.duration || '12.0s'
+				duration: !isBuilding ? dep.duration : undefined
 			},
 			{
 				id: 'step-3',
 				name: 'Unit activation & readiness check',
-				status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success',
-				duration: isBuilding ? undefined : '1.2s'
+				status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success'
 			}
 		];
 	}
 
 	// Default / Container Image rollout
 	return [
-		{ id: 'step-1', name: 'Validate target runtime & manifest', status: 'success', duration: '0.2s' },
+		{ id: 'step-1', name: 'Validate target runtime & manifest', status: 'success' },
 		{
 			id: 'step-2',
 			name: `Reconcile container image (${dep.version || 'latest'})`,
 			status: isBuilding ? 'running' : isFailed ? 'failed' : 'success',
-			duration: dep.duration || '1.8s'
+			duration: !isBuilding ? dep.duration : undefined
 		},
 		{
 			id: 'step-3',
 			name: 'Service healthcheck & status check',
-			status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success',
-			duration: isBuilding ? undefined : '0.4s'
+			status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success'
 		}
 	];
 }

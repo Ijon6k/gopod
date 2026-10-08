@@ -206,8 +206,8 @@ export class DataStore {
 	updateService(service: Service) {
 		return this.projectsStore.updateService(service);
 	}
-	deleteService(id: string) {
-		return this.projectsStore.deleteService(id);
+	deleteService(id: string, deleteVolumes = false) {
+		return this.projectsStore.deleteService(id, deleteVolumes);
 	}
 	deployService(serviceId: string, trigger = 'manual') {
 		return this.projectsStore.deployService(serviceId, trigger);
@@ -401,14 +401,17 @@ export class DataStore {
 		const composeServ = labels?.['com.docker.compose.service'] || labels?.['io.podman.compose.service'];
 
 		if (composeProj) {
-			const matched = this.services.find(
-				(s: Service) =>
-					s.id === composeProj ||
-					s.name === composeProj ||
-					s.id.endsWith(`-${composeProj}`) ||
-					composeProj.includes(s.name) ||
-					(s.projectId && composeProj.startsWith(s.projectId))
-			);
+			const matched = this.services.find((s: Service) => {
+				if (!s) return false;
+				if (s.id === composeProj || s.name === composeProj) return true;
+				if (composeProj === `${s.projectId}-${s.name}` || composeProj === `${s.projectId}-${s.id}`) return true;
+				if (s.id && (composeProj.startsWith(`${s.id}-`) || composeProj.startsWith(`${s.id}_`))) return true;
+				if (s.projectId && composeProj.startsWith(`${s.projectId}-`)) {
+					const rest = composeProj.slice(s.projectId.length + 1);
+					return rest === s.id || rest === s.name || rest.startsWith(`${s.id}-`) || rest.startsWith(`${s.name}-`);
+				}
+				return false;
+			});
 			if (matched) {
 				servId = matched.id;
 				servName = composeServ || matched.name;
@@ -427,7 +430,14 @@ export class DataStore {
 					projName = p.name;
 					const pServices = this.getProjectServices(p.id);
 					for (const s of pServices) {
-						if (composeWorkDir.includes(`/${s.name}`) || composeWorkDir.includes(`/${s.id}`) || (composeProj && (s.id === composeProj || s.name === composeProj))) {
+						if (
+							composeWorkDir.includes(`/${s.id}/`) ||
+							composeWorkDir.endsWith(`/${s.id}`) ||
+							composeWorkDir.includes(`/${s.id}.`) ||
+							composeWorkDir.includes(`/${s.name}/`) ||
+							composeWorkDir.endsWith(`/${s.name}`) ||
+							(composeProj && (s.id === composeProj || s.name === composeProj || composeProj === `${s.projectId}-${s.name}`))
+						) {
 							servId = s.id;
 							servName = composeServ || s.name;
 							return { projId, projName, servId, servName };
@@ -438,13 +448,21 @@ export class DataStore {
 			}
 		}
 
-		// 4. Podman systemd unit label (e.g. podman-compose@song.service)
+		// 4. Podman systemd unit label (e.g. podman-compose@self-hosted-redis.service)
 		const systemdUnit = labels?.['PODMAN_SYSTEMD_UNIT'];
 		if (systemdUnit) {
 			const unitMatch = systemdUnit.match(/podman-compose@([^.]+)\.service/);
 			if (unitMatch) {
 				const unitName = unitMatch[1];
-				const matched = this.services.find((s) => s.id === unitName || s.name === unitName || s.id.endsWith(`-${unitName}`));
+				const matched = this.services.find((s) => {
+					if (s.id === unitName || s.name === unitName) return true;
+					if (unitName === `${s.projectId}-${s.name}` || unitName === `${s.projectId}-${s.id}`) return true;
+					if (s.projectId && unitName.startsWith(`${s.projectId}-`)) {
+						const rest = unitName.slice(s.projectId.length + 1);
+						return rest === s.id || rest === s.name || rest.startsWith(`${s.id}-`) || rest.startsWith(`${s.name}-`);
+					}
+					return false;
+				});
 				if (matched) {
 					servId = matched.id;
 					servName = composeServ || matched.name;
@@ -455,11 +473,11 @@ export class DataStore {
 			}
 		}
 
-		// 5. Container name prefixes / substrings matching services
+		// 5. Container name prefixes / exact matching with services
 		const matchedByPrefix = this.services.find(
 			(s: Service) =>
-				(s.id && (name.startsWith(s.id) || name.includes(s.id))) ||
-				(s.name && (name.startsWith(s.name) || name.includes(s.name) || name.startsWith(`${s.name}-`) || name.startsWith(`${s.name}_`)))
+				(s.id && (name === s.id || name.startsWith(`${s.id}-`) || name.startsWith(`${s.id}_`))) ||
+				(s.name && (name === s.name || name.startsWith(`${s.name}-`) || name.startsWith(`${s.name}_`)))
 		);
 		if (matchedByPrefix) {
 			servId = matchedByPrefix.id;

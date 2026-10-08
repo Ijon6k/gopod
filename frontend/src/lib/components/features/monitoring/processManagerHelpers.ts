@@ -58,9 +58,9 @@ export function buildProjectTree(
 		projects.unshift(hostProject);
 	}
 
-	let result = projects
+	const result = projects
 		.map((project) => {
-			let services: Service[] = [];
+			let services: Service[];
 			if (project.id === 'system') {
 				const serviceGroups = new Map<string, Container[]>();
 				for (const c of unassignedContainers) {
@@ -92,7 +92,7 @@ export function buildProjectTree(
 				services = getProjectServices(project.id);
 			}
 
-			let serviceNodes: ServiceNode[] = services
+			const serviceNodes: ServiceNode[] = services
 				.map((service) => {
 					let containers = project.id === 'system'
 						? unassignedContainers.filter((c) => (c.serviceName || c.name) === service.name)
@@ -107,8 +107,8 @@ export function buildProjectTree(
 					}
 
 					containers.sort((a, b) => {
-						let valA: any = a[sortBy] ?? 0;
-						let valB: any = b[sortBy] ?? 0;
+						const valA: any = a[sortBy] ?? 0;
+						const valB: any = b[sortBy] ?? 0;
 						if (typeof valA === 'string') {
 							return sortDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
 						}
@@ -166,8 +166,8 @@ export function buildProjectTree(
 		});
 
 	result.sort((a, b) => {
-		let valA: any = sortBy === 'cpu' ? a.totalCpu : sortBy === 'memory' ? a.totalMem : a.project.name;
-		let valB: any = sortBy === 'cpu' ? b.totalCpu : sortBy === 'memory' ? b.totalMem : b.project.name;
+		const valA: any = sortBy === 'cpu' ? a.totalCpu : sortBy === 'memory' ? a.totalMem : a.project.name;
+		const valB: any = sortBy === 'cpu' ? b.totalCpu : sortBy === 'memory' ? b.totalMem : b.project.name;
 		if (typeof valA === 'string') {
 			return sortDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
 		}

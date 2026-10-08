@@ -26,13 +26,15 @@
 		return dataStore.containers.filter(
 			(c) =>
 				c.serviceId === service.id ||
-				c.name === service.name ||
-				c.name.startsWith(service.id) ||
-				(c.serviceName && c.serviceName === service.name) ||
 				(c.labels &&
-					(c.labels['com.docker.compose.project'] === service.name ||
-						c.labels['io.podman.compose.project'] === service.name ||
-						c.labels['io.gopod.service'] === service.id))
+					(c.labels['io.gopod.service'] === service.id ||
+						c.labels['com.docker.compose.project'] === service.id ||
+						c.labels['io.podman.compose.project'] === service.id ||
+						c.labels['com.docker.compose.project'] === `${service.projectId}-${service.name}` ||
+						c.labels['io.podman.compose.project'] === `${service.projectId}-${service.name}`)) ||
+				c.name === service.id ||
+				c.name === service.name ||
+				(service.id && (c.name.startsWith(`${service.id}-`) || c.name.startsWith(`${service.id}_`)))
 		);
 	});
 

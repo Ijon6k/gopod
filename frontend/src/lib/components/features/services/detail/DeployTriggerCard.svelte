@@ -2,6 +2,7 @@
 	import type { Service } from '$lib/types';
 	import { Button, Input, CopyButton } from '$lib/components/primitives';
 	import { dataStore } from '$lib/data';
+	import { SettingCard } from '$lib/components/ui';
 	import { Lightning, Check } from 'phosphor-svelte';
 
 	interface Props {
@@ -33,65 +34,55 @@
 	}
 </script>
 
-<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col">
-	<!-- Card Header -->
-	<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
-		<div class="flex flex-col gap-0.5">
-			<div class="flex items-center gap-2">
-				<Lightning size={16} class="text-[var(--accent)]" />
-				<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Deployment Triggers & Webhook</h3>
-			</div>
-			<p class="text-xs text-[var(--text-tertiary)] m-0">Automate deployments when changes are pushed to your Git repository.</p>
-		</div>
-	</div>
+{#snippet cardFooter()}
+	{#if saveStatus === 'saved'}
+		<span class="text-xs text-[var(--status-green)] flex items-center gap-1 mr-2">
+			<Check size={14} /> Saved
+		</span>
+	{/if}
+	<Button variant="primary" size="sm" onclick={handleSave}>
+		Save Triggers
+	</Button>
+{/snippet}
 
-	<!-- Content -->
-	<div class="p-5 flex flex-col gap-4">
-		<div class="flex flex-col gap-1.5">
-			<div class="flex items-center justify-between">
-				<label for="trig-webhook-url" class="text-xs font-medium text-[var(--text-secondary)]">Webhook URL</label>
-				<CopyButton
-					text={webhookUrl}
-					label="Copy Webhook URL"
-					variant="inline"
-				/>
-			</div>
-
-			<div class="p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] break-all select-all">
-				{webhookUrl}
-			</div>
-			<span class="text-[11px] text-[var(--text-tertiary)]">
-				Paste this into GitHub / GitLab repository webhook settings (Content type: <code>application/json</code>, Event: Push).
-			</span>
+<SettingCard
+	title="Deployment Triggers & Webhook"
+	subtitle="Automate deployments when changes are pushed to your Git repository."
+	icon={Lightning}
+	footer={cardFooter}
+>
+	<div class="flex flex-col gap-1.5">
+		<div class="flex items-center justify-between">
+			<label for="trig-webhook-url" class="text-xs font-medium text-[var(--text-secondary)]">Webhook URL</label>
+			<CopyButton
+				text={webhookUrl}
+				label="Copy Webhook URL"
+				variant="inline"
+			/>
 		</div>
 
-		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[var(--border-subtle)]">
-			<label class="flex items-center gap-2.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-				<input type="checkbox" bind:checked={autoDeploy} class="accent-[var(--accent)] cursor-pointer" />
-				<span>Automatic deployment on git push</span>
-			</label>
+		<div class="p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] break-all select-all">
+			{webhookUrl}
+		</div>
+		<span class="text-[11px] text-[var(--text-tertiary)]">
+			Paste this into GitHub / GitLab repository webhook settings (Content type: <code>application/json</code>, Event: Push).
+		</span>
+	</div>
 
-			<div class="flex flex-col gap-1">
-				<label for="trig-watch-paths" class="text-xs font-medium text-[var(--text-secondary)]">Watch Paths (Optional)</label>
-				<Input
-					id="trig-watch-paths"
-					bind:value={watchPaths}
-					placeholder="src/**, packages/backend/**"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
+	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[var(--border-subtle)]">
+		<label class="flex items-center gap-2.5 text-xs text-[var(--text-secondary)] cursor-pointer">
+			<input type="checkbox" bind:checked={autoDeploy} class="accent-[var(--accent)] cursor-pointer" />
+			<span>Automatic deployment on git push</span>
+		</label>
+
+		<div class="flex flex-col gap-1">
+			<label for="trig-watch-paths" class="text-xs font-medium text-[var(--text-secondary)]">Watch Paths (Optional)</label>
+			<Input
+				id="trig-watch-paths"
+				bind:value={watchPaths}
+				placeholder="src/**, packages/backend/**"
+				class="text-xs font-[var(--font-mono)]"
+			/>
 		</div>
 	</div>
-
-	<!-- Card Footer -->
-	<div class="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-end gap-2">
-		{#if saveStatus === 'saved'}
-			<span class="text-xs text-[var(--status-green)] flex items-center gap-1 mr-2">
-				<Check size={14} /> Saved
-			</span>
-		{/if}
-		<Button variant="primary" size="sm" onclick={handleSave}>
-			Save Triggers
-		</Button>
-	</div>
-</div>
+</SettingCard>

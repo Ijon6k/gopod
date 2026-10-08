@@ -20,6 +20,8 @@ caddy/logs/
 .env.*
 .env.local
 !.env.example
+*.key
+**/data/keys/
 
 # IDE & Editors
 .idea/

@@ -130,7 +130,18 @@ func (r *SQLiteRepository) CreateSchedule(ctx context.Context, s VolumeSchedule)
 	return err
 }
 
+func (r *SQLiteRepository) UpdateSchedule(ctx context.Context, s VolumeSchedule) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE volume_schedules SET
+			enabled = ?, cron = ?, label = ?, retention_count = ?
+		 WHERE id = ?`,
+		s.Enabled, s.Cron, s.Label, s.RetentionCount, s.ID,
+	)
+	return err
+}
+
 func (r *SQLiteRepository) DeleteSchedule(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM volume_schedules WHERE id = ?", id)
 	return err
 }
+

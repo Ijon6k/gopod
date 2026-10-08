@@ -3,7 +3,7 @@
 // Fully typed Axios integration for backend endpoints
 // ──────────────────────────────────────────────
 
-export { apiClient } from './client';
+export { apiClient, ApiError } from './client';
 export { projectsApi } from './projects';
 export { servicesApi } from './services';
 export { domainsApi } from './domains';

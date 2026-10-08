@@ -11,6 +11,10 @@ export const credentialsApi = {
 			const res = await apiClient.post<SSHKey>('/credentials/ssh-keys', key);
 			return res.data;
 		},
+		async generate(name: string): Promise<SSHKey> {
+			const res = await apiClient.post<SSHKey>('/credentials/ssh-keys/generate', { name });
+			return res.data;
+		},
 		async delete(id: string): Promise<{ message: string }> {
 			const res = await apiClient.delete<{ message: string }>(`/credentials/ssh-keys/${id}`);
 			return res.data;

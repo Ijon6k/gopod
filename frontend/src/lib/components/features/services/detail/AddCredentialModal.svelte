@@ -1,8 +1,10 @@
 <script lang="ts">
 	import { dataStore } from '$lib/data';
+	import { credentialsApi } from '$lib/api/credentials';
+	import { sshKeySchema, registrySchema } from '$lib/schemas';
 	import { Button, Input, CopyButton, FormField } from '$lib/components/primitives';
 	import { Modal } from '$lib/components/ui';
-	import { Key, Package } from 'phosphor-svelte';
+	import { Key, Package, ArrowsClockwise } from 'phosphor-svelte';
 
 	interface Props {
 		open?: boolean;
@@ -14,11 +16,15 @@
 	let { open = $bindable(false), initialTab = 'ssh', onclose, oncreated }: Props = $props();
 
 	let activeTab = $state<'ssh' | 'registry'>('ssh');
+	let errorMessage = $state('');
+	let isGenerating = $state(false);
 
 	// SSH Form
 	let keyName = $state('');
 	let keyType = $state<'ed25519' | 'rsa'>('ed25519');
-	let generatedPublicKey = $state('ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI' + Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15) + ' gopod-deploy');
+	let generatedPublicKey = $state('');
+	let generatedPrivateKey = $state('');
+	let generatedFingerprint = $state('');
 
 	// Registry Form
 	let regName = $state('');
@@ -26,40 +32,93 @@
 	let regUsername = $state('');
 	let regToken = $state('');
 
+	async function generateRealKey() {
+		isGenerating = true;
+		errorMessage = '';
+		try {
+			const res = await credentialsApi.sshKeys.generate(keyName.trim() || 'deploy-key');
+			generatedPublicKey = res.publicKey;
+			generatedPrivateKey = res.privateKey || '';
+			generatedFingerprint = res.fingerprint;
+		} catch (err: any) {
+			errorMessage = err.message || 'Failed to generate real SSH keypair';
+		} finally {
+			isGenerating = false;
+		}
+	}
+
 	$effect(() => {
 		if (open) {
 			activeTab = initialTab;
+			errorMessage = '';
+			if (!generatedPublicKey && activeTab === 'ssh') {
+				generateRealKey();
+			}
 		}
 	});
 
 	async function handleSaveSSH() {
-		if (!keyName.trim()) return;
-		const created = await dataStore.addSSHKey({
+		errorMessage = '';
+		const validation = sshKeySchema.safeParse({
 			name: keyName.trim(),
 			publicKey: generatedPublicKey,
-			fingerprint: `SHA256:${Math.random().toString(16).substring(2, 14)}...`,
+			privateKey: generatedPrivateKey,
 			type: keyType
 		});
-		open = false;
-		oncreated?.('ssh', created.id);
-		onclose?.();
-		keyName = '';
+
+		if (!validation.success) {
+			errorMessage = validation.error.issues[0]?.message || 'Validation error';
+			return;
+		}
+
+		try {
+			const created = await dataStore.addSSHKey({
+				name: keyName.trim(),
+				publicKey: generatedPublicKey,
+				privateKey: generatedPrivateKey,
+				fingerprint: generatedFingerprint,
+				type: keyType
+			});
+			open = false;
+			oncreated?.('ssh', created.id);
+			onclose?.();
+			keyName = '';
+			generatedPublicKey = '';
+		} catch (err: any) {
+			errorMessage = err.message || 'Failed to save SSH key';
+		}
 	}
 
 	async function handleSaveRegistry() {
-		if (!regName.trim() || !regUsername.trim()) return;
-		const created = await dataStore.addRegistry({
+		errorMessage = '';
+		const validation = registrySchema.safeParse({
 			name: regName.trim(),
 			url: regUrl.trim(),
 			username: regUsername.trim(),
 			token: regToken.trim()
 		});
-		open = false;
-		oncreated?.('registry', created.id);
-		onclose?.();
-		regName = '';
-		regUsername = '';
-		regToken = '';
+
+		if (!validation.success) {
+			errorMessage = validation.error.issues[0]?.message || 'Validation error';
+			return;
+		}
+
+		try {
+			const created = await dataStore.addRegistry({
+				name: regName.trim(),
+				url: regUrl.trim(),
+				username: regUsername.trim(),
+				token: regToken.trim()
+			});
+			open = false;
+			oncreated?.('registry', created.id);
+			onclose?.();
+			regName = '';
+			regUsername = '';
+			regToken = '';
+		} catch (err: any) {
+			errorMessage = err.message || 'Failed to save registry';
+		}
 	}
 
 	function handleClose() {
@@ -111,6 +170,12 @@
 		</button>
 	</div>
 
+	{#if errorMessage}
+		<div class="p-2.5 rounded-[var(--radius-sm)] bg-[var(--status-rose)]/10 border border-[var(--status-rose)]/30 text-[11px] text-[var(--status-rose)]">
+			{errorMessage}
+		</div>
+	{/if}
+
 	{#if activeTab === 'ssh'}
 		<FormField label="Key Name" required forId="ssh-key-name">
 			<Input
@@ -123,16 +188,33 @@
 
 		<div class="flex flex-col gap-1.5">
 			<div class="flex items-center justify-between">
-				<span class="text-xs font-medium text-[var(--text-secondary)]">Public Key</span>
-				<CopyButton
-					text={generatedPublicKey}
-					label="Copy Public Key"
-					variant="inline"
-				/>
+				<span class="text-xs font-medium text-[var(--text-secondary)]">Public Key (Ed25519)</span>
+				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						onclick={generateRealKey}
+						disabled={isGenerating}
+						class="text-[11px] text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+						title="Generate new keypair"
+					>
+						<ArrowsClockwise size={12} class={isGenerating ? 'animate-spin' : ''} />
+						<span>{isGenerating ? 'Generating...' : 'Regenerate'}</span>
+					</button>
+					<CopyButton
+						text={generatedPublicKey}
+						label="Copy"
+						variant="inline"
+					/>
+				</div>
 			</div>
 			<div class="p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] break-all select-all">
-				{generatedPublicKey}
+				{generatedPublicKey || (isGenerating ? 'Generating real Ed25519 keypair...' : 'Click regenerate to create key')}
 			</div>
+			{#if generatedFingerprint}
+				<div class="text-[10px] font-mono text-[var(--text-tertiary)]">
+					Fingerprint: {generatedFingerprint}
+				</div>
+			{/if}
 			<span class="text-[11px] text-[var(--text-tertiary)]">
 				Add this public key to your repository (GitHub → Settings → Deploy Keys).
 			</span>

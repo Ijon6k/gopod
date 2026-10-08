@@ -9,17 +9,25 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sync"
 	"time"
+
+	"github.com/robfig/cron/v3"
 )
 
 // Service encapsulates storage backups and snapshot lifecycle business logic.
 type Service struct {
 	repo Repository
+	cron *cron.Cron
+	mu   sync.Mutex
 }
 
 // NewService creates a new storage domain service.
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{
+		repo: repo,
+		cron: cron.New(),
+	}
 }
 
 // ── Snapshots ──
@@ -123,6 +131,9 @@ func (s *Service) CreateSchedule(ctx context.Context, sched VolumeSchedule) (*Vo
 	if sched.Cron == "" {
 		sched.Cron = "0 2 * * *"
 	}
+	if _, err := cron.ParseStandard(sched.Cron); err != nil {
+		return nil, fmt.Errorf("invalid cron expression: %w", err)
+	}
 	if sched.Label == "" {
 		sched.Label = "Daily at 02:00"
 	}
@@ -134,6 +145,7 @@ func (s *Service) CreateSchedule(ctx context.Context, sched VolumeSchedule) (*Vo
 	if err := s.repo.CreateSchedule(ctx, sched); err != nil {
 		return nil, err
 	}
+	s.RestartScheduler(ctx)
 	return &sched, nil
 }
 
@@ -141,7 +153,11 @@ func (s *Service) DeleteSchedule(ctx context.Context, id string) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}
-	return s.repo.DeleteSchedule(ctx, id)
+	err := s.repo.DeleteSchedule(ctx, id)
+	if err == nil {
+		s.RestartScheduler(ctx)
+	}
+	return err
 }
 
 func (s *Service) ToggleSchedule(ctx context.Context, id string) (*VolumeSchedule, error) {
@@ -160,6 +176,70 @@ func (s *Service) ToggleSchedule(ctx context.Context, id string) (*VolumeSchedul
 	if err := s.repo.UpdateSchedule(ctx, *sched); err != nil {
 		return nil, err
 	}
+	s.RestartScheduler(ctx)
 	return sched, nil
+}
+
+// StartScheduler initializes background cron execution for enabled backup policies.
+func (s *Service) StartScheduler(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.repo == nil || s.cron == nil {
+		return
+	}
+	s.cron.Start()
+
+	// Register current enabled schedules
+	schedules, err := s.repo.ListSchedules(ctx, "")
+	if err != nil {
+		return
+	}
+
+	for _, sched := range schedules {
+		if !sched.Enabled {
+			continue
+		}
+		s.registerCronJob(sched)
+	}
+}
+
+// RestartScheduler resets running cron jobs to match updated database state.
+func (s *Service) RestartScheduler(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.cron != nil {
+		s.cron.Stop()
+		s.cron = cron.New()
+		s.cron.Start()
+	}
+
+	if s.repo == nil {
+		return
+	}
+	schedules, err := s.repo.ListSchedules(ctx, "")
+	if err != nil {
+		return
+	}
+	for _, sched := range schedules {
+		if !sched.Enabled {
+			continue
+		}
+		s.registerCronJob(sched)
+	}
+}
+
+func (s *Service) registerCronJob(sched VolumeSchedule) {
+	if s.cron == nil {
+		return
+	}
+	_, _ = s.cron.AddFunc(sched.Cron, func() {
+		snap := VolumeSnapshot{
+			ProjectID:  sched.ProjectID,
+			VolumeName: sched.VolumeName,
+		}
+		_, _ = s.CreateSnapshot(context.Background(), snap)
+	})
 }
 

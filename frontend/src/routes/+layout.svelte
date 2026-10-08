@@ -7,6 +7,17 @@
 	import { api } from '$lib/api';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
+	import { QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
+
+	const queryClient = new QueryClient({
+		defaultOptions: {
+			queries: {
+				refetchOnWindowFocus: true,
+				staleTime: 5000,
+				retry: 1
+			}
+		}
+	});
 
 	let { children } = $props();
 	let initialCheckDone = $state(false);
@@ -83,15 +94,17 @@
 	<meta name="description" content="Self-hosted container management dashboard powered by Podman" />
 </svelte:head>
 
-{#if !initialCheckDone && page.url.pathname !== '/login' && page.url.pathname !== '/setup'}
-	<div class="h-screen w-screen bg-[var(--bg-outer)] flex items-center justify-center">
-		<div class="flex flex-col items-center gap-3">
-			<div class="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin"></div>
-			<span class="text-xs font-mono text-[var(--text-tertiary)]">Verifying cluster session…</span>
+<QueryClientProvider client={queryClient}>
+	{#if !initialCheckDone && page.url.pathname !== '/login' && page.url.pathname !== '/setup'}
+		<div class="h-screen w-screen bg-[var(--bg-outer)] flex items-center justify-center">
+			<div class="flex flex-col items-center gap-3">
+				<div class="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin"></div>
+				<span class="text-xs font-mono text-[var(--text-tertiary)]">Verifying cluster session…</span>
+			</div>
 		</div>
-	</div>
-{:else}
-	<AppShell>
-		{@render children()}
-	</AppShell>
-{/if}
+	{:else}
+		<AppShell>
+			{@render children()}
+		</AppShell>
+	{/if}
+</QueryClientProvider>

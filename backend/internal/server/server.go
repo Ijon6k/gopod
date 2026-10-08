@@ -94,6 +94,7 @@ func NewServer(cfg Config) http.Handler {
 
 	storageRepo := storage.NewSQLiteRepository(sqlDB)
 	storageService := storage.NewService(storageRepo)
+	storageService.StartScheduler(context.Background())
 	storageHandler := storage.NewHandler(storageService, authMiddleware)
 
 	auditRepo := audit.NewSQLiteRepository(sqlDB)

@@ -26,6 +26,7 @@ func NewHandler(service *Service, mw *auth.Middleware) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/credentials/ssh-keys", h.middleware.RequireAuth(h.handleListSSHKeys))
 	mux.HandleFunc("POST /api/credentials/ssh-keys", h.middleware.RequireAuth(h.handleCreateSSHKey))
+	mux.HandleFunc("POST /api/credentials/ssh-keys/generate", h.middleware.RequireAuth(h.handleGenerateSSHKey))
 	mux.HandleFunc("DELETE /api/credentials/ssh-keys/{id}", h.middleware.RequireAuth(h.handleDeleteSSHKey))
 
 	mux.HandleFunc("GET /api/credentials/registries", h.middleware.RequireAuth(h.handleListRegistries))
@@ -61,6 +62,19 @@ func (h *Handler) handleCreateSSHKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusCreated, created)
+}
+
+func (h *Handler) handleGenerateSSHKey(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Name string `json:"name"`
+	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	key, err := h.service.GenerateSSHKeyPair(r.Context(), req.Name)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, key)
 }
 
 func (h *Handler) handleDeleteSSHKey(w http.ResponseWriter, r *http.Request) {

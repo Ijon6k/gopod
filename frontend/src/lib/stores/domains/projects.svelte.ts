@@ -146,9 +146,9 @@ export class ProjectsDomainStore {
 		}
 	}
 
-	async deleteService(id: string): Promise<void> {
+	async deleteService(id: string, deleteVolumes = false): Promise<void> {
 		try {
-			await api.services.delete(id);
+			await api.services.delete(id, deleteVolumes);
 		} catch (err) {
 			console.warn('Failed to delete service on backend:', err);
 		}

@@ -110,13 +110,17 @@ export interface Service {
 	buildPath?: string;
 	dockerfilePath?: string;
 	runtimeTarget?: 'standalone' | 'pod' | 'quadlet';
+	inPod?: boolean;
 	podId?: string;
 	command?: string;
 	entrypoint?: string;
 	domain?: string;
 	port: number;
+	hostPort?: number;
 	cpu: number;
 	memory: number;
+	cpuLimit?: number;
+	memoryLimit?: number;
 	restartPolicy: string;
 	health: string;
 	replicas: number;

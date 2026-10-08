@@ -1,11 +1,17 @@
 package server
 
 import (
+	"bufio"
+	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"io/fs"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -20,6 +26,7 @@ import (
 	"gopod/internal/runtime"
 	"gopod/internal/services"
 	"gopod/internal/storage"
+	"gopod/pkg/crypto"
 )
 
 // Config holds server configuration.
@@ -34,8 +41,14 @@ type Config struct {
 // NewServer configures http.Handler with domain API routes and SPA fallback.
 func NewServer(cfg Config) http.Handler {
 	podmanClient := podman.NewClient(cfg.PodmanSocket)
+	if podmanClient != nil {
+		if err := podmanClient.EnsureNetwork(context.Background(), "gopod-net"); err != nil {
+			log.Printf("[WARN] Failed to ensure gopod-net network: %v", err)
+		}
+	}
 
 	database, err := db.Open(cfg.DBPath)
+
 	if err != nil {
 		log.Printf("[ERROR] Failed to open SQLite database: %v", err)
 	}
@@ -63,6 +76,7 @@ func NewServer(cfg Config) http.Handler {
 	if dataDir == "." || dataDir == "" {
 		dataDir = "./data"
 	}
+	_ = crypto.InitMasterKey(dataDir)
 	logMgr := services.NewLogManager(dataDir)
 
 	serviceRepo := services.NewSQLiteRepository(sqlDB)
@@ -88,6 +102,31 @@ func NewServer(cfg Config) http.Handler {
 
 	authService.SetAuditRecorder(auditService)
 	workloadService.SetAuditRecorder(auditService)
+
+	projectService.SetServiceChecker(func(ctx context.Context, projectID string) (int, error) {
+		svcs, err := serviceRepo.List(ctx, projectID)
+		if err != nil {
+			return 0, err
+		}
+		return len(svcs), nil
+	})
+
+	workloadService.SetIngressCleaner(func(ctx context.Context, serviceID string) {
+		doms, err := ingressRepo.List(ctx, "")
+		if err == nil {
+			for _, d := range doms {
+				if d.ServiceID == serviceID {
+					_ = ingressRepo.Delete(ctx, d.ID)
+				}
+			}
+		}
+		go func() {
+			bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			remaining, _ := ingressRepo.List(bgCtx, "")
+			_ = caddyReconciler.Reconcile(bgCtx, remaining)
+		}()
+	})
 
 	mux := http.NewServeMux()
 
@@ -159,15 +198,41 @@ func NewServer(cfg Config) http.Handler {
 	return withMiddleware(mux)
 }
 
+func isOriginAllowed(origin, host string) bool {
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil {
+		return false
+	}
+	if u.Host == host {
+		return true
+	}
+	hostname := u.Hostname()
+	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
+		return true
+	}
+	if allowed := os.Getenv("ALLOWED_ORIGIN"); allowed != "" {
+		for _, a := range strings.Split(allowed, ",") {
+			trimmed := strings.TrimSpace(a)
+			if trimmed == origin || trimmed == u.Host {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func withMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 
 		origin := r.Header.Get("Origin")
-		if origin != "" {
+		if origin != "" && isOriginAllowed(origin, r.Host) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-		} else {
+		} else if origin == "" {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
@@ -202,3 +267,11 @@ func (rw *responseWriter) Flush() {
 		flusher.Flush()
 	}
 }
+
+func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hj, ok := rw.ResponseWriter.(http.Hijacker); ok {
+		return hj.Hijack()
+	}
+	return nil, nil, fmt.Errorf("response writer does not implement http.Hijacker")
+}
+

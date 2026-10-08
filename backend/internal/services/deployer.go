@@ -123,7 +123,7 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 	}
 
 	// ── 2. QUADLET WORKLOAD ──
-	if s.Type == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
 		return d.deployQuadlet(ctx, s, depID, logLine)
 	}
 
@@ -187,9 +187,10 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID string, log
 
 func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, imageToRun string, logLine func(string)) error {
 	ports := []string{}
-	if s.Port > 0 {
-		// Default map host:container
-		ports = append(ports, fmt.Sprintf("%d:%d", s.Port, s.Port))
+	if s.HostPort > 0 && s.Port > 0 {
+		ports = append(ports, fmt.Sprintf("%d:%d", s.HostPort, s.Port))
+	} else if s.HostPort > 0 {
+		ports = append(ports, fmt.Sprintf("%d:%d", s.HostPort, s.HostPort))
 	}
 
 	envMap := make(map[string]string)
@@ -205,6 +206,11 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 		"io.gopod.name":    s.Name,
 	}
 
+	networkToUse := "gopod-net"
+	if d.podmanClient != nil {
+		_ = d.podmanClient.EnsureNetwork(ctx, networkToUse)
+	}
+
 	logLine(fmt.Sprintf("🚀 Starting container '%s' (image: %s)...", containerName, imageToRun))
 	if d.podmanClient != nil {
 		_, err := d.podmanClient.RunContainer(ctx, podman.RunContainerOptions{
@@ -212,7 +218,7 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 			Image:         imageToRun,
 			Ports:         ports,
 			Env:           envMap,
-			Network:       fmt.Sprintf("%s-network", s.ProjectID),
+			Network:       networkToUse,
 			Labels:        labels,
 			RestartPolicy: s.RestartPolicy,
 			CPULimit:      s.CPULimit,
@@ -282,6 +288,208 @@ func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) [
 	return errLines
 }
 
+// GetRuntimeStatus queries real-time status of the workload from Podman or systemd.
+func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
+	// 1. Quadlet Unit
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			cmd := exec.CommandContext(ctx, "systemctl", "--user", "is-active", fmt.Sprintf("%s.service", s.Name))
+			out, err := cmd.CombinedOutput()
+			st := strings.TrimSpace(string(out))
+			if err == nil && st == "active" {
+				return "running"
+			}
+			if st == "failed" {
+				return "failed"
+			}
+			if st == "activating" {
+				return "deploying"
+			}
+			return "stopped"
+		}
+	}
+
+	// 2. Podman Containers
+	if d.podmanClient != nil {
+		containers, err := d.podmanClient.GetContainers(ctx)
+		if err == nil {
+			var matched []podman.ContainerItem
+			for _, c := range containers {
+				isMatch := false
+				if c.Labels != nil {
+					if c.Labels["io.gopod.service"] == s.ID ||
+						c.Labels["com.docker.compose.project"] == s.ID ||
+						c.Labels["io.podman.compose.project"] == s.ID ||
+						c.Labels["com.docker.compose.project"] == s.Name {
+						isMatch = true
+					}
+				}
+				if !isMatch && len(c.Names) > 0 {
+					firstName := strings.TrimPrefix(c.Names[0], "/")
+					if firstName == s.ID ||
+						firstName == s.Name ||
+						strings.HasPrefix(firstName, s.ID) ||
+						strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) ||
+						strings.HasPrefix(firstName, fmt.Sprintf("pod_%s", s.ID)) {
+						isMatch = true
+					}
+				}
+				if isMatch {
+					matched = append(matched, c)
+				}
+			}
+
+			if len(matched) > 0 {
+				hasRunning := false
+				for _, m := range matched {
+					st := strings.ToLower(m.State)
+					rawSt := strings.ToLower(m.Status)
+					if st == "running" || strings.HasPrefix(rawSt, "up") {
+						hasRunning = true
+						break
+					}
+				}
+				if hasRunning {
+					return "running"
+				}
+				return "stopped"
+			}
+		}
+
+		// 3. Podman Pods (if runtimeTarget == 'pod' or InPod)
+		pods, err := d.podmanClient.GetPods(ctx)
+		if err == nil {
+			for _, p := range pods {
+				pName := p.Name
+				if pName == s.ID || pName == s.Name || pName == fmt.Sprintf("pod_%s", s.ID) || pName == fmt.Sprintf("%s-%s", s.ProjectID, s.Name) {
+					pSt := strings.ToLower(p.Status)
+					if pSt == "running" || pSt == "degraded" {
+						return "running"
+					}
+					return "stopped"
+				}
+			}
+		}
+	}
+
+	if s.Status == "deploying" || s.Status == "building" {
+		return s.Status
+	}
+	return "stopped"
+}
+
+// BatchRuntimeStatus queries real-time status of multiple workloads in a single pass.
+func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[string]string {
+	result := make(map[string]string)
+	if len(svcs) == 0 {
+		return result
+	}
+
+	var containers []podman.ContainerItem
+	var pods []podman.PodItem
+	if d.podmanClient != nil {
+		containers, _ = d.podmanClient.GetContainers(ctx)
+		pods, _ = d.podmanClient.GetPods(ctx)
+	}
+
+	hasSystemctl := false
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		hasSystemctl = true
+	}
+
+	for _, s := range svcs {
+		if s.Status == "deploying" || s.Status == "building" {
+			result[s.ID] = s.Status
+			continue
+		}
+
+		// 1. Quadlet Unit
+		if (s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "") && hasSystemctl {
+			cmd := exec.CommandContext(ctx, "systemctl", "--user", "is-active", fmt.Sprintf("%s.service", s.Name))
+			out, err := cmd.CombinedOutput()
+			st := strings.TrimSpace(string(out))
+			if err == nil && st == "active" {
+				result[s.ID] = "running"
+				continue
+			}
+			if st == "failed" {
+				result[s.ID] = "failed"
+				continue
+			}
+			if st == "activating" {
+				result[s.ID] = "deploying"
+				continue
+			}
+			result[s.ID] = "stopped"
+			continue
+		}
+
+		// 2. Match Containers
+		matchedRunning := false
+		matchedFound := false
+		for _, c := range containers {
+			isMatch := false
+			if c.Labels != nil {
+				if c.Labels["io.gopod.service"] == s.ID ||
+					c.Labels["com.docker.compose.project"] == s.ID ||
+					c.Labels["io.podman.compose.project"] == s.ID ||
+					c.Labels["com.docker.compose.project"] == s.Name {
+					isMatch = true
+				}
+			}
+			if !isMatch && len(c.Names) > 0 {
+				firstName := strings.TrimPrefix(c.Names[0], "/")
+				if firstName == s.ID ||
+					firstName == s.Name ||
+					strings.HasPrefix(firstName, s.ID) ||
+					strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) ||
+					strings.HasPrefix(firstName, fmt.Sprintf("pod_%s", s.ID)) {
+					isMatch = true
+				}
+			}
+			if isMatch {
+				matchedFound = true
+				st := strings.ToLower(c.State)
+				rawSt := strings.ToLower(c.Status)
+				if st == "running" || strings.HasPrefix(rawSt, "up") {
+					matchedRunning = true
+					break
+				}
+			}
+		}
+
+		if matchedRunning {
+			result[s.ID] = "running"
+			continue
+		}
+		if matchedFound {
+			result[s.ID] = "stopped"
+			continue
+		}
+
+		// 3. Match Pods
+		podRunning := false
+		for _, p := range pods {
+			pName := p.Name
+			if pName == s.ID || pName == s.Name || pName == fmt.Sprintf("pod_%s", s.ID) || pName == fmt.Sprintf("%s-%s", s.ProjectID, s.Name) {
+				pSt := strings.ToLower(p.Status)
+				if pSt == "running" || pSt == "degraded" {
+					podRunning = true
+					break
+				}
+			}
+		}
+		if podRunning {
+			result[s.ID] = "running"
+			continue
+		}
+
+		result[s.ID] = "stopped"
+	}
+
+	return result
+}
+
 // StartService powers on workload containers or units according to service workload type.
 func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	// 1. Compose Stack
@@ -303,7 +511,12 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 		}
 
 		runner := "podman-compose"
-		args := []string{"-p", projectName, "-f", composeFile, "up", "-d"}
+		usePod := s.InPod || s.RuntimeTarget == "pod"
+		podVal := "false"
+		if usePod {
+			podVal = "true"
+		}
+		args := []string{"--in-pod", podVal, "-p", projectName, "-f", composeFile, "up", "-d"}
 		if _, err := exec.LookPath("podman-compose"); err != nil {
 			runner = "podman"
 			args = []string{"compose", "-p", projectName, "-f", composeFile, "up", "-d"}
@@ -312,22 +525,16 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 		cmd := exec.CommandContext(ctx, runner, args...)
 		d.setupCmdEnv(cmd)
 		if out, err := cmd.CombinedOutput(); err != nil {
-			if runner == "podman-compose" {
-				altCmd := exec.CommandContext(ctx, "podman", "compose", "-p", projectName, "-f", composeFile, "up", "-d")
-				d.setupCmdEnv(altCmd)
-				if altOut, altErr := altCmd.CombinedOutput(); altErr == nil {
-					return nil
-				} else {
-					return fmt.Errorf("compose start error: %s / %s (%w)", strings.TrimSpace(string(out)), strings.TrimSpace(string(altOut)), err)
-				}
+			outStr := string(out)
+			if !strings.Contains(outStr, "pod already exists") && !strings.Contains(outStr, "already in use") {
+				return fmt.Errorf("compose start error: %s (%w)", strings.TrimSpace(outStr), err)
 			}
-			return fmt.Errorf("compose start error: %s (%w)", strings.TrimSpace(string(out)), err)
 		}
 		return nil
 	}
 
 	// 2. Quadlet Service
-	if s.Type == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
 		if _, err := exec.LookPath("systemctl"); err == nil {
 			cmd := exec.CommandContext(ctx, "systemctl", "--user", "start", fmt.Sprintf("%s.service", s.Name))
 			if out, err := cmd.CombinedOutput(); err != nil {
@@ -341,15 +548,26 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	if d.podmanClient != nil {
 		containers, _ := d.podmanClient.GetContainers(ctx)
 		found := false
+		var startErr error
 		for _, c := range containers {
-			if (c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID)) ||
-				(len(c.Names) > 0 && (strings.HasPrefix(c.Names[0], s.ID) || c.Names[0] == s.Name || strings.HasPrefix(c.Names[0], fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)))) {
-				_ = d.podmanClient.StartContainer(ctx, c.ID)
+			isMatch := false
+			if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID) {
+				isMatch = true
+			} else if len(c.Names) > 0 {
+				firstName := strings.TrimPrefix(c.Names[0], "/")
+				if strings.HasPrefix(firstName, s.ID) || firstName == s.Name || strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) {
+					isMatch = true
+				}
+			}
+			if isMatch {
 				found = true
+				if err := d.podmanClient.StartContainer(ctx, c.ID); err != nil {
+					startErr = err
+				}
 			}
 		}
 		if found {
-			return nil
+			return startErr
 		}
 	}
 
@@ -384,22 +602,22 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 			}
 			cmd := exec.CommandContext(ctx, runner, args...)
 			d.setupCmdEnv(cmd)
-			if out, err := cmd.CombinedOutput(); err != nil {
-				if runner == "podman-compose" {
-					altCmd := exec.CommandContext(ctx, "podman", "compose", "-p", projectName, "-f", composeFile, "stop")
-					d.setupCmdEnv(altCmd)
-					if _, altErr := altCmd.CombinedOutput(); altErr == nil {
-						return nil
-					}
+			_ = cmd.Run()
+		}
+
+		if d.podmanClient != nil {
+			containers, _ := d.podmanClient.GetContainers(ctx)
+			for _, c := range containers {
+				if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID || c.Labels["io.podman.compose.project"] == s.ID) {
+					_ = d.podmanClient.StopContainer(ctx, c.ID)
 				}
-				return fmt.Errorf("compose stop error: %s (%w)", strings.TrimSpace(string(out)), err)
 			}
 		}
 		return nil
 	}
 
 	// 2. Quadlet Service
-	if s.Type == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
 		if _, err := exec.LookPath("systemctl"); err == nil {
 			cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s.service", s.Name))
 			_ = cmd.Run()
@@ -411,8 +629,16 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	if d.podmanClient != nil {
 		containers, _ := d.podmanClient.GetContainers(ctx)
 		for _, c := range containers {
-			if (c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID)) ||
-				(len(c.Names) > 0 && (strings.HasPrefix(c.Names[0], s.ID) || c.Names[0] == s.Name || strings.HasPrefix(c.Names[0], fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)))) {
+			isMatch := false
+			if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID) {
+				isMatch = true
+			} else if len(c.Names) > 0 {
+				firstName := strings.TrimPrefix(c.Names[0], "/")
+				if strings.HasPrefix(firstName, s.ID) || firstName == s.Name || strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) {
+					isMatch = true
+				}
+			}
+			if isMatch {
 				_ = d.podmanClient.StopContainer(ctx, c.ID)
 			}
 		}
@@ -426,4 +652,103 @@ func (d *Deployer) RestartService(ctx context.Context, s Service) error {
 	_ = d.StopService(ctx, s)
 	return d.StartService(ctx, s)
 }
+
+// TeardownService stops and completely removes containers, pods, quadlets, and compose stacks (Dokploy parity).
+func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes bool) error {
+	// 1. Compose Workload
+	if s.Type == "compose" || s.ComposeYaml != "" {
+		projectName := s.ID
+		if projectName == "" {
+			projectName = GenerateContainerName(s.ProjectID, s.Name)
+		}
+		composeDir := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName)
+		composeFile := filepath.Join(composeDir, "docker-compose.yml")
+
+		if _, err := os.Stat(composeFile); err == nil {
+			var downArgs []string
+			if _, err := exec.LookPath("podman-compose"); err == nil {
+				downArgs = []string{"-p", projectName, "-f", composeFile, "down"}
+				if deleteVolumes {
+					downArgs = append(downArgs, "-v")
+				}
+				cmd := exec.CommandContext(ctx, "podman-compose", downArgs...)
+				d.setupCmdEnv(cmd)
+				_ = cmd.Run()
+			} else if _, err := exec.LookPath("podman"); err == nil {
+				downArgs = []string{"compose", "-p", projectName, "-f", composeFile, "down"}
+				if deleteVolumes {
+					downArgs = append(downArgs, "-v")
+				}
+				cmd := exec.CommandContext(ctx, "podman", downArgs...)
+				d.setupCmdEnv(cmd)
+				_ = cmd.Run()
+			}
+		}
+
+		// Also remove pod if created by podman-compose
+		if d.podmanClient != nil {
+			_ = d.podmanClient.DeletePod(ctx, "pod_"+projectName, true)
+		}
+
+		// Clean up disk workspace
+		_ = os.RemoveAll(composeDir)
+	}
+
+	// 2. Quadlet Service
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+		quadletDir := filepath.Join(d.dataDir, "quadlets")
+		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.container", s.Name)))
+
+		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+			systemdQuadletDir := filepath.Join(homeDir, ".config", "containers", "systemd")
+			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.container", s.Name)))
+			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.pod", s.Name)))
+		}
+
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s.service", s.Name)).Run()
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "disable", fmt.Sprintf("%s.service", s.Name)).Run()
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
+		}
+	}
+
+	// 3. Container / Pod / Direct Image Workload cleanup
+	if d.podmanClient != nil {
+		containers, _ := d.podmanClient.GetContainers(ctx)
+		for _, c := range containers {
+			isMatch := false
+			if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID || c.Labels["com.docker.compose.project"] == GenerateContainerName(s.ProjectID, s.Name)) {
+				isMatch = true
+			} else if len(c.Names) > 0 {
+				firstName := strings.TrimPrefix(c.Names[0], "/")
+				if strings.HasPrefix(firstName, s.ID) || firstName == s.Name || strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) || firstName == GenerateContainerName(s.ProjectID, s.Name) {
+					isMatch = true
+				}
+			}
+			if isMatch {
+				_ = d.podmanClient.StopContainer(ctx, c.ID)
+				_ = d.podmanClient.DeleteContainer(ctx, c.ID, true)
+			}
+		}
+
+		// Also check and delete pod if created
+		_ = d.podmanClient.DeletePod(ctx, s.Name, true)
+		_ = d.podmanClient.DeletePod(ctx, GenerateContainerName(s.ProjectID, s.Name), true)
+		_ = d.podmanClient.DeletePod(ctx, "pod_"+GenerateContainerName(s.ProjectID, s.Name), true)
+
+		// 4. Volume Cleanup if requested
+		if deleteVolumes {
+			vols, _ := d.podmanClient.GetVolumes(ctx)
+			prefix := GenerateContainerName(s.ProjectID, s.Name)
+			for _, v := range vols {
+				if strings.HasPrefix(v.Name, s.ID) || strings.HasPrefix(v.Name, prefix) {
+					_ = d.podmanClient.DeleteVolume(ctx, v.Name, true)
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
 

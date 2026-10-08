@@ -48,6 +48,14 @@ export const volumesApi = {
 	async toggleSchedule(id: string): Promise<VolumeBackupSchedule> {
 		const res = await apiClient.post<VolumeBackupSchedule>(`/volumes/schedules/${id}/toggle`);
 		return res.data;
+	},
+
+	/**
+	 * Delete an automated backup schedule
+	 */
+	async deleteSchedule(id: string): Promise<{ message: string }> {
+		const res = await apiClient.delete<{ message: string }>(`/volumes/schedules/${id}`);
+		return res.data;
 	}
 };
 

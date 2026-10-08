@@ -63,10 +63,15 @@ func TestDeploymentCRUD(t *testing.T) {
 	repo := NewSQLiteRepository(database.DB)
 	ctx := context.Background()
 
+	_, err = database.DB.Exec("INSERT INTO projects (id, name) VALUES ('test-proj', 'Test Project')")
+	if err != nil {
+		t.Fatalf("failed to insert test project: %v", err)
+	}
+
 	// 1. Create Service
 	svc := Service{
 		ID:        "svc-test-1",
-		ProjectID: "aerochat",
+		ProjectID: "test-proj",
 		Name:      "web-test",
 		Type:      "compose",
 		Status:    "stopped",

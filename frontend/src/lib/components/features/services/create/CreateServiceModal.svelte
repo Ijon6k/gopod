@@ -1,10 +1,11 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Button, Input, FormField } from '$lib/components/primitives';
+	import { Modal } from '$lib/components/ui';
 	import { dataStore, projects } from '$lib/data';
 	import type { Service, ServiceType } from '$lib/types';
 	import WorkloadTypeSelector, { type WorkloadChoice } from './WorkloadTypeSelector.svelte';
-	import { X, ArrowRight, FileText } from 'phosphor-svelte';
+	import { ArrowRight, FileText } from 'phosphor-svelte';
 
 	interface Props {
 		projectId?: string;
@@ -38,6 +39,7 @@
 
 	let serviceName = $state('');
 	let serviceDescription = $state('');
+	let servicePort = $state('');
 	let isCreating = $state(false);
 	let createError = $state<string | null>(null);
 
@@ -81,7 +83,7 @@
 				branch: 'main',
 				buildType: 'dockerfile',
 				runtimeTarget: 'standalone',
-				port: 3000,
+				port: parseInt(servicePort.trim(), 10) || 3000,
 				cpu: 0,
 				memory: 0,
 				restartPolicy: 'always',
@@ -304,6 +306,23 @@
 					{/if}
 				</div>
 
+				{#if selectedType === 'application'}
+					<div class="flex flex-col gap-1.5">
+						<label for="inline-svc-port" class="text-xs text-[var(--text-secondary)] font-medium">
+							Container Port (Optional)
+						</label>
+						<Input
+							id="inline-svc-port"
+							bind:value={servicePort}
+							placeholder="3000 (e.g. 80, 8080)"
+							class="text-xs font-[var(--font-mono)]"
+						/>
+						<span class="text-[11px] text-[var(--text-tertiary)]">
+							Port where your app listens inside the container.
+						</span>
+					</div>
+				{/if}
+
 				<div class="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
 					<Button variant="ghost" size="sm" onclick={handleCancel}>Cancel</Button>
 					<Button variant="primary" size="sm" disabled={!isFormValid} onclick={handleCreate}>
@@ -313,126 +332,114 @@
 			</div>
 		</div>
 	{:else}
-		<!-- Modal Dialog View (Spacious layout with generous room) -->
-		<div
-			class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs"
-			role="dialog"
-			aria-modal="true"
+		<!-- Clean, Modular Modal Dialog View -->
+		<Modal
+			open={true}
+			onclose={handleCancel}
+			title="Create Service"
+			subtitle="Deploy an application, native systemd Quadlet, multi-container compose stack, or database."
+			size="xl"
 		>
-			<div
-				class="w-full max-w-[660px] rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+			<!-- Vertical Workload Type Selector -->
+			<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
+
+			{#if selectedType === 'quadlet'}
+				<div class="flex items-center gap-2.5 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-secondary)]">
+					<FileText size={16} class="text-[var(--accent)] shrink-0" />
+					<span>Generates a declarative systemd <code class="font-mono text-[var(--text-primary)]">.container</code> service unit in <code class="font-mono text-[var(--text-primary)]">~/.config/containers/systemd/</code>.</span>
+				</div>
+			{:else if selectedType === 'database'}
+				<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
+					<span class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</span>
+					<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+						{#each [
+							{ id: 'postgres', label: 'PostgreSQL' },
+							{ id: 'redis', label: 'Redis' },
+							{ id: 'mysql', label: 'MySQL' },
+							{ id: 'mongodb', label: 'MongoDB' }
+						] as db (db.id)}
+							<button
+								type="button"
+								onclick={() => (dbEngine = db.id as any)}
+								class="p-2 rounded-md border text-xs text-center cursor-pointer transition-colors {dbEngine === db.id
+									? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium'
+									: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+							>
+								{db.label}
+							</button>
+						{/each}
+					</div>
+				</div>
+			{:else if selectedType === 'compose'}
+				<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
+					<span class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</span>
+					<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+						{#each [
+							{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' },
+							{ id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' },
+							{ id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }
+						] as s (s.id)}
+							<button
+								type="button"
+								onclick={() => (stackSubtype = s.id as any)}
+								class="p-2.5 rounded-md border text-left cursor-pointer transition-colors {stackSubtype === s.id
+									? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium shadow-xs'
+									: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+							>
+								<div class="font-semibold text-xs text-[var(--text-primary)]">{s.label}</div>
+								<div class="text-[10px] text-[var(--text-tertiary)] mt-0.5 leading-tight">{s.desc}</div>
+							</button>
+						{/each}
+					</div>
+					{#if stackSubtype === 'pod'}
+						<p class="text-[11px] text-[var(--text-tertiary)] m-0 mt-1">
+							💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar). You can add additional containers to this Pod inside the Service Detail Studio.
+						</p>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Service Name FormField -->
+			<FormField
+				label="Service Name"
+				required
+				error={createError}
+				description={selectedType === 'quadlet' && serviceName
+					? `Target unit: ~/.config/containers/systemd/${slugify(serviceName)}.container`
+					: undefined}
 			>
-				<div class="px-6 py-4 border-b border-[var(--border)] flex items-center justify-between">
-					<div class="flex flex-col gap-0.5">
-						<h3 class="text-base font-semibold text-[var(--text-primary)] m-0">Create Service</h3>
-						<p class="text-xs text-[var(--text-tertiary)] m-0">Deploy an application, native systemd Quadlet, multi-container compose stack, or database.</p>
-					</div>
-					<button
-						type="button"
-						onclick={handleCancel}
-						class="p-1 rounded text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer"
-						aria-label="Close"
-					>
-						<X size={16} />
-					</button>
-				</div>
+				<Input
+					id="modal-svc-name"
+					bind:value={serviceName}
+					placeholder="e.g. metube, web-app, or cache"
+					class="text-xs"
+				/>
+			</FormField>
 
-				<div class="p-6 flex flex-col gap-5 max-h-[82vh] overflow-y-auto">
-					<!-- Vertical Workload Type Selector -->
-					<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
+			{#if selectedType === 'application'}
+				<FormField
+					label="Container Port (Optional)"
+					description="Internal listening port inside container (default: 3000, e.g. 80 for Whoami/Nginx)."
+				>
+					<Input
+						id="modal-svc-port"
+						bind:value={servicePort}
+						placeholder="3000 (e.g. 80, 8080)"
+						class="text-xs font-[var(--font-mono)]"
+					/>
+				</FormField>
+			{/if}
 
-					{#if selectedType === 'quadlet'}
-						<div class="flex items-center gap-2.5 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-secondary)]">
-							<FileText size={16} class="text-[var(--accent)] shrink-0" />
-							<span>Generates a declarative systemd <code class="font-mono text-[var(--text-primary)]">.container</code> service unit in <code class="font-mono text-[var(--text-primary)]">~/.config/containers/systemd/</code>.</span>
-						</div>
-					{:else if selectedType === 'database'}
-						<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-							<span class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</span>
-							<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-								{#each [
-									{ id: 'postgres', label: 'PostgreSQL' },
-									{ id: 'redis', label: 'Redis' },
-									{ id: 'mysql', label: 'MySQL' },
-									{ id: 'mongodb', label: 'MongoDB' }
-								] as db}
-									<button
-										type="button"
-										onclick={() => (dbEngine = db.id as any)}
-										class="p-2 rounded-md border text-xs text-center cursor-pointer transition-colors {dbEngine === db.id
-											? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium'
-											: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-									>
-										{db.label}
-									</button>
-								{/each}
-							</div>
-						</div>
-					{:else if selectedType === 'compose'}
-						<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-							<span class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</span>
-							<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-								{#each [
-									{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' },
-									{ id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' },
-									{ id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }
-								] as s}
-									<button
-										type="button"
-										onclick={() => (stackSubtype = s.id as any)}
-										class="p-2.5 rounded-md border text-left cursor-pointer transition-colors {stackSubtype === s.id
-											? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium shadow-xs'
-											: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-									>
-										<div class="font-semibold text-xs text-[var(--text-primary)]">{s.label}</div>
-										<div class="text-[10px] text-[var(--text-tertiary)] mt-0.5 leading-tight">{s.desc}</div>
-									</button>
-								{/each}
-							</div>
-							{#if stackSubtype === 'pod'}
-								<p class="text-[11px] text-[var(--text-tertiary)] m-0 mt-1">
-									💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar). You can add additional containers to this Pod inside the Service Detail Studio.
-								</p>
-							{/if}
-						</div>
+			{#snippet footer()}
+				<Button variant="ghost" size="sm" onclick={handleCancel} disabled={isCreating}>Cancel</Button>
+				<Button variant="primary" size="sm" disabled={!isFormValid || isCreating} onclick={handleCreate}>
+					{#if isCreating}
+						Creating…
+					{:else}
+						Create & Configure <ArrowRight size={13} />
 					{/if}
-
-					<!-- Service Name Input -->
-					<div class="flex flex-col gap-1.5">
-						<label for="modal-svc-name" class="text-xs text-[var(--text-secondary)] font-medium">
-							Service Name <span class="text-[var(--status-red)]">*</span>
-						</label>
-						<Input
-							id="modal-svc-name"
-							bind:value={serviceName}
-							placeholder="e.g. metube, web-app, or cache"
-							class="text-xs"
-						/>
-						{#if selectedType === 'quadlet' && serviceName}
-							<span class="text-[11px] font-[var(--font-mono)] text-[var(--text-tertiary)]">
-								Target unit: ~/.config/containers/systemd/{slugify(serviceName)}.container
-							</span>
-						{/if}
-					</div>
-
-					{#if createError}
-						<div class="rounded-md p-2.5 bg-[var(--status-red-subtle)] border border-[var(--status-red)] text-xs text-[var(--status-red)]">
-							{createError}
-						</div>
-					{/if}
-				</div>
-
-				<div class="px-6 py-4 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-end gap-2">
-					<Button variant="ghost" size="sm" onclick={handleCancel} disabled={isCreating}>Cancel</Button>
-					<Button variant="primary" size="sm" disabled={!isFormValid || isCreating} onclick={handleCreate}>
-						{#if isCreating}
-							Creating…
-						{:else}
-							Create & Configure <ArrowRight size={13} />
-						{/if}
-					</Button>
-				</div>
-			</div>
-		</div>
+				</Button>
+			{/snippet}
+		</Modal>
 	{/if}
 {/if}

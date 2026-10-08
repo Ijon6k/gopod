@@ -48,11 +48,21 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 		}
 	}
 
+	if d.podmanClient != nil {
+		_ = d.podmanClient.EnsureNetwork(ctx, "gopod-net")
+	}
+
 	var runner string
 	var args []string
+	usePod := s.InPod || s.RuntimeTarget == "pod"
+
 	if _, err := exec.LookPath("podman-compose"); err == nil {
 		runner = "podman-compose"
-		args = []string{"-p", projectName, "-f", composeFile, "up", "-d"}
+		podVal := "false"
+		if usePod {
+			podVal = "true"
+		}
+		args = []string{"--in-pod", podVal, "-p", projectName, "-f", composeFile, "up", "-d"}
 	} else {
 		runner = "podman"
 		args = []string{"compose", "-p", projectName, "-f", composeFile, "up", "-d"}
@@ -96,6 +106,12 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 	var sampleErr string
 	for _, l := range errLines {
 		lower := strings.ToLower(l)
+		// Ignore harmless idempotent errors like "pod already exists" or "name in use"
+		if strings.Contains(lower, "pod already exists") ||
+			strings.Contains(lower, "already in use") ||
+			strings.Contains(lower, "is in use: pod already exists") {
+			continue
+		}
 		if strings.HasPrefix(l, "Error:") ||
 			strings.Contains(lower, "requested access to the resource is denied") ||
 			strings.Contains(lower, "cannot be used as a dependency") ||

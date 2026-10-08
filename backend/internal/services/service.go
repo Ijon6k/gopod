@@ -16,12 +16,16 @@ type AuditRecorder interface {
 	Record(ctx context.Context, action, actor, target, category, ip, status string) error
 }
 
+// IngressCleaner cleans up routing and reverse proxy rules for deleted services.
+type IngressCleaner func(ctx context.Context, serviceID string)
+
 // WorkloadService encapsulates workload management and deployment orchestration.
 type WorkloadService struct {
-	repo       Repository
-	deployer   *Deployer
-	logManager *LogManager
-	audit      AuditRecorder
+	repo           Repository
+	deployer       *Deployer
+	logManager     *LogManager
+	audit          AuditRecorder
+	ingressCleaner IngressCleaner
 }
 
 // NewWorkloadService creates a new services domain service.
@@ -38,12 +42,49 @@ func (s *WorkloadService) SetAuditRecorder(ar AuditRecorder) {
 	s.audit = ar
 }
 
+// SetIngressCleaner configures ingress domain teardown.
+func (s *WorkloadService) SetIngressCleaner(cleaner IngressCleaner) {
+	s.ingressCleaner = cleaner
+}
+
+func (s *WorkloadService) reconcileRuntimeStatus(ctx context.Context, svc *Service) {
+	if svc == nil || s.deployer == nil {
+		return
+	}
+	// Transient deployment states are managed during deploy lifecycle
+	if svc.Status == "deploying" || svc.Status == "building" {
+		return
+	}
+	realStatus := s.deployer.GetRuntimeStatus(ctx, *svc)
+	if realStatus != "" && realStatus != svc.Status {
+		svc.Status = realStatus
+		_ = s.repo.Update(ctx, *svc)
+	}
+}
+
 // ListServices retrieves services, optionally filtered by projectID.
 func (s *WorkloadService) ListServices(ctx context.Context, projectID string) ([]Service, error) {
 	if s.repo == nil {
 		return []Service{}, nil
 	}
-	return s.repo.List(ctx, projectID)
+	list, err := s.repo.List(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	if s.deployer != nil && len(list) > 0 {
+		statusMap := s.deployer.BatchRuntimeStatus(ctx, list)
+		for i := range list {
+			svc := &list[i]
+			if svc.Status == "deploying" || svc.Status == "building" {
+				continue
+			}
+			if realSt, ok := statusMap[svc.ID]; ok && realSt != "" && realSt != svc.Status {
+				svc.Status = realSt
+				_ = s.repo.Update(ctx, *svc)
+			}
+		}
+	}
+	return list, nil
 }
 
 // GetService retrieves a single service by ID.
@@ -51,7 +92,12 @@ func (s *WorkloadService) GetService(ctx context.Context, id string) (*Service, 
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	return s.repo.Get(ctx, id)
+	svc, err := s.repo.Get(ctx, id)
+	if err != nil || svc == nil {
+		return svc, err
+	}
+	s.reconcileRuntimeStatus(ctx, svc)
+	return svc, nil
 }
 
 // CreateService creates a new service, assigning generated ID and unguessable webhook token.
@@ -98,12 +144,23 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 	return s.repo.Update(ctx, svc)
 }
 
-// DeleteService removes a service.
-func (s *WorkloadService) DeleteService(ctx context.Context, id string) error {
+// DeleteService removes a service, stopping and tearing down all running workloads (Dokploy parity).
+func (s *WorkloadService) DeleteService(ctx context.Context, id string, deleteVolumes bool) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}
-	err := s.repo.Delete(ctx, id)
+
+	svc, err := s.GetService(ctx, id)
+	if err == nil && svc != nil {
+		if s.deployer != nil {
+			_ = s.deployer.TeardownService(ctx, *svc, deleteVolumes)
+		}
+		if s.ingressCleaner != nil {
+			s.ingressCleaner(ctx, svc.ID)
+		}
+	}
+
+	err = s.repo.Delete(ctx, id)
 	if err == nil && s.audit != nil {
 		_ = s.audit.Record(ctx, "service.delete", "operator", id, "runtime", "127.0.0.1", "success")
 	}
@@ -122,11 +179,15 @@ func (s *WorkloadService) StartService(ctx context.Context, id string) (*Service
 
 	if s.deployer != nil {
 		if err := s.deployer.StartService(ctx, *svc); err != nil {
+			svc.Status = "failed"
+			_ = s.repo.Update(ctx, *svc)
 			return nil, err
 		}
+		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
+	} else {
+		svc.Status = "running"
 	}
 
-	svc.Status = "running"
 	if err := s.repo.Update(ctx, *svc); err != nil {
 		return nil, err
 	}
@@ -151,9 +212,11 @@ func (s *WorkloadService) StopService(ctx context.Context, id string) (*Service,
 		if err := s.deployer.StopService(ctx, *svc); err != nil {
 			return nil, err
 		}
+		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
+	} else {
+		svc.Status = "stopped"
 	}
 
-	svc.Status = "stopped"
 	if err := s.repo.Update(ctx, *svc); err != nil {
 		return nil, err
 	}

@@ -22,8 +22,11 @@
 	let { service, onTerminalClick, onRedeploy }: Props = $props();
 
 	let autoDeploy = $state(true);
+	let inPod = $state(false);
+
 	$effect(() => {
 		autoDeploy = service.autoDeploy ?? true;
+		inPod = service.inPod || service.runtimeTarget === 'pod';
 	});
 	let isDeploying = $state(false);
 	let isRebuilding = $state(false);
@@ -38,6 +41,21 @@
 		feedbackTimeout = setTimeout(() => {
 			feedbackMessage = null;
 		}, 3500);
+	}
+
+	function handleToggleInPod() {
+		inPod = !inPod;
+		service.inPod = inPod;
+		if (service.type !== 'quadlet') {
+			service.runtimeTarget = inPod ? 'pod' : 'standalone';
+		}
+		dataStore.updateService(service);
+		showFeedback(
+			inPod
+				? 'Podman Pod mode enabled: services will share localhost network namespace.'
+				: 'Standalone mode enabled: services will run as individual containers with bridge DNS.',
+			'info'
+		);
 	}
 
 	let typeLabel = $derived.by(() => {
@@ -137,13 +155,13 @@
 		try {
 			if (isRunning) {
 				showFeedback('Stopping service workload...', 'info');
-				await dataStore.stopService(service.id);
-				service.status = 'stopped';
+				const updated = await dataStore.stopService(service.id);
+				service.status = updated.status || 'stopped';
 				showFeedback('Workload stopped successfully.', 'info');
 			} else {
 				showFeedback('Starting service workload...', 'info');
-				await dataStore.startService(service.id);
-				service.status = 'running';
+				const updated = await dataStore.startService(service.id);
+				service.status = updated.status || 'running';
 				showFeedback('Workload started successfully.', 'success');
 			}
 		} catch (err: any) {
@@ -289,6 +307,36 @@
 						: 'left-0.5'}"
 				></span>
 			</button>
+		</div>
+	</div>
+
+	<!-- Podman Execution & Pod Strategy (UX Heuristics #1: Visibility & User Control) -->
+	<div class="px-5 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-wrap items-center justify-between gap-3 text-xs">
+		<div class="flex items-center gap-2.5">
+			<label class="flex items-center gap-2 cursor-pointer select-none">
+				<input
+					type="checkbox"
+					checked={inPod}
+					onchange={handleToggleInPod}
+					class="w-4 h-4 rounded border-[var(--border)] accent-[var(--accent)] cursor-pointer"
+				/>
+				<span class="font-medium text-[var(--text-primary)]">
+					{service.type === 'compose' ? 'Encapsulate stack inside Podman Pod' : 'Run inside Podman Pod'}
+				</span>
+			</label>
+			<span class="text-[11px] text-[var(--text-tertiary)] hidden sm:inline">
+				{inPod
+					? `(Shared localhost network namespace · pod_${service.id})`
+					: '(Independent containers attached to gopod-net bridge)'}
+			</span>
+		</div>
+		<div class="flex items-center gap-2">
+			<span class="text-[11px] font-[var(--font-mono)] px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)]">
+				network: gopod-net
+			</span>
+			<span class="text-[11px] font-[var(--font-mono)] px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-panel)] {inPod ? 'text-[var(--accent)] border-[var(--accent)]/40' : 'text-[var(--text-secondary)]'}">
+				mode: {inPod ? 'podman-pod' : 'standalone'}
+			</span>
 		</div>
 	</div>
 

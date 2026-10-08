@@ -86,3 +86,28 @@ func (c *Client) GetNetworks(ctx context.Context) ([]NetworkItem, error) {
 	}
 	return nets, nil
 }
+
+// EnsureNetwork verifies network exists, creates bridge network if absent.
+func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
+	if name == "" {
+		name = "gopod-net"
+	}
+	nets, err := c.GetNetworks(ctx)
+	if err == nil {
+		for _, n := range nets {
+			if n.Name == name {
+				return nil
+			}
+		}
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "network", "create", name)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if strings.Contains(string(out), "already exists") {
+			return nil
+		}
+		return fmt.Errorf("failed to create podman network %s: %s (%w)", name, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+

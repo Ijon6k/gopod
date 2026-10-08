@@ -19,20 +19,59 @@
 		const storeContainers = dataStore.containers.filter(
 			(c) =>
 				c.serviceId === service.id ||
-				c.name === service.name ||
-				c.name.startsWith(service.id) ||
-				(c.serviceName && c.serviceName === service.name) ||
 				(c.labels &&
-					(c.labels['com.docker.compose.project'] === service.name ||
-						c.labels['io.podman.compose.project'] === service.name ||
-						c.labels['io.gopod.service'] === service.id))
+					(c.labels['io.gopod.service'] === service.id ||
+						c.labels['com.docker.compose.project'] === service.id ||
+						c.labels['io.podman.compose.project'] === service.id ||
+						c.labels['com.docker.compose.project'] === `${service.projectId}-${service.name}` ||
+						c.labels['io.podman.compose.project'] === `${service.projectId}-${service.name}`)) ||
+				c.name === service.id ||
+				c.name === service.name ||
+				(service.id && (c.name.startsWith(`${service.id}-`) || c.name.startsWith(`${service.id}_`)))
 		);
 		if (storeContainers.length > 0) return storeContainers;
 
-		// Fallback from workloads or service identity (zero dummy numbers)
-		const workloads = service.workloads ?? [
-			{ name: service.name, image: service.image || 'app:latest', status: service.status, cpu: service.cpu, memory: service.memory }
-		];
+		// Fallback from workloads or compose YAML or service identity
+		let workloads = service.workloads;
+		if (!workloads && service.composeYaml) {
+			try {
+				const lines = service.composeYaml.split('\n');
+				const detected: { name: string; image: string; status: string; cpu?: number; memory?: number }[] = [];
+				let inServices = false;
+				let currentName = '';
+				let currentImg = '';
+				for (const line of lines) {
+					const trimmed = line.trim();
+					if (trimmed.startsWith('services:')) {
+						inServices = true;
+						continue;
+					}
+					if (inServices) {
+						if (/^[a-zA-Z0-9_-]+:/.test(trimmed) && !trimmed.startsWith('image:') && !trimmed.startsWith('ports:') && !trimmed.startsWith('volumes:') && !trimmed.startsWith('environment:')) {
+							if (currentName) {
+								detected.push({ name: currentName, image: currentImg || '—', status: service.status || 'stopped', cpu: 0, memory: 0 });
+							}
+							currentName = trimmed.replace(':', '');
+							currentImg = '';
+						} else if (trimmed.startsWith('image:')) {
+							currentImg = trimmed.replace('image:', '').trim().replace(/['"]/g, '');
+						}
+					}
+				}
+				if (currentName) {
+					detected.push({ name: currentName, image: currentImg || '—', status: service.status || 'stopped', cpu: 0, memory: 0 });
+				}
+				if (detected.length > 0) {
+					workloads = detected as any;
+				}
+			} catch (_) {}
+		}
+
+		if (!workloads || workloads.length === 0) {
+			workloads = [
+				{ name: service.name, image: service.image || '—', status: service.status || 'stopped', cpu: 0, memory: 0 }
+			];
+		}
 
 		return workloads.map((w, idx) => ({
 			id: `c-${service.id}-${idx}`,
@@ -42,9 +81,9 @@
 			serviceId: service.id,
 			serviceName: service.name,
 			image: w.image,
-			status: service.status || w.status || 'stopped',
-			cpu: w.cpu ?? 0,
-			memory: w.memory ?? 0,
+			status: service.status === 'running' ? (w.status || 'running') : (service.status || 'stopped'),
+			cpu: service.status === 'running' ? (w.cpu ?? 0) : 0,
+			memory: service.status === 'running' ? (w.memory ?? 0) : 0,
 			memoryLimit: 512,
 			ports: w.ports || (service.port ? `${service.port}:${service.port}` : '—'),
 			startedAt: service.status === 'running' ? 'Active' : '—',

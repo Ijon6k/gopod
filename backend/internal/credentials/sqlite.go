@@ -3,6 +3,8 @@ package credentials
 import (
 	"context"
 	"database/sql"
+
+	"gopod/pkg/crypto"
 )
 
 // SQLiteRepository implements credentials.Repository using SQLite.
@@ -30,6 +32,9 @@ func (r *SQLiteRepository) ListSSHKeys(ctx context.Context) ([]SSHKey, error) {
 		if err := rows.Scan(&k.ID, &k.Name, &k.PublicKey, &k.PrivateKey, &k.Fingerprint, &k.Type, &k.CreatedAt); err != nil {
 			return nil, err
 		}
+		if dec, err := crypto.Decrypt(k.PrivateKey); err == nil {
+			k.PrivateKey = dec
+		}
 		keys = append(keys, k)
 	}
 	if keys == nil {
@@ -48,13 +53,20 @@ func (r *SQLiteRepository) GetSSHKey(ctx context.Context, id string) (*SSHKey, e
 	if err != nil {
 		return nil, err
 	}
+	if dec, err := crypto.Decrypt(k.PrivateKey); err == nil {
+		k.PrivateKey = dec
+	}
 	return &k, nil
 }
 
 func (r *SQLiteRepository) CreateSSHKey(ctx context.Context, k SSHKey) error {
-	_, err := r.db.ExecContext(ctx,
+	encKey, err := crypto.Encrypt(k.PrivateKey)
+	if err != nil {
+		encKey = k.PrivateKey
+	}
+	_, err = r.db.ExecContext(ctx,
 		"INSERT INTO ssh_keys (id, name, public_key, private_key, fingerprint, type) VALUES (?, ?, ?, ?, ?, ?)",
-		k.ID, k.Name, k.PublicKey, k.PrivateKey, k.Fingerprint, k.Type,
+		k.ID, k.Name, k.PublicKey, encKey, k.Fingerprint, k.Type,
 	)
 	return err
 }
@@ -79,6 +91,9 @@ func (r *SQLiteRepository) ListRegistries(ctx context.Context) ([]ContainerRegis
 		if err := rows.Scan(&reg.ID, &reg.Name, &reg.URL, &reg.Username, &reg.Token, &reg.CreatedAt); err != nil {
 			return nil, err
 		}
+		if dec, err := crypto.Decrypt(reg.Token); err == nil {
+			reg.Token = dec
+		}
 		list = append(list, reg)
 	}
 	if list == nil {
@@ -97,13 +112,20 @@ func (r *SQLiteRepository) GetRegistry(ctx context.Context, id string) (*Contain
 	if err != nil {
 		return nil, err
 	}
+	if dec, err := crypto.Decrypt(reg.Token); err == nil {
+		reg.Token = dec
+	}
 	return &reg, nil
 }
 
 func (r *SQLiteRepository) CreateRegistry(ctx context.Context, reg ContainerRegistry) error {
-	_, err := r.db.ExecContext(ctx,
+	encToken, err := crypto.Encrypt(reg.Token)
+	if err != nil {
+		encToken = reg.Token
+	}
+	_, err = r.db.ExecContext(ctx,
 		"INSERT INTO container_registries (id, name, url, username, token) VALUES (?, ?, ?, ?, ?)",
-		reg.ID, reg.Name, reg.URL, reg.Username, reg.Token,
+		reg.ID, reg.Name, reg.URL, reg.Username, encToken,
 	)
 	return err
 }
@@ -128,6 +150,9 @@ func (r *SQLiteRepository) ListSecrets(ctx context.Context) ([]Secret, error) {
 		if err := rows.Scan(&s.ID, &s.Name, &s.Value, &s.Driver, &s.CreatedAt); err != nil {
 			return nil, err
 		}
+		if dec, err := crypto.Decrypt(s.Value); err == nil {
+			s.Value = dec
+		}
 		list = append(list, s)
 	}
 	if list == nil {
@@ -146,13 +171,20 @@ func (r *SQLiteRepository) GetSecret(ctx context.Context, id string) (*Secret, e
 	if err != nil {
 		return nil, err
 	}
+	if dec, err := crypto.Decrypt(s.Value); err == nil {
+		s.Value = dec
+	}
 	return &s, nil
 }
 
 func (r *SQLiteRepository) CreateSecret(ctx context.Context, s Secret) error {
-	_, err := r.db.ExecContext(ctx,
+	encVal, err := crypto.Encrypt(s.Value)
+	if err != nil {
+		encVal = s.Value
+	}
+	_, err = r.db.ExecContext(ctx,
 		"INSERT INTO secrets (id, name, value, driver) VALUES (?, ?, ?, ?)",
-		s.ID, s.Name, s.Value, s.Driver,
+		s.ID, s.Name, encVal, s.Driver,
 	)
 	return err
 }
@@ -161,3 +193,4 @@ func (r *SQLiteRepository) DeleteSecret(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM secrets WHERE id = ?", id)
 	return err
 }
+

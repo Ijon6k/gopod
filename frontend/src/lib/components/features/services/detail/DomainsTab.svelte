@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service, Domain } from '$lib/types';
-	import { Button, Input, CopyButton } from '$lib/components/primitives';
+	import { Button, Input, CopyButton, FormField } from '$lib/components/primitives';
 	import { StatusBadge } from '$lib/components/ui';
 	import { dataStore, server } from '$lib/data';
 	import { Globe, Plus, Trash, ShieldCheck, ArrowRight, ArrowSquareOut, CaretDown, CaretUp, PencilSimple } from 'phosphor-svelte';
@@ -140,27 +140,25 @@
 			</div>
 
 			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-				<div class="sm:col-span-2 flex flex-col gap-1.5">
-					<label for="new-domain-host" class="text-xs text-[var(--text-secondary)] font-medium">
-						Domain Name <span class="text-[var(--status-red)]">*</span>
-					</label>
-					<Input
-						id="new-domain-host"
-						bind:value={domainName}
-						placeholder="e.g. app.example.com or api.example.com"
-						class="font-[var(--font-mono)] text-xs"
-					/>
+				<div class="sm:col-span-2">
+					<FormField label="Domain Name" required forId="new-domain-host">
+						<Input
+							id="new-domain-host"
+							bind:value={domainName}
+							placeholder="e.g. app.example.com or api.example.com"
+							class="font-[var(--font-mono)] text-xs"
+						/>
+					</FormField>
 				</div>
 
-				<div class="flex flex-col gap-1.5">
-					<label for="new-domain-port" class="text-xs text-[var(--text-secondary)] font-medium">Target Container Port</label>
+				<FormField label="Target Container Port" forId="new-domain-port">
 					<Input
 						id="new-domain-port"
 						bind:value={targetPort}
 						placeholder="3000"
 						class="text-xs font-[var(--font-mono)]"
 					/>
-				</div>
+				</FormField>
 			</div>
 
 			<div class="flex items-center gap-3 pt-1">
@@ -188,18 +186,16 @@
 
 				{#if showAdvanced}
 					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)]/40">
-						<div class="flex flex-col gap-1.5">
-							<label for="adv-body-limit" class="text-xs font-medium text-[var(--text-secondary)]">Max Upload Body Size</label>
+						<FormField label="Max Upload Body Size" forId="adv-body-limit">
 							<Input
 								id="adv-body-limit"
 								bind:value={maxBodySize}
 								placeholder="e.g. 50MB or 100MB"
 								class="text-xs font-[var(--font-mono)]"
 							/>
-						</div>
+						</FormField>
 
-						<div class="flex flex-col gap-1.5">
-							<label for="adv-redirect" class="text-xs font-medium text-[var(--text-secondary)]">WWW Redirect</label>
+						<FormField label="WWW Redirect" forId="adv-redirect">
 							<select
 								id="adv-redirect"
 								bind:value={wwwRedirect}
@@ -209,7 +205,7 @@
 								<option value="to-non-www">Redirect www → non-www</option>
 								<option value="to-www">Redirect non-www → www</option>
 							</select>
-						</div>
+						</FormField>
 
 						<div class="sm:col-span-2 pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-2">
 							<label class="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
@@ -248,7 +244,7 @@
 
 	<!-- Domain Routes List -->
 	<div class="flex flex-col divide-y divide-[var(--border-subtle)] border border-[var(--border)] rounded-[var(--radius-card)] bg-[var(--bg-panel)] overflow-hidden">
-		{#each serviceDomains as d}
+		{#each serviceDomains as d (d.id)}
 			<div class="flex items-center justify-between p-4 gap-4 hover:bg-[var(--bg-hover)]/30 transition-colors">
 				<div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 min-w-0 flex-1">
 					<!-- Domain Hostname + External Link -->
@@ -311,7 +307,7 @@
 
 		{#if serviceDomains.length === 0}
 			<div class="p-8 text-center text-xs text-[var(--text-tertiary)]">
-				Belum ada domain publik untuk service ini. Tambahkan domain di atas untuk mengekspos service ke internet via Caddy.
+				No public domains configured for this service yet. Add a domain above to expose this service via Caddy reverse proxy.
 			</div>
 		{/if}
 	</div>

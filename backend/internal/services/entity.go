@@ -23,6 +23,7 @@ type Service struct {
 	Branch         string    `json:"branch"`
 	Image          string    `json:"image"`
 	Port           int       `json:"port"`
+	HostPort       int       `json:"hostPort"`
 	CPULimit       float64   `json:"cpuLimit"`
 	MemoryLimit    int       `json:"memoryLimit"`
 	RestartPolicy  string    `json:"restartPolicy"`
@@ -31,6 +32,7 @@ type Service struct {
 	ComposeYaml    string    `json:"composeYaml,omitempty"`
 	K8sYaml        string    `json:"k8sYaml,omitempty"`
 	RuntimeTarget  string    `json:"runtimeTarget,omitempty"`
+	InPod          bool      `json:"inPod"`
 	WebhookToken   string    `json:"webhookToken,omitempty"`
 	GitRepo        string    `json:"gitRepo,omitempty"`
 	GitBranch      string    `json:"gitBranch,omitempty"`

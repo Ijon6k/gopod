@@ -66,14 +66,10 @@
 
 			// Extract ISO timestamp if present
 			const isoMatch = cleanLine.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d+)?Z?)\s*(.*)/);
-			let time = '';
-			let text = cleanLine;
-			if (isoMatch) {
-				time = isoMatch[1].substring(11, 23);
-				text = isoMatch[3] || cleanLine;
-			} else {
-				time = new Date().toISOString().substring(11, 23);
-			}
+			const time = isoMatch
+				? isoMatch[1].substring(11, 23)
+				: new Date().toISOString().substring(11, 23);
+			const text = isoMatch ? (isoMatch[3] || cleanLine) : cleanLine;
 
 			return {
 				time,

@@ -94,3 +94,30 @@ func (c *Client) PruneVolumes(ctx context.Context) error {
 	}
 	return exec.CommandContext(ctx, "podman", "volume", "prune", "-f").Run()
 }
+
+// DeleteVolume removes a volume, optionally forcing removal.
+func (c *Client) DeleteVolume(ctx context.Context, name string, force bool) error {
+	if c.httpClient != nil {
+		url := fmt.Sprintf("http://d/v5.0.0/libpod/volumes/%s?force=%t", name, force)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("podman delete volume failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("podman delete volume failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	args := []string{"volume", "rm"}
+	if force {
+		args = append(args, "-f")
+	}
+	args = append(args, name)
+	return exec.CommandContext(ctx, "podman", args...).Run()
+}

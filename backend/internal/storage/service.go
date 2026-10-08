@@ -143,3 +143,23 @@ func (s *Service) DeleteSchedule(ctx context.Context, id string) error {
 	}
 	return s.repo.DeleteSchedule(ctx, id)
 }
+
+func (s *Service) ToggleSchedule(ctx context.Context, id string) (*VolumeSchedule, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	sched, err := s.repo.GetSchedule(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if sched == nil {
+		return nil, errors.New("schedule not found")
+	}
+
+	sched.Enabled = !sched.Enabled
+	if err := s.repo.UpdateSchedule(ctx, *sched); err != nil {
+		return nil, err
+	}
+	return sched, nil
+}
+

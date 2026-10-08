@@ -46,8 +46,8 @@ export const servicesApi = {
 	/**
 	 * Delete a service by ID
 	 */
-	async delete(id: string): Promise<{ message: string }> {
-		const res = await apiClient.delete<{ message: string }>(`/services/${id}`);
+	async delete(id: string, deleteVolumes = false): Promise<{ message: string }> {
+		const res = await apiClient.delete<{ message: string }>(`/services/${id}${deleteVolumes ? '?delete_volumes=true' : ''}`);
 		return res.data;
 	},
 

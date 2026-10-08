@@ -30,6 +30,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	mux.HandleFunc("GET /api/storage/schedules", h.middleware.RequireAuth(h.handleListSchedules))
 	mux.HandleFunc("POST /api/storage/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
+	mux.HandleFunc("POST /api/storage/schedules/{id}/toggle", h.middleware.RequireAuth(h.handleToggleSchedule))
 	mux.HandleFunc("DELETE /api/storage/schedules/{id}", h.middleware.RequireAuth(h.handleDeleteSchedule))
 
 	// Frontend compatibility aliases (/api/volumes/*)
@@ -39,6 +40,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/volumes/snapshots/{id}", h.middleware.RequireAuth(h.handleDeleteSnapshot))
 	mux.HandleFunc("GET /api/volumes/schedules", h.middleware.RequireAuth(h.handleListSchedules))
 	mux.HandleFunc("POST /api/volumes/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
+	mux.HandleFunc("POST /api/volumes/schedules/{id}/toggle", h.middleware.RequireAuth(h.handleToggleSchedule))
+	mux.HandleFunc("DELETE /api/volumes/schedules/{id}", h.middleware.RequireAuth(h.handleDeleteSchedule))
 }
 
 // ── Snapshots ──
@@ -112,3 +115,14 @@ func (h *Handler) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Schedule deleted"})
 }
+
+func (h *Handler) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	sched, err := h.service.ToggleSchedule(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, sched)
+}
+

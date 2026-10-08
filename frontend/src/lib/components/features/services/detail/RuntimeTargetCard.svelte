@@ -12,37 +12,69 @@
 
 	let runtimeTarget = $state<'standalone' | 'pod' | 'quadlet'>('standalone');
 	let targetPort = $state('3000');
+	let hostPort = $state('');
 	let podName = $state('');
-	let cpuLimit = $state('1.0');
-	let memLimit = $state('512MB');
+	let cpuLimit = $state('');
+	let memLimit = $state('');
 	let saveStatus = $state<'idle' | 'saved'>('idle');
 
 	$effect(() => {
 		runtimeTarget = service.runtimeTarget || (service.type === 'pod' ? 'pod' : service.type === 'quadlet' ? 'quadlet' : 'standalone');
 		targetPort = String(service.port || 3000);
+		hostPort = service.hostPort && service.hostPort > 0 ? String(service.hostPort) : '';
 		podName = service.podId || (dataStore.pods[0]?.name ?? '');
-		cpuLimit = service.advanced?.resources?.cpuLimit || '1.0';
-		memLimit = service.advanced?.resources?.memoryLimit || '512MB';
+		
+		const existingCpu = service.cpuLimit || parseFloat(service.advanced?.resources?.cpuLimit || '0') || 0;
+		cpuLimit = existingCpu > 0 ? String(existingCpu) : '';
+
+		const existingMem = service.memoryLimit || 0;
+		if (existingMem > 0) {
+			memLimit = `${existingMem}MB`;
+		} else if (service.advanced?.resources?.memoryLimit && service.advanced.resources.memoryLimit !== '0') {
+			memLimit = service.advanced.resources.memoryLimit;
+		} else {
+			memLimit = '';
+		}
 	});
 
 	function handleSave() {
 		service.runtimeTarget = runtimeTarget;
+		service.inPod = runtimeTarget === 'pod';
 		service.port = parseInt(targetPort, 10) || 3000;
+		service.hostPort = parseInt(hostPort, 10) || 0;
 		if (runtimeTarget === 'pod') {
 			service.podId = podName;
 		}
+
+		// Parse CPU limit (0 = unlimited)
+		const parsedCpu = parseFloat(cpuLimit.trim());
+		const finalCpu = !isNaN(parsedCpu) && parsedCpu > 0 ? parsedCpu : 0;
+		service.cpuLimit = finalCpu;
+
+		// Parse Memory limit in MB (0 = unlimited)
+		let parsedMem = 0;
+		const trimmedMem = memLimit.trim().toLowerCase();
+		if (trimmedMem.endsWith('gb') || trimmedMem.endsWith('g')) {
+			parsedMem = Math.round((parseFloat(trimmedMem) || 0) * 1024);
+		} else if (trimmedMem.endsWith('mb') || trimmedMem.endsWith('m')) {
+			parsedMem = Math.round(parseFloat(trimmedMem) || 0);
+		} else if (trimmedMem) {
+			parsedMem = Math.round(parseFloat(trimmedMem) || 0);
+		}
+		service.memoryLimit = parsedMem;
+
 		if (!service.advanced) {
 			service.advanced = {
 				runtime: { mode: 'rootless', userNamespace: 'keep-id', devices: [] },
 				lifecycle: { quadletEnabled: runtimeTarget === 'quadlet', systemdUnitName: `${service.name}.container`, restartPolicy: 'always' },
 				security: { privileged: false, selinuxLabel: 'container_file_t', capAdd: [], capDrop: [], noNewPrivileges: true },
 				storage: { volumes: [] },
-				resources: { cpuLimit, memoryLimit: memLimit, pidsLimit: 2048, swapLimit: '0' }
+				resources: { cpuLimit: finalCpu > 0 ? String(finalCpu) : '0', memoryLimit: parsedMem > 0 ? `${parsedMem}MB` : '0', pidsLimit: 2048, swapLimit: '0' }
 			};
 		} else {
 			service.advanced.lifecycle.quadletEnabled = runtimeTarget === 'quadlet';
-			service.advanced.resources.cpuLimit = cpuLimit;
-			service.advanced.resources.memoryLimit = memLimit;
+			service.advanced.resources.cpuLimit = finalCpu > 0 ? String(finalCpu) : '0';
+			service.advanced.resources.memoryLimit = parsedMem > 0 ? `${parsedMem}MB` : '0';
 		}
 
 		dataStore.updateService(service);
@@ -116,7 +148,7 @@
 						bind:value={podName}
 						class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
 					>
-						{#each dataStore.pods as p}
+						{#each dataStore.pods as p (p.id || p.name)}
 							<option value={p.name}>{p.name} ({p.projectName})</option>
 						{/each}
 						<option value={service.name + '-pod'}>+ Create New Pod ({service.name}-pod)</option>
@@ -129,36 +161,50 @@
 			</div>
 		{/if}
 
-		<!-- Port & Resource Limits -->
-		<div class="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-[var(--border-subtle)]">
-			<div class="flex flex-col gap-1.5">
-				<label for="rt-container-port" class="text-xs font-medium text-[var(--text-secondary)]">Internal Container Port</label>
-				<Input
-					id="rt-container-port"
-					bind:value={targetPort}
-					placeholder="3000"
-					class="text-xs font-[var(--font-mono)]"
-				/>
+		<!-- Resource Limits -->
+		<div class="flex flex-col gap-3 pt-3 border-t border-[var(--border-subtle)]">
+			<div class="flex items-center justify-between">
+				<div class="flex flex-col">
+					<span class="text-xs font-semibold text-[var(--text-primary)]">Resource Limits (Optional)</span>
+					<span class="text-[11px] text-[var(--text-tertiary)]">Leave empty for unlimited (recommended). Podman & Linux will dynamically schedule host resources.</span>
+				</div>
+				<div class="px-2 py-0.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-[10px] text-[var(--text-tertiary)] font-mono">
+					{cpuLimit.trim() || memLimit.trim() ? 'Limits Active' : 'Unlimited (Default)'}
+				</div>
 			</div>
 
-			<div class="flex flex-col gap-1.5">
-				<label for="rt-cpu-limit" class="text-xs font-medium text-[var(--text-secondary)]">CPU Limit (Cores)</label>
-				<Input
-					id="rt-cpu-limit"
-					bind:value={cpuLimit}
-					placeholder="1.0"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
+			<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+				<div class="flex flex-col gap-1.5">
+					<label for="rt-cpu-limit" class="text-xs font-medium text-[var(--text-secondary)] flex items-center justify-between">
+						<span>CPU Limit (Cores)</span>
+						<span class="text-[10px] text-[var(--text-tertiary)] font-normal">Default: Unlimited</span>
+					</label>
+					<Input
+						id="rt-cpu-limit"
+						bind:value={cpuLimit}
+						placeholder="Unlimited (e.g. 1.0)"
+						class="text-xs font-[var(--font-mono)]"
+					/>
+					<p class="text-[11px] text-[var(--text-tertiary)] m-0">
+						Max CPU cores available to container (e.g. 0.5, 1.0, 2.0).
+					</p>
+				</div>
 
-			<div class="flex flex-col gap-1.5">
-				<label for="rt-mem-limit" class="text-xs font-medium text-[var(--text-secondary)]">Memory Limit</label>
-				<Input
-					id="rt-mem-limit"
-					bind:value={memLimit}
-					placeholder="512MB"
-					class="text-xs font-[var(--font-mono)]"
-				/>
+				<div class="flex flex-col gap-1.5">
+					<label for="rt-mem-limit" class="text-xs font-medium text-[var(--text-secondary)] flex items-center justify-between">
+						<span>Memory Limit</span>
+						<span class="text-[10px] text-[var(--text-tertiary)] font-normal">Default: Unlimited</span>
+					</label>
+					<Input
+						id="rt-mem-limit"
+						bind:value={memLimit}
+						placeholder="Unlimited (e.g. 512MB, 1GB)"
+						class="text-xs font-[var(--font-mono)]"
+					/>
+					<p class="text-[11px] text-[var(--text-tertiary)] m-0">
+						Max RAM before container is throttled or killed by OOM (e.g. 512MB, 2GB).
+					</p>
+				</div>
 			</div>
 		</div>
 	</div>

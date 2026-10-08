@@ -114,3 +114,30 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 	}
 	return pods, nil
 }
+
+// DeletePod removes a pod, optionally forcing removal.
+func (c *Client) DeletePod(ctx context.Context, idOrName string, force bool) error {
+	if c.httpClient != nil {
+		url := fmt.Sprintf("http://d/v5.0.0/libpod/pods/%s?force=%t", idOrName, force)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("podman delete pod failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("podman delete pod failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+	args := []string{"pod", "rm"}
+	if force {
+		args = append(args, "-f")
+	}
+	args = append(args, idOrName)
+	return exec.CommandContext(ctx, "podman", args...).Run()
+}

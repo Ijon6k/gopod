@@ -161,8 +161,8 @@ export function getServiceById(serviceId: string): Service | undefined {
 	return dataStore.getServiceById(serviceId);
 }
 
-export function deleteService(id: string): Promise<void> {
-	return dataStore.deleteService(id);
+export function deleteService(id: string, deleteVolumes = false): Promise<void> {
+	return dataStore.deleteService(id, deleteVolumes);
 }
 
 export function updateService(service: Service): Promise<Service> {

@@ -1,8 +1,15 @@
 package db
 
-import "log"
+import (
+	"log"
+	"os"
+)
 
 func (d *DB) seedIfEmpty() error {
+	if os.Getenv("GOPOD_SEED_DEMO") != "true" {
+		return nil
+	}
+
 	var count int
 	err := d.QueryRow("SELECT COUNT(*) FROM projects").Scan(&count)
 	if err != nil {

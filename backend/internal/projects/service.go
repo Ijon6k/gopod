@@ -10,14 +10,23 @@ import (
 	"time"
 )
 
+// ServiceChecker checks the number of services running inside a project.
+type ServiceChecker func(ctx context.Context, projectID string) (int, error)
+
 // Service encapsulates project management business logic.
 type Service struct {
-	repo Repository
+	repo           Repository
+	serviceChecker ServiceChecker
 }
 
 // NewService creates a new projects domain service.
 func NewService(repo Repository) *Service {
 	return &Service{repo: repo}
+}
+
+// SetServiceChecker configures the active services checker.
+func (s *Service) SetServiceChecker(checker ServiceChecker) {
+	s.serviceChecker = checker
 }
 
 // ListProjects retrieves all projects.
@@ -84,10 +93,16 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 	return &project, nil
 }
 
-// DeleteProject deletes a project by ID.
+// DeleteProject deletes a project by ID, preventing deletion if services exist (Dokploy parity).
 func (s *Service) DeleteProject(ctx context.Context, id string) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
+	}
+	if s.serviceChecker != nil {
+		count, err := s.serviceChecker(ctx, id)
+		if err == nil && count > 0 {
+			return fmt.Errorf("cannot delete project: project contains %d active service(s), please delete them first", count)
+		}
 	}
 	return s.repo.Delete(ctx, id)
 }

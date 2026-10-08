@@ -4,6 +4,7 @@
 	import QuadletEditorCard from './QuadletEditorCard.svelte';
 	import ComposeEditorCard from './ComposeEditorCard.svelte';
 	import SourceCard from './SourceCard.svelte';
+	import PortMappingCard from './PortMappingCard.svelte';
 	import BuildTypeCard from './BuildTypeCard.svelte';
 	import RuntimeTargetCard from './RuntimeTargetCard.svelte';
 	import DeployTriggerCard from './DeployTriggerCard.svelte';
@@ -16,7 +17,7 @@
 		onRedeploy?: () => void;
 	}
 
-	let { service, onNavigateTab, onTerminalClick, onRedeploy }: Props = $props();
+	let { service, onNavigateTab: _onNavigateTab, onTerminalClick, onRedeploy }: Props = $props();
 
 	let credentialModalOpen = $state(false);
 	let credentialInitialTab = $state<'ssh' | 'registry'>('ssh');
@@ -45,6 +46,9 @@
 	{:else}
 		<!-- Standard Application / Image / Container Workloads -->
 		<SourceCard {service} onOpenCredentialModal={handleOpenCredentialModal} />
+
+		<!-- Dedicated Port Configuration Card -->
+		<PortMappingCard {service} />
 
 		{#if (service.sourceType || 'git') !== 'image'}
 			<BuildTypeCard {service} />

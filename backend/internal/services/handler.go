@@ -103,7 +103,8 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := h.service.DeleteService(r.Context(), id); err != nil {
+	deleteVolumes := r.URL.Query().Get("delete_volumes") == "true"
+	if err := h.service.DeleteService(r.Context(), id, deleteVolumes); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -171,9 +172,9 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 	if currentLogs != "" {
 		lines := strings.Split(strings.TrimSpace(currentLogs), "\n")
 		for _, l := range lines {
-			if l != "" {
-				data, _ := json.Marshal(map[string]string{"line": l})
-				fmt.Fprintf(w, "data: %s\n\n", data)
+			trimmed := strings.TrimSpace(l)
+			if trimmed != "" {
+				fmt.Fprintf(w, "data: %s\n\n", trimmed)
 			}
 		}
 		flusher.Flush()
@@ -191,9 +192,11 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 			if !ok {
 				return
 			}
-			data, _ := json.Marshal(map[string]string{"line": strings.TrimSuffix(line, "\n")})
-			fmt.Fprintf(w, "data: %s\n\n", data)
-			flusher.Flush()
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" {
+				fmt.Fprintf(w, "data: %s\n\n", trimmed)
+				flusher.Flush()
+			}
 		}
 	}
 }

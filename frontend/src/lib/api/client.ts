@@ -22,7 +22,19 @@ apiClient.interceptors.request.use((config) => {
 	return config;
 });
 
-// Response interceptor for consistent error extraction
+export class ApiError extends Error {
+	status?: number;
+	data?: any;
+
+	constructor(message: string, status?: number, data?: any) {
+		super(message);
+		this.name = 'ApiError';
+		this.status = status;
+		this.data = data;
+	}
+}
+
+// Response interceptor for consistent error extraction with status code preservation
 apiClient.interceptors.response.use(
 	(response) => response,
 	(error: AxiosError<{ error?: string; message?: string }>) => {
@@ -32,8 +44,8 @@ apiClient.interceptors.response.use(
 			error.message ||
 			'An unexpected API error occurred';
 		
-		console.warn(`[API] ${error.config?.method?.toUpperCase()} ${error.config?.url} failed:`, errorMessage);
-		return Promise.reject(new Error(errorMessage));
+		console.warn(`[API] ${error.config?.method?.toUpperCase()} ${error.config?.url} failed (${error.response?.status}):`, errorMessage);
+		return Promise.reject(new ApiError(errorMessage, error.response?.status, error.response?.data));
 	}
 );
 

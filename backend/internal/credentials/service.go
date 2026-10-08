@@ -2,13 +2,17 @@ package credentials
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"golang.org/x/crypto/ssh"
 )
 
 // Service encapsulates credentials management business logic.
@@ -75,6 +79,48 @@ func (s *Service) DeleteSSHKey(ctx context.Context, id string) error {
 		return errors.New("repository not initialized")
 	}
 	return s.repo.DeleteSSHKey(ctx, id)
+}
+
+// GenerateSSHKeyPair generates a real OpenSSH Ed25519 keypair and SHA256 fingerprint.
+func (s *Service) GenerateSSHKeyPair(ctx context.Context, name string) (*SSHKey, error) {
+	if strings.TrimSpace(name) == "" {
+		name = "deploy-key"
+	}
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate ed25519 key: %w", err)
+	}
+
+	sshPub, err := ssh.NewPublicKey(pubKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse ssh public key: %w", err)
+	}
+
+	fingerprint := ssh.FingerprintSHA256(sshPub)
+	pubKeyStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(sshPub))) + fmt.Sprintf(" %s@gopod", name)
+
+	// Format private key into OpenSSH PEM block
+	privPemBlock, err := ssh.MarshalPrivateKey(privKey, "gopod-generated-key")
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal private key: %w", err)
+	}
+	privKeyPEM := string(pem.EncodeToMemory(privPemBlock))
+
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	keyID := fmt.Sprintf("key-%s", hex.EncodeToString(b))
+
+	key := &SSHKey{
+		ID:          keyID,
+		Name:        name,
+		Type:        "ed25519",
+		PublicKey:   pubKeyStr,
+		PrivateKey:  privKeyPEM,
+		Fingerprint: fingerprint,
+		CreatedAt:   time.Now(),
+	}
+
+	return key, nil
 }
 
 // GetPrivateKey retrieves raw unmasked private key for Git authentication.

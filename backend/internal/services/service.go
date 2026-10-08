@@ -9,6 +9,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"gopkg.in/yaml.v3"
 )
 
 // AuditRecorder records workload actions.
@@ -125,6 +127,14 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 		_, _ = rand.Read(b)
 		svc.WebhookToken = "wh_" + hex.EncodeToString(b)
 	}
+
+	if strings.TrimSpace(svc.ComposeYaml) != "" {
+		var raw map[string]interface{}
+		if err := yaml.Unmarshal([]byte(svc.ComposeYaml), &raw); err != nil {
+			return nil, fmt.Errorf("invalid Compose YAML syntax: %w", err)
+		}
+	}
+
 	svc.CreatedAt = time.Now()
 
 	if err := s.repo.Create(ctx, svc); err != nil {
@@ -141,6 +151,14 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}
+
+	if strings.TrimSpace(svc.ComposeYaml) != "" {
+		var raw map[string]interface{}
+		if err := yaml.Unmarshal([]byte(svc.ComposeYaml), &raw); err != nil {
+			return fmt.Errorf("invalid Compose YAML syntax: %w", err)
+		}
+	}
+
 	return s.repo.Update(ctx, svc)
 }
 

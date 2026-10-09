@@ -58,7 +58,8 @@
 			selectedRegistry = service.registryId;
 			const regObj = dataStore.registries.find((r) => r.id === service.registryId);
 			const cleanUrl = regObj ? regObj.url.replace(/^https?:\/\//, '').replace(/\/$/, '') : '';
-			rawImageName = cleanUrl && img.startsWith(cleanUrl + '/') ? img.slice(cleanUrl.length + 1) : img;
+			rawImageName =
+				cleanUrl && img.startsWith(cleanUrl + '/') ? img.slice(cleanUrl.length + 1) : img;
 		} else if (img.startsWith('ghcr.io/')) {
 			selectedRegistry = 'ghcr.io';
 			rawImageName = img.replace(/^ghcr\.io\//, '');
@@ -99,24 +100,29 @@
 	}
 </script>
 
-<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col">
+<div
+	class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
+>
 	<!-- Card Header -->
-	<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
+	<div class="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
 		<div class="flex flex-col gap-0.5">
-			<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Source & Provider</h3>
-			<p class="text-xs text-[var(--text-tertiary)] m-0">Select where your application code or container image originates.</p>
+			<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Source & Provider</h3>
+			<p class="m-0 text-xs text-[var(--text-tertiary)]">
+				Select where your application code or container image originates.
+			</p>
 		</div>
 	</div>
 
 	<!-- Source Type Selector -->
-	<div class="p-5 flex flex-col gap-5">
-		<div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+	<div class="flex flex-col gap-5 p-5">
+		<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
 			<button
 				type="button"
 				onclick={() => (sourceType = 'git')}
-				class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-all {sourceType === 'git'
-					? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)]'
-					: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {sourceType ===
+				'git'
+					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 			>
 				<GitBranch size={18} class={sourceType === 'git' ? 'text-[var(--accent)]' : ''} />
 				<div class="flex flex-col">
@@ -128,9 +134,10 @@
 			<button
 				type="button"
 				onclick={() => (sourceType = 'image')}
-				class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-all {sourceType === 'image'
-					? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)]'
-					: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {sourceType ===
+				'image'
+					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 			>
 				<Package size={18} class={sourceType === 'image' ? 'text-[var(--accent)]' : ''} />
 				<div class="flex flex-col">
@@ -142,9 +149,10 @@
 			<button
 				type="button"
 				onclick={() => (sourceType = 'drop')}
-				class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-all {sourceType === 'drop'
-					? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)]'
-					: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {sourceType ===
+				'drop'
+					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 			>
 				<UploadSimple size={18} class={sourceType === 'drop' ? 'text-[var(--accent)]' : ''} />
 				<div class="flex flex-col">
@@ -169,9 +177,11 @@
 					/>
 				</div>
 
-				<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 					<div class="flex flex-col gap-1.5">
-						<label for="src-git-branch" class="text-xs font-medium text-[var(--text-secondary)]">Branch</label>
+						<label for="src-git-branch" class="text-xs font-medium text-[var(--text-secondary)]"
+							>Branch</label
+						>
 						<Input
 							id="src-git-branch"
 							bind:value={branch}
@@ -181,7 +191,9 @@
 					</div>
 
 					<div class="flex flex-col gap-1.5">
-						<label for="src-git-path" class="text-xs font-medium text-[var(--text-secondary)]">Build Path</label>
+						<label for="src-git-path" class="text-xs font-medium text-[var(--text-secondary)]"
+							>Build Path</label
+						>
 						<Input
 							id="src-git-path"
 							bind:value={buildPath}
@@ -200,17 +212,19 @@
 						<button
 							type="button"
 							onclick={() => onOpenCredentialModal?.('ssh')}
-							class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer p-0"
+							class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline"
 						>
 							<Plus size={12} /> Add New Key
 						</button>
 					</div>
 
-					<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
+					<div
+						class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+					>
 						<select
 							id="src-ssh-key"
 							bind:value={sshKeyId}
-							class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
+							class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
 						>
 							<option value="">None (Public Repository)</option>
 							{#each dataStore.sshKeys as k (k.id)}
@@ -222,7 +236,7 @@
 			</div>
 		{:else if sourceType === 'image'}
 			<div class="flex flex-col gap-4">
-				<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
 					<!-- 1. Registry Dropdown (Docker Hub default) -->
 					<div class="flex flex-col gap-1.5">
 						<div class="flex items-center justify-between">
@@ -232,18 +246,20 @@
 							<button
 								type="button"
 								onclick={() => onOpenCredentialModal?.('registry')}
-								class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer p-0"
+								class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline"
 								title="Add private container registry credentials"
 							>
 								<Plus size={11} /> Add Custom
 							</button>
 						</div>
 
-						<div class="px-2.5 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
+						<div
+							class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-2"
+						>
 							<select
 								id="src-reg-select"
 								bind:value={selectedRegistry}
-								class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
+								class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
 							>
 								<optgroup label="Public Registries">
 									<option value="docker.io">Docker Hub (docker.io) — Default</option>
@@ -262,14 +278,18 @@
 					</div>
 
 					<!-- 2. Image Name & Tag Input -->
-					<div class="sm:col-span-2 flex flex-col gap-1.5">
+					<div class="flex flex-col gap-1.5 sm:col-span-2">
 						<label for="src-img-name" class="text-xs font-medium text-[var(--text-secondary)]">
 							Image Name & Tag <span class="text-[var(--status-red)]">*</span>
 						</label>
 						<Input
 							id="src-img-name"
 							bind:value={rawImageName}
-							placeholder={selectedRegistry === 'docker.io' ? 'e.g. nginx:alpine or wardy784/erugo:latest' : selectedRegistry === 'ghcr.io' ? 'e.g. owner/repo:latest' : 'e.g. my-app:latest'}
+							placeholder={selectedRegistry === 'docker.io'
+								? 'e.g. nginx:alpine or wardy784/erugo:latest'
+								: selectedRegistry === 'ghcr.io'
+									? 'e.g. owner/repo:latest'
+									: 'e.g. my-app:latest'}
 							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
@@ -277,12 +297,20 @@
 
 				<!-- Live Resolved Pull Target Preview (Nielsen #1: Visibility of System Status) -->
 				{#if resolvedImage}
-					<div class="flex items-center justify-between p-2.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] text-[11px]">
-						<div class="flex items-center gap-2 min-w-0">
-							<span class="text-[var(--text-tertiary)] shrink-0 font-medium">Resolved Podman target:</span>
-							<code class="font-mono text-[var(--accent)] font-semibold truncate select-all">{resolvedImage}</code>
+					<div
+						class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2.5 text-[11px]"
+					>
+						<div class="flex min-w-0 items-center gap-2">
+							<span class="shrink-0 font-medium text-[var(--text-tertiary)]"
+								>Resolved Podman target:</span
+							>
+							<code class="truncate font-mono font-semibold text-[var(--accent)] select-all"
+								>{resolvedImage}</code
+							>
 						</div>
-						<span class="text-[10px] text-[var(--status-green)] font-mono shrink-0 ml-2">✓ ready to pull</span>
+						<span class="ml-2 shrink-0 font-mono text-[10px] text-[var(--status-green)]"
+							>✓ ready to pull</span
+						>
 					</div>
 				{/if}
 			</div>
@@ -292,28 +320,34 @@
 			<div
 				ondragover={(e) => e.preventDefault()}
 				ondrop={handleDrop}
-				class="border-2 border-dashed border-[var(--border)] hover:border-[var(--accent)] rounded-[var(--radius-card)] p-8 text-center flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors bg-[var(--bg-surface)]/40"
+				class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--border)] bg-[var(--bg-surface)]/40 p-8 text-center transition-colors hover:border-[var(--accent)]"
 			>
 				<UploadSimple size={28} class="text-[var(--text-tertiary)]" />
 				{#if dropFileName}
-					<span class="text-xs font-medium text-[var(--status-green)]">Uploaded: {dropFileName}</span>
+					<span class="text-xs font-medium text-[var(--status-green)]"
+						>Uploaded: {dropFileName}</span
+					>
 				{:else}
-					<span class="text-xs font-medium text-[var(--text-primary)]">Drop static files (.zip or dist folder) here</span>
-					<span class="text-[11px] text-[var(--text-tertiary)]">Caddy will automatically serve your SPA with zero build overhead</span>
+					<span class="text-xs font-medium text-[var(--text-primary)]"
+						>Drop static files (.zip or dist folder) here</span
+					>
+					<span class="text-[11px] text-[var(--text-tertiary)]"
+						>Caddy will automatically serve your SPA with zero build overhead</span
+					>
 				{/if}
 			</div>
 		{/if}
 	</div>
 
 	<!-- Explicit Card Footer with 1 Save Button -->
-	<div class="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-end gap-2">
+	<div
+		class="flex items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3"
+	>
 		{#if saveStatus === 'saved'}
-			<span class="text-xs text-[var(--status-green)] flex items-center gap-1 mr-2">
+			<span class="mr-2 flex items-center gap-1 text-xs text-[var(--status-green)]">
 				<Check size={14} /> Saved
 			</span>
 		{/if}
-		<Button variant="primary" size="sm" onclick={handleSave}>
-			Save Source
-		</Button>
+		<Button variant="primary" size="sm" onclick={handleSave}>Save Source</Button>
 	</div>
 </div>

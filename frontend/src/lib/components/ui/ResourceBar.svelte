@@ -21,7 +21,7 @@
 			{value.toFixed(1)}{unit} / {max}{unit}
 		</span>
 	</div>
-	<div class="h-1.5 rounded-full bg-[var(--bg-hover)] overflow-hidden">
+	<div class="h-1.5 overflow-hidden rounded-full bg-[var(--bg-hover)]">
 		<div
 			class="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300"
 			style="width: {percentage}%"

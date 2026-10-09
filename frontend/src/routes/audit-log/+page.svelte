@@ -42,9 +42,7 @@
 	});
 
 	let filteredLogs = $derived(
-		activeCategory === 'all'
-			? logs
-			: logs.filter((log) => log.category === activeCategory)
+		activeCategory === 'all' ? logs : logs.filter((log) => log.category === activeCategory)
 	);
 </script>
 
@@ -52,7 +50,7 @@
 	<title>Audit Log — GOPOD</title>
 </svelte:head>
 
-<div class="w-full flex flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
 	<div class="flex items-center justify-between">
 		<PageHeader
 			title="Audit Log"
@@ -62,7 +60,7 @@
 			type="button"
 			onclick={handleRefresh}
 			disabled={isRefreshing}
-			class="px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--bg-panel)] hover:bg-[var(--bg-surface)] border border-[var(--border)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors shadow-xs flex items-center gap-1.5"
+			class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-xs transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
 		>
 			<ArrowClockwise size={14} class={isRefreshing ? 'animate-spin' : ''} />
 			<span>Refresh</span>
@@ -72,7 +70,9 @@
 	<Tabs {tabs} bind:active={activeCategory} />
 
 	{#if loading && logs.length === 0}
-		<div class="p-8 text-center text-sm text-[var(--text-tertiary)] bg-[var(--bg-panel)] rounded-[var(--radius-card)] border border-[var(--border)]">
+		<div
+			class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-8 text-center text-sm text-[var(--text-tertiary)]"
+		>
 			Loading audit events from host daemon...
 		</div>
 	{:else}
@@ -92,11 +92,15 @@
 </div>
 
 {#snippet actionSnippet(row: AuditLog)}
-	<span class="font-mono text-base text-[var(--text-primary)] font-medium">
+	<span class="font-mono text-base font-medium text-[var(--text-primary)]">
 		{row.action}
 	</span>
 {/snippet}
 
 {#snippet statusSnippet(row: AuditLog)}
-	<StatusBadge status={row.status === 'success' ? 'healthy' : row.status} label={row.status} size="sm" />
+	<StatusBadge
+		status={row.status === 'success' ? 'healthy' : row.status}
+		label={row.status}
+		size="sm"
+	/>
 {/snippet}

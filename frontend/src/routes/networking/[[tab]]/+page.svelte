@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader, Tabs, StatusBadge } from '$lib/components/ui';
+	import { PageHeader, Tabs } from '$lib/components/ui';
 	import { Button } from '$lib/components/primitives';
 	import { domains, server, ports, dataStore } from '$lib/data';
 	import type { Domain } from '$lib/types';
@@ -17,24 +17,15 @@
 		PencilSimple,
 		Trash,
 		Copy,
-		Check,
-		WifiHigh,
-		ArrowsLeftRight,
-		ShieldCheck,
-		ClockCounterClockwise
+		Check
 	} from 'phosphor-svelte';
 
-	let tabParam = $derived(page.params.tab ?? 'domains');
-	let activeTab = $state('domains');
+	let activeTab = $derived(page.params.tab ?? 'domains');
 
 	// Domain Modal states
 	let isDomainModalOpen = $state(false);
 	let editingDomain = $state<Domain | null>(null);
 	let copiedIp = $state(false);
-
-	$effect(() => {
-		activeTab = tabParam;
-	});
 
 	const tabs = [
 		{ id: 'domains', label: 'Domains & Ingress' },
@@ -86,7 +77,7 @@
 	<title>Networking — GOPOD</title>
 </svelte:head>
 
-<div class="w-full flex flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
 	<!-- Page Header -->
 	<PageHeader
 		title="Networking & Ingress"
@@ -107,27 +98,35 @@
 	<!-- TAB 1: DOMAINS & INGRESS -->
 	{#if activeTab === 'domains'}
 		<!-- DNS Configuration Banner -->
-		<div class="p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+		<div
+			class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] p-4 sm:flex-row sm:items-center"
+		>
 			<div class="flex items-start gap-3">
-				<div class="w-8 h-8 rounded-lg bg-[var(--accent-muted)] text-[var(--accent)] flex items-center justify-center shrink-0 mt-0.5">
+				<div
+					class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]"
+				>
 					<Globe size={18} />
 				</div>
 				<div class="flex flex-col gap-0.5">
 					<span class="text-xs font-semibold text-[var(--text-primary)]">
 						Server Public IP for DNS Records
 					</span>
-					<span class="text-xs text-[var(--text-tertiary)] leading-relaxed">
-						Create an <strong class="text-[var(--text-secondary)]">A Record</strong> in your DNS registrar pointing to your host IP. Caddy automatically requests and renews Let's Encrypt TLS certificates once DNS propagates.
+					<span class="text-xs leading-relaxed text-[var(--text-tertiary)]">
+						Create an <strong class="text-[var(--text-secondary)]">A Record</strong> in your DNS registrar
+						pointing to your host IP. Caddy automatically requests and renews Let's Encrypt TLS certificates
+						once DNS propagates.
 					</span>
 				</div>
 			</div>
 
-			<div class="flex items-center gap-2 self-start sm:self-auto shrink-0 bg-[var(--bg-panel)] px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)]">
-				<span class="font-mono text-xs text-[var(--text-primary)] font-medium">{server.ip}</span>
+			<div
+				class="flex shrink-0 items-center gap-2 self-start rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 sm:self-auto"
+			>
+				<span class="font-mono text-xs font-medium text-[var(--text-primary)]">{server.ip}</span>
 				<button
 					type="button"
 					onclick={copyIp}
-					class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer p-0.5 rounded transition-colors"
+					class="cursor-pointer rounded border-0 bg-transparent p-0.5 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
 					title="Copy IP Address"
 				>
 					{#if copiedIp}
@@ -140,37 +139,62 @@
 		</div>
 
 		<!-- Domains Table -->
-		<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] overflow-hidden">
+		<div
+			class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)]"
+		>
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
 				<table class="w-full border-collapse text-left text-xs">
-					<thead class="sticky top-0 z-20 bg-[var(--bg-table-header)] border-b border-[var(--border)]">
+					<thead
+						class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
+					>
 						<tr>
-							<th class="py-2.5 px-3.5 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">Domain</th>
-							<th class="py-2.5 px-3 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">Upstream Service</th>
-							<th class="py-2.5 px-3 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">DNS Status</th>
-							<th class="py-2.5 px-3 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">TLS Certificate</th>
-							<th class="py-2.5 px-3 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">Features</th>
-							<th class="py-2.5 px-3.5 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] text-right">Actions</th>
+							<th
+								class="px-3.5 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Domain</th
+							>
+							<th
+								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Upstream Service</th
+							>
+							<th
+								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>DNS Status</th
+							>
+							<th
+								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>TLS Certificate</th
+							>
+							<th
+								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Features</th
+							>
+							<th
+								class="px-3.5 py-2.5 text-right text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Actions</th
+							>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-[var(--border-subtle)]">
 						{#if domains.length === 0}
 							<tr>
-								<td colspan="6" class="py-12 text-center text-[var(--text-tertiary)] text-xs">
-									No domain routes configured yet. Click "Add Domain" to create your first Caddy route.
+								<td colspan="6" class="py-12 text-center text-xs text-[var(--text-tertiary)]">
+									No domain routes configured yet. Click "Add Domain" to create your first Caddy
+									route.
 								</td>
 							</tr>
 						{:else}
 							{#each domains as domain (domain.id)}
-								<tr class="hover:bg-[var(--bg-table-row-alt)] transition-colors">
+								<tr class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
 									<!-- Domain Hostname -->
-									<td class="py-3 px-3.5 whitespace-nowrap">
+									<td class="px-3.5 py-3 whitespace-nowrap">
 										<div class="flex items-center gap-2">
 											<span class="font-mono text-xs font-medium text-[var(--text-primary)]">
 												{domain.hostname}
 											</span>
 											{#if domain.pathPrefix && domain.pathPrefix !== '/'}
-												<span class="font-mono text-[10.5px] text-[var(--text-tertiary)] bg-[var(--bg-panel)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)]">
+												<span
+													class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10.5px] text-[var(--text-tertiary)]"
+												>
 													{domain.pathPrefix}
 												</span>
 											{/if}
@@ -178,7 +202,7 @@
 												href={`http${domain.tls ? 's' : ''}://${domain.hostname}${domain.pathPrefix || ''}`}
 												target="_blank"
 												rel="noopener noreferrer"
-												class="text-[var(--text-tertiary)] hover:text-[var(--accent)] transition-colors"
+												class="text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent)]"
 												title="Open in new tab"
 											>
 												<ArrowSquareOut size={13} />
@@ -187,63 +211,79 @@
 									</td>
 
 									<!-- Upstream Service & Container Port -->
-									<td class="py-3 px-3 whitespace-nowrap">
+									<td class="px-3 py-3 whitespace-nowrap">
 										<div class="flex flex-col">
-											<span class="text-[var(--text-primary)] font-medium">
+											<span class="font-medium text-[var(--text-primary)]">
 												{domain.serviceName}
 											</span>
-											<span class="text-[11px] font-mono text-[var(--text-tertiary)]">
+											<span class="font-mono text-[11px] text-[var(--text-tertiary)]">
 												{domain.projectId} · port {domain.containerPort}
 											</span>
 										</div>
 									</td>
 
 									<!-- DNS Status -->
-									<td class="py-3 px-3 whitespace-nowrap">
+									<td class="px-3 py-3 whitespace-nowrap">
 										{#if domain.dnsStatus === 'pending'}
-											<span class="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--status-amber)] bg-[var(--status-amber-muted)] px-2 py-0.5 rounded border border-[var(--status-amber)]/30">
+											<span
+												class="inline-flex items-center gap-1 rounded border border-[var(--status-amber)]/30 bg-[var(--status-amber-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--status-amber)]"
+											>
 												<Warning size={12} /> Pending DNS
 											</span>
 										{:else}
-											<span class="inline-flex items-center gap-1 text-[11px] font-medium text-[var(--status-green)] bg-[var(--status-green-muted)] px-2 py-0.5 rounded border border-[var(--status-green)]/30">
+											<span
+												class="inline-flex items-center gap-1 rounded border border-[var(--status-green)]/30 bg-[var(--status-green-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--status-green)]"
+											>
 												<CheckCircle size={12} /> Resolves ({server.ip})
 											</span>
 										{/if}
 									</td>
 
 									<!-- TLS Certificate -->
-									<td class="py-3 px-3 whitespace-nowrap">
+									<td class="px-3 py-3 whitespace-nowrap">
 										{#if domain.tls}
-											<span class="inline-flex items-center gap-1.5 text-xs text-[var(--status-green)]">
+											<span
+												class="inline-flex items-center gap-1.5 text-xs text-[var(--status-green)]"
+											>
 												<Lock size={13} /> Let's Encrypt ACME
 											</span>
 										{:else}
-											<span class="inline-flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
+											<span
+												class="inline-flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]"
+											>
 												<LockOpen size={13} /> Plain HTTP
 											</span>
 										{/if}
 									</td>
 
 									<!-- Ingress Features Pills -->
-									<td class="py-3 px-3">
+									<td class="px-3 py-3">
 										<div class="flex flex-wrap items-center gap-1">
 											{#if domain.websocket}
-												<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--accent-muted)] text-[var(--accent)] font-medium">
+												<span
+													class="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--accent)]"
+												>
 													WS 101
 												</span>
 											{/if}
 											{#if domain.cors}
-												<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-panel)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+												<span
+													class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
+												>
 													CORS
 												</span>
 											{/if}
 											{#if domain.hsts}
-												<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--bg-panel)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+												<span
+													class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
+												>
 													HSTS
 												</span>
 											{/if}
 											{#if domain.basicAuth}
-												<span class="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[var(--status-amber-muted)] text-[var(--status-amber)] font-medium">
+												<span
+													class="rounded bg-[var(--status-amber-muted)] px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--status-amber)]"
+												>
 													Basic Auth
 												</span>
 											{/if}
@@ -254,12 +294,12 @@
 									</td>
 
 									<!-- Actions -->
-									<td class="py-3 px-3.5 whitespace-nowrap text-right">
+									<td class="px-3.5 py-3 text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-1">
 											<button
 												type="button"
 												onclick={() => handleEditDomain(domain)}
-												class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 												title="Edit Domain Settings"
 											>
 												<PencilSimple size={14} />
@@ -267,7 +307,7 @@
 											<button
 												type="button"
 												onclick={() => handleDeleteDomain(domain.id)}
-												class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--status-red)] hover:bg-[var(--status-red-muted)] border-0 bg-transparent cursor-pointer transition-colors"
+												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--status-red-muted)] hover:text-[var(--status-red)]"
 												title="Remove Domain"
 											>
 												<Trash size={14} />
@@ -282,72 +322,103 @@
 			</div>
 
 			<!-- Footer -->
-			<div class="px-4 py-2.5 border-t border-[var(--border)] bg-[var(--bg-table-header)] flex items-center justify-between text-xs text-[var(--text-tertiary)]">
+			<div
+				class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
+			>
 				<span>{domains.length} active domain routing configurations</span>
-				<span class="text-[11px] font-mono">Engine: Caddy v{server.caddy} (Rootless Ingress)</span>
+				<span class="font-mono text-[11px]">Engine: Caddy v{server.caddy} (Rootless Ingress)</span>
 			</div>
 		</div>
 
-	<!-- TAB 2: TRAFFIC & REQUESTS TELEMETRY (DOKPLOY PARITY) -->
+		<!-- TAB 2: TRAFFIC & REQUESTS TELEMETRY (DOKPLOY PARITY) -->
 	{:else if activeTab === 'requests'}
 		<TrafficRequestsView />
 
-	<!-- TAB 3: HOST PORT BINDINGS -->
+		<!-- TAB 3: HOST PORT BINDINGS -->
 	{:else if activeTab === 'ports'}
-		<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] overflow-hidden">
+		<div
+			class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)]"
+		>
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
 				<table class="w-full border-collapse text-left text-xs">
-					<thead class="sticky top-0 z-20 bg-[var(--bg-table-header)] border-b border-[var(--border)]">
+					<thead
+						class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
+					>
 						<tr>
-							<th class="py-2.5 px-3.5 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">Host Port</th>
-							<th class="py-2.5 px-3 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">Protocol</th>
-							<th class="py-2.5 px-3 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">Target Service / Container</th>
-							<th class="py-2.5 px-3 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)]">Bind Address</th>
-							<th class="py-2.5 px-3.5 font-medium text-[11px] uppercase tracking-wider text-[var(--text-tertiary)] text-right">Status</th>
+							<th
+								class="px-3.5 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Host Port</th
+							>
+							<th
+								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Protocol</th
+							>
+							<th
+								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Target Service / Container</th
+							>
+							<th
+								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Bind Address</th
+							>
+							<th
+								class="px-3.5 py-2.5 text-right text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+								>Status</th
+							>
 						</tr>
 					</thead>
 					<tbody class="divide-y divide-[var(--border-subtle)]">
 						{#each ports as p (p.id)}
-							<tr class="hover:bg-[var(--bg-table-row-alt)] transition-colors">
+							<tr class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
 								<!-- Host Port -->
-								<td class="py-3 px-3.5 whitespace-nowrap">
+								<td class="px-3.5 py-3 whitespace-nowrap">
 									<span class="font-mono text-xs font-semibold text-[var(--text-primary)]">
 										:{p.hostPort}
 									</span>
 								</td>
 
 								<!-- Protocol -->
-								<td class="py-3 px-3 whitespace-nowrap">
-									<span class="font-mono text-[10.5px] uppercase font-medium px-1.5 py-0.5 rounded bg-[var(--bg-panel)] text-[var(--text-secondary)] border border-[var(--border-subtle)]">
+								<td class="px-3 py-3 whitespace-nowrap">
+									<span
+										class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-[var(--text-secondary)] uppercase"
+									>
 										{p.protocol}
 									</span>
 								</td>
 
 								<!-- Target Service -->
-								<td class="py-3 px-3 whitespace-nowrap">
+								<td class="px-3 py-3 whitespace-nowrap">
 									<div class="flex flex-col">
 										<span class="font-medium text-[var(--text-primary)]">{p.serviceName}</span>
-										<span class="text-[11px] font-mono text-[var(--text-tertiary)]">{p.containerName} ➔ :{p.containerPort}</span>
+										<span class="font-mono text-[11px] text-[var(--text-tertiary)]"
+											>{p.containerName} ➔ :{p.containerPort}</span
+										>
 									</div>
 								</td>
 
 								<!-- Binding Scope -->
-								<td class="py-3 px-3 whitespace-nowrap">
+								<td class="px-3 py-3 whitespace-nowrap">
 									{#if p.isPublic}
-										<span class="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--accent)] font-medium">
+										<span
+											class="inline-flex items-center gap-1 font-mono text-[11px] font-medium text-[var(--accent)]"
+										>
 											{p.bindAddress} (Public Ingress)
 										</span>
 									{:else}
-										<span class="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-tertiary)]">
+										<span
+											class="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-tertiary)]"
+										>
 											{p.bindAddress} (Local Only)
 										</span>
 									{/if}
 								</td>
 
 								<!-- Status -->
-								<td class="py-3 px-3.5 whitespace-nowrap text-right">
-									<span class="inline-flex items-center gap-1.5 text-xs text-[var(--status-green)] font-medium">
-										<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-green)]"></span>
+								<td class="px-3.5 py-3 text-right whitespace-nowrap">
+									<span
+										class="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--status-green)]"
+									>
+										<span class="h-1.5 w-1.5 rounded-full bg-[var(--status-green)]"></span>
 										Listening
 									</span>
 								</td>
@@ -358,9 +429,11 @@
 			</div>
 
 			<!-- Footer -->
-			<div class="px-4 py-2.5 border-t border-[var(--border)] bg-[var(--bg-table-header)] flex items-center justify-between text-xs text-[var(--text-tertiary)]">
+			<div
+				class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
+			>
 				<span>{ports.length} ports mapped on host network</span>
-				<span class="text-[11px] font-mono">Kernel Netfilter / pasta rootless bridge</span>
+				<span class="font-mono text-[11px]">Kernel Netfilter / pasta rootless bridge</span>
 			</div>
 		</div>
 	{/if}

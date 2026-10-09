@@ -87,7 +87,9 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 						CgroupVersion  string `json:"cgroupVersion"`
 						Uptime         string `json:"uptime"`
 						Security struct {
-							Rootless bool `json:"rootless"`
+							Rootless        bool `json:"rootless"`
+							SELinuxEnabled  bool `json:"selinuxEnabled"`
+							AppArmorEnabled bool `json:"apparmorEnabled"`
 						} `json:"security"`
 						CPUUtilization struct {
 							UserPercent   float64 `json:"userPercent"`
@@ -172,6 +174,8 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 						TotalCount:      raw.Store.ContainerStore.Number,
 						Uptime:          raw.Host.Uptime,
 						CgroupVersion:   raw.Host.CgroupVersion,
+						SELinuxEnabled:  raw.Host.Security.SELinuxEnabled,
+						AppArmorEnabled: raw.Host.Security.AppArmorEnabled,
 					}, nil
 				}
 			}
@@ -197,7 +201,10 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 
 	host, _ := raw["host"].(map[string]interface{})
 	store, _ := raw["store"].(map[string]interface{})
-	sec, _ := raw["security"].(map[string]interface{})
+	sec, _ := host["security"].(map[string]interface{})
+	if sec == nil {
+		sec, _ = raw["security"].(map[string]interface{})
+	}
 	ver, _ := raw["version"].(map[string]interface{})
 
 	cpus := int(getFloat(host, "cpus"))
@@ -267,6 +274,8 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 		TotalCount:      int(getFloat(cstore, "number")),
 		Uptime:          getString(host, "uptime"),
 		CgroupVersion:   getString(host, "cgroupVersion"),
+		SELinuxEnabled:  getBool(sec, "selinuxEnabled"),
+		AppArmorEnabled: getBool(sec, "apparmorEnabled"),
 	}, nil
 }
 

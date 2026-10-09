@@ -114,7 +114,14 @@ export function computeGlobalLayout({
 			else if (svc.type === 'database') svcSubtitle = 'Database Engine';
 			else if (svc.type === 'image') {
 				const sname = svc.name.toLowerCase();
-				svcSubtitle = sname.includes('redis') || sname.includes('postgres') || sname.includes('mysql') || sname.includes('mongo') || sname.includes('db') ? 'Database' : 'Container Image';
+				svcSubtitle =
+					sname.includes('redis') ||
+					sname.includes('postgres') ||
+					sname.includes('mysql') ||
+					sname.includes('mongo') ||
+					sname.includes('db')
+						? 'Database'
+						: 'Container Image';
 			}
 
 			const svcNode: TopologyNode = {

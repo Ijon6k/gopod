@@ -82,9 +82,7 @@
 		"replicas": 1,
 		"description": "Background push notification relay daemon managed natively by systemd Quadlet",
 		"quadletConfig": "[Unit]\nDescription=AeroChat Push Notification Relay\nAfter=network-online.target\n\n[Container]\nImage=ghcr.io/joko/push-relay:v1.2\nPublishPort=9092:9092\nAutoUpdate=registry\nRestart=always\n\n[Service]\nRestart=always\n\n[Install]\nWantedBy=default.target",
-		"envVars": [
-			{ "key": "RELAY_PORT", "value": "9092", "secret": false }
-		],
+		"envVars": [{ "key": "RELAY_PORT", "value": "9092", "secret": false }],
 		"deployments": [],
 		"createdAt": "2024-11-05"
 	},
@@ -104,9 +102,7 @@
 		"restartPolicy": "always",
 		"health": "healthy",
 		"replicas": 1,
-		"envVars": [
-			{ "key": "NODE_ENV", "value": "production", "secret": false }
-		],
+		"envVars": [{ "key": "NODE_ENV", "value": "production", "secret": false }],
 		"deployments": [],
 		"createdAt": "2024-09-03"
 	},
@@ -207,7 +203,13 @@
 		"health": "healthy",
 		"replicas": 1,
 		"workloads": [
-			{ "name": "landing", "image": "ghcr.io/joko/homelab-landing:v1.4.0", "status": "running", "cpu": 0.6, "memory": 120 }
+			{
+				"name": "landing",
+				"image": "ghcr.io/joko/homelab-landing:v1.4.0",
+				"status": "running",
+				"cpu": 0.6,
+				"memory": 120
+			}
 		],
 		"envVars": [],
 		"deployments": [],
@@ -228,8 +230,20 @@
 		"health": "healthy",
 		"replicas": 1,
 		"workloads": [
-			{ "name": "app", "image": "ghcr.io/joko/knowledge-base:v2.1.0", "status": "running", "cpu": 3.0, "memory": 840 },
-			{ "name": "postgres", "image": "postgres:17-alpine", "status": "running", "cpu": 1.4, "memory": 810 },
+			{
+				"name": "app",
+				"image": "ghcr.io/joko/knowledge-base:v2.1.0",
+				"status": "running",
+				"cpu": 3.0,
+				"memory": 840
+			},
+			{
+				"name": "postgres",
+				"image": "postgres:17-alpine",
+				"status": "running",
+				"cpu": 1.4,
+				"memory": 810
+			},
 			{ "name": "redis", "image": "redis:7-alpine", "status": "running", "cpu": 0.3, "memory": 90 }
 		],
 		"envVars": [],
@@ -253,9 +267,7 @@
 		"replicas": 1,
 		"description": "YouTube downloader web UI running as a native systemd Quadlet unit",
 		"quadletConfig": "[Unit]\nDescription=MeTube Video Downloader Quadlet\nAfter=network-online.target\n\n[Container]\nImage=ghcr.io/alexta69/metube:latest\nPublishPort=8081:8081\nVolume=metube-downloads:/downloads:Z\nAutoUpdate=registry\nRestart=always\n\n[Service]\nRestart=always\nTimeoutStartSec=300\n\n[Install]\nWantedBy=default.target",
-		"envVars": [
-			{ "key": "OUTPUT_TEMPLATE", "value": "%(title)s.%(ext)s", "secret": false }
-		],
+		"envVars": [{ "key": "OUTPUT_TEMPLATE", "value": "%(title)s.%(ext)s", "secret": false }],
 		"deployments": [],
 		"createdAt": "2025-02-20"
 	}

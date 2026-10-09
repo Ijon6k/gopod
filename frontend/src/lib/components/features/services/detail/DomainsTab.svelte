@@ -3,7 +3,17 @@
 	import { Button, Input, CopyButton, FormField } from '$lib/components/primitives';
 	import { StatusBadge } from '$lib/components/ui';
 	import { dataStore, server } from '$lib/data';
-	import { Globe, Plus, Trash, ShieldCheck, ArrowRight, ArrowSquareOut, CaretDown, CaretUp, PencilSimple } from 'phosphor-svelte';
+	import {
+		Globe,
+		Plus,
+		Trash,
+		ShieldCheck,
+		ArrowRight,
+		ArrowSquareOut,
+		CaretDown,
+		CaretUp,
+		PencilSimple
+	} from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
@@ -95,36 +105,45 @@
 	}
 </script>
 
-<div class="w-full flex flex-col gap-5">
+<div class="flex w-full flex-col gap-5">
 	<!-- DNS Guidance Helper Banner -->
-	<div class="p-3.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-surface)]/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+	<div
+		class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-surface)]/60 p-3.5 text-xs sm:flex-row sm:items-center"
+	>
 		<div class="flex items-center gap-2 text-[var(--text-secondary)]">
-			<Globe size={16} class="text-[var(--accent)] shrink-0" />
+			<Globe size={16} class="shrink-0 text-[var(--accent)]" />
 			<span>
-				Point your domain's <strong>A-Record</strong> at your DNS provider (Cloudflare, Namecheap, etc.) to the host IP:
+				Point your domain's <strong>A-Record</strong> at your DNS provider (Cloudflare, Namecheap, etc.)
+				to the host IP:
 			</span>
-			<code class="px-2 py-0.5 rounded bg-[var(--bg-panel)] font-[var(--font-mono)] text-[var(--text-primary)] font-semibold border border-[var(--border)]">
+			<code
+				class="rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-0.5 font-[var(--font-mono)] font-semibold text-[var(--text-primary)]"
+			>
 				{serverIp}
 			</code>
 		</div>
-		<CopyButton
-			text={serverIp}
-			label="Copy Server IP"
-			variant="button"
-		/>
+		<CopyButton text={serverIp} label="Copy Server IP" variant="button" />
 	</div>
 
 	<!-- Header -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+	<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
 		<div class="flex flex-col gap-0.5">
-			<h2 class="text-sm font-semibold text-[var(--text-primary)] m-0">Public Domains & Routing</h2>
+			<h2 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Public Domains & Routing</h2>
 			<span class="text-xs text-[var(--text-tertiary)]">
-				Caddy handles reverse-proxy routing, automatic HTTPS (Let's Encrypt), and WebSocket upgrades out-of-the-box.
+				Caddy handles reverse-proxy routing, automatic HTTPS (Let's Encrypt), and WebSocket upgrades
+				out-of-the-box.
 			</span>
 		</div>
 
 		{#if !isAdding}
-			<Button variant="primary" size="sm" onclick={() => { resetForm(); isAdding = true; }}>
+			<Button
+				variant="primary"
+				size="sm"
+				onclick={() => {
+					resetForm();
+					isAdding = true;
+				}}
+			>
 				<Plus size={13} /> Add Domain
 			</Button>
 		{/if}
@@ -132,21 +151,23 @@
 
 	<!-- Domain Add / Edit Form Card -->
 	{#if isAdding}
-		<div class="p-5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-4 animate-in fade-in duration-150">
-			<div class="flex items-center justify-between pb-3 border-b border-[var(--border-subtle)]">
+		<div
+			class="animate-in fade-in flex flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 duration-150"
+		>
+			<div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
 				<span class="text-xs font-semibold text-[var(--text-primary)]">
 					{editingDomainId ? 'Edit Domain Route' : 'Add Domain Route'}
 				</span>
 			</div>
 
-			<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+			<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 				<div class="sm:col-span-2">
 					<FormField label="Domain Name" required forId="new-domain-host">
 						<Input
 							id="new-domain-host"
 							bind:value={domainName}
 							placeholder="e.g. app.example.com or api.example.com"
-							class="font-[var(--font-mono)] text-xs"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</FormField>
 				</div>
@@ -162,19 +183,23 @@
 			</div>
 
 			<div class="flex items-center gap-3 pt-1">
-				<label class="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
-					<input type="checkbox" bind:checked={autoHttps} class="accent-[var(--accent)] cursor-pointer" />
+				<label class="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
+					<input
+						type="checkbox"
+						bind:checked={autoHttps}
+						class="cursor-pointer accent-[var(--accent)]"
+					/>
 					<ShieldCheck size={14} class="text-[var(--status-green)]" />
 					<span>Automatic HTTPS (TLS via Let's Encrypt / ZeroSSL)</span>
 				</label>
 			</div>
 
 			<!-- Advanced Caddy Settings Accordion -->
-			<div class="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-3">
+			<div class="flex flex-col gap-3 border-t border-[var(--border-subtle)] pt-2">
 				<button
 					type="button"
 					onclick={() => (showAdvanced = !showAdvanced)}
-					class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer p-0 w-fit"
+					class="flex w-fit cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
 				>
 					{#if showAdvanced}
 						<CaretUp size={12} />
@@ -185,7 +210,9 @@
 				</button>
 
 				{#if showAdvanced}
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 p-3.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)]/40">
+					<div
+						class="grid grid-cols-1 gap-4 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)]/40 p-3.5 sm:grid-cols-2"
+					>
 						<FormField label="Max Upload Body Size" forId="adv-body-limit">
 							<Input
 								id="adv-body-limit"
@@ -199,7 +226,7 @@
 							<select
 								id="adv-redirect"
 								bind:value={wwwRedirect}
-								class="px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-xs text-[var(--text-primary)]"
+								class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
 							>
 								<option value="none">None (Direct)</option>
 								<option value="to-non-www">Redirect www → non-www</option>
@@ -207,19 +234,23 @@
 							</select>
 						</FormField>
 
-						<div class="sm:col-span-2 pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-2">
-							<label class="flex items-center gap-2 text-xs text-[var(--text-secondary)] cursor-pointer">
-								<input type="checkbox" bind:checked={basicAuthEnabled} class="accent-[var(--accent)] cursor-pointer" />
+						<div
+							class="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-2 sm:col-span-2"
+						>
+							<label
+								class="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]"
+							>
+								<input
+									type="checkbox"
+									bind:checked={basicAuthEnabled}
+									class="cursor-pointer accent-[var(--accent)]"
+								/>
 								<span>Enable Basic Authentication (Password protect staging/preview)</span>
 							</label>
 
 							{#if basicAuthEnabled}
 								<div class="grid grid-cols-2 gap-3 pt-1">
-									<Input
-										bind:value={basicAuthUser}
-										placeholder="Username"
-										class="text-xs"
-									/>
+									<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
 									<Input
 										type="password"
 										bind:value={basicAuthPass}
@@ -233,9 +264,14 @@
 				{/if}
 			</div>
 
-			<div class="flex items-center justify-end gap-2 pt-3 border-t border-[var(--border-subtle)]">
+			<div class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-3">
 				<Button variant="ghost" size="sm" onclick={resetForm}>Cancel</Button>
-				<Button variant="primary" size="sm" disabled={!domainName.trim()} onclick={handleSaveDomain}>
+				<Button
+					variant="primary"
+					size="sm"
+					disabled={!domainName.trim()}
+					onclick={handleSaveDomain}
+				>
 					{editingDomainId ? 'Update Route' : 'Save Domain Route'}
 				</Button>
 			</div>
@@ -243,18 +279,22 @@
 	{/if}
 
 	<!-- Domain Routes List -->
-	<div class="flex flex-col divide-y divide-[var(--border-subtle)] border border-[var(--border)] rounded-[var(--radius-card)] bg-[var(--bg-panel)] overflow-hidden">
+	<div
+		class="flex flex-col divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
+	>
 		{#each serviceDomains as d (d.id)}
-			<div class="flex items-center justify-between p-4 gap-4 hover:bg-[var(--bg-hover)]/30 transition-colors">
-				<div class="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-6 min-w-0 flex-1">
+			<div
+				class="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-[var(--bg-hover)]/30"
+			>
+				<div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
 					<!-- Domain Hostname + External Link -->
-					<div class="flex items-center gap-2 min-w-[220px]">
-						<Globe size={15} class="text-[var(--accent)] shrink-0" />
+					<div class="flex min-w-[220px] items-center gap-2">
+						<Globe size={15} class="shrink-0 text-[var(--accent)]" />
 						<a
 							href="http://{d.hostname}"
 							target="_blank"
 							rel="noreferrer"
-							class="text-sm font-medium text-[var(--text-primary)] font-[var(--font-mono)] hover:underline flex items-center gap-1 truncate"
+							class="flex items-center gap-1 truncate text-sm font-[var(--font-mono)] font-medium text-[var(--text-primary)] hover:underline"
 						>
 							{d.hostname}
 							<ArrowSquareOut size={12} class="text-[var(--text-tertiary)]" />
@@ -262,7 +302,9 @@
 					</div>
 
 					<!-- Route Target -->
-					<div class="flex items-center gap-2 text-xs text-[var(--text-secondary)] font-[var(--font-mono)] min-w-[150px]">
+					<div
+						class="flex min-w-[150px] items-center gap-2 text-xs font-[var(--font-mono)] text-[var(--text-secondary)]"
+					>
 						<ArrowRight size={12} class="text-[var(--text-tertiary)]" />
 						<span>{service.name} :{d.containerPort}</span>
 					</div>
@@ -271,7 +313,7 @@
 					<div class="flex items-center gap-1.5 text-xs text-[var(--text-tertiary)]">
 						{#if d.tls}
 							<ShieldCheck size={14} class="text-[var(--status-green)]" />
-							<span class="text-[var(--status-green)] font-medium">SSL Active</span>
+							<span class="font-medium text-[var(--status-green)]">SSL Active</span>
 						{:else}
 							<span>HTTP Only</span>
 						{/if}
@@ -287,7 +329,7 @@
 					<button
 						type="button"
 						onclick={() => startEdit(d)}
-						class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 bg-transparent border-0 cursor-pointer rounded hover:bg-[var(--bg-hover)] transition-colors"
+						class="cursor-pointer rounded border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 						title="Edit domain route"
 					>
 						<PencilSimple size={14} />
@@ -296,7 +338,7 @@
 					<button
 						type="button"
 						onclick={() => handleDeleteDomain(d.id)}
-						class="text-[var(--text-tertiary)] hover:text-[var(--status-red)] p-1.5 bg-transparent border-0 cursor-pointer rounded hover:bg-[var(--bg-hover)] transition-colors"
+						class="cursor-pointer rounded border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--status-red)]"
 						title="Remove domain route"
 					>
 						<Trash size={14} />
@@ -307,7 +349,8 @@
 
 		{#if serviceDomains.length === 0}
 			<div class="p-8 text-center text-xs text-[var(--text-tertiary)]">
-				No public domains configured for this service yet. Add a domain above to expose this service via Caddy reverse proxy.
+				No public domains configured for this service yet. Add a domain above to expose this service
+				via Caddy reverse proxy.
 			</div>
 		{/if}
 	</div>

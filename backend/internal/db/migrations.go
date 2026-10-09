@@ -28,6 +28,7 @@ func (d *DB) migrate() error {
 		k8s_yaml TEXT DEFAULT '',
 		runtime_target TEXT DEFAULT '',
 		env_vars TEXT DEFAULT '[]',
+		advanced TEXT DEFAULT '{}',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -168,6 +169,7 @@ func (d *DB) migrate() error {
 		"ALTER TABLE services ADD COLUMN runtime_target TEXT DEFAULT '';",
 		"ALTER TABLE services ADD COLUMN in_pod BOOLEAN DEFAULT 0;",
 		"ALTER TABLE services ADD COLUMN host_port INTEGER DEFAULT 0;",
+		"ALTER TABLE services ADD COLUMN advanced TEXT DEFAULT '{}';",
 		"ALTER TABLE deployments ADD COLUMN commit_hash TEXT DEFAULT '';",
 		"ALTER TABLE deployments ADD COLUMN commit_message TEXT DEFAULT '';",
 		"ALTER TABLE deployments ADD COLUMN trigger TEXT DEFAULT 'manual';",

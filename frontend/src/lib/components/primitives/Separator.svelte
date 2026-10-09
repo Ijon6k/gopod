@@ -12,5 +12,5 @@
 {#if orientation === 'horizontal'}
 	<hr class={cn('h-px border-0 bg-[var(--border)]', className)} />
 {:else}
-	<div class={cn('w-px bg-[var(--border)] self-stretch', className)}></div>
+	<div class={cn('w-px self-stretch bg-[var(--border)]', className)}></div>
 {/if}

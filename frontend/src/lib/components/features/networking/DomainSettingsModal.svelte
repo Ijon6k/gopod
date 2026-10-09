@@ -132,21 +132,25 @@
 
 {#if open}
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[rgba(5,6,7,0.82)] backdrop-blur-[3px]"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(5,6,7,0.82)] p-3 backdrop-blur-[3px] sm:p-5"
 		role="dialog"
 		aria-modal="true"
 	>
 		<div
-			class="w-full max-w-[620px] max-h-[90vh] flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+			class="animate-in fade-in zoom-in-95 flex max-h-[90vh] w-full max-w-[620px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] shadow-2xl duration-150"
 		>
 			<!-- Header -->
-			<div class="flex items-center justify-between px-5 py-4 border-b border-[var(--border)] bg-[var(--bg-panel)] shrink-0">
+			<div
+				class="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-5 py-4"
+			>
 				<div class="flex items-center gap-2.5">
-					<div class="w-8 h-8 rounded-lg bg-[var(--accent-muted)] text-[var(--accent)] flex items-center justify-center shrink-0">
+					<div
+						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]"
+					>
 						<Globe size={18} />
 					</div>
 					<div class="flex flex-col">
-						<h3 class="text-sm font-semibold text-[var(--text-primary)] font-[var(--font-sans)]">
+						<h3 class="text-sm font-[var(--font-sans)] font-semibold text-[var(--text-primary)]">
 							{domain ? 'Edit Domain Configuration' : 'Add Domain Route'}
 						</h3>
 						<span class="text-xs text-[var(--text-tertiary)]">
@@ -158,18 +162,21 @@
 				<button
 					type="button"
 					onclick={onclose}
-					class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+					class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				>
 					<X size={15} />
 				</button>
 			</div>
 
 			<!-- Form Content (Scrollable) -->
-			<div class="p-5 flex flex-col gap-5 overflow-y-auto text-left text-xs">
+			<div class="flex flex-col gap-5 overflow-y-auto p-5 text-left text-xs">
 				<!-- 1. Hostname & Upstream Service -->
-				<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-					<div class="sm:col-span-2 flex flex-col gap-1.5">
-						<label for="domain-hostname" class="text-[11px] font-medium text-[var(--text-secondary)]">
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+					<div class="flex flex-col gap-1.5 sm:col-span-2">
+						<label
+							for="domain-hostname"
+							class="text-[11px] font-medium text-[var(--text-secondary)]"
+						>
 							Domain Name / Hostname
 						</label>
 						<input
@@ -177,7 +184,7 @@
 							type="text"
 							bind:value={hostname}
 							placeholder="e.g. app.yourdomain.com"
-							class="w-full px-3 py-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-primary)] font-mono text-xs outline-none focus:border-[var(--accent)]"
+							class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
 						/>
 					</div>
 
@@ -190,7 +197,7 @@
 							type="number"
 							bind:value={containerPort}
 							placeholder="3000"
-							class="w-full px-3 py-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-primary)] font-mono text-xs outline-none focus:border-[var(--accent)]"
+							class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
 						/>
 					</div>
 				</div>
@@ -203,7 +210,7 @@
 						id="domain-service"
 						bind:value={selectedServiceId}
 						onchange={handleServiceChange}
-						class="w-full px-3 py-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-primary)] text-xs outline-none cursor-pointer"
+						class="w-full cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 text-xs text-[var(--text-primary)] outline-none"
 					>
 						{#each services as svc}
 							<option value={svc.id}>
@@ -214,16 +221,24 @@
 				</div>
 
 				<!-- 2. DNS Resolution Diagnostic Box -->
-				<div class="p-3.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-2.5">
+				<div
+					class="flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3.5"
+				>
 					<div class="flex items-center justify-between">
 						<div class="flex items-center gap-2">
-							<span class="text-[11.5px] font-semibold text-[var(--text-primary)]">DNS A-Record Verification</span>
+							<span class="text-[11.5px] font-semibold text-[var(--text-primary)]"
+								>DNS A-Record Verification</span
+							>
 							{#if dnsVerified}
-								<span class="inline-flex items-center gap-1 text-[10.5px] font-mono text-[var(--status-green)] bg-[var(--status-green-muted)] px-1.5 py-0.5 rounded font-medium">
+								<span
+									class="inline-flex items-center gap-1 rounded bg-[var(--status-green-muted)] px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-[var(--status-green)]"
+								>
 									<CheckCircle size={12} /> Resolves to {server.ip}
 								</span>
 							{:else}
-								<span class="inline-flex items-center gap-1 text-[10.5px] font-mono text-[var(--status-amber)] bg-[var(--status-amber-muted)] px-1.5 py-0.5 rounded font-medium">
+								<span
+									class="inline-flex items-center gap-1 rounded bg-[var(--status-amber-muted)] px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-[var(--status-amber)]"
+								>
 									<Warning size={12} /> Pending propagation
 								</span>
 							{/if}
@@ -233,7 +248,7 @@
 							type="button"
 							onclick={verifyDNS}
 							disabled={isCheckingDNS || !hostname}
-							class="text-[11px] text-[var(--accent)] hover:underline inline-flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0 disabled:opacity-50"
+							class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline disabled:opacity-50"
 						>
 							{#if isCheckingDNS}
 								<CircleNotch size={12} class="animate-spin" /> Checking...
@@ -243,8 +258,13 @@
 						</button>
 					</div>
 
-					<p class="text-[11px] text-[var(--text-tertiary)] leading-relaxed m-0">
-						Point your domain's <strong class="text-[var(--text-secondary)]">A record</strong> to your server IP: <code class="font-mono text-[11px] text-[var(--text-primary)] bg-[var(--bg-surface)] px-1.5 py-0.5 rounded border border-[var(--border-subtle)]">{server.ip}</code>. Caddy automatically requests Let's Encrypt once the record is active.
+					<p class="m-0 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+						Point your domain's <strong class="text-[var(--text-secondary)]">A record</strong> to
+						your server IP:
+						<code
+							class="rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
+							>{server.ip}</code
+						>. Caddy automatically requests Let's Encrypt once the record is active.
 					</p>
 				</div>
 
@@ -254,49 +274,76 @@
 						TLS & Routing Configuration
 					</span>
 
-					<div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+					<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 						<!-- Toggle: Auto HTTPS -->
-						<label class="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] cursor-pointer">
-							<input type="checkbox" bind:checked={tls} class="accent-[var(--accent)] rounded" />
+						<label
+							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						>
+							<input type="checkbox" bind:checked={tls} class="rounded accent-[var(--accent)]" />
 							<div class="flex flex-col">
 								<span class="font-medium text-[var(--text-primary)]">Automatic HTTPS</span>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]">Let's Encrypt / ZeroSSL ACME</span>
+								<span class="text-[10.5px] text-[var(--text-tertiary)]"
+									>Let's Encrypt / ZeroSSL ACME</span
+								>
 							</div>
 						</label>
 
 						<!-- Toggle: HTTP to HTTPS Redirect -->
-						<label class="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] cursor-pointer">
-							<input type="checkbox" bind:checked={httpsRedirect} class="accent-[var(--accent)] rounded" />
+						<label
+							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						>
+							<input
+								type="checkbox"
+								bind:checked={httpsRedirect}
+								class="rounded accent-[var(--accent)]"
+							/>
 							<div class="flex flex-col">
 								<span class="font-medium text-[var(--text-primary)]">HTTP ➔ HTTPS Redirect</span>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]">Forces secure 308 redirect</span>
+								<span class="text-[10.5px] text-[var(--text-tertiary)]"
+									>Forces secure 308 redirect</span
+								>
 							</div>
 						</label>
 
 						<!-- Toggle: WebSocket Upgrades -->
-						<label class="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] cursor-pointer">
-							<input type="checkbox" bind:checked={websocket} class="accent-[var(--accent)] rounded" />
+						<label
+							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						>
+							<input
+								type="checkbox"
+								bind:checked={websocket}
+								class="rounded accent-[var(--accent)]"
+							/>
 							<div class="flex flex-col">
 								<span class="font-medium text-[var(--text-primary)]">WebSocket Upgrades</span>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]">Pass 101 Switching Protocols</span>
+								<span class="text-[10.5px] text-[var(--text-tertiary)]"
+									>Pass 101 Switching Protocols</span
+								>
 							</div>
 						</label>
 
 						<!-- Toggle: CORS Headers -->
-						<label class="flex items-center gap-2.5 p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] cursor-pointer">
-							<input type="checkbox" bind:checked={cors} class="accent-[var(--accent)] rounded" />
+						<label
+							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						>
+							<input type="checkbox" bind:checked={cors} class="rounded accent-[var(--accent)]" />
 							<div class="flex flex-col">
 								<span class="font-medium text-[var(--text-primary)]">Enable CORS Headers</span>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]">Allow Cross-Origin Requests</span>
+								<span class="text-[10.5px] text-[var(--text-tertiary)]"
+									>Allow Cross-Origin Requests</span
+								>
 							</div>
 						</label>
 					</div>
 				</div>
 
 				<!-- 4. Path Routing Prefix -->
-				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+				<div class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
 					<div class="flex flex-col gap-1.5">
-						<label for="domain-path-prefix" class="text-[11px] font-medium text-[var(--text-secondary)]">
+						<label
+							for="domain-path-prefix"
+							class="text-[11px] font-medium text-[var(--text-secondary)]"
+						>
 							Path Routing Prefix
 						</label>
 						<input
@@ -304,41 +351,55 @@
 							type="text"
 							bind:value={pathPrefix}
 							placeholder="/"
-							class="w-full px-3 py-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-primary)] font-mono text-xs outline-none focus:border-[var(--accent)]"
+							class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
 						/>
 					</div>
 
 					<div class="flex items-center gap-2.5 pt-5">
-						<label class="flex items-center gap-2 text-[11.5px] text-[var(--text-secondary)] cursor-pointer">
-							<input type="checkbox" bind:checked={stripPathPrefix} class="accent-[var(--accent)] rounded" />
+						<label
+							class="flex cursor-pointer items-center gap-2 text-[11.5px] text-[var(--text-secondary)]"
+						>
+							<input
+								type="checkbox"
+								bind:checked={stripPathPrefix}
+								class="rounded accent-[var(--accent)]"
+							/>
 							<span>Strip path prefix before upstream</span>
 						</label>
 					</div>
 				</div>
 
 				<!-- 5. Basic Authentication (Staging Protection) -->
-				<div class="p-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-2.5">
-					<label class="flex items-center justify-between cursor-pointer">
+				<div
+					class="flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3"
+				>
+					<label class="flex cursor-pointer items-center justify-between">
 						<div class="flex flex-col">
 							<span class="font-medium text-[var(--text-primary)]">Basic HTTP Authentication</span>
-							<span class="text-[10.5px] text-[var(--text-tertiary)]">Password protect staging or preview environments</span>
+							<span class="text-[10.5px] text-[var(--text-tertiary)]"
+								>Password protect staging or preview environments</span
+							>
 						</div>
-						<input type="checkbox" bind:checked={basicAuth} class="accent-[var(--accent)] rounded" />
+						<input
+							type="checkbox"
+							bind:checked={basicAuth}
+							class="rounded accent-[var(--accent)]"
+						/>
 					</label>
 
 					{#if basicAuth}
-						<div class="pt-2 border-t border-[var(--border-subtle)] grid grid-cols-2 gap-2">
+						<div class="grid grid-cols-2 gap-2 border-t border-[var(--border-subtle)] pt-2">
 							<input
 								type="text"
 								bind:value={basicAuthUser}
 								placeholder="Username"
-								class="px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
+								class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
 							/>
 							<input
 								type="password"
 								placeholder="Password"
 								value="••••••••••••"
-								class="px-2.5 py-1.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
+								class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
 							/>
 						</div>
 					{/if}
@@ -346,10 +407,10 @@
 			</div>
 
 			<!-- Footer -->
-			<div class="flex items-center justify-between px-5 py-3.5 border-t border-[var(--border)] bg-[var(--bg-panel)] shrink-0">
-				<Button variant="secondary" size="sm" onclick={onclose}>
-					Cancel
-				</Button>
+			<div
+				class="flex shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3.5"
+			>
+				<Button variant="secondary" size="sm" onclick={onclose}>Cancel</Button>
 
 				<Button
 					variant="primary"

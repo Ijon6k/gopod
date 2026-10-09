@@ -116,11 +116,15 @@ func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	trigger := "manual"
 	var body struct {
 		Trigger string `json:"trigger"`
+		Commit  string `json:"commit"`
+		Image   string `json:"image"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err == nil && body.Trigger != "" {
-		trigger = body.Trigger
+	if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+		if body.Trigger != "" {
+			trigger = body.Trigger
+		}
 	}
-	dep, err := h.service.StartDeploy(r.Context(), id, trigger)
+	dep, err := h.service.StartDeploy(r.Context(), id, trigger, body.Commit, body.Image)
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return

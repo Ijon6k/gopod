@@ -65,20 +65,16 @@
 <div class="flex flex-col gap-4">
 	<!-- Database Engine selector -->
 	<div class="flex flex-col gap-1.5">
-		<span class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</span>
-		<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-			{#each [
-				{ id: 'postgres', label: 'PostgreSQL', defaultImg: '17-alpine' },
-				{ id: 'redis', label: 'Redis', defaultImg: '7-alpine' },
-				{ id: 'mysql', label: 'MySQL', defaultImg: '8.4' },
-				{ id: 'mongodb', label: 'MongoDB', defaultImg: '7.0' }
-			] as db}
+		<span class="text-xs font-medium text-[var(--text-secondary)]">Database Engine</span>
+		<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+			{#each [{ id: 'postgres', label: 'PostgreSQL', defaultImg: '17-alpine' }, { id: 'redis', label: 'Redis', defaultImg: '7-alpine' }, { id: 'mysql', label: 'MySQL', defaultImg: '8.4' }, { id: 'mongodb', label: 'MongoDB', defaultImg: '7.0' }] as db}
 				<button
 					type="button"
 					onclick={() => handleTypeChange(db.id as any)}
-					class="p-2.5 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-colors {databaseType === db.id
-						? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)]'
-						: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+					class="cursor-pointer rounded-[var(--radius-sm)] border p-2.5 text-left transition-colors {databaseType ===
+					db.id
+						? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+						: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 				>
 					<span class="block text-xs font-medium">{db.label}</span>
 				</button>
@@ -86,68 +82,93 @@
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
-			<label for="db-svc-name" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="db-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
 				Service name <span class="text-[var(--status-red)]">*</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
 				<Input id="db-svc-name" bind:value={name} placeholder="e.g. postgres-db" />
 			</div>
 		</div>
 
 		<div class="flex flex-col gap-1.5">
-			<label for="db-svc-desc" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="db-svc-desc" class="text-xs font-medium text-[var(--text-secondary)]">
 				Description <span class="text-[var(--text-tertiary)]">(optional)</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input id="db-svc-desc" bind:value={description} placeholder="Database convenience preset" />
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
+				<Input
+					id="db-svc-desc"
+					bind:value={description}
+					placeholder="Database convenience preset"
+				/>
 			</div>
 		</div>
 	</div>
 
-	<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 		{#if databaseType !== 'redis'}
 			<div class="flex flex-col gap-1.5">
-				<label for="db-name" class="text-xs text-[var(--text-secondary)] font-medium">Database Name</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-					<Input id="db-name" bind:value={dbName} class="font-[var(--font-mono)] text-xs" />
+				<label for="db-name" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Database Name</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+				>
+					<Input id="db-name" bind:value={dbName} class="text-xs font-[var(--font-mono)]" />
 				</div>
 			</div>
 		{/if}
 
 		<div class="flex flex-col gap-1.5">
-			<label for="db-user" class="text-xs text-[var(--text-secondary)] font-medium">Initial User</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input id="db-user" bind:value={dbUser} class="font-[var(--font-mono)] text-xs" />
+			<label for="db-user" class="text-xs font-medium text-[var(--text-secondary)]"
+				>Initial User</label
+			>
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
+				<Input id="db-user" bind:value={dbUser} class="text-xs font-[var(--font-mono)]" />
 			</div>
 		</div>
 
 		<div class="flex flex-col gap-1.5">
-			<label for="db-img-tag" class="text-xs text-[var(--text-secondary)] font-medium">Image Version / Tag</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input id="db-img-tag" bind:value={imageTag} class="font-[var(--font-mono)] text-xs" />
+			<label for="db-img-tag" class="text-xs font-medium text-[var(--text-secondary)]"
+				>Image Version / Tag</label
+			>
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
+				<Input id="db-img-tag" bind:value={imageTag} class="text-xs font-[var(--font-mono)]" />
 			</div>
 		</div>
 	</div>
 
 	<div class="flex flex-col gap-1.5">
 		<div class="flex items-center justify-between">
-			<label for="db-password" class="text-xs text-[var(--text-secondary)] font-medium">Root / Admin Password</label>
+			<label for="db-password" class="text-xs font-medium text-[var(--text-secondary)]"
+				>Root / Admin Password</label
+			>
 			<button
 				type="button"
 				onclick={generatePassword}
-				class="inline-flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer"
+				class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent text-[11px] text-[var(--accent)] hover:underline"
 			>
 				<ArrowClockwise size={12} /> Regenerate
 			</button>
 		</div>
-		<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-			<Input id="db-password" bind:value={dbPassword} class="font-[var(--font-mono)] text-xs" />
+		<div
+			class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+		>
+			<Input id="db-password" bind:value={dbPassword} class="text-xs font-[var(--font-mono)]" />
 		</div>
 	</div>
 
 	<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-		GoPod creates this database as a standard container workload with pre-configured environment credentials. Volume storage and port publishing can be tailored in Service Detail.
+		GoPod creates this database as a standard container workload with pre-configured environment
+		credentials. Volume storage and port publishing can be tailored in Service Detail.
 	</p>
 </div>

@@ -5,13 +5,7 @@
 import type { Status } from '$lib/types';
 
 export type NodeType =
-	| 'internet'
-	| 'proxy'
-	| 'domain'
-	| 'service'
-	| 'container'
-	| 'volume'
-	| 'network';
+	'internet' | 'proxy' | 'domain' | 'service' | 'container' | 'volume' | 'network';
 
 export type RegionType = 'project' | 'pod';
 
@@ -69,8 +63,6 @@ export interface TopologyGraph {
 }
 
 export type SelectedItem =
-	| { kind: 'node'; item: TopologyNode }
-	| { kind: 'region'; item: TopologyRegion }
-	| null;
+	{ kind: 'node'; item: TopologyNode } | { kind: 'region'; item: TopologyRegion } | null;
 
 export type ViewMode = 'global' | string; // 'global' or projectId

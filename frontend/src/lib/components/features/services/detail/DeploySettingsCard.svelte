@@ -184,18 +184,24 @@
 	}
 </script>
 
-<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col shadow-xs">
+<div
+	class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
+>
 	<!-- Card Header (Dokploy style) -->
-	<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-4">
+	<div
+		class="flex items-center justify-between gap-4 border-b border-[var(--border-subtle)] px-5 py-4"
+	>
 		<div class="flex flex-col gap-0.5">
 			<div class="flex items-center gap-2">
-				<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Deploy Settings</h3>
+				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Deploy Settings</h3>
 			</div>
-			<p class="text-xs text-[var(--text-tertiary)] m-0">{subtitle}</p>
+			<p class="m-0 text-xs text-[var(--text-tertiary)]">{subtitle}</p>
 		</div>
 
 		<!-- Workload Type Badge -->
-		<span class="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-primary)] font-[var(--font-mono)] shrink-0">
+		<span
+			class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1 text-xs font-[var(--font-mono)] font-semibold text-[var(--text-primary)]"
+		>
 			{#if service.type === 'quadlet'}
 				<Sparkle size={13} class="text-[var(--accent)]" />
 			{/if}
@@ -204,14 +210,14 @@
 	</div>
 
 	<!-- Action Buttons Bar (Exact Dokploy layout with high visual hierarchy) -->
-	<div class="p-5 flex flex-wrap items-center justify-between gap-4">
+	<div class="flex flex-wrap items-center justify-between gap-4 p-5">
 		<div class="flex flex-wrap items-center gap-2.5">
 			<!-- 1. Deploy (High-contrast Primary Button) -->
 			<button
 				type="button"
 				onclick={handleDeploy}
 				disabled={isDeploying || service.status === 'deploying'}
-				class="flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--accent)] hover:opacity-90 text-[var(--bg-shell)] text-xs font-semibold cursor-pointer border-0 transition-all shadow-xs disabled:opacity-50"
+				class="flex cursor-pointer items-center gap-2 rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[var(--bg-shell)] shadow-xs transition-all hover:opacity-90 disabled:opacity-50"
 			>
 				{#if isDeploying || service.status === 'deploying'}
 					<ArrowClockwise size={15} class="animate-spin text-inherit" /> Deploying…
@@ -225,7 +231,7 @@
 				type="button"
 				onclick={handleFreshVolumes}
 				disabled={isFreshingVolumes || isDeploying || service.status === 'deploying'}
-				class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors disabled:opacity-50"
+				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
 				title="Purge and mount fresh storage volumes"
 			>
 				{#if isFreshingVolumes}
@@ -240,7 +246,7 @@
 				type="button"
 				onclick={handleRebuild}
 				disabled={isRebuilding || isDeploying || service.status === 'deploying'}
-				class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors disabled:opacity-50"
+				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
 				title="Force rebuild container image and reload unit"
 			>
 				<ArrowClockwise size={14} class={isRebuilding ? 'animate-spin' : ''} /> Rebuild
@@ -252,7 +258,7 @@
 					type="button"
 					onclick={handleTogglePower}
 					disabled={isTogglingPower}
-					class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--status-red)]/25 bg-[var(--status-red)]/10 hover:bg-[var(--status-red)]/20 text-xs font-medium text-[var(--status-red)] cursor-pointer transition-colors disabled:opacity-50"
+					class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--status-red)]/25 bg-[var(--status-red)]/10 px-3.5 py-2 text-xs font-medium text-[var(--status-red)] transition-colors hover:bg-[var(--status-red)]/20 disabled:opacity-50"
 					title="Gracefully stop service workload"
 				>
 					{#if isTogglingPower}
@@ -266,7 +272,7 @@
 					type="button"
 					onclick={handleTogglePower}
 					disabled={isTogglingPower || service.status === 'deploying'}
-					class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--status-green)]/25 bg-[var(--status-green)]/10 hover:bg-[var(--status-green)]/20 text-xs font-medium text-[var(--status-green)] cursor-pointer transition-colors disabled:opacity-50"
+					class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--status-green)]/25 bg-[var(--status-green)]/10 px-3.5 py-2 text-xs font-medium text-[var(--status-green)] transition-colors hover:bg-[var(--status-green)]/20 disabled:opacity-50"
 					title="Start service workload"
 				>
 					{#if isTogglingPower}
@@ -281,7 +287,7 @@
 			<button
 				type="button"
 				onclick={onTerminalClick}
-				class="flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors font-[var(--font-mono)]"
+				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2 text-xs font-[var(--font-mono)] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				title="Open interactive terminal console"
 			>
 				<Terminal size={14} /> &gt;_ Open Terminal
@@ -296,13 +302,13 @@
 				role="switch"
 				aria-checked={autoDeploy}
 				onclick={handleToggleAutodeploy}
-				class="w-9 h-5 rounded-full transition-colors relative cursor-pointer border-0 p-0 {autoDeploy
+				class="relative h-5 w-9 cursor-pointer rounded-full border-0 p-0 transition-colors {autoDeploy
 					? 'bg-[var(--accent)]'
 					: 'bg-zinc-700'}"
 				title="Toggle automatic deployment on webhook or registry push"
 			>
 				<span
-					class="w-4 h-4 rounded-full bg-white absolute top-0.5 transition-transform {autoDeploy
+					class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform {autoDeploy
 						? 'left-4.5'
 						: 'left-0.5'}"
 				></span>
@@ -311,30 +317,40 @@
 	</div>
 
 	<!-- Podman Execution & Pod Strategy (UX Heuristics #1: Visibility & User Control) -->
-	<div class="px-5 py-3 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] flex flex-wrap items-center justify-between gap-3 text-xs">
+	<div
+		class="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-3 text-xs"
+	>
 		<div class="flex items-center gap-2.5">
-			<label class="flex items-center gap-2 cursor-pointer select-none">
+			<label class="flex cursor-pointer items-center gap-2 select-none">
 				<input
 					type="checkbox"
 					checked={inPod}
 					onchange={handleToggleInPod}
-					class="w-4 h-4 rounded border-[var(--border)] accent-[var(--accent)] cursor-pointer"
+					class="h-4 w-4 cursor-pointer rounded border-[var(--border)] accent-[var(--accent)]"
 				/>
 				<span class="font-medium text-[var(--text-primary)]">
-					{service.type === 'compose' ? 'Encapsulate stack inside Podman Pod' : 'Run inside Podman Pod'}
+					{service.type === 'compose'
+						? 'Encapsulate stack inside Podman Pod'
+						: 'Run inside Podman Pod'}
 				</span>
 			</label>
-			<span class="text-[11px] text-[var(--text-tertiary)] hidden sm:inline">
+			<span class="hidden text-[11px] text-[var(--text-tertiary)] sm:inline">
 				{inPod
 					? `(Shared localhost network namespace · pod_${service.id})`
 					: '(Independent containers attached to gopod-net bridge)'}
 			</span>
 		</div>
 		<div class="flex items-center gap-2">
-			<span class="text-[11px] font-[var(--font-mono)] px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)]">
+			<span
+				class="rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)]"
+			>
 				network: gopod-net
 			</span>
-			<span class="text-[11px] font-[var(--font-mono)] px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-panel)] {inPod ? 'text-[var(--accent)] border-[var(--accent)]/40' : 'text-[var(--text-secondary)]'}">
+			<span
+				class="rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] {inPod
+					? 'border-[var(--accent)]/40 text-[var(--accent)]'
+					: 'text-[var(--text-secondary)]'}"
+			>
 				mode: {inPod ? 'podman-pod' : 'standalone'}
 			</span>
 		</div>
@@ -343,7 +359,8 @@
 	<!-- Instant Feedback Banner (Nielsen #1: Visibility of System Status) -->
 	{#if feedbackMessage}
 		<div
-			class="px-5 py-2.5 border-t border-[var(--border-subtle)] flex items-center justify-between text-xs {feedbackMessage.type === 'success'
+			class="flex items-center justify-between border-t border-[var(--border-subtle)] px-5 py-2.5 text-xs {feedbackMessage.type ===
+			'success'
 				? 'bg-emerald-500/10 text-emerald-400'
 				: 'bg-blue-500/10 text-blue-400'}"
 		>
@@ -358,7 +375,7 @@
 			<button
 				type="button"
 				onclick={() => (feedbackMessage = null)}
-				class="text-[11px] underline opacity-70 hover:opacity-100 bg-transparent border-0 cursor-pointer text-inherit"
+				class="cursor-pointer border-0 bg-transparent text-[11px] text-inherit underline opacity-70 hover:opacity-100"
 			>
 				Dismiss
 			</button>

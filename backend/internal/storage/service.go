@@ -235,11 +235,27 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 		return
 	}
 	_, _ = s.cron.AddFunc(sched.Cron, func() {
+		ctx := context.Background()
 		snap := VolumeSnapshot{
 			ProjectID:  sched.ProjectID,
 			VolumeName: sched.VolumeName,
 		}
-		_, _ = s.CreateSnapshot(context.Background(), snap)
+		_, err := s.CreateSnapshot(ctx, snap)
+		if err == nil && sched.RetentionCount > 0 && s.repo != nil {
+			allSnaps, _ := s.repo.ListSnapshots(ctx, sched.ProjectID)
+			var volSnaps []VolumeSnapshot
+			for _, sn := range allSnaps {
+				if sn.VolumeName == sched.VolumeName {
+					volSnaps = append(volSnaps, sn)
+				}
+			}
+			if len(volSnaps) > sched.RetentionCount {
+				excess := len(volSnaps) - sched.RetentionCount
+				for i := 0; i < excess; i++ {
+					_ = s.DeleteSnapshot(ctx, volSnaps[i].ID)
+				}
+			}
+		}
 	})
 }
 

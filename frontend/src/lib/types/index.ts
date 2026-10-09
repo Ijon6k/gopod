@@ -16,7 +16,8 @@ export type Status =
 
 export type DomainStatus = 'active' | 'pending' | 'error';
 export type VolumeStatus = 'mounted' | 'unmounted';
-export type ServiceType = 'application' | 'image' | 'compose' | 'pod' | 'kubernetes' | 'quadlet' | 'database';
+export type ServiceType =
+	'application' | 'image' | 'compose' | 'pod' | 'kubernetes' | 'quadlet' | 'database';
 
 export interface SSHKey {
 	id: string;
@@ -66,6 +67,7 @@ export interface ServiceAdvancedConfig {
 	security: {
 		privileged: boolean;
 		selinuxLabel: string;
+		apparmorProfile?: string;
 		capAdd: string[];
 		capDrop: string[];
 		noNewPrivileges: boolean;
@@ -247,6 +249,7 @@ export interface Deployment {
 	number: number;
 	version: string;
 	commit: string;
+	commitHash?: string;
 	commitMessage: string;
 	branch: string;
 	status: Status;
@@ -379,4 +382,3 @@ export interface AuditLog {
 	timestamp?: string;
 	createdAt?: string;
 }
-

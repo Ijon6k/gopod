@@ -25,25 +25,23 @@
 
 <section
 	class={cn(
-		'bg-[var(--bg-panel)] border border-[var(--border)] rounded-[var(--radius-card)] px-[22px] pt-5 pb-4 flex flex-col',
+		'flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] px-[22px] pt-5 pb-4',
 		className
 	)}
 >
-	<div class="flex items-center justify-between gap-4 min-h-[22px] mb-4">
-		<span
-			class="text-[10px] font-medium text-[var(--text-tertiary)] tracking-[0.1em] uppercase"
-		>
+	<div class="mb-4 flex min-h-[22px] items-center justify-between gap-4">
+		<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase">
 			Resource usage
 		</span>
 		<Tabs {tabs} bind:active={activeTab} size="sm" />
 	</div>
-	<div class="flex items-baseline gap-2.5 mb-1.5">
+	<div class="mb-1.5 flex items-baseline gap-2.5">
 		<strong class="text-2xl font-medium tracking-[-0.03em] text-[var(--text-primary)]">
 			{currentMeta?.current ?? '—'}
 		</strong>
-		<small class="text-[var(--text-tertiary)] text-[11px]">last 24 hours</small>
+		<small class="text-[11px] text-[var(--text-tertiary)]">last 24 hours</small>
 	</div>
-	<div class="mt-auto -mx-0.5">
+	<div class="-mx-0.5 mt-auto">
 		<AreaChart data={currentData} height={168} />
 	</div>
 </section>

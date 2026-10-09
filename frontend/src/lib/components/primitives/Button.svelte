@@ -32,9 +32,10 @@
 		primary: 'bg-[var(--accent)] text-white border-none hover:bg-[var(--accent-hover)]',
 		secondary:
 			'bg-[var(--bg-surface)] text-[var(--text-primary)] border border-[var(--border)] hover:bg-[var(--bg-hover)]',
-		ghost: 'bg-transparent text-[var(--text-secondary)] border-none hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]',
+		ghost:
+			'bg-transparent text-[var(--text-secondary)] border-none hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]',
 		danger:
-			'bg-[rgba(201,64,64,0.12)] text-[#C94040] border border-[rgba(201,64,64,0.2)] hover:bg-[rgba(201,64,64,0.18)]'
+			'bg-[var(--status-red-muted)] text-[var(--status-red)] border border-[var(--status-red-muted)] hover:opacity-85'
 	};
 
 	const sizes = {
@@ -49,7 +50,13 @@
 	{onclick}
 	{title}
 	aria-label={ariaLabel}
-	class={cn(base, variants[variant], sizes[size], disabled && 'opacity-50 cursor-not-allowed', className)}
+	class={cn(
+		base,
+		variants[variant],
+		sizes[size],
+		disabled && 'cursor-not-allowed opacity-50',
+		className
+	)}
 >
 	{@render children()}
 </button>

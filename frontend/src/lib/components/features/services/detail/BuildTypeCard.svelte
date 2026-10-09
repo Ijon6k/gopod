@@ -29,24 +29,29 @@
 	}
 </script>
 
-<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col">
+<div
+	class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
+>
 	<!-- Card Header -->
-	<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between">
+	<div class="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
 		<div class="flex flex-col gap-0.5">
-			<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Build Type</h3>
-			<p class="text-xs text-[var(--text-tertiary)] m-0">Choose how Podman constructs the container image for this service.</p>
+			<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Build Type</h3>
+			<p class="m-0 text-xs text-[var(--text-tertiary)]">
+				Choose how Podman constructs the container image for this service.
+			</p>
 		</div>
 	</div>
 
 	<!-- Build Type Choices -->
-	<div class="p-5 flex flex-col gap-5">
-		<div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+	<div class="flex flex-col gap-5 p-5">
+		<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
 			<button
 				type="button"
 				onclick={() => (buildType = 'dockerfile')}
-				class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-all {buildType === 'dockerfile'
-					? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)]'
-					: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {buildType ===
+				'dockerfile'
+					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 			>
 				<FileCode size={18} class={buildType === 'dockerfile' ? 'text-[var(--accent)]' : ''} />
 				<div class="flex flex-col">
@@ -58,9 +63,10 @@
 			<button
 				type="button"
 				onclick={() => (buildType = 'nixpacks')}
-				class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-all {buildType === 'nixpacks'
-					? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)]'
-					: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {buildType ===
+				'nixpacks'
+					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 			>
 				<Sparkle size={18} class={buildType === 'nixpacks' ? 'text-[var(--accent)]' : ''} />
 				<div class="flex flex-col">
@@ -72,9 +78,10 @@
 			<button
 				type="button"
 				onclick={() => (buildType = 'static')}
-				class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-all {buildType === 'static'
-					? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)]'
-					: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {buildType ===
+				'static'
+					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
+					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 			>
 				<Browser size={18} class={buildType === 'static' ? 'text-[var(--accent)]' : ''} />
 				<div class="flex flex-col">
@@ -96,15 +103,22 @@
 					placeholder="./Dockerfile"
 					class="text-xs font-[var(--font-mono)]"
 				/>
-				<span class="text-[11px] text-[var(--text-tertiary)]">Relative to your repository build path.</span>
+				<span class="text-[11px] text-[var(--text-tertiary)]"
+					>Relative to your repository build path.</span
+				>
 			</div>
 		{:else if buildType === 'nixpacks'}
-			<div class="p-3.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 text-xs text-[var(--text-secondary)] leading-relaxed">
-				Nixpacks automatically detects your project language (Node.js, Go, Python, Rust, PHP, Ruby) and generates an optimized container image without needing a Dockerfile.
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 p-3.5 text-xs leading-relaxed text-[var(--text-secondary)]"
+			>
+				Nixpacks automatically detects your project language (Node.js, Go, Python, Rust, PHP, Ruby)
+				and generates an optimized container image without needing a Dockerfile.
 			</div>
 		{:else}
 			<div class="flex flex-col gap-1.5">
-				<label for="bld-publish-dir" class="text-xs font-medium text-[var(--text-secondary)]">Publish Directory</label>
+				<label for="bld-publish-dir" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Publish Directory</label
+				>
 				<Input
 					id="bld-publish-dir"
 					bind:value={publishDir}
@@ -116,14 +130,14 @@
 	</div>
 
 	<!-- Explicit Card Footer -->
-	<div class="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-end gap-2">
+	<div
+		class="flex items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3"
+	>
 		{#if saveStatus === 'saved'}
-			<span class="text-xs text-[var(--status-green)] flex items-center gap-1 mr-2">
+			<span class="mr-2 flex items-center gap-1 text-xs text-[var(--status-green)]">
 				<Check size={14} /> Saved
 			</span>
 		{/if}
-		<Button variant="primary" size="sm" onclick={handleSave}>
-			Save Build Settings
-		</Button>
+		<Button variant="primary" size="sm" onclick={handleSave}>Save Build Settings</Button>
 	</div>
 </div>

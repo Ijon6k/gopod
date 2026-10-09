@@ -8,12 +8,7 @@ import type {
 	Service,
 	Deployment,
 	Container,
-	Pod,
-	Image,
-	Volume,
-	Network,
 	Domain,
-	Server,
 	TimeSeriesPoint,
 	AuditLog
 } from '$lib/types';

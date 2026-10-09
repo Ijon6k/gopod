@@ -5,18 +5,13 @@
 	import { PageHeader, Tabs, DataTable, StatusBadge } from '$lib/components/ui';
 	import { dataStore } from '$lib/stores/data.svelte';
 
-	let tabParam = $derived(page.params.tab ?? 'containers');
-	let activeTab = $state('containers');
+	let activeTab = $derived(page.params.tab ?? 'containers');
 
 	let containers = $derived(dataStore.containers);
 	let pods = $derived(dataStore.pods);
 	let images = $derived(dataStore.images);
 	let volumes = $derived(dataStore.volumes);
 	let networks = $derived(dataStore.networks);
-
-	$effect(() => {
-		activeTab = tabParam;
-	});
 
 	onMount(() => {
 		dataStore.fetchRuntimeData();
@@ -48,7 +43,7 @@
 	<title>Runtime — GOPOD</title>
 </svelte:head>
 
-<div class="w-full flex flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
 	<PageHeader title="Runtime" subtitle="Containers, pods, images, volumes, and networks." />
 	<Tabs {tabs} bind:active={activeTab} onchange={onTabChange} />
 
@@ -117,29 +112,31 @@
 	{/if}
 </div>
 
-{#snippet containerStatusSnippet(row: typeof containers[0])}
+{#snippet containerStatusSnippet(row: (typeof containers)[0])}
 	<StatusBadge status={row.status} size="md" />
 {/snippet}
-{#snippet containerPortsSnippet(row: typeof containers[0])}
+{#snippet containerPortsSnippet(row: (typeof containers)[0])}
 	{@const portList = parsePorts(row.ports)}
 	{#if portList.length > 0}
 		<div class="flex flex-col gap-1 py-0.5">
-			{#each portList as port}
-				<span class="font-[var(--font-mono)] text-base text-[var(--text-primary)] leading-tight whitespace-nowrap">
+			{#each portList as port (port)}
+				<span
+					class="text-base leading-tight font-[var(--font-mono)] whitespace-nowrap text-[var(--text-primary)]"
+				>
 					{port}
 				</span>
 			{/each}
 		</div>
 	{:else}
-		<span class="text-[var(--text-tertiary)] text-base">—</span>
+		<span class="text-base text-[var(--text-tertiary)]">—</span>
 	{/if}
 {/snippet}
-{#snippet podStatusSnippet(row: typeof pods[0])}
+{#snippet podStatusSnippet(row: (typeof pods)[0])}
 	<StatusBadge status={row.status} size="md" />
 {/snippet}
-{#snippet podContainersSnippet(row: typeof pods[0])}
+{#snippet podContainersSnippet(row: (typeof pods)[0])}
 	<span>{row.containers.length}</span>
 {/snippet}
-{#snippet volumeStatusSnippet(row: typeof volumes[0])}
+{#snippet volumeStatusSnippet(row: (typeof volumes)[0])}
 	<StatusBadge status={row.status} size="md" />
 {/snippet}

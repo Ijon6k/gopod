@@ -50,11 +50,14 @@
 
 	let steps = $derived(deployment ? getDeploymentSteps(deployment) : []);
 	let logs = $derived.by(() => {
-		const source = fetchedLogs.length > 0
-			? fetchedLogs
-			: deployment?.logs && deployment.logs.length > 0
-				? deployment.logs
-				: deployment ? getDeploymentLogs(deployment) : [];
+		const source =
+			fetchedLogs.length > 0
+				? fetchedLogs
+				: deployment?.logs && deployment.logs.length > 0
+					? deployment.logs
+					: deployment
+						? getDeploymentLogs(deployment)
+						: [];
 		return source.map(sanitizeLogLine);
 	});
 
@@ -71,7 +74,8 @@
 			isLogsLoading = true;
 
 			// Fetch stored log file
-			api.services.deploymentLogs(depId)
+			api.services
+				.deploymentLogs(depId)
 				.then((res) => {
 					if (!isSubscribed) return;
 					if (res?.logs) {
@@ -167,46 +171,53 @@
 {#if open && deployment}
 	<!-- Modal Backdrop -->
 	<div
-		class="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-5 bg-[rgba(5,6,7,0.82)] backdrop-blur-[3px]"
+		class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(5,6,7,0.82)] p-3 backdrop-blur-[3px] sm:p-5"
 		role="dialog"
 		aria-modal="true"
 	>
 		<div
-			class="w-full max-w-[880px] h-[88vh] max-h-[860px] flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] overflow-hidden animate-in fade-in zoom-in-95 duration-150"
+			class="animate-in fade-in zoom-in-95 flex h-[88vh] max-h-[860px] w-full max-w-[880px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] duration-150"
 		>
 			<!-- Top Modal Header -->
-			<div class="flex items-center justify-between px-5 py-3.5 border-b border-[var(--border)] bg-[var(--bg-panel)] shrink-0">
-				<div class="flex items-center gap-3 min-w-0">
+			<div
+				class="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3.5"
+			>
+				<div class="flex min-w-0 items-center gap-3">
 					<div class="flex items-center gap-2">
-						<span class="text-sm font-semibold font-[var(--font-mono)] text-[var(--text-primary)]">
+						<span class="text-sm font-[var(--font-mono)] font-semibold text-[var(--text-primary)]">
 							#{deployment.number}
 						</span>
 						<StatusBadge status={deployment.status} size="sm" />
 					</div>
 
-					<span class="text-[var(--border)] hidden sm:inline">•</span>
+					<span class="hidden text-[var(--border)] sm:inline">•</span>
 
-					<div class="flex items-center gap-2 min-w-0">
-						<span class="text-xs font-medium text-[var(--text-secondary)] truncate max-w-[280px]" title={deployment.commitMessage}>
+					<div class="flex min-w-0 items-center gap-2">
+						<span
+							class="max-w-[280px] truncate text-xs font-medium text-[var(--text-secondary)]"
+							title={deployment.commitMessage}
+						>
 							{deployment.commitMessage}
 						</span>
 						{#if deployment.commit && deployment.commit !== '—'}
-							<span class="font-[var(--font-mono)] text-[10.5px] text-[var(--text-tertiary)] bg-[var(--bg-surface)] px-1.5 py-0.5 rounded border border-[var(--border)]">
+							<span
+								class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10.5px] font-[var(--font-mono)] text-[var(--text-tertiary)]"
+							>
 								{deployment.commit.substring(0, 7)}
 							</span>
 						{/if}
 					</div>
 				</div>
 
-				<div class="flex items-center gap-2 shrink-0">
-					<span class="text-xs text-[var(--text-tertiary)] hidden sm:inline tabular-nums">
+				<div class="flex shrink-0 items-center gap-2">
+					<span class="hidden text-xs text-[var(--text-tertiary)] tabular-nums sm:inline">
 						Duration: {deployment.duration}
 					</span>
 
 					<button
 						type="button"
 						onclick={onclose}
-						class="p-1 rounded-[var(--radius-sm)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer border-0 bg-transparent"
+						class="cursor-pointer rounded-[var(--radius-sm)] border-0 bg-transparent p-1 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
 						aria-label="Close logs dialog"
 					>
 						<X size={18} />
@@ -215,16 +226,19 @@
 			</div>
 
 			<!-- Pipeline Stages Stepper (Dokploy & Coolify UX) -->
-			<div class="px-5 py-3 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0">
+			<div class="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-3">
 				<div class="flex flex-col gap-1.5">
-					<span class="text-[10px] uppercase tracking-wider font-semibold text-[var(--text-tertiary)]">
+					<span
+						class="text-[10px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
+					>
 						Deployment Pipeline
 					</span>
 
-					<div class="grid grid-cols-1 sm:grid-cols-5 gap-2">
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-5">
 						{#each steps as step, i}
 							<div
-								class="flex items-center gap-2 p-2 rounded-[var(--radius-sm)] border text-xs {step.status === 'success'
+								class="flex items-center gap-2 rounded-[var(--radius-sm)] border p-2 text-xs {step.status ===
+								'success'
 									? 'border-[rgba(76,154,114,0.25)] bg-[rgba(76,154,114,0.06)] text-[var(--text-primary)]'
 									: step.status === 'running'
 										? 'border-[rgba(105,115,168,0.35)] bg-[rgba(105,115,168,0.08)] text-[var(--text-primary)]'
@@ -234,17 +248,17 @@
 							>
 								<!-- Icon based on status -->
 								{#if step.status === 'success'}
-									<CheckCircle size={14} class="text-[var(--status-green)] shrink-0" />
+									<CheckCircle size={14} class="shrink-0 text-[var(--status-green)]" />
 								{:else if step.status === 'running'}
-									<CircleNotch size={14} class="text-[var(--accent)] animate-spin shrink-0" />
+									<CircleNotch size={14} class="shrink-0 animate-spin text-[var(--accent)]" />
 								{:else if step.status === 'failed'}
-									<XCircle size={14} class="text-[var(--status-red)] shrink-0" />
+									<XCircle size={14} class="shrink-0 text-[var(--status-red)]" />
 								{:else}
-									<Clock size={14} class="text-[var(--text-tertiary)] shrink-0 opacity-60" />
+									<Clock size={14} class="shrink-0 text-[var(--text-tertiary)] opacity-60" />
 								{/if}
 
-								<div class="flex flex-col min-w-0 flex-1 leading-tight">
-									<span class="text-[11px] truncate font-medium">
+								<div class="flex min-w-0 flex-1 flex-col leading-tight">
+									<span class="truncate text-[11px] font-medium">
 										{step.name}
 									</span>
 									{#if step.duration}
@@ -260,7 +274,9 @@
 			</div>
 
 			<!-- Terminal Logs Toolbar -->
-			<div class="flex flex-wrap items-center justify-between gap-3 px-5 py-2.5 border-b border-[var(--border)] bg-[var(--bg-panel)] shrink-0 text-xs">
+			<div
+				class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-panel)] px-5 py-2.5 text-xs"
+			>
 				<!-- Search Filter -->
 				<SearchInput
 					bind:value={searchQuery}
@@ -270,11 +286,13 @@
 
 				<!-- Actions: AutoScroll, Copy, Download -->
 				<div class="flex items-center gap-2 text-xs">
-					<label class="flex items-center gap-1.5 text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer select-none">
+					<label
+						class="flex cursor-pointer items-center gap-1.5 text-[var(--text-secondary)] select-none hover:text-[var(--text-primary)]"
+					>
 						<input
 							type="checkbox"
 							bind:checked={autoScroll}
-							class="rounded border-[var(--border)] text-[var(--accent)] accent-[var(--accent)] cursor-pointer"
+							class="cursor-pointer rounded border-[var(--border)] text-[var(--accent)] accent-[var(--accent)]"
 						/>
 						<span class="text-[11px]">Auto-scroll</span>
 					</label>
@@ -301,26 +319,33 @@
 			<!-- Terminal Logs Canvas -->
 			<div
 				bind:this={logContainer}
-				class="flex-1 min-h-0 overflow-y-auto p-4 bg-[var(--bg-terminal)] font-[var(--font-mono)] text-[12px] leading-[20px] select-text selection:bg-[rgba(105,115,168,0.3)]"
+				class="min-h-0 flex-1 overflow-y-auto bg-[var(--bg-terminal)] p-4 text-[12px] leading-[20px] font-[var(--font-mono)] select-text selection:bg-[rgba(105,115,168,0.3)]"
 			>
 				{#if filteredLogs.length === 0}
-					<div class="py-12 text-center text-xs text-[var(--text-tertiary)] font-[var(--font-sans)]">
+					<div
+						class="py-12 text-center text-xs font-[var(--font-sans)] text-[var(--text-tertiary)]"
+					>
 						No log lines matching "{searchQuery}".
 					</div>
 				{:else}
 					<div class="flex flex-col">
 						{#each filteredLogs as line, idx}
-							{@const isErr = line.includes('[error]') || line.includes('FAILED') || line.includes('SIGTERM')}
+							{@const isErr =
+								line.includes('[error]') || line.includes('FAILED') || line.includes('SIGTERM')}
 							{@const isSuccess = line.includes('successfully') || line.includes('HTTP 200 OK')}
 							{@const isHealth = line.includes('[healthcheck]')}
 							{@const isPodman = line.includes('[podman]')}
 							{@const isSystemd = line.includes('[systemd]')}
-							<div class="flex items-start gap-3 hover:bg-[rgba(255,255,255,0.02)] px-1.5 py-0.5 rounded transition-colors group">
-								<span class="text-[11px] text-[var(--text-tertiary)] select-none opacity-40 group-hover:opacity-75 min-w-[26px] text-right">
+							<div
+								class="group flex items-start gap-3 rounded px-1.5 py-0.5 transition-colors hover:bg-[rgba(255,255,255,0.02)]"
+							>
+								<span
+									class="min-w-[26px] text-right text-[11px] text-[var(--text-tertiary)] opacity-40 select-none group-hover:opacity-75"
+								>
 									{idx + 1}
 								</span>
 								<span
-									class="flex-1 whitespace-pre-wrap break-all {isErr
+									class="flex-1 break-all whitespace-pre-wrap {isErr
 										? 'text-[var(--status-red)]'
 										: isSuccess
 											? 'text-[var(--status-green)]'
@@ -341,15 +366,21 @@
 			</div>
 
 			<!-- Modal Footer -->
-			<div class="px-5 py-2.5 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-between shrink-0 text-[11px] text-[var(--text-tertiary)]">
+			<div
+				class="flex shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-2.5 text-[11px] text-[var(--text-tertiary)]"
+			>
 				<div class="flex items-center gap-2">
-					<span class="w-1.5 h-1.5 rounded-full {deployment.status === 'running' ? 'bg-[var(--status-green)]' : deployment.status === 'failed' ? 'bg-[var(--status-red)]' : 'bg-[var(--accent)]'}"></span>
+					<span
+						class="h-1.5 w-1.5 rounded-full {deployment.status === 'running'
+							? 'bg-[var(--status-green)]'
+							: deployment.status === 'failed'
+								? 'bg-[var(--status-red)]'
+								: 'bg-[var(--accent)]'}"
+					></span>
 					<span>Stream finished • {logs.length} lines captured</span>
 				</div>
 
-				<Button variant="secondary" size="sm" onclick={onclose} class="h-7 text-xs">
-					Close
-				</Button>
+				<Button variant="secondary" size="sm" onclick={onclose} class="h-7 text-xs">Close</Button>
 			</div>
 		</div>
 	</div>

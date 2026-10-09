@@ -8,16 +8,13 @@
 		children: import('svelte').Snippet;
 	}
 
-	let {
-		variant = 'default',
-		size = 'sm',
-		class: className = '',
-		children
-	}: Props = $props();
+	let { variant = 'default', size = 'sm', class: className = '', children }: Props = $props();
 
 	const variants = {
-		default: 'bg-[rgba(255,255,255,0.035)] text-[var(--text-secondary)] border-[var(--border-subtle)]',
-		accent: 'bg-[rgba(105,115,168,0.10)] text-[var(--text-primary)] border-[rgba(105,115,168,0.22)]',
+		default:
+			'bg-[rgba(255,255,255,0.035)] text-[var(--text-secondary)] border-[var(--border-subtle)]',
+		accent:
+			'bg-[rgba(105,115,168,0.10)] text-[var(--text-primary)] border-[rgba(105,115,168,0.22)]',
 		mono: 'bg-[rgba(255,255,255,0.025)] text-[var(--text-tertiary)] border-[var(--border-subtle)] font-[var(--font-mono)]'
 	};
 
@@ -29,7 +26,7 @@
 
 <span
 	class={cn(
-		'inline-flex items-center gap-1 font-normal border rounded-[var(--radius-sm)] select-none tracking-normal whitespace-nowrap',
+		'inline-flex items-center gap-1 rounded-[var(--radius-sm)] border font-normal tracking-normal whitespace-nowrap select-none',
 		variants[variant],
 		sizes[size],
 		className

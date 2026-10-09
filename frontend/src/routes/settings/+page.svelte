@@ -20,7 +20,7 @@
 	<title>Settings — GOPOD</title>
 </svelte:head>
 
-<div class="w-full max-w-[800px] flex flex-col gap-6">
+<div class="flex w-full max-w-[800px] flex-col gap-6">
 	<PageHeader title="Settings" subtitle="Configure your GOPOD instance." />
 	<Tabs {tabs} bind:active={activeTab} />
 
@@ -28,15 +28,15 @@
 		<div class="flex flex-col gap-6">
 			<!-- Theme Appearance -->
 			<div class="flex flex-col gap-2">
-				<span class="text-xs text-[var(--text-secondary)] font-medium">Theme Appearance</span>
-				<div class="grid grid-cols-2 gap-3 max-w-[320px]">
+				<span class="text-xs font-medium text-[var(--text-secondary)]">Theme Appearance</span>
+				<div class="grid max-w-[320px] grid-cols-2 gap-3">
 					<button
 						type="button"
 						onclick={() => ui.setTheme('dark')}
 						class={cn(
-							'flex items-center justify-center gap-2 px-3 py-2.5 rounded-[var(--radius-sm)] border cursor-pointer font-[var(--font-sans)] text-base transition-colors',
+							'flex cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-sm)] border px-3 py-2.5 text-base font-[var(--font-sans)] transition-colors',
 							ui.theme === 'dark'
-								? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--text-primary)] font-medium'
+								? 'border-[var(--accent)] bg-[var(--accent-muted)] font-medium text-[var(--text-primary)]'
 								: 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
 						)}
 					>
@@ -46,9 +46,9 @@
 						type="button"
 						onclick={() => ui.setTheme('light')}
 						class={cn(
-							'flex items-center justify-center gap-2 px-3 py-2.5 rounded-[var(--radius-sm)] border cursor-pointer font-[var(--font-sans)] text-base transition-colors',
+							'flex cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-sm)] border px-3 py-2.5 text-base font-[var(--font-sans)] transition-colors',
 							ui.theme === 'light'
-								? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--text-primary)] font-medium'
+								? 'border-[var(--accent)] bg-[var(--accent-muted)] font-medium text-[var(--text-primary)]'
 								: 'border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'
 						)}
 					>
@@ -58,22 +58,34 @@
 			</div>
 
 			<div class="flex flex-col gap-2">
-				<label for="setting-hostname" class="text-xs text-[var(--text-secondary)] font-medium">Hostname</label>
-				<div class="px-3 py-2.5 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
+				<label for="setting-hostname" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Hostname</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 focus-within:border-[var(--accent)]"
+				>
 					<Input id="setting-hostname" bind:value={hostname} />
 				</div>
 			</div>
 
 			<div class="flex flex-col gap-2">
-				<label for="setting-ip" class="text-xs text-[var(--text-secondary)] font-medium">Server IP</label>
-				<div class="px-3 py-2.5 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] opacity-60">
+				<label for="setting-ip" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Server IP</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 opacity-60"
+				>
 					<Input id="setting-ip" value={server.ip} disabled />
 				</div>
 			</div>
 
 			<div class="flex flex-col gap-2">
-				<label for="setting-os" class="text-xs text-[var(--text-secondary)] font-medium">Operating System</label>
-				<div class="px-3 py-2.5 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] opacity-60">
+				<label for="setting-os" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Operating System</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 opacity-60"
+				>
 					<Input id="setting-os" value={server.os} disabled />
 				</div>
 			</div>
@@ -83,11 +95,11 @@
 			</div>
 		</div>
 	{:else if activeTab === 'security'}
-		<div class="text-[var(--text-tertiary)] py-12 text-center text-xs">
+		<div class="py-12 text-center text-xs text-[var(--text-tertiary)]">
 			Security settings coming soon.
 		</div>
 	{:else}
-		<div class="text-[var(--text-tertiary)] py-12 text-center text-xs">
+		<div class="py-12 text-center text-xs text-[var(--text-tertiary)]">
 			Notification preferences coming soon.
 		</div>
 	{/if}

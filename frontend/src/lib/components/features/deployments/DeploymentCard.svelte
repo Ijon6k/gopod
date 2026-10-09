@@ -51,34 +51,34 @@
 		}
 	}
 
-	const isBuilding = $derived(deployment.status === 'deploying' || deployment.status === 'building');
+	const isBuilding = $derived(
+		deployment.status === 'deploying' || deployment.status === 'building'
+	);
 </script>
 
 <div
-	class="group relative w-full p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] transition-all flex flex-col md:flex-row md:items-center justify-between gap-4"
+	class="group relative flex w-full flex-col justify-between gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-4 transition-all hover:bg-[var(--bg-hover)] md:flex-row md:items-center"
 >
 	<!-- Left / Main: Status, Commit Info, Branch, Trigger -->
-	<div class="flex items-start gap-3.5 min-w-0 flex-1">
+	<div class="flex min-w-0 flex-1 items-start gap-3.5">
 		<!-- Status Indicator Icon -->
-		<div class="mt-0.5 shrink-0 flex items-center justify-center">
+		<div class="mt-0.5 flex shrink-0 items-center justify-center">
 			<StatusBadge status={deployment.status} size="sm" />
 		</div>
 
-		<div class="flex flex-col gap-1.5 min-w-0 flex-1">
+		<div class="flex min-w-0 flex-1 flex-col gap-1.5">
 			<!-- Row 1: Number, Current live badge, Commit message -->
-			<div class="flex items-center flex-wrap gap-2">
-				<span class="text-xs font-semibold font-[var(--font-mono)] text-[var(--text-primary)]">
+			<div class="flex flex-wrap items-center gap-2">
+				<span class="text-xs font-[var(--font-mono)] font-semibold text-[var(--text-primary)]">
 					#{deployment.number}
 				</span>
 
 				{#if isCurrent}
-					<Chip variant="accent" size="sm" class="font-medium text-[10px]">
-						Live
-					</Chip>
+					<Chip variant="accent" size="sm" class="text-[10px] font-medium">Live</Chip>
 				{/if}
 
 				<span
-					class="text-xs font-medium text-[var(--text-primary)] truncate max-w-[420px]"
+					class="max-w-[420px] truncate text-xs font-medium text-[var(--text-primary)]"
 					title={deployment.commitMessage}
 				>
 					{deployment.commitMessage}
@@ -86,12 +86,12 @@
 			</div>
 
 			<!-- Row 2: Commit SHA, Branch, Trigger, Author -->
-			<div class="flex items-center flex-wrap gap-2 text-[11px] text-[var(--text-tertiary)]">
+			<div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
 				{#if deployment.commit && deployment.commit !== '—' && deployment.commit.trim() !== ''}
 					<button
 						type="button"
 						onclick={copyCommit}
-						class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-panel)] border border-[var(--border)] font-[var(--font-mono)] text-[10.5px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer"
+						class="inline-flex cursor-pointer items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10.5px] font-[var(--font-mono)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)]"
 						title="Copy commit hash"
 					>
 						<GitCommit size={11} />
@@ -105,7 +105,9 @@
 				{/if}
 
 				{#if deployment.branch && deployment.branch !== '—' && deployment.branch.trim() !== ''}
-					<span class="inline-flex items-center gap-1 font-[var(--font-mono)] text-[var(--text-secondary)]">
+					<span
+						class="inline-flex items-center gap-1 font-[var(--font-mono)] text-[var(--text-secondary)]"
+					>
 						<GitBranch size={11} class="text-[var(--text-tertiary)]" />
 						{deployment.branch}
 					</span>
@@ -147,18 +149,27 @@
 	</div>
 
 	<!-- Middle: Image Tag & Duration/Timestamp -->
-	<div class="flex items-center flex-wrap sm:flex-nowrap gap-4 md:gap-6 text-xs text-[var(--text-secondary)] shrink-0 pl-7 md:pl-0">
+	<div
+		class="flex shrink-0 flex-wrap items-center gap-4 pl-7 text-xs text-[var(--text-secondary)] sm:flex-nowrap md:gap-6 md:pl-0"
+	>
 		<!-- Version or Image Pill -->
 		<div class="flex flex-col gap-0.5">
-			<span class="text-[10.5px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium">Artifact</span>
-			<span class="font-[var(--font-mono)] text-[11.5px] text-[var(--text-primary)] bg-[var(--bg-surface)] px-2 py-0.5 rounded border border-[var(--border-subtle)] truncate max-w-[190px]" title={deployment.version}>
+			<span class="text-[10.5px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+				>Artifact</span
+			>
+			<span
+				class="max-w-[190px] truncate rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11.5px] font-[var(--font-mono)] text-[var(--text-primary)]"
+				title={deployment.version}
+			>
 				{deployment.version}
 			</span>
 		</div>
 
 		<!-- Duration & Time -->
-		<div class="flex flex-col gap-0.5 min-w-[90px]">
-			<span class="text-[10.5px] text-[var(--text-tertiary)] uppercase tracking-wider font-medium">Timing</span>
+		<div class="flex min-w-[90px] flex-col gap-0.5">
+			<span class="text-[10.5px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
+				>Timing</span
+			>
 			<div class="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
 				<span class="inline-flex items-center gap-1" title="Execution duration">
 					<Timer size={11} class="text-[var(--text-tertiary)]" />
@@ -174,7 +185,9 @@
 	</div>
 
 	<!-- Right: Actions -->
-	<div class="flex items-center gap-2 shrink-0 pl-7 md:pl-0 border-t md:border-t-0 pt-3 md:pt-0 border-[var(--border-subtle)]">
+	<div
+		class="flex shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] pt-3 pl-7 md:border-t-0 md:pt-0 md:pl-0"
+	>
 		<!-- View Logs Button (Dokploy / Coolify style) -->
 		<Button
 			variant="secondary"
@@ -221,7 +234,7 @@
 		<button
 			type="button"
 			onclick={() => onDelete(deployment)}
-			class="p-2 rounded-[var(--radius-sm)] text-[var(--text-tertiary)] hover:text-[var(--status-red)] hover:bg-[var(--bg-surface)] transition-colors cursor-pointer border-0 bg-transparent"
+			class="cursor-pointer rounded-[var(--radius-sm)] border-0 bg-transparent p-2 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--status-red)]"
 			title="Delete deployment record"
 			aria-label="Delete deployment"
 		>

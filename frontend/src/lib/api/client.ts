@@ -43,8 +43,11 @@ apiClient.interceptors.response.use(
 			error.response?.data?.message ||
 			error.message ||
 			'An unexpected API error occurred';
-		
-		console.warn(`[API] ${error.config?.method?.toUpperCase()} ${error.config?.url} failed (${error.response?.status}):`, errorMessage);
+
+		console.warn(
+			`[API] ${error.config?.method?.toUpperCase()} ${error.config?.url} failed (${error.response?.status}):`,
+			errorMessage
+		);
 		return Promise.reject(new ApiError(errorMessage, error.response?.status, error.response?.data));
 	}
 );

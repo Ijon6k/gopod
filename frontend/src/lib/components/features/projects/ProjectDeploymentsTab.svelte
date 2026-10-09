@@ -17,7 +17,7 @@
 
 <section class="flex flex-col gap-3">
 	<div class="flex items-center justify-between">
-		<h2 class="text-sm font-medium text-[var(--text-primary)] m-0">{title}</h2>
+		<h2 class="m-0 text-sm font-medium text-[var(--text-primary)]">{title}</h2>
 		<span class="text-xs text-[var(--text-tertiary)] tabular-nums">{deployments.length} total</span>
 	</div>
 

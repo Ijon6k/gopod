@@ -25,7 +25,14 @@
 	let lastResolvedServiceId = '';
 
 	let service = $derived(directService ?? (serviceId ? getServiceById(serviceId) : undefined));
-	let project = $derived(directProject ?? (projectId ? getProjectById(projectId) : (service ? getProjectById(service.projectId) : undefined)));
+	let project = $derived(
+		directProject ??
+			(projectId
+				? getProjectById(projectId)
+				: service
+					? getProjectById(service.projectId)
+					: undefined)
+	);
 
 	$effect(() => {
 		const sId = serviceId;
@@ -40,7 +47,11 @@
 
 			async function resolveData() {
 				const storeSvc = getServiceById(sId);
-				const storeProj = pId ? getProjectById(pId) : (storeSvc ? getProjectById(storeSvc.projectId) : undefined);
+				const storeProj = pId
+					? getProjectById(pId)
+					: storeSvc
+						? getProjectById(storeSvc.projectId)
+						: undefined;
 
 				if (storeSvc && storeProj) {
 					directService = storeSvc;
@@ -53,7 +64,11 @@
 				try {
 					const [fetchedSvc, fetchedProj] = await Promise.all([
 						api.services.get(sId).catch(() => null),
-						storeProj ? Promise.resolve(storeProj) : (pId ? api.projects.get(pId).catch(() => null) : null)
+						storeProj
+							? Promise.resolve(storeProj)
+							: pId
+								? api.projects.get(pId).catch(() => null)
+								: null
 					]);
 
 					if (!active) return;
@@ -109,9 +124,9 @@
 								};
 								directProject = fullProj;
 							}
-						} catch (_) {}
+						} catch {}
 					}
-				} catch (_) {
+				} catch {
 					// Silently handle error
 				} finally {
 					if (active) isLoading = false;
@@ -143,7 +158,7 @@
 				if (idx >= 0 && dataStore.services[idx].status !== freshSvc.status) {
 					dataStore.services[idx].status = freshSvc.status;
 				}
-			} catch (_) {}
+			} catch {}
 		};
 
 		const isTransitional = service?.status === 'deploying' || service?.status === 'building';
@@ -171,7 +186,7 @@
 		if (!service) return;
 		try {
 			await dataStore.deployService(service.id, 'manual');
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error('[GOPOD] Deployment trigger error:', err);
 		}
 	}
@@ -182,12 +197,12 @@
 </svelte:head>
 
 {#if isLoading && !service}
-	<div class="flex flex-col items-center justify-center py-24 gap-3 text-[var(--text-tertiary)]">
+	<div class="flex flex-col items-center justify-center gap-3 py-24 text-[var(--text-tertiary)]">
 		<SpinnerGap size={24} class="animate-spin text-[var(--accent)]" />
 		<span class="text-xs">Loading service…</span>
 	</div>
 {:else if service && project}
-	<div class="w-full flex flex-col gap-6">
+	<div class="flex w-full flex-col gap-6">
 		<!-- Compact Operational Header -->
 		<ServiceHeader
 			{service}
@@ -201,7 +216,7 @@
 			<Tabs {tabs} bind:active={activeTab} />
 
 			{#if activeTab === 'terminal'}
-				<span class="text-xs text-[var(--accent)] font-medium font-[var(--font-mono)] pb-2 pr-1">
+				<span class="pr-1 pb-2 text-xs font-[var(--font-mono)] font-medium text-[var(--accent)]">
 					[Terminal Session]
 				</span>
 			{/if}
@@ -234,8 +249,12 @@
 		</div>
 	</div>
 {:else}
-	<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-12 text-center flex flex-col items-center justify-center gap-2">
+	<div
+		class="flex flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-12 text-center"
+	>
 		<span class="text-sm font-medium text-[var(--text-primary)]">Service not found</span>
-		<p class="text-xs text-[var(--text-secondary)]">The requested service could not be loaded or does not exist.</p>
+		<p class="text-xs text-[var(--text-secondary)]">
+			The requested service could not be loaded or does not exist.
+		</p>
 	</div>
 {/if}

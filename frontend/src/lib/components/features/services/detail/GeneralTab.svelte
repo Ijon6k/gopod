@@ -28,13 +28,9 @@
 	}
 </script>
 
-<div class="w-full flex flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
 	<!-- 1. Dokploy-style Operational Action Bar at top of General tab -->
-	<DeploySettingsCard
-		{service}
-		{onTerminalClick}
-		{onRedeploy}
-	/>
+	<DeploySettingsCard {service} {onTerminalClick} {onRedeploy} />
 
 	<!-- 2. Main Workload Body depending on Type -->
 	{#if service.type === 'quadlet'}
@@ -61,7 +57,4 @@
 </div>
 
 <!-- Modal to add SSH key or Registry in-context without leaving page -->
-<AddCredentialModal
-	bind:open={credentialModalOpen}
-	initialTab={credentialInitialTab}
-/>
+<AddCredentialModal bind:open={credentialModalOpen} initialTab={credentialInitialTab} />

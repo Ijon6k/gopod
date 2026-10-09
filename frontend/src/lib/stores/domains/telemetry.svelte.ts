@@ -1,4 +1,4 @@
-import type { Server, CaddyAccessLog, Container, TimeSeriesPoint } from '$lib/types';
+import type { Server, CaddyAccessLog, TimeSeriesPoint } from '$lib/types';
 import { api } from '$lib/api';
 
 function initSeries(baseVal: number, count = 20): TimeSeriesPoint[] {
@@ -96,7 +96,7 @@ export class TelemetryDomainStore {
 							onStats(data.stats);
 						}
 					}
-				} catch (e) {
+				} catch {
 					// Ignore parse error
 				}
 			};
@@ -104,7 +104,7 @@ export class TelemetryDomainStore {
 			this.sseSource.onerror = () => {
 				// Reconnects automatically
 			};
-		} catch (e) {
+		} catch {
 			this.fetchLiveStats();
 		}
 	}
@@ -157,7 +157,7 @@ export class TelemetryDomainStore {
 				this.applySystemUpdate(sys);
 			}
 			return stats;
-		} catch (e) {
+		} catch {
 			return null;
 		}
 	}

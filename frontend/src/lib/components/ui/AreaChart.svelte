@@ -26,9 +26,7 @@
 	let viewBox = $derived(`0 0 ${data.length > 0 ? data.length - 1 : 1} ${height}`);
 
 	let maxVal = $derived(
-		maxValue !== undefined && maxValue > 0
-			? maxValue
-			: Math.max(...data.map((d) => d.value), 1)
+		maxValue !== undefined && maxValue > 0 ? maxValue : Math.max(...data.map((d) => d.value), 1)
 	);
 
 	let points = $derived(
@@ -72,13 +70,7 @@
 </script>
 
 <div class={cn('w-full', className)} style="height: {height}px">
-	<svg
-		width="100%"
-		height="100%"
-		viewBox={viewBox}
-		preserveAspectRatio="none"
-		class="overflow-visible"
-	>
+	<svg width="100%" height="100%" {viewBox} preserveAspectRatio="none" class="overflow-visible">
 		<defs>
 			<linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
 				<stop offset="0%" stop-color={fillColor} stop-opacity="0.14" />
@@ -86,9 +78,38 @@
 			</linearGradient>
 		</defs>
 		{#if showGrid}
-			<line x1="0" y1="8" x2={data.length > 0 ? data.length - 1 : 1} y2="8" stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3" vector-effect="non-scaling-stroke" opacity="0.5" />
-			<line x1="0" y1={height / 2} x2={data.length > 0 ? data.length - 1 : 1} y2={height / 2} stroke="var(--border)" stroke-width="1" stroke-dasharray="3,3" vector-effect="non-scaling-stroke" opacity="0.3" />
-			<line x1="0" y1={height - 8} x2={data.length > 0 ? data.length - 1 : 1} y2={height - 8} stroke="var(--border)" stroke-width="1" vector-effect="non-scaling-stroke" opacity="0.5" />
+			<line
+				x1="0"
+				y1="8"
+				x2={data.length > 0 ? data.length - 1 : 1}
+				y2="8"
+				stroke="var(--border)"
+				stroke-width="1"
+				stroke-dasharray="3,3"
+				vector-effect="non-scaling-stroke"
+				opacity="0.5"
+			/>
+			<line
+				x1="0"
+				y1={height / 2}
+				x2={data.length > 0 ? data.length - 1 : 1}
+				y2={height / 2}
+				stroke="var(--border)"
+				stroke-width="1"
+				stroke-dasharray="3,3"
+				vector-effect="non-scaling-stroke"
+				opacity="0.3"
+			/>
+			<line
+				x1="0"
+				y1={height - 8}
+				x2={data.length > 0 ? data.length - 1 : 1}
+				y2={height - 8}
+				stroke="var(--border)"
+				stroke-width="1"
+				vector-effect="non-scaling-stroke"
+				opacity="0.5"
+			/>
 		{/if}
 		{#if areaPath}
 			<path d={areaPath} fill="url(#{gradientId})" />

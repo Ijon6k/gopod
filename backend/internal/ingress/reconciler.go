@@ -21,6 +21,7 @@ type Reconciler struct {
 	adminURL      string
 	caddyfilePath string
 	logFilePath   string
+	controlPort   string
 	httpClient    *http.Client
 }
 
@@ -59,11 +60,24 @@ func NewReconciler(adminURL, caddyfilePath string) *Reconciler {
 		logPath = filepath.Join(home, ".local", "share", "gopod", "logs", "access.log")
 	}
 
+	ctrlPort := os.Getenv("PORT")
+	if ctrlPort == "" {
+		ctrlPort = "8080"
+	}
+
 	return &Reconciler{
 		adminURL:      adminURL,
 		caddyfilePath: caddyfilePath,
 		logFilePath:   logPath,
+		controlPort:   ctrlPort,
 		httpClient:    &http.Client{Timeout: 5 * time.Second},
+	}
+}
+
+// SetControlPort sets the GOPOD dashboard/control plane port for reverse proxying.
+func (r *Reconciler) SetControlPort(port string) {
+	if port != "" {
+		r.controlPort = port
 	}
 }
 
@@ -118,7 +132,7 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 
 # Default Control Plane Dashboard Proxy
 :80 {
-    reverse_proxy 127.0.0.1:8085
+    reverse_proxy 127.0.0.1:` + r.controlPort + `
 }
 
 `)
@@ -131,6 +145,8 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 
 		b.WriteString(cleanHost + " {\n")
 
+		b.WriteString("    encode zstd gzip\n")
+
 		if d.CORS {
 			b.WriteString("    header Access-Control-Allow-Origin *\n")
 			b.WriteString("    header Access-Control-Allow-Methods \"GET, POST, PUT, DELETE, OPTIONS\"\n")
@@ -140,6 +156,8 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 		}
 		if !d.TLS {
 			b.WriteString("    tls off\n")
+		} else if strings.HasSuffix(cleanHost, ".localhost") || strings.HasSuffix(cleanHost, ".local") || strings.Contains(cleanHost, "127.0.0.1") {
+			b.WriteString("    tls internal\n")
 		}
 		if d.BasicAuth && d.BasicAuthUser != "" {
 			cleanUser := strings.Map(func(r rune) rune {
@@ -197,7 +215,7 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 	return b.String()
 }
 
-// ReadAccessLogs reads parsed JSON logs from disk.
+// ReadAccessLogs reads parsed JSON logs from disk returning the most recent entries.
 func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 	if limit <= 0 {
 		limit = 50
@@ -213,14 +231,25 @@ func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 	}
 	defer file.Close()
 
-	var logs []AccessLogItem
+	// Maintain circular buffer of the most recent lines
+	lines := make([]string, 0, limit)
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
-		line := scanner.Text()
-		if len(line) == 0 {
+		text := scanner.Text()
+		if len(text) == 0 {
 			continue
 		}
+		if len(lines) < limit {
+			lines = append(lines, text)
+		} else {
+			lines = append(lines[1:], text)
+		}
+	}
 
+	// Parse in reverse chronological order (newest first)
+	logs := make([]AccessLogItem, 0, len(lines))
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := lines[i]
 		var raw map[string]interface{}
 		if err := json.Unmarshal([]byte(line), &raw); err != nil {
 			continue
@@ -236,7 +265,7 @@ func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 		ts, _ := raw["ts"].(float64)
 
 		logTime := time.Unix(int64(ts), 0)
-		logs = append([]AccessLogItem{{
+		logs = append(logs, AccessLogItem{
 			ID:         fmt.Sprintf("log-%d", len(logs)+1),
 			Timestamp:  logTime.Format(time.RFC3339),
 			TimeAgo:    timeAgo(logTime),
@@ -248,16 +277,9 @@ func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 			DurationMs: duration * 1000,
 			BytesSent:  "1.2 KB",
 			Upstream:   "127.0.0.1",
-		}}, logs...)
-
-		if len(logs) >= limit {
-			break
-		}
+		})
 	}
 
-	if logs == nil {
-		return []AccessLogItem{}
-	}
 	return logs
 }
 

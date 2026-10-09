@@ -36,13 +36,11 @@
 
 {#snippet cardFooter()}
 	{#if saveStatus === 'saved'}
-		<span class="text-xs text-[var(--status-green)] flex items-center gap-1 mr-2">
+		<span class="mr-2 flex items-center gap-1 text-xs text-[var(--status-green)]">
 			<Check size={14} /> Saved
 		</span>
 	{/if}
-	<Button variant="primary" size="sm" onclick={handleSave}>
-		Save Triggers
-	</Button>
+	<Button variant="primary" size="sm" onclick={handleSave}>Save Triggers</Button>
 {/snippet}
 
 <SettingCard
@@ -53,30 +51,38 @@
 >
 	<div class="flex flex-col gap-1.5">
 		<div class="flex items-center justify-between">
-			<label for="trig-webhook-url" class="text-xs font-medium text-[var(--text-secondary)]">Webhook URL</label>
-			<CopyButton
-				text={webhookUrl}
-				label="Copy Webhook URL"
-				variant="inline"
-			/>
+			<label for="trig-webhook-url" class="text-xs font-medium text-[var(--text-secondary)]"
+				>Webhook URL</label
+			>
+			<CopyButton text={webhookUrl} label="Copy Webhook URL" variant="inline" />
 		</div>
 
-		<div class="p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] break-all select-all">
+		<div
+			class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-2.5 text-[11px] font-[var(--font-mono)] break-all text-[var(--text-secondary)] select-all"
+		>
 			{webhookUrl}
 		</div>
 		<span class="text-[11px] text-[var(--text-tertiary)]">
-			Paste this into GitHub / GitLab repository webhook settings (Content type: <code>application/json</code>, Event: Push).
+			Paste this into GitHub / GitLab repository webhook settings (Content type: <code
+				>application/json</code
+			>, Event: Push).
 		</span>
 	</div>
 
-	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-[var(--border-subtle)]">
-		<label class="flex items-center gap-2.5 text-xs text-[var(--text-secondary)] cursor-pointer">
-			<input type="checkbox" bind:checked={autoDeploy} class="accent-[var(--accent)] cursor-pointer" />
+	<div class="grid grid-cols-1 gap-4 border-t border-[var(--border-subtle)] pt-2 sm:grid-cols-2">
+		<label class="flex cursor-pointer items-center gap-2.5 text-xs text-[var(--text-secondary)]">
+			<input
+				type="checkbox"
+				bind:checked={autoDeploy}
+				class="cursor-pointer accent-[var(--accent)]"
+			/>
 			<span>Automatic deployment on git push</span>
 		</label>
 
 		<div class="flex flex-col gap-1">
-			<label for="trig-watch-paths" class="text-xs font-medium text-[var(--text-secondary)]">Watch Paths (Optional)</label>
+			<label for="trig-watch-paths" class="text-xs font-medium text-[var(--text-secondary)]"
+				>Watch Paths (Optional)</label
+			>
 			<Input
 				id="trig-watch-paths"
 				bind:value={watchPaths}

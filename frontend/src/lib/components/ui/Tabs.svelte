@@ -14,7 +14,13 @@
 		class?: string;
 	}
 
-	let { tabs, active = $bindable(), onchange, size = 'md', class: className = '' }: Props = $props();
+	let {
+		tabs,
+		active = $bindable(),
+		onchange,
+		size = 'md',
+		class: className = ''
+	}: Props = $props();
 
 	function select(tabId: string) {
 		active = tabId;
@@ -29,7 +35,7 @@
 			aria-selected={active === tab.id}
 			onclick={() => select(tab.id)}
 			class={cn(
-				'px-0 pb-[3px] border-0 border-b border-transparent bg-none cursor-pointer capitalize transition-colors',
+				'cursor-pointer border-0 border-b border-transparent bg-none px-0 pb-[3px] capitalize transition-colors',
 				size === 'sm' ? 'text-xs' : 'text-base',
 				'font-[var(--font-sans)] font-normal',
 				active === tab.id

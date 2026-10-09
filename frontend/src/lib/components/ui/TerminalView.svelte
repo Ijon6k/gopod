@@ -50,11 +50,13 @@
 	function sendResize() {
 		if (!term || !ws || ws.readyState !== WebSocket.OPEN) return;
 		try {
-			ws.send(JSON.stringify({
-				type: 'resize',
-				cols: term.cols,
-				rows: term.rows
-			}));
+			ws.send(
+				JSON.stringify({
+					type: 'resize',
+					cols: term.cols,
+					rows: term.rows
+				})
+			);
 		} catch (e) {
 			console.warn('[Terminal] Failed to send resize:', e);
 		}
@@ -94,20 +96,13 @@
 		}
 
 		const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('gopod_token') || '') : '';
+		const token =
+			typeof localStorage !== 'undefined' ? localStorage.getItem('gopod_token') || '' : '';
 		const cols = term ? term.cols : 80;
 		const rows = term ? term.rows : 24;
 
-		const params = new URLSearchParams({
-			cmd: activeShell,
-			cols: cols.toString(),
-			rows: rows.toString()
-		});
-		if (token) {
-			params.set('token', token);
-		}
-
-		const url = `${protocol}//${location.host}/api/containers/${encodeURIComponent(target)}/exec?${params.toString()}`;
+		const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+		const url = `${protocol}//${location.host}/api/containers/${encodeURIComponent(target)}/exec?cmd=${encodeURIComponent(activeShell)}&cols=${cols}&rows=${rows}${tokenParam}`;
 
 		try {
 			const socket = new WebSocket(url);
@@ -150,6 +145,11 @@
 	function initTerminal() {
 		if (!terminalContainer) return;
 
+		if (term) {
+			term.dispose();
+			term = null;
+		}
+		// eslint-disable-next-line svelte/no-dom-manipulating
 		terminalContainer.innerHTML = '';
 
 		term = new Terminal({
@@ -275,19 +275,23 @@
 	}
 </script>
 
-<div class="w-full flex flex-col gap-3 {className}">
+<div class="flex w-full flex-col gap-3 {className}">
 	<!-- Top Controls Toolbar (Dokploy Parity & Theme Aware) -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2 border-b border-[var(--border-subtle)]">
-		<div class="flex items-center gap-3 flex-wrap">
+	<div
+		class="flex flex-col justify-between gap-3 border-b border-[var(--border-subtle)] pb-2 sm:flex-row sm:items-center"
+	>
+		<div class="flex flex-wrap items-center gap-3">
 			<!-- Workload / Container Selector -->
 			{#if workloads.length > 1}
 				<div class="flex items-center gap-2">
-					<span class="text-xs text-[var(--text-tertiary)] font-medium">Container:</span>
-					<div class="px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)]">
+					<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
+					<div
+						class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1"
+					>
 						<select
 							value={selectedWorkload || workloads[0]?.name}
 							onchange={(e) => handleTargetChange((e.target as HTMLSelectElement).value)}
-							class="bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
+							class="cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
 						>
 							{#each workloads as w (w.name)}
 								<option value={w.name}>{w.name} {w.image ? `(${w.image})` : ''}</option>
@@ -298,23 +302,33 @@
 			{:else if title}
 				<div class="flex items-center gap-2">
 					<TerminalIcon size={15} class="text-[var(--text-tertiary)]" />
-					<span class="text-xs text-[var(--text-secondary)] font-[var(--font-mono)]">{getTargetContainer()}</span>
+					<span class="text-xs font-[var(--font-mono)] text-[var(--text-secondary)]"
+						>{getTargetContainer()}</span
+					>
 				</div>
 			{/if}
 
 			<!-- Shell Switcher (sh vs bash, exactly like Dokploy) -->
-			<div class="flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5">
+			<div
+				class="flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
+			>
 				<button
 					type="button"
 					onclick={() => handleShellChange('sh')}
-					class="px-2.5 py-1 text-xs font-[var(--font-mono)] rounded-[calc(var(--radius-sm)-2px)] transition-colors {activeShell === 'sh' ? 'bg-[var(--accent)] text-white font-medium' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+					class="rounded-[calc(var(--radius-sm)-2px)] px-2.5 py-1 text-xs font-[var(--font-mono)] transition-colors {activeShell ===
+					'sh'
+						? 'bg-[var(--accent)] font-medium text-white'
+						: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 				>
 					/bin/sh
 				</button>
 				<button
 					type="button"
 					onclick={() => handleShellChange('bash')}
-					class="px-2.5 py-1 text-xs font-[var(--font-mono)] rounded-[calc(var(--radius-sm)-2px)] transition-colors {activeShell === 'bash' ? 'bg-[var(--accent)] text-white font-medium' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+					class="rounded-[calc(var(--radius-sm)-2px)] px-2.5 py-1 text-xs font-[var(--font-mono)] transition-colors {activeShell ===
+					'bash'
+						? 'bg-[var(--accent)] font-medium text-white'
+						: 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 				>
 					bash
 				</button>
@@ -322,25 +336,25 @@
 
 			<!-- Status indicator -->
 			{#if isConnected}
-				<span class="flex items-center gap-1.5 text-[11px] text-[var(--status-green)] font-medium">
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-green)] animate-pulse"></span>
+				<span class="flex items-center gap-1.5 text-[11px] font-medium text-[var(--status-green)]">
+					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--status-green)]"></span>
 					Connected
 				</span>
 			{:else}
-				<span class="flex items-center gap-1.5 text-[11px] text-[var(--text-tertiary)] font-medium">
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--text-tertiary)]"></span>
+				<span class="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">
+					<span class="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"></span>
 					Disconnected
 				</span>
 			{/if}
 		</div>
 
 		<!-- Quick actions & reconnect -->
-		<div class="flex items-center gap-2 flex-wrap">
+		<div class="flex flex-wrap items-center gap-2">
 			{#each quickCommands as q (q)}
 				<button
 					type="button"
 					onclick={() => runCommand(q)}
-					class="px-2 py-0.5 rounded bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				>
 					{q}
 				</button>
@@ -349,7 +363,7 @@
 			<button
 				type="button"
 				onclick={() => runCommand('clear')}
-				class="px-2 py-0.5 rounded bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+				class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			>
 				clear
 			</button>
@@ -363,17 +377,21 @@
 	<!-- Real Interactive xterm.js Terminal Canvas -->
 	<div
 		style="height: {height};"
-		class="w-full relative rounded-[var(--radius-card)] border border-[var(--border)] bg-[#0a0d14] p-3 overflow-hidden shadow-inner flex flex-col"
+		class="relative flex w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[#0a0d14] p-3 shadow-inner"
 	>
-		<div
-			bind:this={terminalContainer}
-			class="w-full h-full"
-		></div>
+		<div bind:this={terminalContainer} class="h-full w-full"></div>
 
 		{#if !isConnected && exitMessage}
-			<div class="absolute bottom-3 right-3 px-3 py-1.5 rounded-[var(--radius-sm)] bg-[var(--bg-panel)] border border-[var(--border)] text-xs text-[var(--text-secondary)] flex items-center gap-2 shadow-lg z-10">
+			<div
+				class="absolute right-3 bottom-3 z-10 flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 text-xs text-[var(--text-secondary)] shadow-lg"
+			>
 				<span>{exitMessage}</span>
-				<Button variant="secondary" size="sm" onclick={() => reconnect()} class="h-6 text-[11px] px-2">
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={() => reconnect()}
+					class="h-6 px-2 text-[11px]"
+				>
 					Reconnect
 				</Button>
 			</div>

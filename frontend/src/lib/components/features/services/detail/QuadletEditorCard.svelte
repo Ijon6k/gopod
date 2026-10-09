@@ -78,32 +78,41 @@
 
 <div class="flex flex-col gap-6">
 	<!-- 1. Provider Card (Dokploy Style) -->
-	<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col shadow-xs">
-		<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
+	<div
+		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
+	>
+		<div
+			class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
+		>
 			<div class="flex flex-col gap-0.5">
-				<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Provider</h3>
-				<p class="text-xs text-[var(--text-tertiary)] m-0">Select the source for your Quadlet systemd unit</p>
+				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Provider</h3>
+				<p class="m-0 text-xs text-[var(--text-tertiary)]">
+					Select the source for your Quadlet systemd unit
+				</p>
 			</div>
 
 			<!-- Right Action: Preview Systemd Generator Output -->
 			<button
 				type="button"
 				onclick={() => (previewOpen = !previewOpen)}
-				class="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			>
-				<Eye size={14} /> {previewOpen ? 'Hide Systemd Output' : 'Preview Systemd Unit'}
+				<Eye size={14} />
+				{previewOpen ? 'Hide Systemd Output' : 'Preview Systemd Unit'}
 			</button>
 		</div>
 
 		<!-- Provider Tabs Bar -->
-		<div class="px-5 py-3 border-b border-[var(--border-subtle)] flex items-center gap-2 bg-[var(--bg-surface)]/30">
+		<div
+			class="flex items-center gap-2 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]/30 px-5 py-3"
+		>
 			<button
 				type="button"
 				onclick={() => (providerTab = 'raw')}
-				class="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border-0 {providerTab ===
+				class="flex cursor-pointer items-center gap-2 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'raw'
 					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
+					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<FileCode size={14} /> Raw / Unit Editor
 			</button>
@@ -111,10 +120,10 @@
 			<button
 				type="button"
 				onclick={() => (providerTab = 'git')}
-				class="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border-0 {providerTab ===
+				class="flex cursor-pointer items-center gap-2 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'git'
 					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
+					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<GitBranch size={14} /> Git Repository
 			</button>
@@ -122,10 +131,10 @@
 			<button
 				type="button"
 				onclick={() => (providerTab = 'templates')}
-				class="flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border-0 {providerTab ===
+				class="flex cursor-pointer items-center gap-2 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'templates'
 					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
+					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<Lightning size={14} /> Presets & Templates
 			</button>
@@ -133,52 +142,64 @@
 
 		<!-- Provider Tab Contents -->
 		{#if providerTab === 'git'}
-			<div class="p-5 flex flex-col gap-4">
-				<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-					<div class="sm:col-span-2 flex flex-col gap-1.5">
-						<label for="git-repo" class="text-xs font-medium text-[var(--text-secondary)]">Repository URL</label>
+			<div class="flex flex-col gap-4 p-5">
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+					<div class="flex flex-col gap-1.5 sm:col-span-2">
+						<label for="git-repo" class="text-xs font-medium text-[var(--text-secondary)]"
+							>Repository URL</label
+						>
 						<Input
 							id="git-repo"
 							bind:value={gitRepoUrl}
 							placeholder="git@github.com:user/homelab-infra.git"
-							class="font-[var(--font-mono)] text-xs"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
 					<div class="flex flex-col gap-1.5">
-						<label for="git-branch" class="text-xs font-medium text-[var(--text-secondary)]">Branch</label>
+						<label for="git-branch" class="text-xs font-medium text-[var(--text-secondary)]"
+							>Branch</label
+						>
 						<Input
 							id="git-branch"
 							bind:value={gitBranch}
 							placeholder="main"
-							class="font-[var(--font-mono)] text-xs"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
 				</div>
 				<div class="flex flex-col gap-1.5">
-					<label for="git-path" class="text-xs font-medium text-[var(--text-secondary)]">Unit File Path in Repo</label>
+					<label for="git-path" class="text-xs font-medium text-[var(--text-secondary)]"
+						>Unit File Path in Repo</label
+					>
 					<Input
 						id="git-path"
 						bind:value={gitFilePath}
 						placeholder="quadlets/metube.container"
-						class="font-[var(--font-mono)] text-xs"
+						class="text-xs font-[var(--font-mono)]"
 					/>
 				</div>
 			</div>
 		{:else if providerTab === 'templates'}
-			<div class="p-5 flex flex-col gap-3">
-				<span class="text-xs text-[var(--text-secondary)] font-medium">Select a Quadlet boilerplate template:</span>
-				<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+			<div class="flex flex-col gap-3 p-5">
+				<span class="text-xs font-medium text-[var(--text-secondary)]"
+					>Select a Quadlet boilerplate template:</span
+				>
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 					{#each templates as tpl}
 						<button
 							type="button"
 							onclick={() => applyTemplate(tpl)}
-							class="flex flex-col text-left p-3.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] hover:border-[var(--accent)] transition-all cursor-pointer"
+							class="flex cursor-pointer flex-col rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-3.5 text-left transition-all hover:border-[var(--accent)] hover:bg-[var(--bg-hover)]"
 						>
-							<div class="flex items-center justify-between mb-1">
+							<div class="mb-1 flex items-center justify-between">
 								<span class="text-xs font-semibold text-[var(--text-primary)]">{tpl.name}</span>
-								<span class="text-[10px] font-[var(--font-mono)] text-[var(--accent)]">:{tpl.port}</span>
+								<span class="text-[10px] font-[var(--font-mono)] text-[var(--accent)]"
+									>:{tpl.port}</span
+								>
 							</div>
-							<span class="text-[11px] font-[var(--font-mono)] text-[var(--text-tertiary)] truncate">{tpl.image}</span>
+							<span class="truncate text-[11px] font-[var(--font-mono)] text-[var(--text-tertiary)]"
+								>{tpl.image}</span
+							>
 						</button>
 					{/each}
 				</div>
@@ -187,47 +208,52 @@
 	</div>
 
 	<!-- 2. Quadlet Unit File Card -->
-	<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col shadow-xs">
+	<div
+		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
+	>
 		<!-- Unit Card Header -->
-		<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
+		<div
+			class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
+		>
 			<div class="flex flex-col gap-0.5">
 				<div class="flex items-center gap-2">
 					<FileText size={16} class="text-[var(--accent)]" />
-					<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Quadlet Unit File</h3>
+					<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Quadlet Unit File</h3>
 				</div>
-				<p class="text-xs text-[var(--text-tertiary)] m-0">
-					Configure your Podman Quadlet <code class="text-[var(--accent)]">.container</code> unit for this service.
+				<p class="m-0 text-xs text-[var(--text-tertiary)]">
+					Configure your Podman Quadlet <code class="text-[var(--accent)]">.container</code> unit for
+					this service.
 				</p>
 			</div>
 
 			<!-- Quick Snippets Inserter -->
-			<div class="flex items-center gap-1.5 flex-wrap">
-				<span class="text-[11px] text-[var(--text-tertiary)] mr-1 hidden sm:inline">Snippets:</span>
+			<div class="flex flex-wrap items-center gap-1.5">
+				<span class="mr-1 hidden text-[11px] text-[var(--text-tertiary)] sm:inline">Snippets:</span>
 				<button
 					type="button"
 					onclick={() => insertSnippet('Volume=app-data:/data:Z')}
-					class="px-2 py-1 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[11px] text-[var(--text-secondary)] cursor-pointer"
+					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ Volume
 				</button>
 				<button
 					type="button"
 					onclick={() => insertSnippet('Environment=KEY=value')}
-					class="px-2 py-1 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[11px] text-[var(--text-secondary)] cursor-pointer"
+					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ Env
 				</button>
 				<button
 					type="button"
 					onclick={() => insertSnippet('UserNS=auto')}
-					class="px-2 py-1 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[11px] text-[var(--text-secondary)] cursor-pointer"
+					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ UserNS
 				</button>
 				<button
 					type="button"
 					onclick={() => insertSnippet('AutoUpdate=registry')}
-					class="px-2 py-1 rounded bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] border border-[var(--border)] text-[11px] text-[var(--text-secondary)] cursor-pointer"
+					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ AutoUpdate
 				</button>
@@ -235,12 +261,14 @@
 		</div>
 
 		<!-- Editor Container -->
-		<div class="p-5 flex flex-col gap-3">
+		<div class="flex flex-col gap-3 p-5">
 			<!-- System path orientation banner -->
-			<div class="flex items-center justify-between text-xs text-[var(--text-tertiary)] font-[var(--font-mono)] bg-[var(--bg-surface)]/60 px-3 py-2 rounded-md border border-[var(--border-subtle)]">
-				<div class="flex items-center gap-2 min-w-0">
-					<span class="text-[var(--text-tertiary)] shrink-0">Host Path:</span>
-					<span class="text-[var(--text-primary)] truncate font-semibold">{unitPath}</span>
+			<div
+				class="flex items-center justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-3 py-2 text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]"
+			>
+				<div class="flex min-w-0 items-center gap-2">
+					<span class="shrink-0 text-[var(--text-tertiary)]">Host Path:</span>
+					<span class="truncate font-semibold text-[var(--text-primary)]">{unitPath}</span>
 					<CopyButton
 						text={unitPath}
 						title="Copy unit file path"
@@ -249,26 +277,33 @@
 						class="p-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
 					/>
 				</div>
-				<span class="text-[var(--status-green)] flex items-center gap-1 shrink-0">
+				<span class="flex shrink-0 items-center gap-1 text-[var(--status-green)]">
 					<ShieldCheck size={14} /> Rootless systemd (--user)
 				</span>
 			</div>
 
 			<!-- Monospace Code Editor -->
-			<div class="rounded-md border border-[var(--border)] overflow-hidden shadow-inner">
+			<div class="overflow-hidden rounded-md border border-[var(--border)] shadow-inner">
 				<CodeEditor bind:value={quadletConfig} language="quadlet" height="auto" />
 			</div>
 
 			<!-- Systemd Generator Preview Drawer -->
 			{#if previewOpen}
-				<div class="p-4 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 flex flex-col gap-2">
+				<div
+					class="flex flex-col gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 p-4"
+				>
 					<div class="flex items-center justify-between">
-						<span class="text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+						<span
+							class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]"
+						>
 							<Eye size={14} class="text-[var(--accent)]" /> Generated Service Unit (/usr/lib/systemd/system-generators/podman-systemd-generator)
 						</span>
-						<span class="text-[11px] text-[var(--text-tertiary)] font-[var(--font-mono)]">systemctl --user status {service.name}</span>
+						<span class="text-[11px] font-[var(--font-mono)] text-[var(--text-tertiary)]"
+							>systemctl --user status {service.name}</span
+						>
 					</div>
-					<pre class="m-0 p-3 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] overflow-x-auto leading-relaxed">
+					<pre
+						class="m-0 overflow-x-auto rounded-md border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-3 text-[11px] leading-relaxed font-[var(--font-mono)] text-[var(--text-secondary)]">
 # Automatically generated by podman-systemd-generator
 [Unit]
 Description={service.name} Quadlet Service
@@ -280,7 +315,8 @@ RequiresMountsFor=%t/containers
 Environment=PODMAN_SYSTEMD_UNIT=%n
 Restart=always
 TimeoutStartSec=300
-ExecStart=/usr/bin/podman run --name={service.name} -d --replace -p {service.port || 8080}:80 {service.image || 'ghcr.io/alexta69/metube:latest'}
+ExecStart=/usr/bin/podman run --name={service.name} -d --replace -p {service.port ||
+							8080}:80 {service.image || 'ghcr.io/alexta69/metube:latest'}
 ExecStop=/usr/bin/podman stop -t 10 {service.name}
 ExecStopPost=/usr/bin/podman rm -f {service.name}
 Type=notify
@@ -293,14 +329,18 @@ WantedBy=default.target</pre>
 		</div>
 
 		<!-- Card Footer (1 Explicit Save Button per Card) -->
-		<div class="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-between gap-3">
+		<div
+			class="flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3"
+		>
 			<span class="text-xs text-[var(--text-tertiary)]">
-				Edits take effect after systemd unit reload (<code class="text-[var(--text-secondary)]">systemctl --user daemon-reload</code>).
+				Edits take effect after systemd unit reload (<code class="text-[var(--text-secondary)]"
+					>systemctl --user daemon-reload</code
+				>).
 			</span>
 
 			<div class="flex items-center gap-2">
 				{#if saveStatus === 'saved'}
-					<span class="text-xs text-[var(--status-green)] flex items-center gap-1 mr-1">
+					<span class="mr-1 flex items-center gap-1 text-xs text-[var(--status-green)]">
 						<Check size={14} weight="bold" /> Saved & Reloaded
 					</span>
 				{/if}
@@ -308,7 +348,7 @@ WantedBy=default.target</pre>
 					type="button"
 					onclick={handleSave}
 					disabled={saveStatus === 'saving'}
-					class="px-4 py-2 rounded-md bg-[var(--accent)] hover:opacity-90 text-white text-xs font-semibold cursor-pointer border-0 transition-opacity disabled:opacity-50"
+					class="cursor-pointer rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
 				>
 					{saveStatus === 'saving' ? 'Reloading...' : 'Save & Reload Systemd'}
 				</button>

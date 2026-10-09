@@ -19,7 +19,7 @@
 
 <div
 	class={cn(
-		'flex items-center gap-2 px-3 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border-input)] bg-[var(--bg-input)] text-[var(--text-tertiary)] focus-within:border-[var(--border-input-focus)] focus-within:ring-2 focus-within:ring-[var(--border-input-focus)]/20 transition-all duration-150',
+		'flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-input)] bg-[var(--bg-input)] px-3 py-1.5 text-[var(--text-tertiary)] transition-all duration-150 focus-within:border-[var(--border-input-focus)] focus-within:ring-2 focus-within:ring-[var(--border-input-focus)]/20',
 		className
 	)}
 >
@@ -30,13 +30,13 @@
 		bind:value
 		{placeholder}
 		{oninput}
-		class="w-full bg-transparent border-0 outline-none text-[13px] text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] font-[var(--font-sans)] leading-normal"
+		class="w-full border-0 bg-transparent text-[13px] leading-normal font-[var(--font-sans)] text-[var(--text-primary)] outline-none placeholder:text-[var(--text-tertiary)]"
 	/>
 	{#if value}
 		<button
 			type="button"
 			onclick={() => (value = '')}
-			class="p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)] bg-transparent border-0 cursor-pointer"
+			class="cursor-pointer border-0 bg-transparent p-0.5 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
 			aria-label="Clear search"
 		>
 			<X size={13} />

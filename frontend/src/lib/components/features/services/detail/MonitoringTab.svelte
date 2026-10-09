@@ -8,11 +8,7 @@
 	import { formatMemory, parseNetToMb } from '$lib/utils/format';
 	import TelemetryMetricCards from './TelemetryMetricCards.svelte';
 	import TelemetryChartsGrid from './TelemetryChartsGrid.svelte';
-	import {
-		ArrowClockwise,
-		Warning,
-		CheckCircle
-	} from 'phosphor-svelte';
+	import { ArrowClockwise, Warning, CheckCircle } from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
@@ -50,7 +46,10 @@
 		if (selectedContainer === 'all') {
 			return matchingContainers.length === 1 ? matchingContainers[0] : null;
 		}
-		return matchingContainers.find((c) => c.name === selectedContainer || c.id === selectedContainer) ?? null;
+		return (
+			matchingContainers.find((c) => c.name === selectedContainer || c.id === selectedContainer) ??
+			null
+		);
 	});
 
 	// Compute real live metrics based on selected container or container aggregate
@@ -108,7 +107,8 @@
 	});
 
 	let currentPids = $derived.by<number>(() => {
-		if (activeContainer) return activeContainer.pids || (activeContainer.status === 'running' ? 1 : 0);
+		if (activeContainer)
+			return activeContainer.pids || (activeContainer.status === 'running' ? 1 : 0);
 		if (matchingContainers.length > 0) {
 			return matchingContainers.reduce((acc, c) => acc + (c.pids || 0), 0);
 		}
@@ -127,9 +127,9 @@
 	let isElevatedCpu = $derived(currentCpu >= 5.0);
 	let isUnhealthy = $derived(
 		service.health === 'unhealthy' ||
-		service.status === 'failed' ||
-		service.status === 'degraded' ||
-		currentStatus === 'stopped'
+			service.status === 'failed' ||
+			service.status === 'degraded' ||
+			currentStatus === 'stopped'
 	);
 
 	// Dynamic Rolling Telemetry Buffers for Live Container Charts (Dokploy Parity)
@@ -181,7 +181,8 @@
 	}
 
 	async function handleRestartContainer() {
-		const targetId = activeContainer?.id || (matchingContainers.length > 0 ? matchingContainers[0].id : null);
+		const targetId =
+			activeContainer?.id || (matchingContainers.length > 0 ? matchingContainers[0].id : null);
 		if (!targetId || isRestartingContainer) return;
 		isRestartingContainer = true;
 		try {
@@ -224,17 +225,21 @@
 	});
 </script>
 
-<div class="w-full flex flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
 	<!-- Top Bar: Filter Bar + Dokploy Container Selector + Polling Controls -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-[var(--border-subtle)]">
-		<div class="flex items-center flex-wrap gap-3">
+	<div
+		class="flex flex-col justify-between gap-3 border-b border-[var(--border-subtle)] pb-3 sm:flex-row sm:items-center"
+	>
+		<div class="flex flex-wrap items-center gap-3">
 			<!-- Dokploy Parity Container Selector -->
 			<div class="flex items-center gap-2">
-				<span class="text-xs text-[var(--text-tertiary)] font-medium">Container:</span>
-				<div class="px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] flex items-center gap-1.5">
+				<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
+				<div
+					class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1"
+				>
 					<select
 						bind:value={selectedContainer}
-						class="bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
+						class="cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
 					>
 						{#if matchingContainers.length > 1}
 							<option value="all">All Containers ({matchingContainers.length} Aggregate)</option>
@@ -255,7 +260,7 @@
 					type="button"
 					onclick={handleRestartContainer}
 					disabled={isRestartingContainer}
-					class="px-2 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors flex items-center gap-1.5 disabled:opacity-50"
+					class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
 					title="Restart container via Podman socket"
 				>
 					<ArrowClockwise size={12} class={isRestartingContainer ? 'animate-spin' : ''} />
@@ -264,14 +269,20 @@
 			{/if}
 
 			<!-- Polling & Live Socket Indicator -->
-			<div class="flex items-center gap-1.5 px-2 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-xs">
-				<span class="w-2 h-2 rounded-full {refreshRate === 'paused' ? 'bg-amber-400' : 'bg-emerald-400 animate-pulse'}"></span>
-				<span class="text-[11px] font-mono text-[var(--text-secondary)]">
+			<div
+				class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-1 text-xs"
+			>
+				<span
+					class="h-2 w-2 rounded-full {refreshRate === 'paused'
+						? 'bg-amber-400'
+						: 'animate-pulse bg-emerald-400'}"
+				></span>
+				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
 					{refreshRate === 'paused' ? 'Paused' : `Live Polling (${refreshRate})`}
 				</span>
 				<select
 					bind:value={refreshRate}
-					class="bg-transparent border-0 outline-none text-[11px] font-mono text-[var(--text-tertiary)] hover:text-[var(--text-primary)] cursor-pointer ml-0.5"
+					class="ml-0.5 cursor-pointer border-0 bg-transparent font-mono text-[11px] text-[var(--text-tertiary)] outline-none hover:text-[var(--text-primary)]"
 				>
 					<option value="3s">3s</option>
 					<option value="5s">5s</option>
@@ -281,7 +292,7 @@
 			</div>
 
 			{#if refreshRate !== 'paused'}
-				<span class="text-[10.5px] font-mono text-[var(--text-tertiary)] hidden md:inline">
+				<span class="hidden font-mono text-[10.5px] text-[var(--text-tertiary)] md:inline">
 					{lastUpdatedSec}s ago
 				</span>
 			{/if}
@@ -289,13 +300,16 @@
 
 		<!-- Time range selector & Manual Refresh -->
 		<div class="flex items-center gap-2">
-			<div class="flex items-center gap-1 p-0.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)]">
+			<div
+				class="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
+			>
 				{#each ['1h', '6h', '24h', '7d'] as r}
 					<button
 						type="button"
 						onclick={() => (timeRange = r as any)}
-						class="px-2.5 py-1 rounded text-xs transition-colors cursor-pointer border-0 {timeRange === r
-							? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-medium shadow-xs'
+						class="cursor-pointer rounded border-0 px-2.5 py-1 text-xs transition-colors {timeRange ===
+						r
+							? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
 							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 					>
 						{r}
@@ -306,7 +320,7 @@
 			<button
 				type="button"
 				onclick={handleRefresh}
-				class="p-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+				class="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				title="Refresh telemetry"
 				aria-label="Refresh telemetry"
 			>
@@ -317,33 +331,41 @@
 
 	<!-- Real-Time Anomaly & Threshold Status Banner -->
 	{#if isUnhealthy}
-		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-[var(--radius-card)] bg-[var(--status-red-muted)] border border-[var(--status-red)] text-xs shadow-xs">
+		<div
+			class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--status-red)] bg-[var(--status-red-muted)] p-3 text-xs shadow-xs sm:flex-row sm:items-center"
+		>
 			<div class="flex items-center gap-2.5 text-[var(--status-red)]">
 				<Warning size={16} class="shrink-0" />
 				<div>
 					<span class="font-bold">Service inactive or degraded:</span>
-					<span class="text-[var(--text-secondary)] ml-1">
-						{matchingContainers.length === 0 ? 'No container running for this workload. Click Deploy or Start to initialize.' : 'Container process exited or healthcheck is degraded.'}
+					<span class="ml-1 text-[var(--text-secondary)]">
+						{matchingContainers.length === 0
+							? 'No container running for this workload. Click Deploy or Start to initialize.'
+							: 'Container process exited or healthcheck is degraded.'}
 					</span>
 				</div>
 			</div>
 			<button
 				type="button"
 				onclick={() => onNavigateTab?.('logs')}
-				class="px-2.5 py-1 rounded bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--status-red)] font-mono text-[11px] border border-[var(--status-red)] cursor-pointer self-start sm:self-auto shrink-0 transition-colors"
+				class="shrink-0 cursor-pointer self-start rounded border border-[var(--status-red)] bg-[var(--bg-panel)] px-2.5 py-1 font-mono text-[11px] text-[var(--status-red)] transition-colors hover:bg-[var(--bg-hover)] sm:self-auto"
 			>
 				Inspect Logs →
 			</button>
 		</div>
 	{:else if isElevatedMem || isElevatedCpu}
-		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3 rounded-[var(--radius-card)] bg-[var(--status-amber-muted)] border border-[var(--status-amber)] text-xs shadow-xs">
+		<div
+			class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--status-amber)] bg-[var(--status-amber-muted)] p-3 text-xs shadow-xs sm:flex-row sm:items-center"
+		>
 			<div class="flex items-center gap-2.5 text-[var(--status-amber)]">
 				<Warning size={16} class="shrink-0" />
 				<div>
 					<span class="font-bold">Elevated Resource Consumption:</span>
-					<span class="text-[var(--text-secondary)] ml-1">
+					<span class="ml-1 text-[var(--text-secondary)]">
 						{#if isElevatedMem}
-							Memory allocation is at {memPercent}% of {memLimit} MB budget ({formatMemory(currentMem)}). Close to cgroup threshold.
+							Memory allocation is at {memPercent}% of {memLimit} MB budget ({formatMemory(
+								currentMem
+							)}). Close to cgroup threshold.
 						{:else}
 							CPU is peaking at {currentCpu.toFixed(1)}% across allocated cores.
 						{/if}
@@ -353,24 +375,31 @@
 			<button
 				type="button"
 				onclick={() => onNavigateTab?.('advanced')}
-				class="px-2.5 py-1 rounded bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--status-amber)] font-mono text-[11px] border border-[var(--status-amber)] cursor-pointer self-start sm:self-auto shrink-0 transition-colors"
+				class="shrink-0 cursor-pointer self-start rounded border border-[var(--status-amber)] bg-[var(--bg-panel)] px-2.5 py-1 font-mono text-[11px] text-[var(--status-amber)] transition-colors hover:bg-[var(--bg-hover)] sm:self-auto"
 			>
 				Adjust Cgroups Limit →
 			</button>
 		</div>
 	{:else}
-		<div class="flex items-center justify-between px-3.5 py-2.5 rounded-[var(--radius-card)] bg-[var(--status-green-muted)] border border-[var(--status-green)] text-xs text-[var(--text-secondary)] shadow-xs">
-			<div class="flex items-center gap-2.5 flex-wrap">
-				<CheckCircle size={15} class="text-[var(--status-green)] shrink-0" />
+		<div
+			class="flex items-center justify-between rounded-[var(--radius-card)] border border-[var(--status-green)] bg-[var(--status-green-muted)] px-3.5 py-2.5 text-xs text-[var(--text-secondary)] shadow-xs"
+		>
+			<div class="flex flex-wrap items-center gap-2.5">
+				<CheckCircle size={15} class="shrink-0 text-[var(--status-green)]" />
 				<span class="font-semibold text-[var(--text-primary)]">Workload operating nominally</span>
 				<span class="text-[var(--text-tertiary)]">•</span>
 				<span>{formatMemory(currentMem)} / {memLimit} MB allocated</span>
 				<span class="text-[var(--text-tertiary)]">•</span>
-				<span>{matchingContainers.length} {matchingContainers.length > 1 ? 'containers active' : 'container active'}</span>
+				<span
+					>{matchingContainers.length}
+					{matchingContainers.length > 1 ? 'containers active' : 'container active'}</span
+				>
 				<span class="text-[var(--text-tertiary)]">•</span>
-				<span class="text-[var(--status-green)] font-mono">cgroups v2 live</span>
+				<span class="font-mono text-[var(--status-green)]">cgroups v2 live</span>
 			</div>
-			<span class="text-[11px] font-mono text-[var(--status-green)] shrink-0 hidden sm:inline">Podman 5.x OK</span>
+			<span class="hidden shrink-0 font-mono text-[11px] text-[var(--status-green)] sm:inline"
+				>Podman 5.x OK</span
+			>
 		</div>
 	{/if}
 

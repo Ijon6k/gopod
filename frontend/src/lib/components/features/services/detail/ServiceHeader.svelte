@@ -55,15 +55,19 @@
 </script>
 
 <!-- Clean, spacious Service Header (No redundant duplicate breadcrumbs) -->
-<div class="w-full flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pb-3 border-b border-[var(--border)]">
+<div
+	class="flex w-full flex-col gap-4 border-b border-[var(--border)] pb-3 sm:flex-row sm:items-center sm:justify-between"
+>
 	<div class="flex flex-col gap-1">
 		<div class="flex items-center gap-3">
-			<h1 class="text-xl font-bold text-[var(--text-primary)] tracking-tight m-0">
+			<h1 class="m-0 text-xl font-bold tracking-tight text-[var(--text-primary)]">
 				{service.name}
 			</h1>
 			<StatusBadge status={service.status} size="sm" />
 		</div>
-		<div class="flex items-center gap-2 text-xs text-[var(--text-tertiary)] font-[var(--font-mono)]">
+		<div
+			class="flex items-center gap-2 text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]"
+		>
 			<span>{service.id}</span>
 			<span>·</span>
 			<span>{workloadSubtitle}</span>
@@ -73,7 +77,9 @@
 	<!-- Right Badges & Controls -->
 	<div class="flex items-center gap-2.5">
 		<!-- Host Engine Badge -->
-		<div class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] text-xs text-[var(--text-secondary)] font-medium">
+		<div
+			class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]"
+		>
 			<HardDrives size={14} class="text-[var(--accent)]" />
 			<span>Podman Local Engine</span>
 		</div>
@@ -85,7 +91,7 @@
 				deleteVolumes = false;
 				deleteConfirmOpen = true;
 			}}
-			class="p-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-red-500/10 hover:border-red-500/30 text-[var(--text-tertiary)] hover:text-red-400 transition-colors cursor-pointer"
+			class="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-2 text-[var(--text-tertiary)] transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400"
 			title="Delete service"
 			aria-label="Delete service"
 		>
@@ -107,15 +113,21 @@
 	onconfirm={handleDeleteService}
 >
 	<!-- Dokploy-style Persistent Volumes Option Checkbox -->
-	<label class="flex items-center gap-2.5 p-3 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] cursor-pointer select-none">
+	<label
+		class="flex cursor-pointer items-center gap-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-3 select-none"
+	>
 		<input
 			type="checkbox"
 			bind:checked={deleteVolumes}
-			class="w-4 h-4 rounded border-[var(--border)] text-red-600 focus:ring-0 focus:ring-offset-0 cursor-pointer"
+			class="h-4 w-4 cursor-pointer rounded border-[var(--border)] text-red-600 focus:ring-0 focus:ring-offset-0"
 		/>
 		<div class="flex flex-col gap-0.5">
-			<span class="text-xs font-medium text-[var(--text-primary)]">Purge persistent storage & volumes</span>
-			<span class="text-[11px] text-[var(--text-tertiary)]">Delete named storage volumes and local databases attached to this service</span>
+			<span class="text-xs font-medium text-[var(--text-primary)]"
+				>Purge persistent storage & volumes</span
+			>
+			<span class="text-[11px] text-[var(--text-tertiary)]"
+				>Delete named storage volumes and local databases attached to this service</span
+			>
 		</div>
 	</label>
 </ConfirmDialog>

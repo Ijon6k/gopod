@@ -4,7 +4,12 @@
 	import { goto } from '$app/navigation';
 	import { PageHeader, AreaChart } from '$lib/components/ui';
 	import { monitoringData, dataStore } from '$lib/data';
-	import { ServerOverviewBar, ProcessTaskManager, PodmanStorageManager, ContainerTerminalModal } from '$lib/components/features/monitoring';
+	import {
+		ServerOverviewBar,
+		ProcessTaskManager,
+		PodmanStorageManager,
+		ContainerTerminalModal
+	} from '$lib/components/features/monitoring';
 	import { TreeStructure, Stack, HardDrive, ChartLineUp, ArrowClockwise } from 'phosphor-svelte';
 
 	let server = $derived(dataStore.server);
@@ -78,7 +83,7 @@
 	<title>Monitoring & Telemetry — GOPOD</title>
 </svelte:head>
 
-<div class="w-full flex flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
 	<!-- Page Header -->
 	<PageHeader
 		title="Monitoring & Telemetry"
@@ -89,14 +94,16 @@
 	<ServerOverviewBar activeTab={activeView} onSelectTab={(tab) => setView(tab)} />
 
 	<!-- 2. Subnav: Workloads vs System Daemons vs Storage & Prune vs Historical Telemetry -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[var(--border)] pb-0">
+	<div
+		class="flex flex-col justify-between gap-3 border-b border-[var(--border)] pb-0 sm:flex-row sm:items-center"
+	>
 		<div class="flex items-center gap-1">
 			<button
 				type="button"
 				onclick={() => setView('tree')}
-				class="flex items-center gap-2 px-3.5 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer bg-transparent border-0 {activeView ===
+				class="flex cursor-pointer items-center gap-2 border-0 border-b-2 bg-transparent px-3.5 py-2 text-xs font-medium transition-all {activeView ===
 				'tree'
-					? 'border-[var(--accent)] text-[var(--text-primary)] font-semibold'
+					? 'border-[var(--accent)] font-semibold text-[var(--text-primary)]'
 					: 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 			>
 				<TreeStructure size={14} />
@@ -106,9 +113,9 @@
 			<button
 				type="button"
 				onclick={() => setView('system')}
-				class="flex items-center gap-2 px-3.5 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer bg-transparent border-0 {activeView ===
+				class="flex cursor-pointer items-center gap-2 border-0 border-b-2 bg-transparent px-3.5 py-2 text-xs font-medium transition-all {activeView ===
 				'system'
-					? 'border-[var(--accent)] text-[var(--text-primary)] font-semibold'
+					? 'border-[var(--accent)] font-semibold text-[var(--text-primary)]'
 					: 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 			>
 				<Stack size={14} />
@@ -118,9 +125,9 @@
 			<button
 				type="button"
 				onclick={() => setView('storage')}
-				class="flex items-center gap-2 px-3.5 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer bg-transparent border-0 {activeView ===
+				class="flex cursor-pointer items-center gap-2 border-0 border-b-2 bg-transparent px-3.5 py-2 text-xs font-medium transition-all {activeView ===
 				'storage'
-					? 'border-[var(--accent)] text-[var(--text-primary)] font-semibold'
+					? 'border-[var(--accent)] font-semibold text-[var(--text-primary)]'
 					: 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 			>
 				<HardDrive size={14} />
@@ -130,9 +137,9 @@
 			<button
 				type="button"
 				onclick={() => setView('charts')}
-				class="flex items-center gap-2 px-3.5 py-2 text-xs font-medium border-b-2 transition-all cursor-pointer bg-transparent border-0 {activeView ===
+				class="flex cursor-pointer items-center gap-2 border-0 border-b-2 bg-transparent px-3.5 py-2 text-xs font-medium transition-all {activeView ===
 				'charts'
-					? 'border-[var(--accent)] text-[var(--text-primary)] font-semibold'
+					? 'border-[var(--accent)] font-semibold text-[var(--text-primary)]'
 					: 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 			>
 				<ChartLineUp size={14} />
@@ -142,14 +149,20 @@
 
 		<!-- Live Telemetry Controls (Interval Selector + Pulse + Manual Trigger) -->
 		<div class="flex items-center gap-2 pb-2">
-			<div class="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-xs">
-				<span class="w-2 h-2 rounded-full {refreshRate === 'paused' ? 'bg-[var(--status-amber)]' : 'bg-[var(--status-green)] animate-pulse'}"></span>
-				<span class="text-[11px] font-mono text-[var(--text-secondary)]">
+			<div
+				class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs"
+			>
+				<span
+					class="h-2 w-2 rounded-full {refreshRate === 'paused'
+						? 'bg-[var(--status-amber)]'
+						: 'animate-pulse bg-[var(--status-green)]'}"
+				></span>
+				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
 					{refreshRate === 'paused' ? 'Paused' : dataStore.isStreaming ? 'Stream (SSE)' : 'Live'}
 				</span>
 				<select
 					bind:value={refreshRate}
-					class="bg-transparent border-0 outline-none text-[11px] font-mono text-[var(--text-tertiary)] hover:text-[var(--text-primary)] cursor-pointer ml-0.5"
+					class="ml-0.5 cursor-pointer border-0 bg-transparent font-mono text-[11px] text-[var(--text-tertiary)] outline-none hover:text-[var(--text-primary)]"
 					aria-label="Refresh interval"
 				>
 					<option value="3s">3s</option>
@@ -160,7 +173,9 @@
 			</div>
 
 			{#if refreshRate !== 'paused'}
-				<span class="text-[10.5px] font-mono text-[var(--text-tertiary)] hidden sm:inline tabular-nums">
+				<span
+					class="hidden font-mono text-[10.5px] text-[var(--text-tertiary)] tabular-nums sm:inline"
+				>
 					{lastUpdatedSec}s ago
 				</span>
 			{/if}
@@ -168,7 +183,7 @@
 			<button
 				type="button"
 				onclick={handleRefresh}
-				class="p-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] hover:bg-[var(--bg-hover)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+				class="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				title="Refresh telemetry"
 				aria-label="Refresh telemetry"
 			>
@@ -187,18 +202,29 @@
 		<PodmanStorageManager />
 	{:else}
 		<!-- Historical Time Series Area Charts with Scannable Summary Markers -->
-		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<!-- 1. CPU Utilization -->
-			<div class="bg-[var(--bg-panel)] border border-[var(--border)] rounded-[var(--radius-card)] p-5 flex flex-col gap-3 shadow-xs">
+			<div
+				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
+			>
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
 						<span class="text-xs font-semibold text-[var(--text-primary)]">CPU Utilization</span>
-						<strong class="text-lg font-bold tracking-tight text-[var(--text-primary)] font-[var(--font-mono)] mt-0.5 tabular-nums">
-							{server.cpuUsage.toFixed(1)}% <span class="text-xs font-normal text-[var(--text-tertiary)]">of {server.vcpu} vCPUs</span>
+						<strong
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+						>
+							{server.cpuUsage.toFixed(1)}%
+							<span class="text-xs font-normal text-[var(--text-tertiary)]"
+								>of {server.vcpu} vCPUs</span
+							>
 						</strong>
 					</div>
-					<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
-						<span>Peak: <strong class="text-[var(--text-secondary)]">{(server.cpuUsage * 1.5).toFixed(1)}%</strong></span>
+					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
+						<span
+							>Peak: <strong class="text-[var(--text-secondary)]"
+								>{(server.cpuUsage * 1.5).toFixed(1)}%</strong
+							></span
+						>
 						<span>•</span>
 						<span>24h window</span>
 					</div>
@@ -212,16 +238,29 @@
 			</div>
 
 			<!-- 2. Memory (RAM) -->
-			<div class="bg-[var(--bg-panel)] border border-[var(--border)] rounded-[var(--radius-card)] p-5 flex flex-col gap-3 shadow-xs">
+			<div
+				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
+			>
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-semibold text-[var(--text-primary)]">Memory Allocation (RAM)</span>
-						<strong class="text-lg font-bold tracking-tight text-[var(--text-primary)] font-[var(--font-mono)] mt-0.5 tabular-nums">
-							{server.memoryUsed.toFixed(1)} / {server.memory} GB <span class="text-xs font-normal text-[var(--text-tertiary)]">({((server.memoryUsed / server.memory) * 100).toFixed(0)}%)</span>
+						<span class="text-xs font-semibold text-[var(--text-primary)]"
+							>Memory Allocation (RAM)</span
+						>
+						<strong
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+						>
+							{server.memoryUsed.toFixed(1)} / {server.memory} GB
+							<span class="text-xs font-normal text-[var(--text-tertiary)]"
+								>({((server.memoryUsed / server.memory) * 100).toFixed(0)}%)</span
+							>
 						</strong>
 					</div>
-					<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
-						<span>Peak: <strong class="text-[var(--text-secondary)]">{(server.memoryUsed * 1.15).toFixed(1)} GB</strong></span>
+					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
+						<span
+							>Peak: <strong class="text-[var(--text-secondary)]"
+								>{(server.memoryUsed * 1.15).toFixed(1)} GB</strong
+							></span
+						>
 						<span>•</span>
 						<span>24h window</span>
 					</div>
@@ -235,15 +274,24 @@
 			</div>
 
 			<!-- 3. Storage I/O -->
-			<div class="bg-[var(--bg-panel)] border border-[var(--border)] rounded-[var(--radius-card)] p-5 flex flex-col gap-3 shadow-xs">
+			<div
+				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
+			>
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-semibold text-[var(--text-primary)]">Storage I/O Operations</span>
-						<strong class="text-lg font-bold tracking-tight text-[var(--text-primary)] font-[var(--font-mono)] mt-0.5 tabular-nums">
-							{server.storageUsed.toFixed(1)} / {server.storage} GB <span class="text-xs font-normal text-[var(--text-tertiary)]">({((server.storageUsed / server.storage) * 100).toFixed(0)}%)</span>
+						<span class="text-xs font-semibold text-[var(--text-primary)]"
+							>Storage I/O Operations</span
+						>
+						<strong
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+						>
+							{server.storageUsed.toFixed(1)} / {server.storage} GB
+							<span class="text-xs font-normal text-[var(--text-tertiary)]"
+								>({((server.storageUsed / server.storage) * 100).toFixed(0)}%)</span
+							>
 						</strong>
 					</div>
-					<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
+					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span>NVMe ext4</span>
 						<span>•</span>
 						<span>24h window</span>
@@ -258,15 +306,21 @@
 			</div>
 
 			<!-- 4. Network Traffic -->
-			<div class="bg-[var(--bg-panel)] border border-[var(--border)] rounded-[var(--radius-card)] p-5 flex flex-col gap-3 shadow-xs">
+			<div
+				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
+			>
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
 						<span class="text-xs font-semibold text-[var(--text-primary)]">Network Traffic</span>
-						<strong class="text-lg font-bold tracking-tight text-[var(--text-primary)] font-[var(--font-mono)] mt-0.5 tabular-nums">
-							Inbound / Outbound <span class="text-xs font-normal text-[var(--text-tertiary)]">(Aggregate)</span>
+						<strong
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+						>
+							Inbound / Outbound <span class="text-xs font-normal text-[var(--text-tertiary)]"
+								>(Aggregate)</span
+							>
 						</strong>
 					</div>
-					<div class="flex items-center gap-2 text-[11px] font-mono text-[var(--text-tertiary)]">
+					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span>eth0</span>
 						<span>•</span>
 						<span>24h window</span>

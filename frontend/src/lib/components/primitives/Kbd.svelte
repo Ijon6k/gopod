@@ -11,7 +11,7 @@
 
 <kbd
 	class={cn(
-		'px-1 py-px border border-[var(--border)] rounded-[3px] bg-[var(--bg-panel)] text-[10px] text-[var(--text-tertiary)] font-[var(--font-sans)]',
+		'rounded-[3px] border border-[var(--border)] bg-[var(--bg-panel)] px-1 py-px text-[10px] font-[var(--font-sans)] text-[var(--text-tertiary)]',
 		className
 	)}
 >

@@ -1,7 +1,13 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { Copy, Check } from 'phosphor-svelte';
-	import { EditorView, lineNumbers, highlightActiveLineGutter, highlightActiveLine, keymap } from '@codemirror/view';
+	import {
+		EditorView,
+		lineNumbers,
+		highlightActiveLineGutter,
+		highlightActiveLine,
+		keymap
+	} from '@codemirror/view';
 	import { EditorState } from '@codemirror/state';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { yaml } from '@codemirror/lang-yaml';
@@ -156,25 +162,27 @@
 
 <div
 	class={cn(
-		'relative w-full rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col font-mono text-xs',
+		'relative flex w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] font-mono text-xs',
 		className
 	)}
 	style="height: {height};"
 >
 	<!-- Header Bar with Language Badge and Copy Button -->
-	<div class="flex items-center justify-between px-3 py-1.5 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] shrink-0 select-none">
-		<span class="text-[10px] uppercase font-bold tracking-wider text-[var(--text-tertiary)]">
+	<div
+		class="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 select-none"
+	>
+		<span class="text-[10px] font-bold tracking-wider text-[var(--text-tertiary)] uppercase">
 			{language}
 		</span>
 		<button
 			type="button"
 			onclick={copyCode}
-			class="flex items-center gap-1 px-2 py-0.5 rounded-[var(--radius-sm)] text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer border-0 bg-transparent"
+			class="flex cursor-pointer items-center gap-1 rounded-[var(--radius-sm)] border-0 bg-transparent px-2 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			title="Copy to clipboard"
 		>
 			{#if copied}
-				<Check size={13} class="text-[var(--status-emerald)]" />
-				<span class="text-[var(--status-emerald)]">Copied</span>
+				<Check size={13} class="text-[var(--status-green)]" />
+				<span class="text-[var(--status-green)]">Copied</span>
 			{:else}
 				<Copy size={13} />
 				<span>Copy</span>
@@ -183,5 +191,5 @@
 	</div>
 
 	<!-- CodeMirror DOM Container -->
-	<div bind:this={editorContainer} class="flex-1 overflow-hidden w-full h-full"></div>
+	<div bind:this={editorContainer} class="h-full w-full flex-1 overflow-hidden"></div>
 </div>

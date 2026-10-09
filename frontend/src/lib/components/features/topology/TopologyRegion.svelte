@@ -32,7 +32,7 @@
 	{onmouseleave}
 	style="transform: translate3d({region.x}px, {region.y}px, 0); width: {region.width}px; height: {region.height}px;"
 	class={cn(
-		'absolute top-0 left-0 transition-all duration-150 select-none pointer-events-auto overflow-hidden',
+		'pointer-events-auto absolute top-0 left-0 overflow-hidden transition-all duration-150 select-none',
 		isPod
 			? 'rounded-[16px] border-2 border-dashed border-[var(--accent)]/35 bg-[var(--bg-canvas-region-pod)]'
 			: 'rounded-[16px] border border-[var(--border)] bg-[var(--bg-canvas-region-project)] shadow-xs',
@@ -40,20 +40,21 @@
 			(isPod
 				? 'border-[var(--accent)]/70 bg-[var(--bg-canvas-region-pod-hover)] shadow-sm'
 				: 'border-[var(--accent)]/50 bg-[var(--bg-canvas-region-project-hover)] shadow-sm'),
-		isSelected &&
-			'border-[var(--accent)] ring-2 ring-[var(--accent)]/30'
+		isSelected && 'border-[var(--accent)] ring-2 ring-[var(--accent)]/30'
 	)}
 >
 	<!-- Region Header / Tag with clean, non-wrapping layout -->
-	<div class="h-9 px-3.5 flex items-center justify-between text-left border-b border-[var(--border-subtle)] bg-[var(--bg-panel)]/40">
-		<div class="flex items-center gap-2 min-w-0">
+	<div
+		class="flex h-9 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-panel)]/40 px-3.5 text-left"
+	>
+		<div class="flex min-w-0 items-center gap-2">
 			{#if isPod}
-				<SquaresFour size={14} class="text-[var(--accent)] shrink-0" />
+				<SquaresFour size={14} class="shrink-0 text-[var(--accent)]" />
 			{:else}
-				<Folder size={14} class="text-[var(--text-secondary)] shrink-0" />
+				<Folder size={14} class="shrink-0 text-[var(--text-secondary)]" />
 			{/if}
 			<span
-				class="text-xs font-semibold text-[var(--text-primary)] font-[var(--font-sans)] truncate"
+				class="truncate text-xs font-[var(--font-sans)] font-semibold text-[var(--text-primary)]"
 			>
 				{isPod ? `Pod · ${region.label.replace(/^pod\s*[:·-]?\s*/i, '')}` : region.label}
 			</span>
@@ -61,7 +62,7 @@
 
 		{#if region.sublabel}
 			<span
-				class="text-[10.5px] text-[var(--text-tertiary)] shrink-0 ml-2 px-1.5 py-0.5 rounded bg-[var(--bg-surface)] border border-[var(--border-subtle)]"
+				class="ml-2 shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10.5px] text-[var(--text-tertiary)]"
 			>
 				{region.sublabel}
 			</span>

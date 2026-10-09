@@ -134,7 +134,12 @@
 			Save SSH Key
 		</Button>
 	{:else}
-		<Button variant="primary" size="sm" disabled={!regName.trim() || !regUsername.trim()} onclick={handleSaveRegistry}>
+		<Button
+			variant="primary"
+			size="sm"
+			disabled={!regName.trim() || !regUsername.trim()}
+			onclick={handleSaveRegistry}
+		>
 			Save Registry
 		</Button>
 	{/if}
@@ -149,29 +154,27 @@
 	footer={modalFooter}
 >
 	<!-- Tab switcher -->
-	<div class="flex items-center gap-4 border-b border-[var(--border-subtle)] -mt-2 pb-2">
+	<div class="-mt-2 flex items-center gap-4 border-b border-[var(--border-subtle)] pb-2">
 		<button
 			type="button"
 			onclick={() => (activeTab = 'ssh')}
-			class="pb-1 text-xs font-medium border-b-2 bg-transparent border-0 cursor-pointer transition-colors {activeTab === 'ssh'
-				? 'border-[var(--accent)] text-[var(--text-primary)]'
-				: 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+			class={`cursor-pointer border-0 border-b-2 bg-transparent pb-1 text-xs font-medium transition-colors ${activeTab === 'ssh' ? 'border-[var(--accent)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
 		>
 			Git SSH Key
 		</button>
 		<button
 			type="button"
 			onclick={() => (activeTab = 'registry')}
-			class="pb-1 text-xs font-medium border-b-2 bg-transparent border-0 cursor-pointer transition-colors {activeTab === 'registry'
-				? 'border-[var(--accent)] text-[var(--text-primary)]'
-				: 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+			class={`cursor-pointer border-0 border-b-2 bg-transparent pb-1 text-xs font-medium transition-colors ${activeTab === 'registry' ? 'border-[var(--accent)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
 		>
 			Docker Registry
 		</button>
 	</div>
 
 	{#if errorMessage}
-		<div class="p-2.5 rounded-[var(--radius-sm)] bg-[var(--status-rose)]/10 border border-[var(--status-rose)]/30 text-[11px] text-[var(--status-rose)]">
+		<div
+			class="rounded-[var(--radius-sm)] border border-[var(--status-rose)]/30 bg-[var(--status-rose)]/10 p-2.5 text-[11px] text-[var(--status-rose)]"
+		>
 			{errorMessage}
 		</div>
 	{/if}
@@ -194,24 +197,23 @@
 						type="button"
 						onclick={generateRealKey}
 						disabled={isGenerating}
-						class="text-[11px] text-[var(--accent)] hover:underline flex items-center gap-1 cursor-pointer bg-transparent border-0 p-0"
+						class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline"
 						title="Generate new keypair"
 					>
 						<ArrowsClockwise size={12} class={isGenerating ? 'animate-spin' : ''} />
 						<span>{isGenerating ? 'Generating...' : 'Regenerate'}</span>
 					</button>
-					<CopyButton
-						text={generatedPublicKey}
-						label="Copy"
-						variant="inline"
-					/>
+					<CopyButton text={generatedPublicKey} label="Copy" variant="inline" />
 				</div>
 			</div>
-			<div class="p-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] font-[var(--font-mono)] text-[11px] text-[var(--text-secondary)] break-all select-all">
-				{generatedPublicKey || (isGenerating ? 'Generating real Ed25519 keypair...' : 'Click regenerate to create key')}
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-2.5 text-[11px] font-[var(--font-mono)] break-all text-[var(--text-secondary)] select-all"
+			>
+				{generatedPublicKey ||
+					(isGenerating ? 'Generating real Ed25519 keypair...' : 'Click regenerate to create key')}
 			</div>
 			{#if generatedFingerprint}
-				<div class="text-[10px] font-mono text-[var(--text-tertiary)]">
+				<div class="font-mono text-[10px] text-[var(--text-tertiary)]">
 					Fingerprint: {generatedFingerprint}
 				</div>
 			{/if}
@@ -221,12 +223,7 @@
 		</div>
 	{:else}
 		<FormField label="Registry Name" required forId="reg-name">
-			<Input
-				id="reg-name"
-				bind:value={regName}
-				placeholder="e.g. My Docker Hub"
-				class="text-xs"
-			/>
+			<Input id="reg-name" bind:value={regName} placeholder="e.g. My Docker Hub" class="text-xs" />
 		</FormField>
 
 		<div class="grid grid-cols-2 gap-3">
@@ -234,7 +231,7 @@
 				<select
 					id="reg-url"
 					bind:value={regUrl}
-					class="w-full px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] text-xs text-[var(--text-primary)]"
+					class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
 				>
 					<option value="docker.io">Docker Hub (docker.io)</option>
 					<option value="ghcr.io">GitHub (ghcr.io)</option>

@@ -20,9 +20,7 @@
 	<path
 		d={edge.path}
 		fill="none"
-		stroke={isSelected || isHighlighted
-			? 'var(--border-canvas-edge-glow)'
-			: 'transparent'}
+		stroke={isSelected || isHighlighted ? 'var(--border-canvas-edge-glow)' : 'transparent'}
 		stroke-width={isSelected || isHighlighted ? 5 : 8}
 		stroke-linecap="round"
 		stroke-linejoin="round"
@@ -35,7 +33,9 @@
 		stroke={isSelected
 			? 'var(--accent)'
 			: isHighlighted
-				? ui.theme === 'light' ? '#4F46E5' : '#818CF8'
+				? ui.theme === 'light'
+					? '#4F46E5'
+					: '#818CF8'
 				: 'var(--border-canvas-edge)'}
 		stroke-width={isSelected ? 2 : isHighlighted ? 1.75 : 1.25}
 		stroke-dasharray={edge.dashed ? '4 3' : undefined}

@@ -8,6 +8,7 @@ export function getDeploymentSteps(dep: Deployment): DeploymentStep[] {
 	const isFailed = dep.status === 'failed';
 	const isBuilding = dep.status === 'deploying' || dep.status === 'building';
 	const isCancelled = dep.status === 'cancelled';
+	const isTerminated = isFailed || isCancelled;
 	const trigger = dep.trigger || 'manual';
 
 	if (trigger === 'compose') {
@@ -16,13 +17,13 @@ export function getDeploymentSteps(dep: Deployment): DeploymentStep[] {
 			{
 				id: 'step-2',
 				name: 'Podman compose orchestration (up -d)',
-				status: isBuilding ? 'running' : isFailed ? 'failed' : 'success',
+				status: isBuilding ? 'running' : isTerminated ? 'failed' : 'success',
 				duration: !isBuilding ? dep.duration : undefined
 			},
 			{
 				id: 'step-3',
 				name: 'Container health probe & network proxy',
-				status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success'
+				status: isBuilding ? 'pending' : isTerminated ? 'failed' : 'success'
 			}
 		];
 	}
@@ -33,13 +34,13 @@ export function getDeploymentSteps(dep: Deployment): DeploymentStep[] {
 			{
 				id: 'step-2',
 				name: 'Build rootless container image (podman build)',
-				status: isBuilding ? 'running' : isFailed ? 'failed' : 'success',
+				status: isBuilding ? 'running' : isTerminated ? 'failed' : 'success',
 				duration: !isBuilding ? dep.duration : undefined
 			},
 			{
 				id: 'step-3',
 				name: 'Unit activation & readiness check',
-				status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success'
+				status: isBuilding ? 'pending' : isTerminated ? 'failed' : 'success'
 			}
 		];
 	}
@@ -50,13 +51,13 @@ export function getDeploymentSteps(dep: Deployment): DeploymentStep[] {
 		{
 			id: 'step-2',
 			name: `Reconcile container image (${dep.version || 'latest'})`,
-			status: isBuilding ? 'running' : isFailed ? 'failed' : 'success',
+			status: isBuilding ? 'running' : isTerminated ? 'failed' : 'success',
 			duration: !isBuilding ? dep.duration : undefined
 		},
 		{
 			id: 'step-3',
 			name: 'Service healthcheck & status check',
-			status: isBuilding ? 'pending' : isFailed ? 'failed' : 'success'
+			status: isBuilding ? 'pending' : isTerminated ? 'failed' : 'success'
 		}
 	];
 }
@@ -66,7 +67,9 @@ export function getDeploymentLogs(dep: Deployment): string[] {
 		return dep.logs;
 	}
 
-	const timeStr = dep.startedAt ? dep.startedAt.substring(11, 19) : new Date().toTimeString().substring(0, 8);
+	const timeStr = dep.startedAt
+		? dep.startedAt.substring(11, 19)
+		: new Date().toTimeString().substring(0, 8);
 	const sName = dep.serviceName || dep.serviceId;
 
 	if (dep.status === 'cancelled') {

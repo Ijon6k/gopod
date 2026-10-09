@@ -88,6 +88,9 @@ func NewServer(cfg Config) http.Handler {
 	runtimeHandler := runtime.NewHandler(runtimeService, authMiddleware)
 
 	caddyReconciler := ingress.NewReconciler(cfg.CaddyAdmin, "")
+	if cfg.Port != "" {
+		caddyReconciler.SetControlPort(cfg.Port)
+	}
 	ingressRepo := ingress.NewSQLiteRepository(sqlDB)
 	ingressService := ingress.NewService(ingressRepo, caddyReconciler)
 	ingressHandler := ingress.NewHandler(ingressService, authMiddleware)

@@ -2,7 +2,15 @@
 	import type { Service } from '$lib/types';
 	import { Button, Input, SectionCard } from '$lib/components/primitives';
 	import { CodeEditor } from '$lib/components/ui';
-	import { DownloadSimple, Copy, Check, Plus, Trash } from 'phosphor-svelte';
+	import {
+		DownloadSimple,
+		Copy,
+		Check,
+		Plus,
+		Trash,
+		FloppyDisk,
+		SpinnerGap
+	} from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
@@ -36,7 +44,8 @@
 
 	// Security state
 	let isPrivileged = $state(false);
-	let selinuxLabel = $state('container_file_t');
+	let selinuxLabel = $state('container_t');
+	let apparmorProfile = $state('default');
 	let capAdd = $state('NET_BIND_SERVICE');
 	let capDrop = $state('ALL');
 	let noNewPrivileges = $state(true);
@@ -70,7 +79,8 @@
 		systemdUnit = service.advanced?.lifecycle.systemdUnitName ?? `${service.name}.service`;
 		restartPolicy = service.restartPolicy || 'always';
 		isPrivileged = service.advanced?.security.privileged ?? false;
-		selinuxLabel = service.advanced?.security.selinuxLabel ?? 'container_file_t';
+		selinuxLabel = service.advanced?.security.selinuxLabel ?? 'container_t';
+		apparmorProfile = service.advanced?.security.apparmorProfile ?? 'default';
 		capAdd = service.advanced?.security.capAdd.join(', ') ?? 'NET_BIND_SERVICE';
 		capDrop = service.advanced?.security.capDrop.join(', ') ?? 'ALL';
 		noNewPrivileges = service.advanced?.security.noNewPrivileges ?? true;
@@ -147,6 +157,8 @@ spec:
 				: generatedPodmanRun
 	);
 
+	import { dataStore } from '$lib/data';
+
 	function downloadConfig() {
 		const ext = genTab === 'quadlet' ? 'container' : genTab === 'kubernetes' ? 'yaml' : 'sh';
 		const blob = new Blob([currentGenCode], { type: 'text/plain' });
@@ -157,9 +169,110 @@ spec:
 		a.click();
 		URL.revokeObjectURL(url);
 	}
+
+	let isSaving = $state(false);
+	let saveStatus = $state<'idle' | 'saved' | 'error'>('idle');
+
+	function parseMemoryMb(memStr: string): number {
+		const clean = memStr.trim().toUpperCase();
+		const match = clean.match(/^(\d+(?:\.\d+)?)\s*(MB|M|GB|G|KB|K)?$/);
+		if (!match) return 512;
+		const num = parseFloat(match[1]);
+		const unit = match[2] || 'MB';
+		if (unit.startsWith('G')) return Math.round(num * 1024);
+		if (unit.startsWith('M')) return Math.round(num);
+		if (unit.startsWith('K')) return Math.round(num / 1024);
+		return Math.round(num);
+	}
+
+	async function handleSave() {
+		isSaving = true;
+		try {
+			const parsedCpu = parseFloat(cpuLimit) || 0;
+			const parsedMem = parseMemoryMb(memoryLimit);
+			const parsedPids = parseInt(pidsLimit, 10) || 2048;
+
+			service.cpuLimit = parsedCpu;
+			service.memoryLimit = parsedMem;
+			service.restartPolicy = restartPolicy;
+			service.advanced = {
+				runtime: {
+					mode: runtimeMode,
+					userNamespace: userNamespace.trim() || 'keep-id',
+					devices: devices
+						.split(',')
+						.map((d) => d.trim())
+						.filter(Boolean)
+				},
+				lifecycle: {
+					quadletEnabled,
+					systemdUnitName: systemdUnit.trim() || `${service.name}.service`,
+					restartPolicy
+				},
+				security: {
+					privileged: isPrivileged,
+					selinuxLabel: selinuxLabel.trim() || 'container_t',
+					apparmorProfile: apparmorProfile.trim() || 'default',
+					capAdd: capAdd
+						.split(',')
+						.map((c) => c.trim())
+						.filter(Boolean),
+					capDrop: capDrop
+						.split(',')
+						.map((c) => c.trim())
+						.filter(Boolean),
+					noNewPrivileges
+				},
+				storage: {
+					volumes: volumes.filter((v) => v.source.trim() && v.target.trim())
+				},
+				resources: {
+					cpuLimit,
+					memoryLimit,
+					pidsLimit: parsedPids,
+					swapLimit
+				}
+			};
+
+			await dataStore.updateService(service);
+			saveStatus = 'saved';
+			setTimeout(() => (saveStatus = 'idle'), 2500);
+		} catch (err) {
+			console.error('Failed to save advanced service configuration:', err);
+			saveStatus = 'error';
+			setTimeout(() => (saveStatus = 'idle'), 3000);
+		} finally {
+			isSaving = false;
+		}
+	}
 </script>
 
-<div class="w-full flex flex-col gap-5">
+<div class="flex w-full flex-col gap-5">
+	<!-- Top Operational Save Bar -->
+	<div
+		class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-4 sm:flex-row sm:items-center"
+	>
+		<div class="flex flex-col gap-0.5">
+			<span class="text-sm font-semibold text-[var(--text-primary)]"
+				>Advanced Service Configuration</span
+			>
+			<span class="text-xs text-[var(--text-tertiary)]">
+				Persists cgroups v2 quotas, rootless user namespace, security capabilities, and volume
+				mounts to Podman.
+			</span>
+		</div>
+		<div class="flex items-center gap-2">
+			<Button variant="primary" size="sm" disabled={isSaving} onclick={handleSave}>
+				{#if isSaving}
+					<SpinnerGap size={13} class="animate-spin" /> Saving…
+				{:else if saveStatus === 'saved'}
+					<Check size={13} class="text-white" /> Saved to Runtime
+				{:else}
+					<FloppyDisk size={13} /> Save Changes
+				{/if}
+			</Button>
+		</div>
+	</div>
 	<!-- ══════════════════════════════════════════════════════════════
 	     1. RUNTIME CONFIGURATION
 	     ══════════════════════════════════════════════════════════════ -->
@@ -171,12 +284,13 @@ spec:
 	>
 		<!-- Rootless / Rootful (Rootless is default; neither labeled "Recommended") -->
 		<div class="flex flex-col gap-1.5 pt-2">
-			<span class="text-xs text-[var(--text-secondary)] font-medium">Podman Mode</span>
-			<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+			<span class="text-xs font-medium text-[var(--text-secondary)]">Podman Mode</span>
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<label
-					class="flex items-start gap-3 p-3 rounded-[var(--radius-sm)] border cursor-pointer transition-colors {runtimeMode === 'rootless'
-						? 'bg-[var(--bg-surface)] border-[var(--accent)]'
-						: 'bg-[var(--bg-panel)] border-[var(--border)]'}"
+					class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border p-3 transition-colors {runtimeMode ===
+					'rootless'
+						? 'border-[var(--accent)] bg-[var(--bg-surface)]'
+						: 'border-[var(--border)] bg-[var(--bg-panel)]'}"
 				>
 					<input
 						type="radio"
@@ -186,16 +300,18 @@ spec:
 					/>
 					<div class="flex flex-col gap-0.5">
 						<span class="text-xs font-medium text-[var(--text-primary)]">Rootless (Default)</span>
-						<span class="text-[11px] text-[var(--text-tertiary)] leading-relaxed">
-							Runs entirely in unprivileged user space without root privileges. Standard for PaaS workloads.
+						<span class="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+							Runs entirely in unprivileged user space without root privileges. Standard for PaaS
+							workloads.
 						</span>
 					</div>
 				</label>
 
 				<label
-					class="flex items-start gap-3 p-3 rounded-[var(--radius-sm)] border cursor-pointer transition-colors {runtimeMode === 'rootful'
-						? 'bg-[var(--bg-surface)] border-[var(--accent)]'
-						: 'bg-[var(--bg-panel)] border-[var(--border)]'}"
+					class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border p-3 transition-colors {runtimeMode ===
+					'rootful'
+						? 'border-[var(--accent)] bg-[var(--bg-surface)]'
+						: 'border-[var(--border)] bg-[var(--bg-panel)]'}"
 				>
 					<input
 						type="radio"
@@ -205,26 +321,45 @@ spec:
 					/>
 					<div class="flex flex-col gap-0.5">
 						<span class="text-xs font-medium text-[var(--text-primary)]">Rootful</span>
-						<span class="text-[11px] text-[var(--text-tertiary)] leading-relaxed">
-							Runs via system daemon with root permissions. Required for low privileged system ports &lt;1024 or direct raw devices.
+						<span class="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+							Runs via system daemon with root permissions. Required for low privileged system ports
+							&lt;1024 or direct raw devices.
 						</span>
 					</div>
 				</label>
 			</div>
 		</div>
 
-		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 			<div class="flex flex-col gap-1.5">
-				<label for="rt-userns" class="text-xs text-[var(--text-secondary)] font-medium">User Namespace</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="rt-userns" bind:value={userNamespace} placeholder="keep-id" class="font-[var(--font-mono)] text-xs" />
+				<label for="rt-userns" class="text-xs font-medium text-[var(--text-secondary)]"
+					>User Namespace</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="rt-userns"
+						bind:value={userNamespace}
+						placeholder="keep-id"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 
 			<div class="flex flex-col gap-1.5">
-				<label for="rt-devices" class="text-xs text-[var(--text-secondary)] font-medium">Host Devices</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="rt-devices" bind:value={devices} placeholder="/dev/fuse, /dev/net/tun" class="font-[var(--font-mono)] text-xs" />
+				<label for="rt-devices" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Host Devices</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="rt-devices"
+						bind:value={devices}
+						placeholder="/dev/fuse, /dev/net/tun"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 		</div>
@@ -239,10 +374,14 @@ spec:
 		collapsible={true}
 		bind:open={openSections.lifecycle}
 	>
-		<div class="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-			<div class="flex items-start justify-between p-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)]">
+		<div class="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2">
+			<div
+				class="flex items-start justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+			>
 				<div class="flex flex-col gap-0.5">
-					<span class="text-xs font-medium text-[var(--text-primary)]">Systemd Quadlet Supervisor</span>
+					<span class="text-xs font-medium text-[var(--text-primary)]"
+						>Systemd Quadlet Supervisor</span
+					>
 					<span class="text-[11px] text-[var(--text-tertiary)]">
 						Automatically generates a systemd user service unit for process supervision.
 					</span>
@@ -251,12 +390,16 @@ spec:
 			</div>
 
 			<div class="flex flex-col gap-1.5">
-				<label for="lc-restart" class="text-xs text-[var(--text-secondary)] font-medium">Restart Policy</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
+				<label for="lc-restart" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Restart Policy</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
 					<select
 						id="lc-restart"
 						bind:value={restartPolicy}
-						class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
+						class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
 					>
 						<option value="always">always</option>
 						<option value="on-failure">on-failure</option>
@@ -277,35 +420,89 @@ spec:
 		collapsible={true}
 		bind:open={openSections.security}
 	>
-		<div class="flex items-start justify-between p-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] mt-2">
+		<div
+			class="mt-2 flex items-start justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+		>
 			<div class="flex flex-col gap-0.5">
-				<span class="text-xs font-medium text-[var(--text-primary)]">Privileged Container Mode</span>
+				<span class="text-xs font-medium text-[var(--text-primary)]">Privileged Container Mode</span
+				>
 				<span class="text-[11px] text-[var(--text-tertiary)]">
-					Disables SELinux isolation and grants access to all host kernel devices. Keep disabled for standard PaaS apps.
+					Disables SELinux isolation and grants access to all host kernel devices. Keep disabled for
+					standard PaaS apps.
 				</span>
 			</div>
 			<input type="checkbox" bind:checked={isPrivileged} class="mt-1 accent-[var(--status-red)]" />
 		</div>
 
-		<div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 			<div class="flex flex-col gap-1.5">
-				<label for="sec-selinux" class="text-xs text-[var(--text-secondary)] font-medium">SELinux Label</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="sec-selinux" bind:value={selinuxLabel} placeholder="container_file_t" class="font-[var(--font-mono)] text-xs" />
+				<label for="sec-selinux" class="text-xs font-medium text-[var(--text-secondary)]"
+					>SELinux Process Label</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="sec-selinux"
+						bind:value={selinuxLabel}
+						placeholder="container_t, spc_t, or disable"
+						class="text-xs font-[var(--font-mono)]"
+					/>
+				</div>
+				<span class="text-[10px] text-[var(--text-tertiary)]">
+					Process type (e.g. <code>spc_t</code> for unconfined, or <code>disable</code>). For
+					volumes, use <code>:z</code>/<code>:Z</code> below.
+				</span>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="sec-apparmor" class="text-xs font-medium text-[var(--text-secondary)]"
+					>AppArmor Profile (Ubuntu/Debian)</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="sec-apparmor"
+						bind:value={apparmorProfile}
+						placeholder="default or unconfined"
+						class="text-xs font-[var(--font-mono)]"
+					/>
+				</div>
+				<span class="text-[10px] text-[var(--text-tertiary)]">
+					Standard MAC on Ubuntu/Debian. Set to <code>unconfined</code> to disable AppArmor.
+				</span>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="sec-cap-add" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Add Capabilities</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="sec-cap-add"
+						bind:value={capAdd}
+						placeholder="NET_BIND_SERVICE"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 
 			<div class="flex flex-col gap-1.5">
-				<label for="sec-cap-add" class="text-xs text-[var(--text-secondary)] font-medium">Add Capabilities</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="sec-cap-add" bind:value={capAdd} placeholder="NET_BIND_SERVICE" class="font-[var(--font-mono)] text-xs" />
-				</div>
-			</div>
-
-			<div class="flex flex-col gap-1.5">
-				<label for="sec-cap-drop" class="text-xs text-[var(--text-secondary)] font-medium">Drop Capabilities</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="sec-cap-drop" bind:value={capDrop} placeholder="ALL" class="font-[var(--font-mono)] text-xs" />
+				<label for="sec-cap-drop" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Drop Capabilities</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="sec-cap-drop"
+						bind:value={capDrop}
+						placeholder="ALL"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 		</div>
@@ -321,32 +518,52 @@ spec:
 		bind:open={openSections.storage}
 	>
 		<div class="flex items-center justify-between pt-1">
-			<span class="text-xs text-[var(--text-secondary)] font-medium">Configured Volume Mounts</span>
+			<span class="text-xs font-medium text-[var(--text-secondary)]">Configured Volume Mounts</span>
 			<Button variant="secondary" size="sm" onclick={addVolume}>
 				<Plus size={13} /> Add Mount
 			</Button>
 		</div>
 
-		<div class="flex flex-col divide-y divide-[var(--border-subtle)] border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] overflow-hidden">
+		<div
+			class="flex flex-col divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)]"
+		>
 			{#each volumes as vol, idx}
-				<div class="p-3 grid grid-cols-1 sm:grid-cols-3 gap-3 items-center">
+				<div class="grid grid-cols-1 items-center gap-3 p-3 sm:grid-cols-3">
 					<div class="flex flex-col gap-1">
-						<span class="text-[10px] text-[var(--text-tertiary)] uppercase font-medium">Source / Volume</span>
-						<Input bind:value={vol.source} placeholder="volume_name" class="font-[var(--font-mono)] text-xs" />
+						<span class="text-[10px] font-medium text-[var(--text-tertiary)] uppercase"
+							>Source / Volume</span
+						>
+						<Input
+							bind:value={vol.source}
+							placeholder="volume_name"
+							class="text-xs font-[var(--font-mono)]"
+						/>
 					</div>
 					<div class="flex flex-col gap-1">
-						<span class="text-[10px] text-[var(--text-tertiary)] uppercase font-medium">Container Mount</span>
-						<Input bind:value={vol.target} placeholder="/data" class="font-[var(--font-mono)] text-xs" />
+						<span class="text-[10px] font-medium text-[var(--text-tertiary)] uppercase"
+							>Container Mount</span
+						>
+						<Input
+							bind:value={vol.target}
+							placeholder="/data"
+							class="text-xs font-[var(--font-mono)]"
+						/>
 					</div>
 					<div class="flex items-center gap-2">
-						<div class="flex flex-col gap-1 flex-1">
-							<span class="text-[10px] text-[var(--text-tertiary)] uppercase font-medium">Flags</span>
-							<Input bind:value={vol.options} placeholder="Z" class="font-[var(--font-mono)] text-xs" />
+						<div class="flex flex-1 flex-col gap-1">
+							<span class="text-[10px] font-medium text-[var(--text-tertiary)] uppercase"
+								>Flags</span
+							>
+							<Input
+								bind:value={vol.options}
+								placeholder="Z"
+								class="text-xs font-[var(--font-mono)]"
+							/>
 						</div>
 						<button
 							type="button"
 							onclick={() => removeVolume(idx)}
-							class="mt-4 text-[var(--text-tertiary)] hover:text-[var(--status-red)] p-1.5 bg-transparent border-0 cursor-pointer"
+							class="mt-4 cursor-pointer border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] hover:text-[var(--status-red)]"
 						>
 							<Trash size={14} />
 						</button>
@@ -365,32 +582,68 @@ spec:
 		collapsible={true}
 		bind:open={openSections.resources}
 	>
-		<div class="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-2">
+		<div class="grid grid-cols-2 gap-4 pt-2 sm:grid-cols-4">
 			<div class="flex flex-col gap-1.5">
-				<label for="res-cpu" class="text-xs text-[var(--text-secondary)] font-medium">CPU Quota</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="res-cpu" bind:value={cpuLimit} placeholder="2.0" class="font-[var(--font-mono)] text-xs" />
+				<label for="res-cpu" class="text-xs font-medium text-[var(--text-secondary)]"
+					>CPU Quota</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="res-cpu"
+						bind:value={cpuLimit}
+						placeholder="2.0"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 
 			<div class="flex flex-col gap-1.5">
-				<label for="res-mem" class="text-xs text-[var(--text-secondary)] font-medium">Memory Limit</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="res-mem" bind:value={memoryLimit} placeholder="512MB" class="font-[var(--font-mono)] text-xs" />
+				<label for="res-mem" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Memory Limit</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="res-mem"
+						bind:value={memoryLimit}
+						placeholder="512MB"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 
 			<div class="flex flex-col gap-1.5">
-				<label for="res-pids" class="text-xs text-[var(--text-secondary)] font-medium">PIDs Limit</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="res-pids" bind:value={pidsLimit} placeholder="2048" class="font-[var(--font-mono)] text-xs" />
+				<label for="res-pids" class="text-xs font-medium text-[var(--text-secondary)]"
+					>PIDs Limit</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="res-pids"
+						bind:value={pidsLimit}
+						placeholder="2048"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 
 			<div class="flex flex-col gap-1.5">
-				<label for="res-swap" class="text-xs text-[var(--text-secondary)] font-medium">Swap Limit</label>
-				<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
-					<Input id="res-swap" bind:value={swapLimit} placeholder="0" class="font-[var(--font-mono)] text-xs" />
+				<label for="res-swap" class="text-xs font-medium text-[var(--text-secondary)]"
+					>Swap Limit</label
+				>
+				<div
+					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+				>
+					<Input
+						id="res-swap"
+						bind:value={swapLimit}
+						placeholder="0"
+						class="text-xs font-[var(--font-mono)]"
+					/>
 				</div>
 			</div>
 		</div>
@@ -405,14 +658,17 @@ spec:
 		collapsible={true}
 		bind:open={openSections.generated}
 	>
-		<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+		<div class="flex flex-col justify-between gap-3 pt-2 sm:flex-row sm:items-center">
 			<!-- Format selector tabs -->
-			<div class="flex items-center gap-1 p-0.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)]">
+			<div
+				class="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-0.5"
+			>
 				<button
 					type="button"
 					onclick={() => (genTab = 'quadlet')}
-					class="px-2.5 py-1 rounded text-xs transition-colors border-0 cursor-pointer {genTab === 'quadlet'
-						? 'bg-[var(--bg-panel)] text-[var(--text-primary)] font-medium'
+					class="cursor-pointer rounded border-0 px-2.5 py-1 text-xs transition-colors {genTab ===
+					'quadlet'
+						? 'bg-[var(--bg-panel)] font-medium text-[var(--text-primary)]'
 						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 				>
 					Quadlet (.container)
@@ -420,8 +676,9 @@ spec:
 				<button
 					type="button"
 					onclick={() => (genTab = 'kubernetes')}
-					class="px-2.5 py-1 rounded text-xs transition-colors border-0 cursor-pointer {genTab === 'kubernetes'
-						? 'bg-[var(--bg-panel)] text-[var(--text-primary)] font-medium'
+					class="cursor-pointer rounded border-0 px-2.5 py-1 text-xs transition-colors {genTab ===
+					'kubernetes'
+						? 'bg-[var(--bg-panel)] font-medium text-[var(--text-primary)]'
 						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 				>
 					Kubernetes YAML
@@ -429,8 +686,9 @@ spec:
 				<button
 					type="button"
 					onclick={() => (genTab = 'podman')}
-					class="px-2.5 py-1 rounded text-xs transition-colors border-0 cursor-pointer {genTab === 'podman'
-						? 'bg-[var(--bg-panel)] text-[var(--text-primary)] font-medium'
+					class="cursor-pointer rounded border-0 px-2.5 py-1 text-xs transition-colors {genTab ===
+					'podman'
+						? 'bg-[var(--bg-panel)] font-medium text-[var(--text-primary)]'
 						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 				>
 					Podman Run CLI
@@ -449,4 +707,20 @@ spec:
 			height="auto"
 		/>
 	</SectionCard>
+
+	<!-- Bottom Save Bar -->
+	<div class="flex items-center justify-between border-t border-[var(--border)] pt-4">
+		<span class="text-xs text-[var(--text-tertiary)]">
+			Changes take effect immediately on next deployment or container restart.
+		</span>
+		<Button variant="primary" size="sm" disabled={isSaving} onclick={handleSave}>
+			{#if isSaving}
+				<SpinnerGap size={13} class="animate-spin" /> Saving…
+			{:else if saveStatus === 'saved'}
+				<Check size={13} class="text-white" /> Saved to Runtime
+			{:else}
+				<FloppyDisk size={13} /> Save Changes
+			{/if}
+		</Button>
+	</div>
 </div>

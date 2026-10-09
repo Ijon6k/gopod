@@ -13,7 +13,11 @@ export class StorageDomainStore {
 		return this.volumeSchedules.filter((s) => s.projectId === projectId);
 	}
 
-	async createVolumeSnapshot(volumeName: string, projectId: string, serviceId: string): Promise<VolumeSnapshot> {
+	async createVolumeSnapshot(
+		volumeName: string,
+		projectId: string,
+		serviceId: string
+	): Promise<VolumeSnapshot> {
 		const created = await api.volumes.createSnapshot({ volumeName, projectId, serviceId });
 		this.volumeSnapshots.unshift(created);
 		return created;

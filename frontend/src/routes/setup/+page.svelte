@@ -10,7 +10,6 @@
 		ArrowRight,
 		CircleNotch,
 		WarningCircle,
-		CheckCircle,
 		Cpu
 	} from 'phosphor-svelte';
 
@@ -58,7 +57,8 @@
 			// Successfully configured initial root admin
 			await goto('/', { replaceState: true });
 		} catch (err: any) {
-			validationError = err.message || 'Failed to complete cluster setup. Please verify your details.';
+			validationError =
+				err.message || 'Failed to complete cluster setup. Please verify your details.';
 		} finally {
 			isSubmitting = false;
 		}
@@ -69,36 +69,52 @@
 	<title>Initial Administrator Setup — GOPOD</title>
 </svelte:head>
 
-<div class="w-full max-w-[460px] mx-auto">
+<div class="mx-auto w-full max-w-[460px]">
 	<!-- Branding / Header -->
-	<div class="text-center mb-6">
-		<div class="inline-flex items-center justify-center gap-2 mb-3">
-			<div class="w-10 h-10 rounded-xl bg-[var(--accent-muted)] border border-[var(--accent)]/30 flex items-center justify-center text-[var(--accent)] shadow-sm">
+	<div class="mb-6 text-center">
+		<div class="mb-3 inline-flex items-center justify-center gap-2">
+			<div
+				class="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-muted)] text-[var(--accent)] shadow-sm"
+			>
 				<ShieldCheck size={24} weight="duotone" />
 			</div>
 			<div class="text-left">
 				<div class="flex items-center gap-1.5">
-					<span class="text-lg font-bold tracking-tight text-[var(--text-primary)] font-mono">GOPOD</span>
-					<span class="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-[var(--accent-muted)] text-[var(--accent)] font-semibold border border-[var(--accent)]/20">Init</span>
+					<span class="font-mono text-lg font-bold tracking-tight text-[var(--text-primary)]"
+						>GOPOD</span
+					>
+					<span
+						class="rounded border border-[var(--accent)]/20 bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--accent)] uppercase"
+						>Init</span
+					>
 				</div>
 				<span class="text-xs text-[var(--text-tertiary)]">Podman Infrastructure Manager</span>
 			</div>
 		</div>
 
-		<h1 class="text-xl font-semibold text-[var(--text-primary)] tracking-tight">Create Administrator Account</h1>
-		<p class="text-xs text-[var(--text-secondary)] mt-1.5 max-w-[380px] mx-auto leading-relaxed">
-			Welcome to GOPOD. Configure your master administrative credentials to take ownership of this node and manage your containers.
+		<h1 class="text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+			Create Administrator Account
+		</h1>
+		<p class="mx-auto mt-1.5 max-w-[380px] text-xs leading-relaxed text-[var(--text-secondary)]">
+			Welcome to GOPOD. Configure your master administrative credentials to take ownership of this
+			node and manage your containers.
 		</p>
 	</div>
 
 	<!-- Setup Card -->
-	<div class="bg-[var(--bg-shell)] border border-[var(--border)] rounded-[var(--radius-card)] p-6 shadow-xl relative overflow-hidden">
+	<div
+		class="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] p-6 shadow-xl"
+	>
 		<!-- Top accent indicator -->
-		<div class="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"></div>
+		<div
+			class="absolute top-0 right-0 left-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"
+		></div>
 
 		{#if validationError}
-			<div class="mb-5 p-3 rounded-[var(--radius-sm)] bg-[var(--status-red-muted)] border border-[var(--status-red)]/30 flex items-start gap-2.5 text-xs text-[var(--status-red)]">
-				<WarningCircle size={16} class="shrink-0 mt-0.5" />
+			<div
+				class="mb-5 flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-[var(--status-red)]/30 bg-[var(--status-red-muted)] p-3 text-xs text-[var(--status-red)]"
+			>
+				<WarningCircle size={16} class="mt-0.5 shrink-0" />
 				<span class="leading-normal">{validationError}</span>
 			</div>
 		{/if}
@@ -106,11 +122,16 @@
 		<form onsubmit={handleSubmit} class="space-y-4">
 			<!-- Name Field -->
 			<div>
-				<label for="setup-name" class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+				<label
+					for="setup-name"
+					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
+				>
 					Administrator Name
 				</label>
 				<div class="relative">
-					<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--text-tertiary)]">
+					<div
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+					>
 						<UserIcon size={16} />
 					</div>
 					<Input
@@ -120,18 +141,23 @@
 						placeholder="e.g. Administrator"
 						required
 						autocomplete="name"
-						class="pl-9 h-10 text-sm"
+						class="h-10 pl-9 text-sm"
 					/>
 				</div>
 			</div>
 
 			<!-- Email Field -->
 			<div>
-				<label for="setup-email" class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+				<label
+					for="setup-email"
+					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
+				>
 					Administrator Email
 				</label>
 				<div class="relative">
-					<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--text-tertiary)]">
+					<div
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+					>
 						<Envelope size={16} />
 					</div>
 					<Input
@@ -141,18 +167,23 @@
 						placeholder="admin@yourdomain.com"
 						required
 						autocomplete="email"
-						class="pl-9 h-10 text-sm"
+						class="h-10 pl-9 text-sm"
 					/>
 				</div>
 			</div>
 
 			<!-- Password Field -->
 			<div>
-				<label for="setup-password" class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
-					Password <span class="text-[var(--text-muted)] font-normal">(min 8 characters)</span>
+				<label
+					for="setup-password"
+					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
+				>
+					Password <span class="font-normal text-[var(--text-muted)]">(min 8 characters)</span>
 				</label>
 				<div class="relative">
-					<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--text-tertiary)]">
+					<div
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+					>
 						<Lock size={16} />
 					</div>
 					<Input
@@ -162,18 +193,23 @@
 						placeholder="••••••••••••"
 						required
 						autocomplete="new-password"
-						class="pl-9 h-10 text-sm"
+						class="h-10 pl-9 text-sm"
 					/>
 				</div>
 			</div>
 
 			<!-- Confirm Password Field -->
 			<div>
-				<label for="setup-confirm-password" class="block text-xs font-medium text-[var(--text-secondary)] mb-1.5">
+				<label
+					for="setup-confirm-password"
+					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
+				>
 					Confirm Password
 				</label>
 				<div class="relative">
-					<div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-[var(--text-tertiary)]">
+					<div
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+					>
 						<Lock size={16} />
 					</div>
 					<Input
@@ -183,22 +219,27 @@
 						placeholder="••••••••••••"
 						required
 						autocomplete="new-password"
-						class="pl-9 h-10 text-sm"
+						class="h-10 pl-9 text-sm"
 					/>
 				</div>
 			</div>
 
 			<!-- Security Callout -->
-			<div class="p-2.5 rounded-[var(--radius-sm)] bg-[var(--bg-surface)] border border-[var(--border-subtle)] flex items-start gap-2 text-[11px] text-[var(--text-tertiary)]">
-				<ShieldCheck size={14} class="shrink-0 text-[var(--accent)] mt-0.5" />
-				<span>Account setup endpoint locks permanently once initialized. Further accounts can only be added via administrator invites.</span>
+			<div
+				class="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2.5 text-[11px] text-[var(--text-tertiary)]"
+			>
+				<ShieldCheck size={14} class="mt-0.5 shrink-0 text-[var(--accent)]" />
+				<span
+					>Account setup endpoint locks permanently once initialized. Further accounts can only be
+					added via administrator invites.</span
+				>
 			</div>
 
 			<!-- Submit Button -->
 			<button
 				type="submit"
 				disabled={isSubmitting}
-				class="w-full h-10 rounded-[var(--radius-sm)] bg-[var(--accent)] hover:bg-[var(--accent-hover)] text-white font-medium text-sm flex items-center justify-center gap-2 border-0 cursor-pointer transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed mt-2"
+				class="mt-2 flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-sm)] border-0 bg-[var(--accent)] text-sm font-medium text-white shadow-sm transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
 			>
 				{#if isSubmitting}
 					<CircleNotch size={16} class="animate-spin" />
@@ -212,7 +253,9 @@
 	</div>
 
 	<!-- Node Info Footer -->
-	<div class="mt-6 flex items-center justify-center gap-4 text-[11px] text-[var(--text-muted)] font-mono">
+	<div
+		class="mt-6 flex items-center justify-center gap-4 font-mono text-[11px] text-[var(--text-muted)]"
+	>
 		<span class="flex items-center gap-1.5">
 			<Cpu size={12} /> Rootless Podman 5.x
 		</span>

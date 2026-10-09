@@ -47,14 +47,14 @@
 	<button
 		type="button"
 		onclick={handleCopy}
-		title={title}
-		class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline bg-transparent border-0 cursor-pointer p-0 font-medium transition-colors {className}"
+		{title}
+		class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] font-medium text-[var(--accent)] transition-colors hover:underline {className}"
 	>
 		{#if copied}
-			<Check size={size} class="text-[var(--status-green)] shrink-0" />
+			<Check {size} class="shrink-0 text-[var(--status-green)]" />
 			<span class="text-[var(--status-green)]">{copiedLabel}</span>
 		{:else}
-			<Copy size={size} class="shrink-0" />
+			<Copy {size} class="shrink-0" />
 			{#if label}
 				<span>{label}</span>
 			{/if}
@@ -64,14 +64,14 @@
 	<button
 		type="button"
 		onclick={handleCopy}
-		title={title}
-		class="flex items-center gap-1.5 px-2.5 py-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] cursor-pointer text-[11px] font-medium transition-colors w-fit {className}"
+		{title}
+		class="flex w-fit cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-[11px] font-medium text-[var(--text-primary)] transition-colors hover:bg-[var(--bg-hover)] {className}"
 	>
 		{#if copied}
-			<Check size={size} class="text-[var(--status-green)] shrink-0" />
+			<Check {size} class="shrink-0 text-[var(--status-green)]" />
 			<span class="text-[var(--status-green)]">{copiedLabel}</span>
 		{:else}
-			<Copy size={size} class="shrink-0" />
+			<Copy {size} class="shrink-0" />
 			{#if label}
 				<span>{label}</span>
 			{/if}
@@ -81,17 +81,17 @@
 	<button
 		type="button"
 		onclick={handleCopy}
-		title={title}
+		{title}
 		aria-label={title}
-		class="flex items-center justify-center p-1.5 rounded-[var(--radius-sm)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer border-0 bg-transparent {className}"
+		class="flex cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] {className}"
 	>
 		{#if copied}
-			<Check size={size} class="text-[var(--status-green)] shrink-0" />
+			<Check {size} class="shrink-0 text-[var(--status-green)]" />
 			{#if label}
-				<span class="ml-1 text-[var(--status-green)] text-xs">{copiedLabel}</span>
+				<span class="ml-1 text-xs text-[var(--status-green)]">{copiedLabel}</span>
 			{/if}
 		{:else}
-			<Copy size={size} class="shrink-0" />
+			<Copy {size} class="shrink-0" />
 			{#if label}
 				<span class="ml-1 text-xs">{label}</span>
 			{/if}

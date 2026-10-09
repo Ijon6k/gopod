@@ -20,20 +20,20 @@
 	<title>Home — GOPOD</title>
 </svelte:head>
 
-<div class="w-full flex flex-col gap-8">
+<div class="flex w-full flex-col gap-8">
 	<PageHeader title="Home" subtitle="Your infrastructure at a glance." />
 
 	<!-- 1. Server surface -->
 	<ServerSurface {server} />
 
 	<!-- 2. Resource usage + Attention -->
-	<div class="grid gap-7 grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)] max-[1000px]:grid-cols-1">
+	<div class="grid grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)] gap-7 max-[1000px]:grid-cols-1">
 		<ResourceUsage data={monitoringData} {chartMeta} />
 		<AttentionPanel {failed} />
 	</div>
 
 	<!-- 3. Recent activity + Projects -->
-	<div class="grid gap-7 grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)] max-[1000px]:grid-cols-1">
+	<div class="grid grid-cols-[minmax(0,1.55fr)_minmax(320px,1fr)] gap-7 max-[1000px]:grid-cols-1">
 		<ActivityList {deployments} />
 		<ProjectList {projects} />
 	</div>

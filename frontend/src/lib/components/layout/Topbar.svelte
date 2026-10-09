@@ -5,14 +5,7 @@
 	import { projects, services } from '$lib/data';
 	import { Input, Kbd } from '$lib/components/primitives';
 	import { ui } from '$lib/stores/ui.svelte';
-	import {
-		MagnifyingGlass,
-		Plus,
-		SidebarSimple,
-		List,
-		CaretDown,
-		Check
-	} from 'phosphor-svelte';
+	import { MagnifyingGlass, Plus, SidebarSimple, List, CaretDown, Check } from 'phosphor-svelte';
 
 	let search = $state('');
 	let projectMenuOpen = $state(false);
@@ -53,7 +46,8 @@
 		const serviceId = parts[2] === 'services' ? parts[3] : undefined;
 		const service = services.find((s) => s.id === serviceId);
 
-		if (labels[pathname]) return { items: labels[pathname], project: undefined, service: undefined };
+		if (labels[pathname])
+			return { items: labels[pathname], project: undefined, service: undefined };
 
 		if (project) {
 			const items = [
@@ -75,13 +69,13 @@
 <svelte:window onclick={handleClickOutside} />
 
 <div
-	class="h-[var(--topbar-height)] flex items-center gap-2.5 px-3.5 border-b border-[var(--border)] bg-[var(--bg-shell)] shrink-0"
+	class="flex h-[var(--topbar-height)] shrink-0 items-center gap-2.5 border-b border-[var(--border)] bg-[var(--bg-shell)] px-3.5"
 >
 	<!-- Mobile Burger Button -->
 	<button
 		aria-label="Open navigation"
 		onclick={() => ui.toggleSidebar()}
-		class="md:hidden border-0 bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-sm)] cursor-pointer p-1.5 -ml-1 flex items-center justify-center transition-colors"
+		class="-ml-1 flex cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] md:hidden"
 	>
 		<List size={20} weight="bold" />
 	</button>
@@ -91,39 +85,39 @@
 		aria-label="Toggle sidebar"
 		title={ui.sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
 		onclick={() => ui.toggleSidebar()}
-		class="hidden md:flex border-0 bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] rounded-[var(--radius-sm)] cursor-pointer p-1.5 items-center justify-center transition-colors"
+		class="hidden cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border-0 bg-transparent p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] md:flex"
 	>
 		<SidebarSimple size={18} />
 	</button>
 
 	<!-- Breadcrumbs -->
-	<div class="flex items-center gap-1.5 flex-1 min-w-0">
+	<div class="flex min-w-0 flex-1 items-center gap-1.5">
 		{#each crumbs.items as crumb, index}
 			<span
 				class={cn(
-					'flex items-center gap-1.5 text-[var(--text-tertiary)] text-base whitespace-nowrap',
-					index === crumbs.items.length - 1 && 'text-[var(--text-primary)] font-medium'
+					'flex items-center gap-1.5 text-base whitespace-nowrap text-[var(--text-tertiary)]',
+					index === crumbs.items.length - 1 && 'font-medium text-[var(--text-primary)]'
 				)}
 			>
 				{#if index > 0}
-					<i class="not-italic text-[var(--text-tertiary)] text-sm">/</i>
+					<i class="text-sm text-[var(--text-tertiary)] not-italic">/</i>
 				{/if}
 				{#if crumbs.project && crumb === crumbs.project.name}
-					<span class="relative dropdown-container">
+					<span class="dropdown-container relative">
 						<button
 							onclick={() => {
 								projectMenuOpen = !projectMenuOpen;
 								serviceMenuOpen = false;
 							}}
 							aria-expanded={projectMenuOpen}
-							class="flex items-center gap-[3px] border-0 bg-transparent text-[var(--text-primary)] font-[var(--font-sans)] font-medium text-base cursor-pointer px-1 py-[3px] hover:text-[var(--accent)] transition-colors"
+							class="flex cursor-pointer items-center gap-[3px] border-0 bg-transparent px-1 py-[3px] text-base font-[var(--font-sans)] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--accent)]"
 						>
 							{crumbs.project.name}
 							<CaretDown size={13} />
 						</button>
 						{#if projectMenuOpen}
 							<span
-								class="absolute top-[calc(100%+7px)] left-[-4px] z-70 w-[196px] p-1 bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-sm)] shadow-lg"
+								class="absolute top-[calc(100%+7px)] left-[-4px] z-70 w-[196px] rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-1 shadow-lg"
 							>
 								{#each projects as item}
 									<button
@@ -131,21 +125,21 @@
 											projectMenuOpen = false;
 											goto(`/projects/${item.id}`);
 										}}
-										class="flex w-full items-center justify-between gap-2 px-2 py-[7px] border-0 rounded bg-transparent text-[var(--text-secondary)] text-xs font-[var(--font-sans)] text-left cursor-pointer hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+										class="flex w-full cursor-pointer items-center justify-between gap-2 rounded border-0 bg-transparent px-2 py-[7px] text-left text-xs font-[var(--font-sans)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 									>
 										<span>{item.name}</span>
 										{#if item.id === crumbs.project?.id}
-											<Check size={13} class="text-[var(--accent)] shrink-0" />
+											<Check size={13} class="shrink-0 text-[var(--accent)]" />
 										{/if}
 									</button>
 								{/each}
-								<hr class="h-px my-1 mx-0.5 border-0 bg-[var(--border-subtle)]" />
+								<hr class="mx-0.5 my-1 h-px border-0 bg-[var(--border-subtle)]" />
 								<button
 									onclick={() => {
 										projectMenuOpen = false;
 										goto('/projects');
 									}}
-									class="flex w-full items-center gap-2 px-2 py-[7px] border-0 rounded bg-transparent text-[var(--text-secondary)] text-xs font-[var(--font-sans)] text-left cursor-pointer hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+									class="flex w-full cursor-pointer items-center gap-2 rounded border-0 bg-transparent px-2 py-[7px] text-left text-xs font-[var(--font-sans)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 								>
 									All projects
 								</button>
@@ -154,7 +148,7 @@
 										projectMenuOpen = false;
 										goto('/projects/new');
 									}}
-									class="flex w-full items-center gap-2 px-2 py-[7px] border-0 rounded bg-transparent text-[var(--accent)] text-xs font-[var(--font-sans)] text-left cursor-pointer hover:bg-[var(--bg-hover)]"
+									class="flex w-full cursor-pointer items-center gap-2 rounded border-0 bg-transparent px-2 py-[7px] text-left text-xs font-[var(--font-sans)] text-[var(--accent)] hover:bg-[var(--bg-hover)]"
 								>
 									<Plus size={13} />
 									New project
@@ -163,21 +157,21 @@
 						{/if}
 					</span>
 				{:else if crumbs.service && crumb === crumbs.service.name}
-					<span class="relative dropdown-container">
+					<span class="dropdown-container relative">
 						<button
 							onclick={() => {
 								serviceMenuOpen = !serviceMenuOpen;
 								projectMenuOpen = false;
 							}}
 							aria-expanded={serviceMenuOpen}
-							class="flex items-center gap-[3px] border-0 bg-transparent text-[var(--text-primary)] font-[var(--font-sans)] font-medium text-base cursor-pointer px-1 py-[3px] hover:text-[var(--accent)] transition-colors"
+							class="flex cursor-pointer items-center gap-[3px] border-0 bg-transparent px-1 py-[3px] text-base font-[var(--font-sans)] font-medium text-[var(--text-primary)] transition-colors hover:text-[var(--accent)]"
 						>
 							{crumbs.service.name}
 							<CaretDown size={13} />
 						</button>
 						{#if serviceMenuOpen}
 							<span
-								class="absolute top-[calc(100%+7px)] left-[-4px] z-70 w-[210px] p-1 bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-sm)] shadow-lg"
+								class="absolute top-[calc(100%+7px)] left-[-4px] z-70 w-[210px] rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-1 shadow-lg"
 							>
 								{#each projectServices as item}
 									<button
@@ -185,31 +179,33 @@
 											serviceMenuOpen = false;
 											goto(`/projects/${crumbs.project?.id}/services/${item.id}`);
 										}}
-										class="flex w-full items-center justify-between gap-2 px-2 py-[7px] border-0 rounded bg-transparent text-[var(--text-secondary)] text-xs font-[var(--font-sans)] text-left cursor-pointer hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+										class="flex w-full cursor-pointer items-center justify-between gap-2 rounded border-0 bg-transparent px-2 py-[7px] text-left text-xs font-[var(--font-sans)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 									>
 										<div class="flex items-center gap-1.5 truncate">
 											<span class="truncate">{item.name}</span>
-											<span class="text-[10px] font-mono text-[var(--text-tertiary)] bg-[var(--bg-panel)] px-1 rounded border border-[var(--border-subtle)]">
+											<span
+												class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1 font-mono text-[10px] text-[var(--text-tertiary)]"
+											>
 												{item.type}
 											</span>
 										</div>
 										{#if item.id === crumbs.service?.id}
-											<Check size={13} class="text-[var(--accent)] shrink-0" />
+											<Check size={13} class="shrink-0 text-[var(--accent)]" />
 										{/if}
 									</button>
 								{/each}
 								{#if projectServices.length === 0}
-									<div class="px-2 py-1.5 text-xs text-[var(--text-tertiary)] font-mono">
+									<div class="px-2 py-1.5 font-mono text-xs text-[var(--text-tertiary)]">
 										No services in project
 									</div>
 								{/if}
-								<hr class="h-px my-1 mx-0.5 border-0 bg-[var(--border-subtle)]" />
+								<hr class="mx-0.5 my-1 h-px border-0 bg-[var(--border-subtle)]" />
 								<button
 									onclick={() => {
 										serviceMenuOpen = false;
 										goto(`/projects/${crumbs.project?.id}/new-service`);
 									}}
-									class="flex w-full items-center gap-2 px-2 py-[7px] border-0 rounded bg-transparent text-[var(--accent)] text-xs font-[var(--font-sans)] text-left cursor-pointer hover:bg-[var(--bg-hover)]"
+									class="flex w-full cursor-pointer items-center gap-2 rounded border-0 bg-transparent px-2 py-[7px] text-left text-xs font-[var(--font-sans)] text-[var(--accent)] hover:bg-[var(--bg-hover)]"
 								>
 									<Plus size={13} />
 									New service
@@ -226,7 +222,7 @@
 
 	<!-- Search only on the right -->
 	<label
-		class="flex items-center gap-2 w-[140px] sm:w-[180px] md:w-[220px] px-2.5 py-[5px] border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] text-[var(--text-tertiary)] shrink-0"
+		class="flex w-[140px] shrink-0 items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-[5px] text-[var(--text-tertiary)] sm:w-[180px] md:w-[220px]"
 	>
 		<MagnifyingGlass size={13} class="shrink-0" />
 		<span class="sr-only">Search</span>

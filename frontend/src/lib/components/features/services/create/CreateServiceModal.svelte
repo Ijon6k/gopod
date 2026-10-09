@@ -24,7 +24,9 @@
 	}: Props = $props();
 
 	let projectOverride = $state<string | null>(null);
-	let selectedProjectId = $derived(projectOverride ?? (projectId || (projects[0]?.id ?? 'aerochat')));
+	let selectedProjectId = $derived(
+		projectOverride ?? (projectId || (projects[0]?.id ?? 'aerochat'))
+	);
 	let selectedType = $state<WorkloadChoice>('application');
 
 	$effect(() => {
@@ -61,11 +63,12 @@
 		const targetProj = selectedProjectId;
 		const sName = serviceName.trim();
 		const sSlug = slugify(sName);
-		const randomSuffix = typeof crypto !== 'undefined' && crypto.getRandomValues
-			? Array.from(crypto.getRandomValues(new Uint8Array(3)))
-					.map((b) => b.toString(16).padStart(2, '0'))
-					.join('')
-			: Math.random().toString(36).substring(2, 8);
+		const randomSuffix =
+			typeof crypto !== 'undefined' && crypto.getRandomValues
+				? Array.from(crypto.getRandomValues(new Uint8Array(3)))
+						.map((b) => b.toString(16).padStart(2, '0'))
+						.join('')
+				: Math.random().toString(36).substring(2, 8);
 		const internalId = `${targetProj}-${sSlug}-${randomSuffix}`;
 		const desc = serviceDescription.trim();
 
@@ -146,7 +149,10 @@
 				envVars: [
 					{
 						key: `${dbEngine.toUpperCase()}_PASSWORD`,
-						value: (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '').slice(0, 20) : Math.random().toString(36).slice(2, 12),
+						value:
+							typeof crypto !== 'undefined' && crypto.randomUUID
+								? crypto.randomUUID().replace(/-/g, '').slice(0, 20)
+								: Math.random().toString(36).slice(2, 12),
 						secret: true
 					}
 				],
@@ -155,14 +161,20 @@
 			};
 		} else {
 			// Stack / Compose
-			const realType: ServiceType = stackSubtype === 'kubernetes' ? 'kubernetes' : stackSubtype === 'pod' ? 'pod' : 'compose';
+			const realType: ServiceType =
+				stackSubtype === 'kubernetes' ? 'kubernetes' : stackSubtype === 'pod' ? 'pod' : 'compose';
 			newService = {
 				id: internalId,
 				projectId: targetProj,
 				name: sName,
 				type: realType,
 				status: 'stopped',
-				source: stackSubtype === 'compose' ? 'compose.yaml' : stackSubtype === 'kubernetes' ? 'manifest.yaml' : '',
+				source:
+					stackSubtype === 'compose'
+						? 'compose.yaml'
+						: stackSubtype === 'kubernetes'
+							? 'manifest.yaml'
+							: '',
 				port: 8080,
 				cpu: 0,
 				memory: 0,
@@ -203,23 +215,29 @@
 {#if open}
 	{#if inline}
 		<!-- Inline Page View -->
-		<div class="w-full max-w-[760px] flex flex-col gap-6">
+		<div class="flex w-full max-w-[760px] flex-col gap-6">
 			<div>
-				<h1 class="text-xl font-medium text-[var(--text-primary)] m-0 mb-1">Create Service</h1>
-				<p class="text-xs text-[var(--text-tertiary)] m-0">
-					Select the service category and specify its name. Runtime, domains, and git source details are configured inside Service Detail.
+				<h1 class="m-0 mb-1 text-xl font-medium text-[var(--text-primary)]">Create Service</h1>
+				<p class="m-0 text-xs text-[var(--text-tertiary)]">
+					Select the service category and specify its name. Runtime, domains, and git source details
+					are configured inside Service Detail.
 				</p>
 			</div>
 
 			{#if !projectId && projects.length > 1}
-				<div class="flex flex-col gap-1.5 max-w-[280px]">
-					<label for="inline-select-project" class="text-xs text-[var(--text-secondary)] font-medium">Target Project</label>
-					<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)]">
+				<div class="flex max-w-[280px] flex-col gap-1.5">
+					<label
+						for="inline-select-project"
+						class="text-xs font-medium text-[var(--text-secondary)]">Target Project</label
+					>
+					<div
+						class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
+					>
 						<select
 							id="inline-select-project"
 							value={selectedProjectId}
 							onchange={(e) => (projectOverride = (e.target as HTMLSelectElement).value)}
-							class="w-full bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-sans)] cursor-pointer"
+							class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
 						>
 							{#each projects as p}
 								<option value={p.id}>{p.name}</option>
@@ -232,28 +250,35 @@
 			<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
 
 			<!-- Details card -->
-			<div class="p-5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] flex flex-col gap-4">
+			<div
+				class="flex flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5"
+			>
 				{#if selectedType === 'quadlet'}
-					<div class="flex items-center gap-2.5 p-3 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-secondary)]">
-						<FileText size={16} class="text-[var(--accent)] shrink-0" />
-						<span>Generates a declarative systemd <code class="font-mono text-[var(--text-primary)]">.container</code> service unit in <code class="font-mono text-[var(--text-primary)]">~/.config/containers/systemd/</code>.</span>
+					<div
+						class="flex items-center gap-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-xs text-[var(--text-secondary)]"
+					>
+						<FileText size={16} class="shrink-0 text-[var(--accent)]" />
+						<span
+							>Generates a declarative systemd <code class="font-mono text-[var(--text-primary)]"
+								>.container</code
+							>
+							service unit in
+							<code class="font-mono text-[var(--text-primary)]">~/.config/containers/systemd/</code
+							>.</span
+						>
 					</div>
 				{:else if selectedType === 'database'}
 					<div class="flex flex-col gap-1.5">
-						<span class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</span>
-						<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-							{#each [
-								{ id: 'postgres', label: 'PostgreSQL' },
-								{ id: 'redis', label: 'Redis' },
-								{ id: 'mysql', label: 'MySQL' },
-								{ id: 'mongodb', label: 'MongoDB' }
-							] as db}
+						<span class="text-xs font-medium text-[var(--text-secondary)]">Database Engine</span>
+						<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+							{#each [{ id: 'postgres', label: 'PostgreSQL' }, { id: 'redis', label: 'Redis' }, { id: 'mysql', label: 'MySQL' }, { id: 'mongodb', label: 'MongoDB' }] as db}
 								<button
 									type="button"
 									onclick={() => (dbEngine = db.id as any)}
-									class="p-2.5 rounded-[var(--radius-sm)] border text-xs text-center cursor-pointer transition-colors {dbEngine === db.id
-										? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium'
-										: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+									class="cursor-pointer rounded-[var(--radius-sm)] border p-2.5 text-center text-xs transition-colors {dbEngine ===
+									db.id
+										? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
+										: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 								>
 									{db.label}
 								</button>
@@ -261,36 +286,40 @@
 						</div>
 					</div>
 				{:else if selectedType === 'compose'}
-					<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-						<span class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</span>
-						<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-							{#each [
-								{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' },
-								{ id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' },
-								{ id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }
-							] as s}
+					<div
+						class="flex flex-col gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 p-3.5"
+					>
+						<span class="text-xs font-medium text-[var(--text-secondary)]"
+							>Workload Architecture & Manifest</span
+						>
+						<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+							{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' }, { id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' }, { id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }] as s}
 								<button
 									type="button"
 									onclick={() => (stackSubtype = s.id as any)}
-									class="p-2.5 rounded-[var(--radius-sm)] border text-left cursor-pointer transition-colors {stackSubtype === s.id
-										? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium shadow-xs'
-										: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+									class="cursor-pointer rounded-[var(--radius-sm)] border p-2.5 text-left transition-colors {stackSubtype ===
+									s.id
+										? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
+										: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 								>
-									<div class="font-semibold text-xs text-[var(--text-primary)]">{s.label}</div>
-									<div class="text-[10px] text-[var(--text-tertiary)] mt-0.5 leading-tight">{s.desc}</div>
+									<div class="text-xs font-semibold text-[var(--text-primary)]">{s.label}</div>
+									<div class="mt-0.5 text-[10px] leading-tight text-[var(--text-tertiary)]">
+										{s.desc}
+									</div>
 								</button>
 							{/each}
 						</div>
 						{#if stackSubtype === 'pod'}
-							<p class="text-[11px] text-[var(--text-tertiary)] m-0 mt-1">
-								💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar). You can add additional containers to this Pod inside the Service Detail Studio.
+							<p class="m-0 mt-1 text-[11px] text-[var(--text-tertiary)]">
+								💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar).
+								You can add additional containers to this Pod inside the Service Detail Studio.
 							</p>
 						{/if}
 					</div>
 				{/if}
 
 				<div class="flex flex-col gap-1.5">
-					<label for="inline-svc-name" class="text-xs text-[var(--text-secondary)] font-medium">
+					<label for="inline-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
 						Service Name <span class="text-[var(--status-red)]">*</span>
 					</label>
 					<Input
@@ -308,7 +337,7 @@
 
 				{#if selectedType === 'application'}
 					<div class="flex flex-col gap-1.5">
-						<label for="inline-svc-port" class="text-xs text-[var(--text-secondary)] font-medium">
+						<label for="inline-svc-port" class="text-xs font-medium text-[var(--text-secondary)]">
 							Container Port (Optional)
 						</label>
 						<Input
@@ -323,7 +352,9 @@
 					</div>
 				{/if}
 
-				<div class="flex items-center justify-end gap-2 pt-2 border-t border-[var(--border-subtle)]">
+				<div
+					class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2"
+				>
 					<Button variant="ghost" size="sm" onclick={handleCancel}>Cancel</Button>
 					<Button variant="primary" size="sm" disabled={!isFormValid} onclick={handleCreate}>
 						Create & Configure <ArrowRight size={13} />
@@ -344,26 +375,33 @@
 			<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
 
 			{#if selectedType === 'quadlet'}
-				<div class="flex items-center gap-2.5 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] text-xs text-[var(--text-secondary)]">
-					<FileText size={16} class="text-[var(--accent)] shrink-0" />
-					<span>Generates a declarative systemd <code class="font-mono text-[var(--text-primary)]">.container</code> service unit in <code class="font-mono text-[var(--text-primary)]">~/.config/containers/systemd/</code>.</span>
+				<div
+					class="flex items-center gap-2.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3.5 text-xs text-[var(--text-secondary)]"
+				>
+					<FileText size={16} class="shrink-0 text-[var(--accent)]" />
+					<span
+						>Generates a declarative systemd <code class="font-mono text-[var(--text-primary)]"
+							>.container</code
+						>
+						service unit in
+						<code class="font-mono text-[var(--text-primary)]">~/.config/containers/systemd/</code
+						>.</span
+					>
 				</div>
 			{:else if selectedType === 'database'}
-				<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-					<span class="text-xs text-[var(--text-secondary)] font-medium">Database Engine</span>
-					<div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-						{#each [
-							{ id: 'postgres', label: 'PostgreSQL' },
-							{ id: 'redis', label: 'Redis' },
-							{ id: 'mysql', label: 'MySQL' },
-							{ id: 'mongodb', label: 'MongoDB' }
-						] as db (db.id)}
+				<div
+					class="flex flex-col gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 p-3.5"
+				>
+					<span class="text-xs font-medium text-[var(--text-secondary)]">Database Engine</span>
+					<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
+						{#each [{ id: 'postgres', label: 'PostgreSQL' }, { id: 'redis', label: 'Redis' }, { id: 'mysql', label: 'MySQL' }, { id: 'mongodb', label: 'MongoDB' }] as db (db.id)}
 							<button
 								type="button"
 								onclick={() => (dbEngine = db.id as any)}
-								class="p-2 rounded-md border text-xs text-center cursor-pointer transition-colors {dbEngine === db.id
-									? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium'
-									: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+								class="cursor-pointer rounded-md border p-2 text-center text-xs transition-colors {dbEngine ===
+								db.id
+									? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
+									: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 							>
 								{db.label}
 							</button>
@@ -371,29 +409,33 @@
 					</div>
 				</div>
 			{:else if selectedType === 'compose'}
-				<div class="flex flex-col gap-2 p-3.5 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50">
-					<span class="text-xs text-[var(--text-secondary)] font-medium">Workload Architecture & Manifest</span>
-					<div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
-						{#each [
-							{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' },
-							{ id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' },
-							{ id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }
-						] as s (s.id)}
+				<div
+					class="flex flex-col gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 p-3.5"
+				>
+					<span class="text-xs font-medium text-[var(--text-secondary)]"
+						>Workload Architecture & Manifest</span
+					>
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+						{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' }, { id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' }, { id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }] as s (s.id)}
 							<button
 								type="button"
 								onclick={() => (stackSubtype = s.id as any)}
-								class="p-2.5 rounded-md border text-left cursor-pointer transition-colors {stackSubtype === s.id
-									? 'bg-[var(--bg-surface)] border-[var(--accent)] text-[var(--text-primary)] font-medium shadow-xs'
-									: 'bg-[var(--bg-panel)] border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+								class="cursor-pointer rounded-md border p-2.5 text-left transition-colors {stackSubtype ===
+								s.id
+									? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
+									: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
 							>
-								<div class="font-semibold text-xs text-[var(--text-primary)]">{s.label}</div>
-								<div class="text-[10px] text-[var(--text-tertiary)] mt-0.5 leading-tight">{s.desc}</div>
+								<div class="text-xs font-semibold text-[var(--text-primary)]">{s.label}</div>
+								<div class="mt-0.5 text-[10px] leading-tight text-[var(--text-tertiary)]">
+									{s.desc}
+								</div>
 							</button>
 						{/each}
 					</div>
 					{#if stackSubtype === 'pod'}
-						<p class="text-[11px] text-[var(--text-tertiary)] m-0 mt-1">
-							💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar). You can add additional containers to this Pod inside the Service Detail Studio.
+						<p class="m-0 mt-1 text-[11px] text-[var(--text-tertiary)]">
+							💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar).
+							You can add additional containers to this Pod inside the Service Detail Studio.
 						</p>
 					{/if}
 				</div>
@@ -431,8 +473,15 @@
 			{/if}
 
 			{#snippet footer()}
-				<Button variant="ghost" size="sm" onclick={handleCancel} disabled={isCreating}>Cancel</Button>
-				<Button variant="primary" size="sm" disabled={!isFormValid || isCreating} onclick={handleCreate}>
+				<Button variant="ghost" size="sm" onclick={handleCancel} disabled={isCreating}
+					>Cancel</Button
+				>
+				<Button
+					variant="primary"
+					size="sm"
+					disabled={!isFormValid || isCreating}
+					onclick={handleCreate}
+				>
 					{#if isCreating}
 						Creating…
 					{:else}

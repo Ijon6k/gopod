@@ -3,7 +3,13 @@
 	import { goto } from '$app/navigation';
 	import { PageHeader, StatusBadge, Tabs, ConfirmDialog } from '$lib/components/ui';
 	import { Button } from '$lib/components/primitives';
-	import { getProjectById, getProjectServices, getProjectDomains, getProjectDeployments, dataStore } from '$lib/data';
+	import {
+		getProjectById,
+		getProjectServices,
+		getProjectDomains,
+		getProjectDeployments,
+		dataStore
+	} from '$lib/data';
 	import CreateServiceModal from '$lib/components/features/services/create/CreateServiceModal.svelte';
 	import {
 		ProjectBackupsView,
@@ -44,39 +50,39 @@
 					return;
 				}
 
-			isProjectLoading = true;
-			try {
-				const p = await api.projects.get(pId);
-				if (!active) return;
-				if (p) {
-					const fullProj: Project = {
-						id: p.id,
-						name: p.name,
-						description: p.description || '',
-						status: 'healthy',
-						services: [],
-						domains: [],
-						cpu: 0,
-						memory: 0,
-						memoryTotal: 0,
-						createdAt: p.createdAt || new Date().toISOString()
-					};
-					directProject = fullProj;
-					const idx = dataStore.projects.findIndex((item) => item.id === fullProj.id);
-					if (idx >= 0) {
-						dataStore.projects[idx] = fullProj;
-					} else {
-						dataStore.projects.push(fullProj);
+				isProjectLoading = true;
+				try {
+					const p = await api.projects.get(pId);
+					if (!active) return;
+					if (p) {
+						const fullProj: Project = {
+							id: p.id,
+							name: p.name,
+							description: p.description || '',
+							status: 'healthy',
+							services: [],
+							domains: [],
+							cpu: 0,
+							memory: 0,
+							memoryTotal: 0,
+							createdAt: p.createdAt || new Date().toISOString()
+						};
+						directProject = fullProj;
+						const idx = dataStore.projects.findIndex((item) => item.id === fullProj.id);
+						if (idx >= 0) {
+							dataStore.projects[idx] = fullProj;
+						} else {
+							dataStore.projects.push(fullProj);
+						}
 					}
+				} catch {
+					// Silently handle
+				} finally {
+					if (active) isProjectLoading = false;
 				}
-			} catch (_) {
-				// Silently handle
-			} finally {
-				if (active) isProjectLoading = false;
 			}
-		}
 
-		resolveProject();
+			resolveProject();
 		});
 
 		return () => {
@@ -106,19 +112,21 @@
 </svelte:head>
 
 {#if isProjectLoading && !project}
-	<div class="flex flex-col items-center justify-center py-24 gap-3 text-[var(--text-tertiary)]">
+	<div class="flex flex-col items-center justify-center gap-3 py-24 text-[var(--text-tertiary)]">
 		<SpinnerGap size={24} class="animate-spin text-[var(--accent)]" />
 		<span class="text-xs">Loading project…</span>
 	</div>
 {:else if project}
-	<div class="w-full flex flex-col gap-8">
+	<div class="flex w-full flex-col gap-8">
 		<!-- Project Identity Header -->
 		<PageHeader title={project.name} subtitle={project.description}>
 			{#snippet meta()}
 				<div class="flex items-center gap-3">
 					<StatusBadge status={project.status} size="sm" />
 					<span class="text-xs text-[var(--text-tertiary)]">
-						{services.length} {services.length === 1 ? 'service' : 'services'} · {projectDomains.length} {projectDomains.length === 1 ? 'domain' : 'domains'}
+						{services.length}
+						{services.length === 1 ? 'service' : 'services'} · {projectDomains.length}
+						{projectDomains.length === 1 ? 'domain' : 'domains'}
 					</span>
 				</div>
 			{/snippet}
@@ -127,18 +135,14 @@
 					<button
 						type="button"
 						onclick={() => (isDeleteProjectOpen = true)}
-						class="p-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-red-500/10 hover:border-red-500/30 text-[var(--text-tertiary)] hover:text-red-400 transition-colors cursor-pointer"
+						class="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-2 text-[var(--text-tertiary)] transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400"
 						title="Delete project"
 						aria-label="Delete project"
 					>
 						<Trash size={15} />
 					</button>
 					{#if activeTab === 'services'}
-						<Button
-							variant="primary"
-							size="sm"
-							onclick={() => handleCreateService('application')}
-						>
+						<Button variant="primary" size="sm" onclick={() => handleCreateService('application')}>
 							<Plus size={13} /> New service
 						</Button>
 					{/if}
@@ -163,12 +167,15 @@
 			}}
 		>
 			{#if services.length > 0}
-				<div class="flex items-start gap-3 p-3 rounded-md bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs leading-relaxed">
-					<WarningCircle size={18} class="shrink-0 mt-0.5" />
+				<div
+					class="flex items-start gap-3 rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-400"
+				>
+					<WarningCircle size={18} class="mt-0.5 shrink-0" />
 					<div>
 						<strong class="font-semibold">Active services detected ({services.length})</strong>
 						<p class="m-0 mt-1 text-[var(--text-secondary)]">
-							Dokploy safety policy: You have active services in this project. Please terminate and delete all services first before deleting the project.
+							Dokploy safety policy: You have active services in this project. Please terminate and
+							delete all services first before deleting the project.
 						</p>
 					</div>
 				</div>
@@ -215,7 +222,5 @@
 		onclose={() => (isCreateModalOpen = false)}
 	/>
 {:else}
-	<div class="text-[var(--text-tertiary)] py-12 text-center text-xs">
-		Project not found.
-	</div>
+	<div class="py-12 text-center text-xs text-[var(--text-tertiary)]">Project not found.</div>
 {/if}

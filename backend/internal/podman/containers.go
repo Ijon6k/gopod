@@ -100,6 +100,7 @@ func (c *Client) GetContainersWithStats(ctx context.Context, includeStats bool) 
 
 func (c *Client) getContainersCLI(ctx context.Context, statsMap map[string]ContainerStat) ([]ContainerItem, error) {
 	cmd := exec.CommandContext(ctx, "podman", "ps", "-a", "--format", "json")
+	c.SetupCmdEnv(cmd)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
@@ -228,6 +229,7 @@ func (c *Client) GetContainerStats(ctx context.Context) ([]ContainerStat, error)
 
 func (c *Client) getStatsCLI(ctx context.Context) ([]ContainerStat, error) {
 	cmd := exec.CommandContext(ctx, "podman", "stats", "--no-stream", "--format", "json")
+	c.SetupCmdEnv(cmd)
 	var stdout bytes.Buffer
 	cmd.Stdout = &stdout
 	if err := cmd.Run(); err != nil {
@@ -290,9 +292,44 @@ func (c *Client) RunContainer(ctx context.Context, opts RunContainerOptions) (st
 	if opts.MemoryLimit > 0 {
 		args = append(args, fmt.Sprintf("--memory=%dm", opts.MemoryLimit))
 	}
+	if opts.PidsLimit > 0 {
+		args = append(args, fmt.Sprintf("--pids-limit=%d", opts.PidsLimit))
+	}
+	if opts.UserNS != "" {
+		args = append(args, "--userns", opts.UserNS)
+	}
+	if opts.Privileged {
+		args = append(args, "--privileged")
+	}
+	for _, cap := range opts.CapAdd {
+		if cap != "" {
+			args = append(args, "--cap-add", cap)
+		}
+	}
+	for _, cap := range opts.CapDrop {
+		if cap != "" {
+			args = append(args, "--cap-drop", cap)
+		}
+	}
+	for _, dev := range opts.Devices {
+		if dev != "" {
+			args = append(args, "--device", dev)
+		}
+	}
+	for _, vol := range opts.Volumes {
+		if vol != "" {
+			args = append(args, "-v", vol)
+		}
+	}
+	for _, sec := range opts.SecurityOpt {
+		if sec != "" {
+			args = append(args, "--security-opt", sec)
+		}
+	}
 	args = append(args, opts.Image)
 
 	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("podman run failed: %s (%w)", strings.TrimSpace(string(out)), err)
@@ -340,7 +377,9 @@ func (c *Client) DeleteContainer(ctx context.Context, id string, force bool) err
 		args = append(args, "-f")
 	}
 	args = append(args, id)
-	return exec.CommandContext(ctx, "podman", args...).Run()
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
 }
 
 // GetContainerLogs returns logs for a given container.
@@ -368,6 +407,7 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (str
 	}
 
 	cmd := exec.CommandContext(ctx, "podman", "logs", "--tail", fmt.Sprintf("%d", tail), id)
+	c.SetupCmdEnv(cmd)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
 }
@@ -391,5 +431,7 @@ func (c *Client) postContainerAction(ctx context.Context, id, action string) err
 		return fmt.Errorf("podman %s failed (HTTP %d): %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	return exec.CommandContext(ctx, "podman", action, id).Run()
+	cmd := exec.CommandContext(ctx, "podman", action, id)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
 }

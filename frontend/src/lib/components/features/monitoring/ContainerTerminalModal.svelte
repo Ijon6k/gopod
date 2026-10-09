@@ -14,22 +14,30 @@
 	let workloads = $derived([{ name: targetId, status: 'running' }]);
 </script>
 
-<div class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true">
-	<div class="bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-lg)] w-full max-w-4xl shadow-2xl overflow-hidden flex flex-col">
+<div
+	class="animate-fade-in fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+	role="dialog"
+	aria-modal="true"
+>
+	<div
+		class="flex w-full max-w-4xl flex-col overflow-hidden rounded-[var(--radius-lg)] border border-[var(--border)] bg-[var(--bg-surface)] shadow-2xl"
+	>
 		<!-- Header -->
-		<div class="flex items-center justify-between px-5 py-3.5 border-b border-[var(--border-subtle)] bg-[var(--bg-card)]">
+		<div
+			class="flex items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-card)] px-5 py-3.5"
+		>
 			<div class="flex items-center gap-2.5">
-				<div class="p-1.5 rounded-[var(--radius-sm)] bg-[var(--accent-muted)] text-[var(--accent)]">
+				<div class="rounded-[var(--radius-sm)] bg-[var(--accent-muted)] p-1.5 text-[var(--accent)]">
 					<Terminal size={18} weight="bold" />
 				</div>
 				<div>
 					<h3 class="text-sm font-semibold text-[var(--text-primary)]">Interactive Terminal</h3>
-					<p class="text-xs font-mono text-[var(--text-secondary)]">{containerName}</p>
+					<p class="font-mono text-xs text-[var(--text-secondary)]">{containerName}</p>
 				</div>
 			</div>
 			<button
 				type="button"
-				class="p-1.5 rounded-[var(--radius-sm)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] transition-colors"
+				class="rounded-[var(--radius-sm)] p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				onclick={onclose}
 				aria-label="Close"
 			>
@@ -38,13 +46,8 @@
 		</div>
 
 		<!-- Real xterm Terminal Body -->
-		<div class="p-4 bg-[var(--bg-surface)]">
-			<TerminalView
-				title={containerName}
-				{workloads}
-				selectedWorkload={targetId}
-				height="460px"
-			/>
+		<div class="bg-[var(--bg-surface)] p-4">
+			<TerminalView title={containerName} {workloads} selectedWorkload={targetId} height="460px" />
 		</div>
 	</div>
 </div>

@@ -38,8 +38,47 @@ type Service struct {
 	GitBranch      string    `json:"gitBranch,omitempty"`
 	DockerfilePath string    `json:"dockerfilePath,omitempty"`
 	SSHKeyID       string    `json:"sshKeyId,omitempty"`
-	EnvVars        []EnvVar  `json:"envVars"`
-	CreatedAt      time.Time `json:"createdAt"`
+	EnvVars        []EnvVar               `json:"envVars"`
+	Advanced       *ServiceAdvancedConfig `json:"advanced,omitempty"`
+	CreatedAt      time.Time              `json:"createdAt"`
+}
+
+// VolumeMountConfig defines a container volume mount.
+type VolumeMountConfig struct {
+	Source  string `json:"source"`
+	Target  string `json:"target"`
+	Options string `json:"options"`
+}
+
+// ServiceAdvancedConfig mirrors frontend advanced configuration.
+type ServiceAdvancedConfig struct {
+	Runtime struct {
+		Mode          string   `json:"mode"`
+		UserNamespace string   `json:"userNamespace"`
+		Devices       []string `json:"devices"`
+	} `json:"runtime"`
+	Lifecycle struct {
+		QuadletEnabled  bool   `json:"quadletEnabled"`
+		SystemdUnitName string `json:"systemdUnitName"`
+		RestartPolicy   string `json:"restartPolicy"`
+	} `json:"lifecycle"`
+	Security struct {
+		Privileged      bool     `json:"privileged"`
+		SELinuxLabel    string   `json:"selinuxLabel"`
+		AppArmorProfile string   `json:"apparmorProfile,omitempty"`
+		CapAdd          []string `json:"capAdd"`
+		CapDrop         []string `json:"capDrop"`
+		NoNewPrivileges bool     `json:"noNewPrivileges"`
+	} `json:"security"`
+	Storage struct {
+		Volumes []VolumeMountConfig `json:"volumes"`
+	} `json:"storage"`
+	Resources struct {
+		CPULimit    string `json:"cpuLimit"`
+		MemoryLimit string `json:"memoryLimit"`
+		PIDsLimit   int    `json:"pidsLimit"`
+		SwapLimit   string `json:"swapLimit"`
+	} `json:"resources"`
 }
 
 // UnmarshalJSON implements custom JSON unmarshaling to tolerate varied or missing createdAt formats.

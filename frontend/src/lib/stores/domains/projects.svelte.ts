@@ -213,13 +213,18 @@ export class ProjectsDomainStore {
 		}
 	}
 
-	async deployService(serviceId: string, trigger = 'manual'): Promise<Deployment> {
+	async deployService(
+		serviceId: string,
+		trigger = 'manual',
+		commit?: string,
+		image?: string
+	): Promise<Deployment> {
 		const svc = this.services.find((s) => s.id === serviceId);
 		if (svc) {
 			svc.status = 'deploying';
 		}
 		try {
-			const res = await api.services.deploy(serviceId, trigger);
+			const res = await api.services.deploy(serviceId, trigger, commit, image);
 			if (res && (res as any).id) {
 				const dep: Deployment = {
 					id: (res as any).id,
@@ -261,7 +266,8 @@ export class ProjectsDomainStore {
 							const dIdx = this.deployments.findIndex((d) => d.id === depId);
 							if (dIdx >= 0) {
 								this.deployments[dIdx].status = updatedDep.status;
-								this.deployments[dIdx].duration = updatedDep.duration || this.deployments[dIdx].duration;
+								this.deployments[dIdx].duration =
+									updatedDep.duration || this.deployments[dIdx].duration;
 								this.deployments[dIdx].finishedAt = updatedDep.finishedAt || '';
 							}
 						}
@@ -300,7 +306,9 @@ export class ProjectsDomainStore {
 		if (idx !== -1) {
 			this.domains[idx] = { ...updated };
 		}
-		api.domains.update(updated.id, updated).catch((err) => console.warn('Failed to sync domain update:', err));
+		api.domains
+			.update(updated.id, updated)
+			.catch((err) => console.warn('Failed to sync domain update:', err));
 	}
 
 	deleteDomain(domainId: string) {

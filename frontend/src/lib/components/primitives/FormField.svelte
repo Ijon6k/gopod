@@ -29,10 +29,13 @@
 
 <div class={cn('flex flex-col gap-1.5', className)}>
 	{#if label}
-		<label for={resolvedId} class="text-xs font-medium text-[var(--text-secondary)] flex items-center gap-1">
+		<label
+			for={resolvedId}
+			class="flex items-center gap-1 text-xs font-medium text-[var(--text-secondary)]"
+		>
 			<span>{label}</span>
 			{#if required}
-				<span class="text-[var(--status-red)] text-[11px]">*</span>
+				<span class="text-[11px] text-[var(--status-red)]">*</span>
 			{/if}
 		</label>
 	{/if}
@@ -40,8 +43,8 @@
 	{@render children()}
 
 	{#if error}
-		<span class="text-[11px] text-[var(--status-red)] leading-tight">{error}</span>
+		<span class="text-[11px] leading-tight text-[var(--status-red)]">{error}</span>
 	{:else if description}
-		<span class="text-[11px] text-[var(--text-tertiary)] leading-tight">{description}</span>
+		<span class="text-[11px] leading-tight text-[var(--text-tertiary)]">{description}</span>
 	{/if}
 </div>

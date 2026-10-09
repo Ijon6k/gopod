@@ -35,11 +35,13 @@
 	let currentProject = $derived(projects.find((p) => p.id === viewMode));
 </script>
 
-<div class="flex items-center justify-between gap-3 w-full flex-wrap">
+<div class="flex w-full flex-wrap items-center justify-between gap-3">
 	<!-- Left: View Mode Selector & Breadcrumb -->
 	<div class="flex items-center gap-2">
-		<div class="relative flex items-center bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-sm)] px-2.5 py-1.5">
-			<span class="text-[var(--text-tertiary)] mr-2 shrink-0">
+		<div
+			class="relative flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5"
+		>
+			<span class="mr-2 shrink-0 text-[var(--text-tertiary)]">
 				{#if viewMode === 'global'}
 					<Globe size={14} />
 				{:else}
@@ -52,12 +54,15 @@
 				id="topology-view-select"
 				value={viewMode}
 				onchange={(e) => onViewModeChange((e.target as HTMLSelectElement).value)}
-				class="bg-transparent border-0 outline-none text-base font-medium text-[var(--text-primary)] cursor-pointer pr-4 font-[var(--font-sans)]"
+				class="cursor-pointer border-0 bg-transparent pr-4 text-base font-[var(--font-sans)] font-medium text-[var(--text-primary)] outline-none"
 			>
 				<option value="global" class="bg-[var(--bg-shell)] text-[var(--text-primary)]">
 					Global Infrastructure (Overview)
 				</option>
-				<optgroup label="Projects (Territories)" class="bg-[var(--bg-shell)] text-[var(--text-tertiary)]">
+				<optgroup
+					label="Projects (Territories)"
+					class="bg-[var(--bg-shell)] text-[var(--text-tertiary)]"
+				>
 					{#each projects as proj}
 						<option value={proj.id} class="bg-[var(--bg-shell)] text-[var(--text-primary)]">
 							Project: {proj.name}
@@ -70,7 +75,7 @@
 		{#if viewMode !== 'global'}
 			<button
 				onclick={() => onViewModeChange('global')}
-				class="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] px-2 py-1 rounded hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				class="cursor-pointer rounded border-0 bg-transparent px-2 py-1 text-xs text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			>
 				← Back to Global
 			</button>
@@ -78,10 +83,12 @@
 	</div>
 
 	<!-- Right: Zoom & Fit Controls -->
-	<div class="flex items-center gap-1.5 bg-[var(--bg-surface)] border border-[var(--border)] rounded-[var(--radius-sm)] p-1">
+	<div
+		class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-1"
+	>
 		<button
 			onclick={onZoomOut}
-			class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+			class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			title="Zoom Out"
 		>
 			<MagnifyingGlassMinus size={14} />
@@ -89,7 +96,7 @@
 
 		<button
 			onclick={onResetZoom}
-			class="px-2 h-7 rounded flex items-center justify-center text-[11px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+			class="flex h-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent px-2 font-mono text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			title="Reset to 100%"
 		>
 			{Math.round(zoom * 100)}%
@@ -97,17 +104,17 @@
 
 		<button
 			onclick={onZoomIn}
-			class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+			class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			title="Zoom In"
 		>
 			<MagnifyingGlassPlus size={14} />
 		</button>
 
-		<div class="w-px h-4 bg-[var(--border-subtle)] mx-0.5"></div>
+		<div class="mx-0.5 h-4 w-px bg-[var(--border-subtle)]"></div>
 
 		<button
 			onclick={onFitView}
-			class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+			class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			title="Fit to View"
 		>
 			<ArrowsOut size={14} />

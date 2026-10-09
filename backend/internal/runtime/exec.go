@@ -7,7 +7,6 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -146,7 +145,10 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 
 	// 2. Spawn pseudo-terminal via creack/pty with podman exec -it
 	cmd := exec.CommandContext(ctx, "podman", "exec", "-it", "-w", "/", targetID, cmdName)
-	cmd.Env = append(os.Environ(), "TERM=xterm-256color")
+	if h.service != nil {
+		h.service.SetupCmdEnv(cmd)
+	}
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{
 		Rows: uint16(rows),

@@ -36,9 +36,7 @@
 	// Query param support (e.g., /topology?project=aerochat)
 	let initialProject = page.url.searchParams.get('project');
 	let viewMode = $state(
-		initialProject && projects.some((p) => p.id === initialProject)
-			? initialProject
-			: 'global'
+		initialProject && projects.some((p) => p.id === initialProject) ? initialProject : 'global'
 	);
 
 	let selectedItem: SelectedItem = $state(null);
@@ -127,7 +125,7 @@
 </svelte:head>
 
 <!-- Full-bleed Viewport Canvas (No outer margins or boxed clipping) -->
-<div class="relative w-full h-full flex flex-1 overflow-hidden bg-[var(--bg-canvas)] select-none">
+<div class="relative flex h-full w-full flex-1 overflow-hidden bg-[var(--bg-canvas)] select-none">
 	<!-- Canvas Interactive Surface -->
 	<TopologyCanvas
 		{graph}
@@ -144,14 +142,18 @@
 	/>
 
 	<!-- Floating HUD Header & Scope Selector (Top-Left) -->
-	<div class="absolute top-3.5 left-3.5 z-20 flex flex-col items-start gap-2 pointer-events-auto w-auto max-w-none">
-		<div class="flex items-center gap-2.5 p-1.5 pl-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]/95 backdrop-blur-md shadow-lg whitespace-nowrap">
-			<div class="flex items-center gap-2 shrink-0">
-				<ShareNetwork size={16} class="text-[var(--accent)] shrink-0" />
+	<div
+		class="pointer-events-auto absolute top-3.5 left-3.5 z-20 flex w-auto max-w-none flex-col items-start gap-2"
+	>
+		<div
+			class="flex items-center gap-2.5 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]/95 p-1.5 pl-3 whitespace-nowrap shadow-lg backdrop-blur-md"
+		>
+			<div class="flex shrink-0 items-center gap-2">
+				<ShareNetwork size={16} class="shrink-0 text-[var(--accent)]" />
 				<span class="text-xs font-semibold text-[var(--text-primary)]">Topology</span>
 			</div>
 
-			<div class="h-4 w-px bg-[var(--border)] shrink-0"></div>
+			<div class="h-4 w-px shrink-0 bg-[var(--border)]"></div>
 
 			<!-- Dropdown Selector -->
 			<div class="relative flex items-center">
@@ -159,27 +161,30 @@
 					id="topology-scope-select"
 					value={viewMode}
 					onchange={(e) => setViewMode(e.currentTarget.value)}
-					class="bg-transparent border-0 outline-none text-xs font-medium text-[var(--text-primary)] cursor-pointer pr-5 font-[var(--font-sans)] appearance-none"
+					class="cursor-pointer appearance-none border-0 bg-transparent pr-5 text-xs font-[var(--font-sans)] font-medium text-[var(--text-primary)] outline-none"
 				>
 					<option value="global" class="bg-[var(--bg-panel)] text-[var(--text-primary)]">
 						Global Infrastructure (Overview)
 					</option>
 					<optgroup label="Projects" class="bg-[var(--bg-panel)] text-[var(--text-tertiary)]">
-						{#each projects as proj}
+						{#each projects as proj (proj.id)}
 							<option value={proj.id} class="bg-[var(--bg-panel)] text-[var(--text-primary)]">
 								{proj.name} (Project)
 							</option>
 						{/each}
 					</optgroup>
 				</select>
-				<CaretDown size={11} class="absolute right-0 text-[var(--text-tertiary)] pointer-events-none" />
+				<CaretDown
+					size={11}
+					class="pointer-events-none absolute right-0 text-[var(--text-tertiary)]"
+				/>
 			</div>
 
 			{#if viewMode !== 'global'}
 				<button
 					type="button"
 					onclick={() => setViewMode('global')}
-					class="flex items-center gap-1 text-[11px] text-[var(--accent)] hover:underline ml-1 px-1.5 py-0.5 rounded bg-[var(--accent)]/10 border border-[var(--accent)]/20 cursor-pointer shrink-0"
+					class="ml-1 flex shrink-0 cursor-pointer items-center gap-1 rounded border border-[var(--accent)]/20 bg-[var(--accent)]/10 px-1.5 py-0.5 text-[11px] text-[var(--accent)] hover:underline"
 					title="Switch back to global overview"
 				>
 					<CaretLeft size={11} /> All
@@ -188,23 +193,27 @@
 		</div>
 
 		<!-- Quick Metadata Bar -->
-		<div class="flex items-center gap-2 px-3 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/85 backdrop-blur-xs text-[11px] text-[var(--text-tertiary)] w-fit shadow-xs whitespace-nowrap">
-			<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-green)] shrink-0"></span>
+		<div
+			class="flex w-fit items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/85 px-3 py-1 text-[11px] whitespace-nowrap text-[var(--text-tertiary)] shadow-xs backdrop-blur-xs"
+		>
+			<span class="h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--status-green)]"></span>
 			<span>{graph.nodes.length} nodes · {graph.edges.length} connections</span>
 			{#if currentProject}
 				<span class="opacity-50">·</span>
-				<span class="text-[var(--text-secondary)] font-medium">{currentProject.name}</span>
+				<span class="font-medium text-[var(--text-secondary)]">{currentProject.name}</span>
 			{/if}
 		</div>
 	</div>
 
 	<!-- Floating HUD Controls (Top-Right) -->
-	<div class="absolute top-3.5 right-3.5 z-20 flex items-center gap-2 pointer-events-auto">
-		<div class="flex items-center gap-1 p-1 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]/90 backdrop-blur-md shadow-lg">
+	<div class="pointer-events-auto absolute top-3.5 right-3.5 z-20 flex items-center gap-2">
+		<div
+			class="flex items-center gap-1 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]/90 p-1 shadow-lg backdrop-blur-md"
+		>
 			<button
 				type="button"
 				onclick={handleZoomOut}
-				class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				title="Zoom Out"
 				aria-label="Zoom out"
 			>
@@ -214,7 +223,7 @@
 			<button
 				type="button"
 				onclick={handleResetZoom}
-				class="px-2 h-7 rounded flex items-center justify-center text-[11px] font-mono text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				class="flex h-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent px-2 font-mono text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				title="Reset to 100%"
 			>
 				{Math.round(zoom * 100)}%
@@ -223,19 +232,19 @@
 			<button
 				type="button"
 				onclick={handleZoomIn}
-				class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				title="Zoom In"
 				aria-label="Zoom in"
 			>
 				<Plus size={13} />
 			</button>
 
-			<div class="w-px h-3.5 bg-[var(--border)] mx-0.5"></div>
+			<div class="mx-0.5 h-3.5 w-px bg-[var(--border)]"></div>
 
 			<button
 				type="button"
 				onclick={handleFitView}
-				class="w-7 h-7 rounded flex items-center justify-center text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)] border-0 bg-transparent cursor-pointer transition-colors"
+				class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 				title="Fit View"
 				aria-label="Fit view"
 			>
@@ -245,24 +254,42 @@
 	</div>
 
 	<!-- Floating Legend & Navigation Hint (Bottom-Left) -->
-	<div class="absolute bottom-3.5 left-3.5 z-10 hidden lg:flex items-center gap-2.5 pointer-events-none select-none">
-		<div class="flex items-center gap-3 px-3 py-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/85 backdrop-blur-xs text-[11px] text-[var(--text-secondary)] shadow-xs">
-			<span class="flex items-center gap-1.5"><Globe size={12} class="text-[var(--accent)]" /> Domain</span>
-			<span class="flex items-center gap-1.5"><ShieldCheck size={12} class="text-[var(--status-green)]" /> Caddy</span>
-			<span class="flex items-center gap-1.5"><Database size={12} class="text-[var(--status-amber)]" /> Database</span>
-			<span class="flex items-center gap-1.5"><FileText size={12} class="text-[var(--accent)]" /> Quadlet</span>
+	<div
+		class="pointer-events-none absolute bottom-3.5 left-3.5 z-10 hidden items-center gap-2.5 select-none lg:flex"
+	>
+		<div
+			class="flex items-center gap-3 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/85 px-3 py-1.5 text-[11px] text-[var(--text-secondary)] shadow-xs backdrop-blur-xs"
+		>
+			<span class="flex items-center gap-1.5"
+				><Globe size={12} class="text-[var(--accent)]" /> Domain</span
+			>
+			<span class="flex items-center gap-1.5"
+				><ShieldCheck size={12} class="text-[var(--status-green)]" /> Caddy</span
+			>
+			<span class="flex items-center gap-1.5"
+				><Database size={12} class="text-[var(--status-amber)]" /> Database</span
+			>
+			<span class="flex items-center gap-1.5"
+				><FileText size={12} class="text-[var(--accent)]" /> Quadlet</span
+			>
 			<span class="flex items-center gap-1.5"><Cube size={12} /> Container</span>
-			<span class="flex items-center gap-1.5"><HardDrive size={12} class="text-[var(--text-tertiary)]" /> Volume</span>
+			<span class="flex items-center gap-1.5"
+				><HardDrive size={12} class="text-[var(--text-tertiary)]" /> Volume</span
+			>
 		</div>
 
-		<div class="px-2.5 py-1 rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/75 text-[11px] text-[var(--text-tertiary)]">
+		<div
+			class="rounded-full border border-[var(--border)] bg-[var(--bg-panel)]/75 px-2.5 py-1 text-[11px] text-[var(--text-tertiary)]"
+		>
 			Drag to pan · Scroll to zoom · Click node to inspect
 		</div>
 	</div>
 
 	<!-- Slide-Over Right Inspector Drawer -->
 	{#if selectedItem}
-		<div class="absolute right-0 top-0 bottom-0 z-30 w-80 sm:w-96 shadow-2xl h-full flex flex-col pointer-events-auto animate-in slide-in-from-right duration-200">
+		<div
+			class="animate-in slide-in-from-right pointer-events-auto absolute top-0 right-0 bottom-0 z-30 flex h-full w-80 flex-col shadow-2xl duration-200 sm:w-96"
+		>
 			<TopologyInspector
 				selected={selectedItem}
 				onclose={() => (selectedItem = null)}

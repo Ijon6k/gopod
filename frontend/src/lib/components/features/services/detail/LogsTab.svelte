@@ -65,11 +65,13 @@
 			}
 
 			// Extract ISO timestamp if present
-			const isoMatch = cleanLine.match(/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d+)?Z?)\s*(.*)/);
+			const isoMatch = cleanLine.match(
+				/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d+)?Z?)\s*(.*)/
+			);
 			const time = isoMatch
 				? isoMatch[1].substring(11, 23)
 				: new Date().toISOString().substring(11, 23);
-			const text = isoMatch ? (isoMatch[3] || cleanLine) : cleanLine;
+			const text = isoMatch ? isoMatch[3] || cleanLine : cleanLine;
 
 			return {
 				time,
@@ -126,7 +128,9 @@
 				}
 				combined.sort((a, b) => a.time.localeCompare(b.time));
 				parsedLogs = combined;
-				rawLogsText = combined.map((e) => `[${e.container}] ${e.time} ${e.level} ${e.text}`).join('\n');
+				rawLogsText = combined
+					.map((e) => `[${e.container}] ${e.time} ${e.level} ${e.text}`)
+					.join('\n');
 			} else {
 				// Single container service
 				const target = matchingContainers[0]?.id || matchingContainers[0]?.name || service.name;
@@ -174,27 +178,32 @@
 	});
 </script>
 
-<div class="w-full flex flex-col gap-3">
+<div class="flex w-full flex-col gap-3">
 	<!-- Unified Compact Toolbar (Dokploy Parity) -->
-	<div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-[var(--border)]">
+	<div
+		class="flex flex-col justify-between gap-3 border-b border-[var(--border)] pb-3 md:flex-row md:items-center"
+	>
 		<!-- Left: Container Selector & Filter Controls -->
 		<div class="flex flex-wrap items-center gap-2.5">
 			<!-- Container Selector Dropdown (Always visible for multi-container compose/pods, and single containers) -->
 			<div class="flex items-center gap-2">
-				<span class="text-xs text-[var(--text-tertiary)] font-medium">Container:</span>
-				<div class="px-2.5 py-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] flex items-center gap-1.5 shadow-xs">
-					<Terminal size={13} class="text-[var(--text-tertiary)] shrink-0" />
+				<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
+				<div
+					class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1.5 shadow-xs"
+				>
+					<Terminal size={13} class="shrink-0 text-[var(--text-tertiary)]" />
 					<select
 						bind:value={selectedContainer}
 						onchange={() => fetchLogs()}
-						class="bg-transparent border-0 outline-none text-xs text-[var(--text-primary)] font-[var(--font-mono)] cursor-pointer"
+						class="cursor-pointer border-0 bg-transparent text-xs font-[var(--font-mono)] text-[var(--text-primary)] outline-none"
 					>
 						<option value="all">
 							All containers ({matchingContainers.length || 1})
 						</option>
 						{#each matchingContainers as c}
 							<option value={c.id || c.name}>
-								{c.name} {c.serviceName && c.serviceName !== c.name ? `(${c.serviceName})` : ''}
+								{c.name}
+								{c.serviceName && c.serviceName !== c.name ? `(${c.serviceName})` : ''}
 							</option>
 						{/each}
 					</select>
@@ -202,13 +211,16 @@
 			</div>
 
 			<!-- Log Level Filter Pills -->
-			<div class="inline-flex items-center p-0.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)]">
+			<div
+				class="inline-flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
+			>
 				{#each ['ALL', 'INFO', 'WARN', 'ERROR'] as lvl}
 					<button
 						type="button"
 						onclick={() => (selectedLevel = lvl as any)}
-						class="px-2 py-1 rounded text-[11px] font-mono transition-colors border-0 cursor-pointer {selectedLevel === lvl
-							? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-semibold shadow-xs'
+						class="cursor-pointer rounded border-0 px-2 py-1 font-mono text-[11px] transition-colors {selectedLevel ===
+						lvl
+							? 'bg-[var(--bg-surface)] font-semibold text-[var(--text-primary)] shadow-xs'
 							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 					>
 						{lvl}
@@ -223,24 +235,36 @@
 		</div>
 
 		<!-- Right: Action Buttons -->
-		<div class="flex items-center gap-2 shrink-0 self-end md:self-auto">
-			<label class="flex items-center gap-1.5 text-xs text-[var(--text-secondary)] cursor-pointer select-none px-2 py-1 rounded hover:bg-[var(--bg-surface)] transition-colors">
-				<input type="checkbox" bind:checked={follow} class="accent-[var(--accent)] cursor-pointer" />
+		<div class="flex shrink-0 items-center gap-2 self-end md:self-auto">
+			<label
+				class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors select-none hover:bg-[var(--bg-surface)]"
+			>
+				<input
+					type="checkbox"
+					bind:checked={follow}
+					class="cursor-pointer accent-[var(--accent)]"
+				/>
 				<span class="font-mono text-[11px]">Follow</span>
 			</label>
 
-			<Button variant="ghost" size="sm" onclick={fetchLogs} disabled={isLoading} title="Reload container logs">
-				<ArrowClockwise class="w-3.5 h-3.5 mr-1.5 {isLoading ? 'animate-spin' : ''}" />
+			<Button
+				variant="ghost"
+				size="sm"
+				onclick={fetchLogs}
+				disabled={isLoading}
+				title="Reload container logs"
+			>
+				<ArrowClockwise class="mr-1.5 h-3.5 w-3.5 {isLoading ? 'animate-spin' : ''}" />
 				<span>Refresh</span>
 			</Button>
 
 			<Button variant="ghost" size="sm" onclick={handleCopy} title="Copy logs to clipboard">
-				<Copy class="w-3.5 h-3.5 mr-1" />
+				<Copy class="mr-1 h-3.5 w-3.5" />
 				<span>{copyFeedback ? 'Copied!' : 'Copy'}</span>
 			</Button>
 
 			<Button variant="ghost" size="sm" onclick={handleClear} title="Clear terminal screen">
-				<Trash class="w-3.5 h-3.5 text-[var(--text-tertiary)]" />
+				<Trash class="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
 			</Button>
 		</div>
 	</div>
@@ -248,22 +272,30 @@
 	<!-- Monospace Terminal Log Screen -->
 	<div
 		bind:this={logsContainer}
-		class="relative p-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-table-header)] text-[var(--text-primary)] font-[var(--font-mono)] text-[12px] leading-[1.65] h-[520px] overflow-auto select-text transition-colors shadow-inner"
+		class="relative h-[520px] overflow-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-table-header)] p-4 text-[12px] leading-[1.65] font-[var(--font-mono)] text-[var(--text-primary)] shadow-inner transition-colors select-text"
 	>
 		{#each filteredLogs as log, idx (idx)}
-			<div class="flex items-baseline gap-2.5 hover:bg-[var(--bg-table-row-hover)] px-1.5 py-0.5 rounded transition-colors group">
-				<span class="text-[var(--text-tertiary)] select-none whitespace-nowrap text-[11px] font-mono shrink-0">
+			<div
+				class="group flex items-baseline gap-2.5 rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-table-row-hover)]"
+			>
+				<span
+					class="shrink-0 font-mono text-[11px] whitespace-nowrap text-[var(--text-tertiary)] select-none"
+				>
 					{log.time}
 				</span>
 
 				{#if matchingContainers.length > 1 || selectedContainer === 'all'}
-					<span class="text-[var(--accent)] font-medium text-[11px] select-none shrink-0 truncate max-w-[120px]" title={log.container}>
+					<span
+						class="max-w-[120px] shrink-0 truncate text-[11px] font-medium text-[var(--accent)] select-none"
+						title={log.container}
+					>
 						[{log.container}]
 					</span>
 				{/if}
 
 				<span
-					class="select-none font-semibold text-[10px] uppercase shrink-0 min-w-[36px] {log.level === 'WARN'
+					class="min-w-[36px] shrink-0 text-[10px] font-semibold uppercase select-none {log.level ===
+					'WARN'
 						? 'text-[var(--status-amber)]'
 						: log.level === 'ERROR'
 							? 'text-[var(--status-red)]'
@@ -272,21 +304,29 @@
 					{log.level}
 				</span>
 
-				<span class="text-[var(--text-secondary)] whitespace-pre-wrap break-all flex-1 font-mono selection:bg-[var(--accent)] selection:text-black">
+				<span
+					class="flex-1 font-mono break-all whitespace-pre-wrap text-[var(--text-secondary)] selection:bg-[var(--accent)] selection:text-black"
+				>
 					{log.text}
 				</span>
 			</div>
 		{/each}
 
 		{#if filteredLogs.length === 0}
-			<div class="h-full flex flex-col items-center justify-center gap-2 text-center text-xs text-[var(--text-tertiary)]">
+			<div
+				class="flex h-full flex-col items-center justify-center gap-2 text-center text-xs text-[var(--text-tertiary)]"
+			>
 				{#if isLoading}
-					<div class="w-4 h-4 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin"></div>
+					<div
+						class="h-4 w-4 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent"
+					></div>
 					<span class="font-mono text-[11px]">Streaming logs from container runtime…</span>
 				{:else if searchQuery}
 					<span class="font-mono text-[11px]">No lines matching "{searchQuery}"</span>
 				{:else}
-					<span class="font-mono text-[11px]">Container has not emitted any stdout/stderr logs yet.</span>
+					<span class="font-mono text-[11px]"
+						>Container has not emitted any stdout/stderr logs yet.</span
+					>
 				{/if}
 			</div>
 		{/if}

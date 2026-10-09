@@ -32,15 +32,24 @@
 	}: Props = $props();
 </script>
 
-<div class={cn('overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)]', className)}>
-	<table class="w-full border-collapse min-w-[560px]">
+<div
+	class={cn(
+		'overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)]',
+		className
+	)}
+>
+	<table class="w-full min-w-[560px] border-collapse">
 		<thead>
 			<tr class="border-b border-[var(--border)]">
 				{#each columns as col}
 					<th
 						class={cn(
-							'px-3.5 py-2.5 text-[11px] font-medium text-[var(--text-tertiary)] tracking-[0.5px] uppercase whitespace-nowrap bg-[var(--bg-panel)]',
-							col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left'
+							'bg-[var(--bg-panel)] px-3.5 py-2.5 text-[11px] font-medium tracking-[0.5px] whitespace-nowrap text-[var(--text-tertiary)] uppercase',
+							col.align === 'right'
+								? 'text-right'
+								: col.align === 'center'
+									? 'text-center'
+									: 'text-left'
 						)}
 						style={col.width ? `width: ${col.width}` : ''}
 					>
@@ -48,7 +57,7 @@
 					</th>
 				{/each}
 				{#if actions}
-					<th class="px-3.5 py-2.5 bg-[var(--bg-panel)] w-10"></th>
+					<th class="w-10 bg-[var(--bg-panel)] px-3.5 py-2.5"></th>
 				{/if}
 			</tr>
 		</thead>
@@ -57,7 +66,7 @@
 				<tr>
 					<td
 						colspan={columns.length + (actions ? 1 : 0)}
-						class="px-3.5 py-8 text-center text-[var(--text-tertiary)] text-base"
+						class="px-3.5 py-8 text-center text-base text-[var(--text-tertiary)]"
 					>
 						{emptyMessage}
 					</td>
@@ -76,8 +85,12 @@
 							{@const val = (row as Record<string, unknown>)[col.key]}
 							<td
 								class={cn(
-									'px-3.5 py-2.5 text-base text-[var(--text-primary)] align-middle whitespace-nowrap',
-									col.align === 'right' ? 'text-right' : col.align === 'center' ? 'text-center' : 'text-left',
+									'px-3.5 py-2.5 align-middle text-base whitespace-nowrap text-[var(--text-primary)]',
+									col.align === 'right'
+										? 'text-right'
+										: col.align === 'center'
+											? 'text-center'
+											: 'text-left',
 									col.mono && 'font-[var(--font-mono)]'
 								)}
 							>

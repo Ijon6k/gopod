@@ -84,9 +84,21 @@
 			if (currentSvc) servicesFound.push(currentSvc);
 			return servicesFound.length > 0
 				? servicesFound
-				: [{ name: service.name, image: service.image || 'nginx:alpine', ports: `${service.port || 8080}:80` }];
+				: [
+						{
+							name: service.name,
+							image: service.image || 'nginx:alpine',
+							ports: `${service.port || 8080}:80`
+						}
+					];
 		} catch {
-			return [{ name: service.name, image: service.image || 'nginx:alpine', ports: `${service.port || 8080}:80` }];
+			return [
+				{
+					name: service.name,
+					image: service.image || 'nginx:alpine',
+					ports: `${service.port || 8080}:80`
+				}
+			];
 		}
 	});
 
@@ -117,32 +129,39 @@
 
 <div class="flex flex-col gap-6">
 	<!-- 1. Provider Card (Dokploy exact replica) -->
-	<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col shadow-xs">
-		<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
+	<div
+		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
+	>
+		<div
+			class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
+		>
 			<div class="flex flex-col gap-0.5">
-				<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Provider</h3>
-				<p class="text-xs text-[var(--text-tertiary)] m-0">Select the source of your code</p>
+				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Provider</h3>
+				<p class="m-0 text-xs text-[var(--text-tertiary)]">Select the source of your code</p>
 			</div>
 
 			<!-- Right: Preview Compose Button -->
 			<button
 				type="button"
 				onclick={() => (previewOpen = !previewOpen)}
-				class="flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] hover:bg-[var(--bg-hover)] text-xs font-medium text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer transition-colors"
+				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 			>
-				<Eye size={14} /> {previewOpen ? 'Hide Preview' : 'Preview Compose'}
+				<Eye size={14} />
+				{previewOpen ? 'Hide Preview' : 'Preview Compose'}
 			</button>
 		</div>
 
 		<!-- Provider Sub-Tabs (Dokploy Screenshot: GitHub, GitLab, Bitbucket, Gitea, Git, Raw) -->
-		<div class="px-5 py-3 border-b border-[var(--border-subtle)] flex items-center gap-2 bg-[var(--bg-surface)]/30 overflow-x-auto">
+		<div
+			class="flex items-center gap-2 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]/30 px-5 py-3"
+		>
 			<button
 				type="button"
 				onclick={() => (providerTab = 'github')}
-				class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border-0 shrink-0 {providerTab ===
+				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'github'
 					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
+					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<GithubLogo size={14} /> GitHub
 			</button>
@@ -150,10 +169,10 @@
 			<button
 				type="button"
 				onclick={() => (providerTab = 'gitlab')}
-				class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border-0 shrink-0 {providerTab ===
+				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'gitlab'
 					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
+					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<GitlabLogo size={14} /> GitLab
 			</button>
@@ -161,10 +180,10 @@
 			<button
 				type="button"
 				onclick={() => (providerTab = 'git')}
-				class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border-0 shrink-0 {providerTab ===
+				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'git'
 					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
+					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<GitBranch size={14} /> Git / SSH
 			</button>
@@ -172,10 +191,10 @@
 			<button
 				type="button"
 				onclick={() => (providerTab = 'raw')}
-				class="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors cursor-pointer border-0 shrink-0 {providerTab ===
+				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'raw'
 					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'}"
+					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
 			>
 				<FileCode size={14} /> Raw
 			</button>
@@ -183,34 +202,40 @@
 
 		<!-- Provider Content if Git based -->
 		{#if providerTab !== 'raw'}
-			<div class="p-5 flex flex-col gap-4">
-				<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-					<div class="sm:col-span-2 flex flex-col gap-1.5">
-						<label for="compose-repo" class="text-xs font-medium text-[var(--text-secondary)]">Repository URL</label>
+			<div class="flex flex-col gap-4 p-5">
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+					<div class="flex flex-col gap-1.5 sm:col-span-2">
+						<label for="compose-repo" class="text-xs font-medium text-[var(--text-secondary)]"
+							>Repository URL</label
+						>
 						<Input
 							id="compose-repo"
 							bind:value={gitRepoUrl}
 							placeholder="https://github.com/user/my-stack.git"
-							class="font-[var(--font-mono)] text-xs"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
 					<div class="flex flex-col gap-1.5">
-						<label for="compose-branch" class="text-xs font-medium text-[var(--text-secondary)]">Branch</label>
+						<label for="compose-branch" class="text-xs font-medium text-[var(--text-secondary)]"
+							>Branch</label
+						>
 						<Input
 							id="compose-branch"
 							bind:value={gitBranch}
 							placeholder="main"
-							class="font-[var(--font-mono)] text-xs"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
 				</div>
 				<div class="flex flex-col gap-1.5">
-					<label for="compose-path" class="text-xs font-medium text-[var(--text-secondary)]">Compose File Path in Repo</label>
+					<label for="compose-path" class="text-xs font-medium text-[var(--text-secondary)]"
+						>Compose File Path in Repo</label
+					>
 					<Input
 						id="compose-path"
 						bind:value={gitComposePath}
 						placeholder="docker-compose.yml"
-						class="font-[var(--font-mono)] text-xs"
+						class="text-xs font-[var(--font-mono)]"
 					/>
 				</div>
 			</div>
@@ -218,65 +243,85 @@
 	</div>
 
 	<!-- 2. Compose File Editor Card -->
-	<div class="rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden flex flex-col shadow-xs">
-		<div class="px-5 py-4 border-b border-[var(--border-subtle)] flex items-center justify-between gap-3">
+	<div
+		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
+	>
+		<div
+			class="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
+		>
 			<div class="flex flex-col gap-0.5">
-				<h3 class="text-sm font-semibold text-[var(--text-primary)] m-0">Compose File</h3>
-				<p class="text-xs text-[var(--text-tertiary)] m-0">
+				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Compose File</h3>
+				<p class="m-0 text-xs text-[var(--text-tertiary)]">
 					Configure your Docker / Podman Compose file for this service.
 				</p>
 			</div>
 
-			<span class="text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]">
-				YAML
-			</span>
+			<span class="text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]"> YAML </span>
 		</div>
 
-		<div class="p-5 flex flex-col gap-4">
+		<div class="flex flex-col gap-4 p-5">
 			<!-- Podman Pod Encapsulation Checkbox (Refactoring UI / UX Heuristics) -->
-			<div class="p-3.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+			<div
+				class="flex flex-col justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-3.5 sm:flex-row sm:items-center"
+			>
 				<div class="flex items-start gap-3">
 					<input
 						type="checkbox"
 						id="compose-in-pod"
 						checked={inPod}
 						onchange={toggleInPod}
-						class="w-4 h-4 mt-0.5 rounded border-[var(--border)] accent-[var(--accent)] cursor-pointer"
+						class="mt-0.5 h-4 w-4 cursor-pointer rounded border-[var(--border)] accent-[var(--accent)]"
 					/>
-					<label for="compose-in-pod" class="flex flex-col cursor-pointer select-none">
+					<label for="compose-in-pod" class="flex cursor-pointer flex-col select-none">
 						<span class="text-xs font-semibold text-[var(--text-primary)]">
 							Encapsulate stack inside Podman Pod
 						</span>
-						<span class="text-[11px] text-[var(--text-tertiary)] leading-relaxed">
-							When enabled, podman-compose creates an isolated Pod with shared localhost. Uncheck to run services as independent containers with bridge DNS.
+						<span class="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
+							When enabled, podman-compose creates an isolated Pod with shared localhost. Uncheck to
+							run services as independent containers with bridge DNS.
 						</span>
 					</label>
 				</div>
-				<span class="text-[11px] font-[var(--font-mono)] px-2.5 py-1 rounded border border-[var(--border)] bg-[var(--bg-panel)] shrink-0 {inPod ? 'text-[var(--accent)] border-[var(--accent)]/40' : 'text-[var(--text-secondary)]'}">
+				<span
+					class="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-[11px] font-[var(--font-mono)] {inPod
+						? 'border-[var(--accent)]/40 text-[var(--accent)]'
+						: 'text-[var(--text-secondary)]'}"
+				>
 					{inPod ? 'Flag: --in-pod true' : 'Flag: --in-pod false'}
 				</span>
 			</div>
 
 			<!-- Monospace Code Editor -->
-			<div class="rounded-md border border-[var(--border)] overflow-hidden shadow-inner">
+			<div class="overflow-hidden rounded-md border border-[var(--border)] shadow-inner">
 				<CodeEditor bind:value={composeYaml} language="yaml" height="auto" />
 			</div>
 
 			<!-- Compose Preview Drawer -->
 			{#if previewOpen}
-				<div class="p-4 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 flex flex-col gap-3">
-					<span class="text-xs font-semibold text-[var(--text-primary)] flex items-center gap-1.5">
+				<div
+					class="flex flex-col gap-3 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 p-4"
+				>
+					<span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
 						<Stack size={14} class="text-[var(--accent)]" /> Detected Workloads in Stack ({parsedServices.length})
 					</span>
-					<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
 						{#each parsedServices as svc}
-							<div class="p-3 rounded-md bg-[var(--bg-panel)] border border-[var(--border-subtle)] flex flex-col gap-1">
-								<span class="text-xs font-bold text-[var(--text-primary)] font-[var(--font-mono)]">{svc.name}</span>
+							<div
+								class="flex flex-col gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-3"
+							>
+								<span class="text-xs font-[var(--font-mono)] font-bold text-[var(--text-primary)]"
+									>{svc.name}</span
+								>
 								{#if svc.image}
-									<span class="text-[11px] text-[var(--text-secondary)] font-[var(--font-mono)] truncate">{svc.image}</span>
+									<span
+										class="truncate text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)]"
+										>{svc.image}</span
+									>
 								{/if}
 								{#if svc.ports}
-									<span class="text-[10px] text-[var(--accent)] font-[var(--font-mono)]">{svc.ports}</span>
+									<span class="text-[10px] font-[var(--font-mono)] text-[var(--accent)]"
+										>{svc.ports}</span
+									>
 								{/if}
 							</div>
 						{/each}
@@ -286,14 +331,16 @@
 		</div>
 
 		<!-- Single Explicit Save Button -->
-		<div class="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-panel)] flex items-center justify-between gap-3">
+		<div
+			class="flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3"
+		>
 			<span class="text-xs text-[var(--text-tertiary)]">
 				Saved configuration is stored in the GoPod workspace engine.
 			</span>
 
 			<div class="flex items-center gap-2">
 				{#if saveStatus === 'saved'}
-					<span class="text-xs text-[var(--status-green)] flex items-center gap-1 mr-1">
+					<span class="mr-1 flex items-center gap-1 text-xs text-[var(--status-green)]">
 						<Check size={14} weight="bold" /> Saved
 					</span>
 				{/if}
@@ -301,7 +348,7 @@
 					type="button"
 					onclick={handleSave}
 					disabled={saveStatus === 'saving'}
-					class="px-4 py-2 rounded-md bg-[var(--accent)] hover:opacity-90 text-white text-xs font-semibold cursor-pointer border-0 transition-opacity disabled:opacity-50"
+					class="cursor-pointer rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
 				>
 					{saveStatus === 'saving' ? 'Saving...' : 'Save Compose'}
 				</button>

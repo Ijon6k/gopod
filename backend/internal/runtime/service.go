@@ -2,18 +2,31 @@ package runtime
 
 import (
 	"context"
+	"os/exec"
+	"sync"
+	"time"
 
 	"gopod/internal/podman"
 )
 
 // Service encapsulates container engine interactions and telemetry business logic.
 type Service struct {
-	client *podman.Client
+	client      *podman.Client
+	statsMu     sync.RWMutex
+	cachedStats []podman.ContainerStat
+	statsTime   time.Time
 }
 
 // NewService creates a new runtime domain service.
 func NewService(client *podman.Client) *Service {
 	return &Service{client: client}
+}
+
+// SetupCmdEnv configures subprocess environment with active Podman socket.
+func (s *Service) SetupCmdEnv(cmd *exec.Cmd) {
+	if s.client != nil {
+		s.client.SetupCmdEnv(cmd)
+	}
 }
 
 // Client returns the underlying Podman client.
@@ -34,9 +47,29 @@ func (s *Service) GetSystemInfo(ctx context.Context) (*podman.SystemInfo, error)
 	return s.client.GetSystemInfo(ctx)
 }
 
-// GetContainerStats retrieves current CPU and memory consumption.
+// GetContainerStats retrieves current CPU and memory consumption with 2s TTL cache to prevent CPU thrashing.
 func (s *Service) GetContainerStats(ctx context.Context) ([]podman.ContainerStat, error) {
-	return s.client.GetContainerStats(ctx)
+	s.statsMu.RLock()
+	if time.Since(s.statsTime) < 2*time.Second && s.cachedStats != nil {
+		cached := s.cachedStats
+		s.statsMu.RUnlock()
+		return cached, nil
+	}
+	s.statsMu.RUnlock()
+
+	s.statsMu.Lock()
+	defer s.statsMu.Unlock()
+
+	if time.Since(s.statsTime) < 2*time.Second && s.cachedStats != nil {
+		return s.cachedStats, nil
+	}
+
+	stats, err := s.client.GetContainerStats(ctx)
+	if err == nil {
+		s.cachedStats = stats
+		s.statsTime = time.Now()
+	}
+	return stats, err
 }
 
 // GetContainers returns all local containers with metrics.

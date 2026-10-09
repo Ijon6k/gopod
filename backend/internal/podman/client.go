@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -45,6 +46,38 @@ func NewClient(customSocket string) *Client {
 // SocketPath returns active socket path or empty string if CLI only.
 func (c *Client) SocketPath() string {
 	return c.socketPath
+}
+
+// SetupCmdEnv configures subprocess environment variables to use the active Podman socket.
+func (c *Client) SetupCmdEnv(cmd *exec.Cmd) {
+	if cmd == nil {
+		return
+	}
+	socket := c.socketPath
+	if socket == "" {
+		socket = os.Getenv("PODMAN_SOCKET")
+	}
+	if socket == "" {
+		socket = "/run/podman/podman.sock"
+	}
+	socketClean := strings.TrimPrefix(socket, "unix://")
+	socketURL := fmt.Sprintf("unix://%s", socketClean)
+
+	existingEnv := os.Environ()
+	var newEnv []string
+	for _, e := range existingEnv {
+		if !strings.HasPrefix(e, "CONTAINER_HOST=") &&
+			!strings.HasPrefix(e, "DOCKER_HOST=") &&
+			!strings.HasPrefix(e, "PODMAN_SOCKET=") {
+			newEnv = append(newEnv, e)
+		}
+	}
+	newEnv = append(newEnv,
+		fmt.Sprintf("CONTAINER_HOST=%s", socketURL),
+		fmt.Sprintf("DOCKER_HOST=%s", socketURL),
+		fmt.Sprintf("PODMAN_SOCKET=%s", socketClean),
+	)
+	cmd.Env = newEnv
 }
 
 func detectSocket(custom string) string {

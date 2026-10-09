@@ -71,13 +71,13 @@
 		>
 			<WarningCircle size={22} weight="bold" />
 		</div>
-		<h3 class="text-base font-semibold text-[var(--text-primary)] m-0">
+		<h3 class="m-0 text-base font-semibold text-[var(--text-primary)]">
 			{title}
 		</h3>
 	</div>
 
 	{#if description}
-		<p class="text-xs text-[var(--text-secondary)] leading-relaxed m-0">
+		<p class="m-0 text-xs leading-relaxed text-[var(--text-secondary)]">
 			{description}
 		</p>
 	{/if}
@@ -90,7 +90,7 @@
 				<button
 					type="button"
 					onclick={handleCopy}
-					class="inline-flex items-center gap-1 text-[11px] font-[var(--font-mono)] px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)] cursor-pointer"
+					class="inline-flex cursor-pointer items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
 					title="Copy to clipboard"
 				>
 					{#if copied}
@@ -106,7 +106,7 @@
 				type="text"
 				bind:value={inputVal}
 				placeholder={matchValue}
-				class="w-full px-3 py-2 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] focus:border-red-500 focus:outline-none transition-colors"
+				class="w-full rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] transition-colors focus:border-red-500 focus:outline-none"
 			/>
 		</div>
 	{/if}
@@ -116,12 +116,7 @@
 	{/if}
 
 	{#snippet footer()}
-		<Button
-			variant="secondary"
-			size="sm"
-			disabled={isConfirming}
-			onclick={oncancel}
-		>
+		<Button variant="secondary" size="sm" disabled={isConfirming} onclick={oncancel}>
 			{cancelText}
 		</Button>
 		<button
@@ -129,10 +124,10 @@
 			disabled={!canConfirm}
 			onclick={onconfirm}
 			class={variant === 'danger'
-				? 'inline-flex items-center gap-2 px-4 py-2 rounded-md bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer border-0 transition-colors'
+				? 'inline-flex cursor-pointer items-center gap-2 rounded-md border-0 bg-red-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40'
 				: variant === 'warning'
-					? 'inline-flex items-center gap-2 px-4 py-2 rounded-md bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer border-0 transition-colors'
-					: 'inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[var(--accent)] hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-semibold cursor-pointer border-0 transition-colors'}
+					? 'inline-flex cursor-pointer items-center gap-2 rounded-md border-0 bg-amber-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40'
+					: 'inline-flex cursor-pointer items-center gap-2 rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40'}
 		>
 			{#if isConfirming}
 				<SpinnerGap size={14} class="animate-spin" />

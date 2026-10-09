@@ -1,7 +1,57 @@
 [
-	{ "id": "v1", "name": "aerochat-redis-data", "projectId": "aerochat", "projectName": "AeroChat", "serviceId": "aerochat-redis", "serviceName": "redis", "mount": "/data", "size": "2.1 GB", "status": "mounted" },
-	{ "id": "v1b", "name": "aerochat-pgdata", "projectId": "aerochat", "projectName": "AeroChat", "serviceId": "aerochat-db", "serviceName": "postgres", "mount": "/var/lib/postgresql/data", "size": "4.8 GB", "status": "mounted" },
-	{ "id": "v2", "name": "ngumpul-uploads", "projectId": "ngumpulhost", "projectName": "NgumpulHost", "serviceId": "ngumpul-backend", "serviceName": "backend", "mount": "/app/uploads", "size": "8.4 GB", "status": "mounted" },
-	{ "id": "v3", "name": "minecraft-world", "projectId": "minecraft", "projectName": "Minecraft", "serviceId": "minecraft-server", "serviceName": "server", "mount": "/data", "size": "3.6 GB", "status": "mounted" },
-	{ "id": "v4", "name": "minecraft-plugins", "projectId": "minecraft", "projectName": "Minecraft", "serviceId": "minecraft-server", "serviceName": "server", "mount": "/data/plugins", "size": "124 MB", "status": "mounted" }
+	{
+		"id": "v1",
+		"name": "aerochat-redis-data",
+		"projectId": "aerochat",
+		"projectName": "AeroChat",
+		"serviceId": "aerochat-redis",
+		"serviceName": "redis",
+		"mount": "/data",
+		"size": "2.1 GB",
+		"status": "mounted"
+	},
+	{
+		"id": "v1b",
+		"name": "aerochat-pgdata",
+		"projectId": "aerochat",
+		"projectName": "AeroChat",
+		"serviceId": "aerochat-db",
+		"serviceName": "postgres",
+		"mount": "/var/lib/postgresql/data",
+		"size": "4.8 GB",
+		"status": "mounted"
+	},
+	{
+		"id": "v2",
+		"name": "ngumpul-uploads",
+		"projectId": "ngumpulhost",
+		"projectName": "NgumpulHost",
+		"serviceId": "ngumpul-backend",
+		"serviceName": "backend",
+		"mount": "/app/uploads",
+		"size": "8.4 GB",
+		"status": "mounted"
+	},
+	{
+		"id": "v3",
+		"name": "minecraft-world",
+		"projectId": "minecraft",
+		"projectName": "Minecraft",
+		"serviceId": "minecraft-server",
+		"serviceName": "server",
+		"mount": "/data",
+		"size": "3.6 GB",
+		"status": "mounted"
+	},
+	{
+		"id": "v4",
+		"name": "minecraft-plugins",
+		"projectId": "minecraft",
+		"projectName": "Minecraft",
+		"serviceId": "minecraft-server",
+		"serviceName": "server",
+		"mount": "/data/plugins",
+		"size": "124 MB",
+		"status": "mounted"
+	}
 ]

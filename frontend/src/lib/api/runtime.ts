@@ -56,7 +56,9 @@ export const runtimeApi = {
 		 * Restart a container by ID
 		 */
 		async restart(id: string): Promise<{ message: string; id: string }> {
-			const res = await apiClient.post<{ message: string; id: string }>(`/containers/${id}/restart`);
+			const res = await apiClient.post<{ message: string; id: string }>(
+				`/containers/${id}/restart`
+			);
 			return res.data;
 		},
 

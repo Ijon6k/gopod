@@ -47,15 +47,26 @@ export const servicesApi = {
 	 * Delete a service by ID
 	 */
 	async delete(id: string, deleteVolumes = false): Promise<{ message: string }> {
-		const res = await apiClient.delete<{ message: string }>(`/services/${id}${deleteVolumes ? '?delete_volumes=true' : ''}`);
+		const res = await apiClient.delete<{ message: string }>(
+			`/services/${id}${deleteVolumes ? '?delete_volumes=true' : ''}`
+		);
 		return res.data;
 	},
 
 	/**
 	 * Trigger a native container deployment for this service
 	 */
-	async deploy(id: string, trigger = 'manual'): Promise<DeployResponse> {
-		const res = await apiClient.post<DeployResponse>(`/services/${id}/deploy`, { trigger });
+	async deploy(
+		id: string,
+		trigger = 'manual',
+		commit?: string,
+		image?: string
+	): Promise<DeployResponse> {
+		const res = await apiClient.post<DeployResponse>(`/services/${id}/deploy`, {
+			trigger,
+			commit,
+			image
+		});
 		return res.data;
 	},
 
@@ -103,7 +114,9 @@ export const servicesApi = {
 	 * Get plain text / stored logs for a specific deployment
 	 */
 	async deploymentLogs(id: string): Promise<{ deploymentId: string; logs: string }> {
-		const res = await apiClient.get<{ deploymentId: string; logs: string }>(`/deployments/${id}/logs`);
+		const res = await apiClient.get<{ deploymentId: string; logs: string }>(
+			`/deployments/${id}/logs`
+		);
 		return res.data;
 	}
 };

@@ -69,10 +69,17 @@
 
 			// Lightweight 60-second system status heartbeat (Dokploy & Coolify standard), paused when tab hidden
 			heartbeatTimer = setInterval(() => {
-				if (authStore.isAuthenticated && typeof document !== 'undefined' && document.visibilityState === 'visible') {
-					api.system.info().then((sys: any) => {
-						if (sys) dataStore.applySystemUpdate(sys);
-					}).catch(() => {});
+				if (
+					authStore.isAuthenticated &&
+					typeof document !== 'undefined' &&
+					document.visibilityState === 'visible'
+				) {
+					api.system
+						.info()
+						.then((sys: any) => {
+							if (sys) dataStore.applySystemUpdate(sys);
+						})
+						.catch(() => {});
 				}
 			}, 60000);
 		})();
@@ -96,10 +103,13 @@
 
 <QueryClientProvider client={queryClient}>
 	{#if !initialCheckDone && page.url.pathname !== '/login' && page.url.pathname !== '/setup'}
-		<div class="h-screen w-screen bg-[var(--bg-outer)] flex items-center justify-center">
+		<div class="flex h-screen w-screen items-center justify-center bg-[var(--bg-outer)]">
 			<div class="flex flex-col items-center gap-3">
-				<div class="w-8 h-8 rounded-full border-2 border-[var(--accent)] border-t-transparent animate-spin"></div>
-				<span class="text-xs font-mono text-[var(--text-tertiary)]">Verifying cluster session…</span>
+				<div
+					class="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent"
+				></div>
+				<span class="font-mono text-xs text-[var(--text-tertiary)]">Verifying cluster session…</span
+				>
 			</div>
 		</div>
 	{:else}

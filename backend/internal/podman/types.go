@@ -26,6 +26,8 @@ type SystemInfo struct {
 	TotalCount      int     `json:"totalCount"`
 	Uptime          string  `json:"uptime"`
 	CgroupVersion   string  `json:"cgroupVersion"`
+	SELinuxEnabled  bool    `json:"selinuxEnabled"`
+	AppArmorEnabled bool    `json:"apparmorEnabled"`
 }
 
 // ContainerStat represents resource consumption for a container.
@@ -105,6 +107,14 @@ type RunContainerOptions struct {
 	RestartPolicy string            `json:"restartPolicy,omitempty"`
 	CPULimit      float64           `json:"cpuLimit,omitempty"`
 	MemoryLimit   int               `json:"memoryLimit,omitempty"`
+	Volumes       []string          `json:"volumes,omitempty"`
+	UserNS        string            `json:"userNS,omitempty"`
+	Privileged    bool              `json:"privileged,omitempty"`
+	CapAdd        []string          `json:"capAdd,omitempty"`
+	CapDrop       []string          `json:"capDrop,omitempty"`
+	Devices       []string          `json:"devices,omitempty"`
+	PidsLimit     int               `json:"pidsLimit,omitempty"`
+	SecurityOpt   []string          `json:"securityOpt,omitempty"`
 }
 
 // SystemDiskUsage represents disk space usage of images, containers, and volumes.

@@ -425,7 +425,9 @@ export function computeProjectFocusLayout({
 		nodes.push(volNode);
 
 		const relatedContainer = nodes.find(
-			(n) => n.type === 'container' && (n.serviceId === vol.serviceId || n.title.includes(vol.serviceName))
+			(n) =>
+				n.type === 'container' &&
+				(n.serviceId === vol.serviceId || n.title.includes(vol.serviceName))
 		);
 		const relatedSource = relatedContainer || nodes.find((n) => n.id === `svc-${vol.serviceId}`);
 		if (relatedSource) {

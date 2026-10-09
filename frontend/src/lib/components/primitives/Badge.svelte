@@ -47,7 +47,7 @@
 
 <span class={cn(base, variantColors[variant], sizes[size], className)}>
 	{#if dot}
-		<span class={cn('rounded-full shrink-0', dotSize, dotColors[variant])}></span>
+		<span class={cn('shrink-0 rounded-full', dotSize, dotColors[variant])}></span>
 	{/if}
 	{@render children()}
 </span>

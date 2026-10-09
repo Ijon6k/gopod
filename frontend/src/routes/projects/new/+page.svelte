@@ -5,6 +5,8 @@
 	import { dataStore } from '$lib/data';
 	import { Plus, ArrowClockwise } from 'phosphor-svelte';
 
+	import { projectSchema } from '$lib/schemas';
+
 	let name = $state('');
 	let description = $state('');
 	let isSubmitting = $state(false);
@@ -15,17 +17,28 @@
 		const trimmedName = name.trim();
 		if (!trimmedName || isSubmitting) return;
 
+		const validation = projectSchema.safeParse({
+			name: trimmedName,
+			description: description.trim() || undefined
+		});
+
+		if (!validation.success) {
+			error = validation.error.issues[0]?.message || 'Invalid project data';
+			return;
+		}
+
 		isSubmitting = true;
 		error = null;
 		try {
-			const project = await dataStore.createProject({
-				name: trimmedName,
-				description: description.trim()
-			});
+			const project = await dataStore.createProject(validation.data);
 			goto(`/projects/${project.id}`);
-		} catch (err: any) {
+		} catch (err: unknown) {
 			console.error('Failed to create project:', err);
-			error = err?.response?.data?.error || err?.message || 'Failed to create project. Please try again.';
+			const errObj = err as { response?: { data?: { error?: string } }; message?: string };
+			error =
+				errObj?.response?.data?.error ||
+				errObj?.message ||
+				'Failed to create project. Please try again.';
 		} finally {
 			isSubmitting = false;
 		}
@@ -37,29 +50,55 @@
 </svelte:head>
 
 <div class="w-full max-w-[640px]">
-	<PageHeader title="New Project" subtitle="Create a new logical workspace for your services and workloads." />
+	<PageHeader
+		title="New Project"
+		subtitle="Create a new logical workspace for your services and workloads."
+	/>
 
 	<form onsubmit={handleSubmit} class="flex flex-col gap-6">
 		{#if error}
-			<div class="p-3 text-xs rounded border border-[var(--status-red)]/30 bg-[var(--status-red-muted)] text-[var(--status-red)]">
+			<div
+				class="rounded border border-[var(--status-red)]/30 bg-[var(--status-red-muted)] p-3 text-xs text-[var(--status-red)]"
+			>
 				{error}
 			</div>
 		{/if}
 
 		<div class="flex flex-col gap-2">
-			<label class="text-xs text-[var(--text-secondary)] font-medium" for="project-name">Project name</label>
-			<div class="px-3 py-2.5 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input id="project-name" bind:value={name} placeholder="e.g. backend-api, my-workspace" required />
+			<label class="text-xs font-medium text-[var(--text-secondary)]" for="project-name"
+				>Project name</label
+			>
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 focus-within:border-[var(--accent)]"
+			>
+				<Input
+					id="project-name"
+					bind:value={name}
+					placeholder="e.g. backend-api, my-workspace"
+					required
+				/>
 			</div>
-			<p class="text-[11px] text-[var(--text-tertiary)]">A descriptive name to identify your project.</p>
+			<p class="text-[11px] text-[var(--text-tertiary)]">
+				A descriptive name to identify your project.
+			</p>
 		</div>
 
 		<div class="flex flex-col gap-2">
-			<label class="text-xs text-[var(--text-secondary)] font-medium" for="project-desc">Description</label>
-			<div class="px-3 py-2.5 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input id="project-desc" bind:value={description} placeholder="A short description for your project" />
+			<label class="text-xs font-medium text-[var(--text-secondary)]" for="project-desc"
+				>Description</label
+			>
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 focus-within:border-[var(--accent)]"
+			>
+				<Input
+					id="project-desc"
+					bind:value={description}
+					placeholder="A short description for your project"
+				/>
 			</div>
-			<p class="text-[11px] text-[var(--text-tertiary)]">Optional purpose or notes for this workspace.</p>
+			<p class="text-[11px] text-[var(--text-tertiary)]">
+				Optional purpose or notes for this workspace.
+			</p>
 		</div>
 
 		<div class="flex gap-3 pt-2">
@@ -74,4 +113,3 @@
 		</div>
 	</form>
 </div>
-

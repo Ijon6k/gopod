@@ -15,25 +15,29 @@
 		{
 			id: 'application' as const,
 			title: 'Application',
-			description: 'Deploy web apps, APIs, or static sites from Git repository, Docker Image, or Drag & Drop.',
+			description:
+				'Deploy web apps, APIs, or static sites from Git repository, Docker Image, or Drag & Drop.',
 			icon: GitBranch
 		},
 		{
 			id: 'quadlet' as const,
 			title: 'Quadlet (Systemd)',
-			description: 'Declarative systemd .container unit with auto-restart on host boot & native systemd supervision.',
+			description:
+				'Declarative systemd .container unit with auto-restart on host boot & native systemd supervision.',
 			icon: FileText
 		},
 		{
 			id: 'compose' as const,
 			title: 'Stack / Compose',
-			description: 'Multi-container workloads defined via Compose YAML or Kubernetes Pod manifests.',
+			description:
+				'Multi-container workloads defined via Compose YAML or Kubernetes Pod manifests.',
 			icon: Stack
 		},
 		{
 			id: 'database' as const,
 			title: 'Database',
-			description: '1-click deployment for PostgreSQL, Redis, MySQL, or MongoDB with persistent volume storage.',
+			description:
+				'1-click deployment for PostgreSQL, Redis, MySQL, or MongoDB with persistent volume storage.',
 			badge: 'Preset',
 			icon: Database
 		}
@@ -41,9 +45,7 @@
 </script>
 
 <div class="flex flex-col gap-2">
-	<span class="text-xs font-medium text-[var(--text-secondary)]">
-		Select Service Type
-	</span>
+	<span class="text-xs font-medium text-[var(--text-secondary)]"> Select Service Type </span>
 
 	<!-- Vertical Stack Layout (Spacious, Clear Hierarchy, No Cramped Columns) -->
 	<div class="flex flex-col gap-2.5">
@@ -53,35 +55,35 @@
 			<button
 				type="button"
 				onclick={() => onselect(opt.id)}
-				class="group relative flex items-center justify-between p-3.5 rounded-[var(--radius-card)] border transition-all cursor-pointer text-left {isSelected
-					? 'bg-[var(--bg-surface)] border-[var(--accent)] shadow-xs ring-1 ring-[var(--accent)]/30'
-					: 'bg-[var(--bg-panel)] border-[var(--border)] hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)]'}"
+				class="group relative flex cursor-pointer items-center justify-between rounded-[var(--radius-card)] border p-3.5 text-left transition-all {isSelected
+					? 'border-[var(--accent)] bg-[var(--bg-surface)] shadow-xs ring-1 ring-[var(--accent)]/30'
+					: 'border-[var(--border)] bg-[var(--bg-panel)] hover:border-[var(--border-subtle)] hover:bg-[var(--bg-hover)]'}"
 			>
-				<div class="flex items-start gap-3.5 min-w-0 pr-3">
+				<div class="flex min-w-0 items-start gap-3.5 pr-3">
 					<!-- Icon Box -->
 					<div
-						class="flex items-center justify-center w-9 h-9 rounded-lg shrink-0 mt-0.5 transition-colors {isSelected
+						class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors {isSelected
 							? 'bg-[var(--accent)] text-white shadow-xs'
-							: 'bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)] border border-[var(--border-subtle)]'}"
+							: 'border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.05)] text-[var(--text-secondary)] group-hover:text-[var(--text-primary)]'}"
 					>
 						<Icon size={18} weight={isSelected ? 'fill' : 'regular'} />
 					</div>
 
 					<!-- Text Block -->
-					<div class="flex flex-col gap-1 min-w-0">
-						<div class="flex items-center gap-2 flex-wrap">
+					<div class="flex min-w-0 flex-col gap-1">
+						<div class="flex flex-wrap items-center gap-2">
 							<span class="text-sm font-semibold text-[var(--text-primary)]">{opt.title}</span>
 							{#if opt.badge}
 								<span
-									class="text-[10px] font-semibold px-2 py-0.5 rounded-full {isSelected
-										? 'bg-[var(--accent)]/15 text-[var(--accent)] border border-[var(--accent)]/30'
-										: 'bg-[rgba(255,255,255,0.06)] text-[var(--text-tertiary)] border border-[var(--border-subtle)]'}"
+									class="rounded-full px-2 py-0.5 text-[10px] font-semibold {isSelected
+										? 'border border-[var(--accent)]/30 bg-[var(--accent)]/15 text-[var(--accent)]'
+										: 'border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.06)] text-[var(--text-tertiary)]'}"
 								>
 									{opt.badge}
 								</span>
 							{/if}
 						</div>
-						<p class="text-xs text-[var(--text-tertiary)] m-0 leading-relaxed">
+						<p class="m-0 text-xs leading-relaxed text-[var(--text-tertiary)]">
 							{opt.description}
 						</p>
 					</div>
@@ -89,7 +91,7 @@
 
 				<!-- Radio Indicator -->
 				<div
-					class="flex items-center justify-center w-5 h-5 rounded-full border shrink-0 transition-colors {isSelected
+					class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full border transition-colors {isSelected
 						? 'border-[var(--accent)] bg-[var(--accent)] text-white shadow-xs'
 						: 'border-[var(--border)] bg-transparent group-hover:border-[var(--border-hover)]'}"
 				>

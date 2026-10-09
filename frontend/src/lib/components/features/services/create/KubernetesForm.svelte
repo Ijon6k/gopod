@@ -49,21 +49,25 @@ spec:
 </script>
 
 <div class="flex flex-col gap-4">
-	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
-			<label for="k8s-svc-name" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="k8s-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
 				Service name <span class="text-[var(--status-red)]">*</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
 				<Input id="k8s-svc-name" bind:value={name} placeholder="e.g. k8s-pod" />
 			</div>
 		</div>
 
 		<div class="flex flex-col gap-1.5">
-			<label for="k8s-svc-desc" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="k8s-svc-desc" class="text-xs font-medium text-[var(--text-secondary)]">
 				Description <span class="text-[var(--text-tertiary)]">(optional)</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
 				<Input id="k8s-svc-desc" bind:value={description} placeholder="Podman kube play manifest" />
 			</div>
 		</div>
@@ -71,7 +75,7 @@ spec:
 
 	<div class="flex flex-col gap-2">
 		<div class="flex items-center justify-between">
-			<label for="k8s-editor" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="k8s-editor" class="text-xs font-medium text-[var(--text-secondary)]">
 				Kubernetes YAML manifest <span class="text-[var(--status-red)]">*</span>
 			</label>
 			<div class="flex items-center gap-2">

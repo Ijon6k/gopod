@@ -4,7 +4,7 @@
 	import { dataStore } from '$lib/data';
 	import type { Deployment } from '$lib/types';
 	import { DeploymentCard, DeploymentLogsModal } from '$lib/components/features/deployments';
-	import { MagnifyingGlass, X, RocketLaunch } from 'phosphor-svelte';
+	import { RocketLaunch } from 'phosphor-svelte';
 
 	let selectedLogDep = $state<Deployment | null>(null);
 	let isLogsModalOpen = $state(false);
@@ -45,8 +45,12 @@
 
 	let counts = $derived.by(() => {
 		const total = allDeployments.length;
-		const running = allDeployments.filter((d) => d.status === 'running' || d.status === 'healthy').length;
-		const building = allDeployments.filter((d) => d.status === 'building' || d.status === 'deploying').length;
+		const running = allDeployments.filter(
+			(d) => d.status === 'running' || d.status === 'healthy'
+		).length;
+		const building = allDeployments.filter(
+			(d) => d.status === 'building' || d.status === 'deploying'
+		).length;
 		const failed = allDeployments.filter((d) => d.status === 'failed').length;
 		return { total, running, building, failed };
 	});
@@ -58,7 +62,8 @@
 
 	async function handleRollback(dep: Deployment) {
 		try {
-			await dataStore.deployService(dep.serviceId);
+			const targetCommit = dep.commit || dep.commitHash;
+			await dataStore.deployService(dep.serviceId, 'rollback', targetCommit, dep.image);
 		} catch (err) {
 			console.error('Rollback deploy error:', err);
 		}
@@ -77,21 +82,23 @@
 	<title>Deployments — GOPOD</title>
 </svelte:head>
 
-<div class="w-full flex flex-col gap-6">
+<div class="flex w-full flex-col gap-6">
 	<PageHeader
 		title="Deployments"
 		subtitle="Comprehensive deployment history, audit traces, and container rollout status across all projects."
 	/>
 
 	<!-- Toolbar & Filters -->
-	<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+	<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
 		<!-- Status Filters -->
-		<div class="flex items-center gap-1 p-0.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-x-auto text-xs">
+		<div
+			class="flex items-center gap-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5 text-xs"
+		>
 			<button
 				type="button"
 				onclick={() => (statusFilter = 'all')}
-				class="px-2.5 py-1 rounded transition-colors border-0 cursor-pointer {statusFilter === 'all'
-					? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-medium'
+				class="cursor-pointer rounded border-0 px-2.5 py-1 transition-colors {statusFilter === 'all'
+					? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
 					: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 			>
 				All ({counts.total})
@@ -100,11 +107,12 @@
 			<button
 				type="button"
 				onclick={() => (statusFilter = 'running')}
-				class="px-2.5 py-1 rounded transition-colors border-0 cursor-pointer flex items-center gap-1.5 {statusFilter === 'running'
-					? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-medium'
+				class="flex cursor-pointer items-center gap-1.5 rounded border-0 px-2.5 py-1 transition-colors {statusFilter ===
+				'running'
+					? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
 					: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 			>
-				<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-green)]"></span>
+				<span class="h-1.5 w-1.5 rounded-full bg-[var(--status-green)]"></span>
 				Success ({counts.running})
 			</button>
 
@@ -112,11 +120,12 @@
 				<button
 					type="button"
 					onclick={() => (statusFilter = 'building')}
-					class="px-2.5 py-1 rounded transition-colors border-0 cursor-pointer flex items-center gap-1.5 {statusFilter === 'building'
-						? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-medium'
+					class="flex cursor-pointer items-center gap-1.5 rounded border-0 px-2.5 py-1 transition-colors {statusFilter ===
+					'building'
+						? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
 						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 				>
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--accent)] animate-pulse"></span>
+					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]"></span>
 					Building ({counts.building})
 				</button>
 			{/if}
@@ -125,11 +134,12 @@
 				<button
 					type="button"
 					onclick={() => (statusFilter = 'failed')}
-					class="px-2.5 py-1 rounded transition-colors border-0 cursor-pointer flex items-center gap-1.5 {statusFilter === 'failed'
-						? 'bg-[var(--bg-surface)] text-[var(--text-primary)] font-medium'
+					class="flex cursor-pointer items-center gap-1.5 rounded border-0 px-2.5 py-1 transition-colors {statusFilter ===
+					'failed'
+						? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
 						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 				>
-					<span class="w-1.5 h-1.5 rounded-full bg-[var(--status-red)]"></span>
+					<span class="h-1.5 w-1.5 rounded-full bg-[var(--status-red)]"></span>
 					Failed ({counts.failed})
 				</button>
 			{/if}
@@ -139,14 +149,16 @@
 		<SearchInput
 			bind:value={searchQuery}
 			placeholder="Search by project, service, commit..."
-			class="max-w-[320px] w-full"
+			class="w-full max-w-[320px]"
 		/>
 	</div>
 
 	<!-- Long Component List ("Komponen Panjang") -->
 	{#if filteredDeployments.length === 0}
-		<div class="w-full py-16 flex flex-col items-center justify-center gap-2.5 rounded-[var(--radius-card)] border border-dashed border-[var(--border)] bg-[var(--bg-panel)] text-center">
-			<div class="p-2.5 rounded-full bg-[var(--bg-surface)] text-[var(--text-tertiary)]">
+		<div
+			class="flex w-full flex-col items-center justify-center gap-2.5 rounded-[var(--radius-card)] border border-dashed border-[var(--border)] bg-[var(--bg-panel)] py-16 text-center"
+		>
+			<div class="rounded-full bg-[var(--bg-surface)] p-2.5 text-[var(--text-tertiary)]">
 				<RocketLaunch size={20} />
 			</div>
 			<div class="flex flex-col gap-0.5">

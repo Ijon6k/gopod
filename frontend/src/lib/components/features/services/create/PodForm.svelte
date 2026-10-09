@@ -37,22 +37,30 @@
 </script>
 
 <div class="flex flex-col gap-5">
-	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
-			<label for="pod-svc-name" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="pod-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
 				Pod name <span class="text-[var(--status-red)]">*</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
 				<Input id="pod-svc-name" bind:value={name} placeholder="e.g. realtime-cluster" />
 			</div>
 		</div>
 
 		<div class="flex flex-col gap-1.5">
-			<label for="pod-svc-desc" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="pod-svc-desc" class="text-xs font-medium text-[var(--text-secondary)]">
 				Description <span class="text-[var(--text-tertiary)]">(optional)</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input id="pod-svc-desc" bind:value={description} placeholder="Podman Pod grouping co-located containers" />
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
+				<Input
+					id="pod-svc-desc"
+					bind:value={description}
+					placeholder="Podman Pod grouping co-located containers"
+				/>
 			</div>
 		</div>
 	</div>
@@ -63,7 +71,8 @@
 			<div class="flex flex-col gap-0.5">
 				<span class="text-xs font-medium text-[var(--text-secondary)]">Member Containers</span>
 				<span class="text-[11px] text-[var(--text-tertiary)]">
-					Define initial containers in this Pod. Detailed runtime, volumes, and ports can be configured in Service Detail.
+					Define initial containers in this Pod. Detailed runtime, volumes, and ports can be
+					configured in Service Detail.
 				</span>
 			</div>
 			<Button variant="secondary" size="sm" onclick={addContainer}>
@@ -73,15 +82,31 @@
 
 		<div class="flex flex-col gap-2">
 			{#each containers as c, idx}
-				<div class="flex items-center gap-3 p-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)]">
-					<div class="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+				<div
+					class="flex items-center gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+				>
+					<div class="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
 						<div class="flex flex-col gap-1">
-							<span class="text-[10px] text-[var(--text-tertiary)] uppercase tracking-[0.08em] font-medium">Container Name</span>
-							<Input bind:value={c.name} placeholder="e.g. app" class="font-[var(--font-mono)] text-xs" />
+							<span
+								class="text-[10px] font-medium tracking-[0.08em] text-[var(--text-tertiary)] uppercase"
+								>Container Name</span
+							>
+							<Input
+								bind:value={c.name}
+								placeholder="e.g. app"
+								class="text-xs font-[var(--font-mono)]"
+							/>
 						</div>
 						<div class="flex flex-col gap-1">
-							<span class="text-[10px] text-[var(--text-tertiary)] uppercase tracking-[0.08em] font-medium">Image Reference</span>
-							<Input bind:value={c.image} placeholder="image:tag" class="font-[var(--font-mono)] text-xs" />
+							<span
+								class="text-[10px] font-medium tracking-[0.08em] text-[var(--text-tertiary)] uppercase"
+								>Image Reference</span
+							>
+							<Input
+								bind:value={c.image}
+								placeholder="image:tag"
+								class="text-xs font-[var(--font-mono)]"
+							/>
 						</div>
 					</div>
 
@@ -89,7 +114,7 @@
 						<button
 							type="button"
 							onclick={() => removeContainer(idx)}
-							class="text-[var(--text-tertiary)] hover:text-[var(--status-red)] transition-colors p-1.5 cursor-pointer bg-transparent border-0"
+							class="cursor-pointer border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] transition-colors hover:text-[var(--status-red)]"
 							title="Remove container"
 						>
 							<Trash size={15} />

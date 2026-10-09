@@ -209,8 +209,8 @@ export class DataStore {
 	deleteService(id: string, deleteVolumes = false) {
 		return this.projectsStore.deleteService(id, deleteVolumes);
 	}
-	deployService(serviceId: string, trigger = 'manual') {
-		return this.projectsStore.deployService(serviceId, trigger);
+	deployService(serviceId: string, trigger = 'manual', commit?: string, image?: string) {
+		return this.projectsStore.deployService(serviceId, trigger, commit, image);
 	}
 	startService(serviceId: string) {
 		return this.projectsStore.startService(serviceId);
@@ -347,7 +347,8 @@ export class DataStore {
 					const name = rc.names && rc.names.length > 0 ? rc.names[0].replace(/^\//, '') : rc.id;
 					const stat = statsMap.get(rc.id) || statsMap.get(name);
 					const meta = this.resolveContainerMetadata(name, rc.labels);
-					const isRunning = rc.state === 'running' || (rc.status && rc.status.toLowerCase().includes('up'));
+					const isRunning =
+						rc.state === 'running' || (rc.status && rc.status.toLowerCase().includes('up'));
 
 					return {
 						id: rc.id,
@@ -381,7 +382,10 @@ export class DataStore {
 		}
 	}
 
-	resolveContainerMetadata(name: string, labels?: Record<string, string>): { projId: string; projName: string; servId: string; servName: string } {
+	resolveContainerMetadata(
+		name: string,
+		labels?: Record<string, string>
+	): { projId: string; projName: string; servId: string; servName: string } {
 		let projName = 'System Host';
 		let projId = 'system';
 		let servName = name;
@@ -397,18 +401,27 @@ export class DataStore {
 		}
 
 		// 2. Compose Project labels (Docker & Podman Compose parity)
-		const composeProj = labels?.['com.docker.compose.project'] || labels?.['io.podman.compose.project'];
-		const composeServ = labels?.['com.docker.compose.service'] || labels?.['io.podman.compose.service'];
+		const composeProj =
+			labels?.['com.docker.compose.project'] || labels?.['io.podman.compose.project'];
+		const composeServ =
+			labels?.['com.docker.compose.service'] || labels?.['io.podman.compose.service'];
 
 		if (composeProj) {
 			const matched = this.services.find((s: Service) => {
 				if (!s) return false;
 				if (s.id === composeProj || s.name === composeProj) return true;
-				if (composeProj === `${s.projectId}-${s.name}` || composeProj === `${s.projectId}-${s.id}`) return true;
-				if (s.id && (composeProj.startsWith(`${s.id}-`) || composeProj.startsWith(`${s.id}_`))) return true;
+				if (composeProj === `${s.projectId}-${s.name}` || composeProj === `${s.projectId}-${s.id}`)
+					return true;
+				if (s.id && (composeProj.startsWith(`${s.id}-`) || composeProj.startsWith(`${s.id}_`)))
+					return true;
 				if (s.projectId && composeProj.startsWith(`${s.projectId}-`)) {
 					const rest = composeProj.slice(s.projectId.length + 1);
-					return rest === s.id || rest === s.name || rest.startsWith(`${s.id}-`) || rest.startsWith(`${s.name}-`);
+					return (
+						rest === s.id ||
+						rest === s.name ||
+						rest.startsWith(`${s.id}-`) ||
+						rest.startsWith(`${s.name}-`)
+					);
 				}
 				return false;
 			});
@@ -422,7 +435,9 @@ export class DataStore {
 		}
 
 		// 3. Compose working directory or config file paths
-		const composeWorkDir = labels?.['com.docker.compose.project.working_dir'] || labels?.['com.docker.compose.project.config_files'];
+		const composeWorkDir =
+			labels?.['com.docker.compose.project.working_dir'] ||
+			labels?.['com.docker.compose.project.config_files'];
 		if (composeWorkDir) {
 			for (const p of this.projectsStore.projects) {
 				if (composeWorkDir.includes(`/${p.id}/`) || composeWorkDir.includes(`/${p.name}/`)) {
@@ -436,7 +451,10 @@ export class DataStore {
 							composeWorkDir.includes(`/${s.id}.`) ||
 							composeWorkDir.includes(`/${s.name}/`) ||
 							composeWorkDir.endsWith(`/${s.name}`) ||
-							(composeProj && (s.id === composeProj || s.name === composeProj || composeProj === `${s.projectId}-${s.name}`))
+							(composeProj &&
+								(s.id === composeProj ||
+									s.name === composeProj ||
+									composeProj === `${s.projectId}-${s.name}`))
 						) {
 							servId = s.id;
 							servName = composeServ || s.name;
@@ -456,10 +474,16 @@ export class DataStore {
 				const unitName = unitMatch[1];
 				const matched = this.services.find((s) => {
 					if (s.id === unitName || s.name === unitName) return true;
-					if (unitName === `${s.projectId}-${s.name}` || unitName === `${s.projectId}-${s.id}`) return true;
+					if (unitName === `${s.projectId}-${s.name}` || unitName === `${s.projectId}-${s.id}`)
+						return true;
 					if (s.projectId && unitName.startsWith(`${s.projectId}-`)) {
 						const rest = unitName.slice(s.projectId.length + 1);
-						return rest === s.id || rest === s.name || rest.startsWith(`${s.id}-`) || rest.startsWith(`${s.name}-`);
+						return (
+							rest === s.id ||
+							rest === s.name ||
+							rest.startsWith(`${s.id}-`) ||
+							rest.startsWith(`${s.name}-`)
+						);
 					}
 					return false;
 				});
@@ -477,7 +501,8 @@ export class DataStore {
 		const matchedByPrefix = this.services.find(
 			(s: Service) =>
 				(s.id && (name === s.id || name.startsWith(`${s.id}-`) || name.startsWith(`${s.id}_`))) ||
-				(s.name && (name === s.name || name.startsWith(`${s.name}-`) || name.startsWith(`${s.name}_`)))
+				(s.name &&
+					(name === s.name || name.startsWith(`${s.name}-`) || name.startsWith(`${s.name}_`)))
 		);
 		if (matchedByPrefix) {
 			servId = matchedByPrefix.id;

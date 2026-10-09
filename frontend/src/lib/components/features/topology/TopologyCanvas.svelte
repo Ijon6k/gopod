@@ -124,12 +124,12 @@
 	onmousedown={handleMouseDown}
 	onwheel={handleWheel}
 	onclick={handleBackgroundClick}
-	class="relative w-full h-full min-h-[680px] overflow-hidden select-none bg-[var(--bg-canvas)] rounded-[var(--radius-card)] border border-[var(--border)] flex-1 transition-colors duration-200"
+	class="relative h-full min-h-[680px] w-full flex-1 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-canvas)] transition-colors duration-200 select-none"
 	style="cursor: {isPanning ? 'grabbing' : 'grab'};"
 >
 	<!-- SVG Layer for Dot Grid and Orthogonal Edges -->
 	<svg
-		class="canvas-bg absolute inset-0 w-full h-full pointer-events-auto"
+		class="canvas-bg pointer-events-auto absolute inset-0 h-full w-full"
 		xmlns="http://www.w3.org/2000/svg"
 	>
 		<defs>
@@ -141,13 +141,7 @@
 				patternUnits="userSpaceOnUse"
 				patternTransform="translate({panX % 24}, {panY % 24})"
 			>
-				<circle
-					cx="1.5"
-					cy="1.5"
-					r="1.2"
-					fill="var(--bg-canvas-dot)"
-					opacity="0.8"
-				/>
+				<circle cx="1.5" cy="1.5" r="1.2" fill="var(--bg-canvas-dot)" opacity="0.8" />
 			</pattern>
 		</defs>
 
@@ -170,41 +164,49 @@
 
 	<!-- HTML Layer for Column Guides, Regions and Nodes -->
 	<div
-		class="absolute top-0 left-0 w-0 h-0 pointer-events-none"
+		class="pointer-events-none absolute top-0 left-0 h-0 w-0"
 		style="transform: translate3d({panX}px, {panY}px, 0) scale({zoom}); transform-origin: 0 0;"
 	>
 		<!-- Aesthetic Architecture Column Guides (Project View) -->
 		{#if isProjectView}
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
+				class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-semibold whitespace-nowrap text-[var(--text-secondary)] select-none"
 				style="transform: translate3d(80px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
-					<span class="w-2 h-2 rounded-full bg-[var(--text-tertiary)]"></span> Ingress & Domains
+				<span
+					class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-shell)]/85 px-2.5 py-1 shadow-xs"
+				>
+					<span class="h-2 w-2 rounded-full bg-[var(--text-tertiary)]"></span> Ingress & Domains
 				</span>
 			</div>
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
+				class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-semibold whitespace-nowrap text-[var(--text-secondary)] select-none"
 				style="transform: translate3d(390px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
-					<span class="w-2 h-2 rounded-full bg-[var(--accent)]"></span> Services & Workloads
+				<span
+					class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-shell)]/85 px-2.5 py-1 shadow-xs"
+				>
+					<span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span> Services & Workloads
 				</span>
 			</div>
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
+				class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-semibold whitespace-nowrap text-[var(--text-secondary)] select-none"
 				style="transform: translate3d(730px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
-					<span class="w-2 h-2 rounded-full bg-[var(--status-green)]"></span> Runtime Pods & Containers
+				<span
+					class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-shell)]/85 px-2.5 py-1 shadow-xs"
+				>
+					<span class="h-2 w-2 rounded-full bg-[var(--status-green)]"></span> Runtime Pods & Containers
 				</span>
 			</div>
 			<div
-				class="absolute top-0 left-0 pointer-events-none select-none whitespace-nowrap text-xs font-semibold text-[var(--text-secondary)] font-[var(--font-sans)]"
+				class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-semibold whitespace-nowrap text-[var(--text-secondary)] select-none"
 				style="transform: translate3d(1120px, 48px, 0);"
 			>
-				<span class="inline-flex items-center gap-2 px-2.5 py-1 rounded-[var(--radius-sm)] bg-[var(--bg-shell)]/85 border border-[var(--border-subtle)] shadow-xs">
-					<span class="w-2 h-2 rounded-full bg-[var(--status-amber)]"></span> Storage & Volumes
+				<span
+					class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-shell)]/85 px-2.5 py-1 shadow-xs"
+				>
+					<span class="h-2 w-2 rounded-full bg-[var(--status-amber)]"></span> Storage & Volumes
 				</span>
 			</div>
 		{/if}
@@ -236,7 +238,7 @@
 
 	<!-- Canvas Helper Watermark Pill -->
 	<div
-		class="absolute bottom-3 left-3 pointer-events-none flex items-center gap-2 text-[11px] text-[var(--text-tertiary)] bg-[var(--bg-shell)]/90 backdrop-blur-sm border border-[var(--border)] px-3 py-1.5 rounded-[var(--radius-sm)] transition-colors"
+		class="pointer-events-none absolute bottom-3 left-3 flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-shell)]/90 px-3 py-1.5 text-[11px] text-[var(--text-tertiary)] backdrop-blur-sm transition-colors"
 	>
 		<span>Drag to pan</span>
 		<span class="opacity-40">·</span>

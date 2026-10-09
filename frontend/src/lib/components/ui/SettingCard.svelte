@@ -27,49 +27,55 @@
 
 <div
 	class={cn(
-		'rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden shadow-xs flex flex-col',
+		'flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs',
 		className
 	)}
 >
 	<!-- Card Header -->
-	<div class="px-5 py-4 border-b border-[var(--border)] flex items-center justify-between gap-4 bg-[var(--bg-panel)]">
-		<div class="flex flex-col gap-0.5 min-w-0">
+	<div
+		class="flex items-center justify-between gap-4 border-b border-[var(--border)] bg-[var(--bg-panel)] px-5 py-4"
+	>
+		<div class="flex min-w-0 flex-col gap-0.5">
 			<div class="flex items-center gap-2">
 				{#if icon}
 					{@const IconComp = icon}
-					<IconComp size={16} class="text-[var(--accent)] shrink-0" />
+					<IconComp size={16} class="shrink-0 text-[var(--accent)]" />
 				{/if}
-				<h3 class="text-sm font-semibold text-[var(--text-primary)] tracking-tight m-0 truncate">
+				<h3 class="m-0 truncate text-sm font-semibold tracking-tight text-[var(--text-primary)]">
 					{title}
 				</h3>
 				{#if badge}
-					<span class="inline-flex items-center text-[11px] font-semibold px-2 py-0.5 rounded border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] font-[var(--font-mono)] shrink-0">
+					<span
+						class="inline-flex shrink-0 items-center rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] font-semibold text-[var(--text-secondary)]"
+					>
 						{badge}
 					</span>
 				{/if}
 			</div>
 			{#if subtitle}
-				<p class="text-xs text-[var(--text-tertiary)] m-0 leading-normal">
+				<p class="m-0 text-xs leading-normal text-[var(--text-tertiary)]">
 					{subtitle}
 				</p>
 			{/if}
 		</div>
 
 		{#if headerActions}
-			<div class="flex items-center gap-2 shrink-0">
+			<div class="flex shrink-0 items-center gap-2">
 				{@render headerActions()}
 			</div>
 		{/if}
 	</div>
 
 	<!-- Card Body -->
-	<div class="p-5 flex-1 flex flex-col gap-4 text-xs text-[var(--text-secondary)]">
+	<div class="flex flex-1 flex-col gap-4 p-5 text-xs text-[var(--text-secondary)]">
 		{@render children()}
 	</div>
 
 	<!-- Optional Card Footer -->
 	{#if footer}
-		<div class="px-5 py-3 border-t border-[var(--border)] bg-[var(--bg-surface)] shrink-0 flex items-center justify-end gap-2.5">
+		<div
+			class="flex shrink-0 items-center justify-end gap-2.5 border-t border-[var(--border)] bg-[var(--bg-surface)] px-5 py-3"
+		>
 			{@render footer()}
 		</div>
 	{/if}

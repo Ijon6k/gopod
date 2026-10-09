@@ -72,38 +72,51 @@ WantedBy=default.target`)
 </script>
 
 <div class="flex flex-col gap-4">
-	<div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
-			<label for="quadlet-svc-name" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="quadlet-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
 				Service name <span class="text-[var(--status-red)]">*</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
 				<Input id="quadlet-svc-name" bind:value={name} placeholder="e.g. system-daemon" />
 			</div>
 		</div>
 
 		<div class="flex flex-col gap-1.5">
-			<label for="quadlet-svc-desc" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="quadlet-svc-desc" class="text-xs font-medium text-[var(--text-secondary)]">
 				Description <span class="text-[var(--text-tertiary)]">(optional)</span>
 			</label>
-			<div class="px-3 py-2 border border-[var(--border)] rounded-[var(--radius-sm)] bg-[var(--bg-surface)] focus-within:border-[var(--accent)]">
-				<Input id="quadlet-svc-desc" bind:value={description} placeholder="Declarative systemd Quadlet unit" />
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
+			>
+				<Input
+					id="quadlet-svc-desc"
+					bind:value={description}
+					placeholder="Declarative systemd Quadlet unit"
+				/>
 			</div>
 		</div>
 	</div>
 
 	<div class="flex flex-col gap-2">
 		<div class="flex items-center justify-between">
-			<label for="quadlet-editor" class="text-xs text-[var(--text-secondary)] font-medium">
+			<label for="quadlet-editor" class="text-xs font-medium text-[var(--text-secondary)]">
 				Quadlet unit configuration (.container) <span class="text-[var(--status-red)]">*</span>
 			</label>
 			<div class="flex items-center gap-2">
 				<label
-					class="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded bg-[var(--bg-surface)] border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)] cursor-pointer"
+					class="inline-flex cursor-pointer items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
 				>
 					<UploadSimple size={13} />
 					Import file
-					<input type="file" accept=".container,.pod,.kube" onchange={handleFileUpload} class="sr-only" />
+					<input
+						type="file"
+						accept=".container,.pod,.kube"
+						onchange={handleFileUpload}
+						class="sr-only"
+					/>
 				</label>
 				{#if validationStatus === 'valid'}
 					<span class="flex items-center gap-1 text-[11px] text-[var(--status-green)]">

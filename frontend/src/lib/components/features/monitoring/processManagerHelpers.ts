@@ -22,7 +22,11 @@ export interface ProjectNode {
 }
 
 export function isAnomaly(c: Container): boolean {
-	return (c.cpu ?? 0) >= 2.0 || (c.memory ?? 0) >= 400 || (c.status !== 'running' && c.status !== 'healthy');
+	return (
+		(c.cpu ?? 0) >= 2.0 ||
+		(c.memory ?? 0) >= 400 ||
+		(c.status !== 'running' && c.status !== 'healthy')
+	);
 }
 
 export function buildProjectTree(
@@ -94,13 +98,15 @@ export function buildProjectTree(
 
 			const serviceNodes: ServiceNode[] = services
 				.map((service) => {
-					let containers = project.id === 'system'
-						? unassignedContainers.filter((c) => (c.serviceName || c.name) === service.name)
-						: allContainers.filter(
-								(c) =>
-									c.serviceId === service.id ||
-									(c.projectId === project.id && (c.serviceName === service.name || c.name.startsWith(service.id)))
-							);
+					let containers =
+						project.id === 'system'
+							? unassignedContainers.filter((c) => (c.serviceName || c.name) === service.name)
+							: allContainers.filter(
+									(c) =>
+										c.serviceId === service.id ||
+										(c.projectId === project.id &&
+											(c.serviceName === service.name || c.name.startsWith(service.id)))
+								);
 
 					if (filterAnomaliesOnly) {
 						containers = containers.filter(isAnomaly);
@@ -123,9 +129,7 @@ export function buildProjectTree(
 						!query ||
 						service.name.toLowerCase().includes(query) ||
 						containers.some(
-							(c) =>
-								c.name.toLowerCase().includes(query) ||
-								c.image.toLowerCase().includes(query)
+							(c) => c.name.toLowerCase().includes(query) || c.image.toLowerCase().includes(query)
 						);
 
 					return {
@@ -147,9 +151,7 @@ export function buildProjectTree(
 			const totalContainers = serviceNodes.reduce((acc, s) => acc + s.containers.length, 0);
 
 			const projectMatchesQuery =
-				!query ||
-				project.name.toLowerCase().includes(query) ||
-				serviceNodes.length > 0;
+				!query || project.name.toLowerCase().includes(query) || serviceNodes.length > 0;
 
 			return {
 				project,
@@ -166,8 +168,10 @@ export function buildProjectTree(
 		});
 
 	result.sort((a, b) => {
-		const valA: any = sortBy === 'cpu' ? a.totalCpu : sortBy === 'memory' ? a.totalMem : a.project.name;
-		const valB: any = sortBy === 'cpu' ? b.totalCpu : sortBy === 'memory' ? b.totalMem : b.project.name;
+		const valA: any =
+			sortBy === 'cpu' ? a.totalCpu : sortBy === 'memory' ? a.totalMem : a.project.name;
+		const valB: any =
+			sortBy === 'cpu' ? b.totalCpu : sortBy === 'memory' ? b.totalMem : b.project.name;
 		if (typeof valA === 'string') {
 			return sortDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
 		}

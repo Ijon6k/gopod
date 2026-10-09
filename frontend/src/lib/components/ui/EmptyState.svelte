@@ -21,7 +21,7 @@
 	<div class="flex flex-col gap-1">
 		<strong class="text-md font-medium text-[var(--text-secondary)]">{title}</strong>
 		{#if description}
-			<p class="text-base text-[var(--text-tertiary)] m-0">{description}</p>
+			<p class="m-0 text-base text-[var(--text-tertiary)]">{description}</p>
 		{/if}
 	</div>
 </div>

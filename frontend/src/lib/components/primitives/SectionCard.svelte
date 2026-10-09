@@ -38,7 +38,7 @@
 
 <div
 	class={cn(
-		'rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] overflow-hidden transition-colors',
+		'overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] transition-colors',
 		className
 	)}
 >
@@ -48,22 +48,22 @@
 			type="button"
 			onclick={toggle}
 			class={cn(
-				'w-full flex items-center justify-between p-4 bg-transparent hover:bg-[var(--bg-hover)] transition-colors border-0 cursor-pointer text-left',
+				'flex w-full cursor-pointer items-center justify-between border-0 bg-transparent p-4 text-left transition-colors hover:bg-[var(--bg-hover)]',
 				headerClass
 			)}
 		>
-			<div class="flex flex-col gap-0.5 min-w-0 pr-3">
+			<div class="flex min-w-0 flex-col gap-0.5 pr-3">
 				<span class="text-sm font-medium text-[var(--text-primary)]">
 					{title}
 				</span>
 				{#if description}
-					<span class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+					<span class="text-xs leading-relaxed text-[var(--text-tertiary)]">
 						{description}
 					</span>
 				{/if}
 			</div>
 
-			<div class="flex items-center gap-3 shrink-0">
+			<div class="flex shrink-0 items-center gap-3">
 				{#if headerActions}
 					<div onclick={(e) => e.stopPropagation()} role="presentation">
 						{@render headerActions()}
@@ -86,19 +86,19 @@
 				headerClass
 			)}
 		>
-			<div class="flex flex-col gap-0.5 min-w-0 pr-3">
+			<div class="flex min-w-0 flex-col gap-0.5 pr-3">
 				<span class="text-sm font-medium text-[var(--text-primary)]">
 					{title}
 				</span>
 				{#if description}
-					<span class="text-xs text-[var(--text-tertiary)] leading-relaxed">
+					<span class="text-xs leading-relaxed text-[var(--text-tertiary)]">
 						{description}
 					</span>
 				{/if}
 			</div>
 
 			{#if headerActions}
-				<div class="shrink-0 flex items-center gap-2">
+				<div class="flex shrink-0 items-center gap-2">
 					{@render headerActions()}
 				</div>
 			{/if}
@@ -107,14 +107,23 @@
 
 	<!-- Content Body -->
 	{#if open}
-		<div class={cn(collapsible ? 'p-4 pt-0 flex flex-col gap-4 border-t border-[var(--border-subtle)] mt-2' : 'p-4 flex flex-col gap-4', contentClass)}>
+		<div
+			class={cn(
+				collapsible
+					? 'mt-2 flex flex-col gap-4 border-t border-[var(--border-subtle)] p-4 pt-0'
+					: 'flex flex-col gap-4 p-4',
+				contentClass
+			)}
+		>
 			{@render children()}
 		</div>
 	{/if}
 
 	<!-- Optional Footer -->
 	{#if footer && open}
-		<div class="p-3.5 bg-[var(--bg-surface)] border-t border-[var(--border-subtle)] flex items-center justify-between">
+		<div
+			class="flex items-center justify-between border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3.5"
+		>
 			{@render footer()}
 		</div>
 	{/if}

@@ -1,4 +1,8 @@
-export function getDefaultQuadletConfig(service: { name: string; image?: string; port?: number }): string {
+export function getDefaultQuadletConfig(service: {
+	name: string;
+	image?: string;
+	port?: number;
+}): string {
 	return `[Unit]
 Description=${service.name} Quadlet Service
 After=network-online.target
@@ -17,7 +21,11 @@ TimeoutStartSec=300
 WantedBy=default.target`;
 }
 
-export function getDefaultComposeYaml(service: { name: string; image?: string; port?: number }): string {
+export function getDefaultComposeYaml(service: {
+	name: string;
+	image?: string;
+	port?: number;
+}): string {
 	return `version: "3.8"
 services:
   ${service.name}:

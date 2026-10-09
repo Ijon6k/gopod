@@ -272,8 +272,8 @@ func (s *WorkloadService) RestartService(ctx context.Context, id string) (*Servi
 	return svc, nil
 }
 
-// StartDeploy initiates an asynchronous container deployment and returns the pending record immediately.
-func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger string) (*Deployment, error) {
+// StartDeploy initiates an asynchronous container deployment with optional commit/image overrides.
+func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger string, overrides ...string) (*Deployment, error) {
 	svc, err := s.GetService(ctx, serviceID)
 	if err != nil {
 		return nil, err
@@ -286,6 +286,23 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 		trigger = "manual"
 	}
 
+	var commitOverride, imageOverride string
+	if len(overrides) > 0 {
+		commitOverride = overrides[0]
+	}
+	if len(overrides) > 1 {
+		imageOverride = overrides[1]
+	}
+
+	// Apply rollback commit/image overrides if specified
+	if commitOverride != "" {
+		svc.GitBranch = commitOverride
+		svc.Branch = commitOverride
+	}
+	if imageOverride != "" {
+		svc.Image = imageOverride
+	}
+
 	pastDeps, _ := s.repo.ListDeployments(ctx, serviceID)
 	nextNumber := len(pastDeps) + 1
 
@@ -294,6 +311,17 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 	_, _ = rand.Read(b)
 	depID := fmt.Sprintf("dep-%d-%s", start.Unix(), hex.EncodeToString(b))
 
+	commitMsg := "Deployment initiated"
+	if trigger == "rollback" {
+		if commitOverride != "" {
+			commitMsg = fmt.Sprintf("Rollback to commit %s", commitOverride)
+		} else if imageOverride != "" {
+			commitMsg = fmt.Sprintf("Rollback to image %s", imageOverride)
+		} else {
+			commitMsg = "Rollback initiated"
+		}
+	}
+
 	depRecord := Deployment{
 		ID:            depID,
 		ProjectID:     svc.ProjectID,
@@ -301,8 +329,9 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 		Number:        nextNumber,
 		Trigger:       trigger,
 		Version:       fmt.Sprintf("#%d", nextNumber),
-		CommitHash:    "",
-		CommitMessage: "Deployment initiated",
+		CommitHash:    commitOverride,
+		CommitMessage: commitMsg,
+		Image:         svc.Image,
 		Status:        "building",
 		StartedAt:     start,
 	}

@@ -76,7 +76,10 @@ export function pluralize(count: number, singular: string, plural?: string): str
  */
 export function formatTimeAgo(dateInput: string | number | Date | null | undefined): string {
 	if (!dateInput) return '—';
-	const date = typeof dateInput === 'string' || typeof dateInput === 'number' ? new Date(dateInput) : dateInput;
+	const date =
+		typeof dateInput === 'string' || typeof dateInput === 'number'
+			? new Date(dateInput)
+			: dateInput;
 	if (isNaN(date.getTime())) return 'Recently';
 
 	const diff = Math.floor((Date.now() - date.getTime()) / 1000);

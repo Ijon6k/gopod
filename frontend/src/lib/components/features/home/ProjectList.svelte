@@ -16,13 +16,13 @@
 </script>
 
 <section class={cn(className)}>
-	<div class="flex items-center justify-between gap-4 min-h-[22px] mb-4">
-		<span class="text-[10px] font-medium text-[var(--text-tertiary)] tracking-[0.1em] uppercase">
+	<div class="mb-4 flex min-h-[22px] items-center justify-between gap-4">
+		<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase">
 			Projects
 		</span>
 		<button
 			onclick={() => goto('/projects')}
-			class="inline-flex items-center gap-[5px] p-0 border-0 bg-transparent text-[var(--text-secondary)] text-xs font-[var(--font-sans)] cursor-pointer whitespace-nowrap hover:text-[var(--text-primary)]"
+			class="inline-flex cursor-pointer items-center gap-[5px] border-0 bg-transparent p-0 text-xs font-[var(--font-sans)] whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
 		>
 			View all <ArrowRight size={12} />
 		</button>
@@ -34,23 +34,24 @@
 			{@const memory = formatMemory(project.memory)}
 			<button
 				onclick={() => goto(`/projects/${project.id}`)}
-				class="group flex items-center gap-3.5 min-h-[56px] py-2 px-3 -mx-3 border-0 rounded-[var(--radius-sm)] bg-transparent text-[var(--text-primary)] cursor-pointer text-left font-[var(--font-sans)] hover:bg-[var(--bg-panel)]"
+				class="group -mx-3 flex min-h-[56px] cursor-pointer items-center gap-3.5 rounded-[var(--radius-sm)] border-0 bg-transparent px-3 py-2 text-left font-[var(--font-sans)] text-[var(--text-primary)] hover:bg-[var(--bg-panel)]"
 			>
-				<span class="flex flex-col gap-[3px] min-w-0 flex-1">
+				<span class="flex min-w-0 flex-1 flex-col gap-[3px]">
 					<strong class="text-base font-medium">{project.name}</strong>
-					<small class="text-[var(--text-tertiary)] text-[11.5px]">
-						{serviceCount} {pluralize(serviceCount, 'service')} · {domainCount}
+					<small class="text-[11.5px] text-[var(--text-tertiary)]">
+						{serviceCount}
+						{pluralize(serviceCount, 'service')} · {domainCount}
 						{pluralize(domainCount, 'domain')}
 					</small>
 				</span>
 				<span
-					class="text-[var(--text-tertiary)] text-[11px] whitespace-nowrap tabular-nums max-sm:hidden"
+					class="text-[11px] whitespace-nowrap text-[var(--text-tertiary)] tabular-nums max-sm:hidden"
 				>
 					{project.cpu.toFixed(1)}% · {memory}
 				</span>
 				<StatusBadge status={project.status} size="sm" />
 				<span
-					class="text-[var(--text-tertiary)] shrink-0 opacity-0 -translate-x-[3px] transition-all duration-150 group-hover:opacity-100 group-hover:translate-x-0"
+					class="shrink-0 -translate-x-[3px] text-[var(--text-tertiary)] opacity-0 transition-all duration-150 group-hover:translate-x-0 group-hover:opacity-100"
 				>
 					<CaretRight size={14} />
 				</span>

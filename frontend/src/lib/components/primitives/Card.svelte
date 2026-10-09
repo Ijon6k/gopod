@@ -30,7 +30,7 @@
 		type="button"
 		{onclick}
 		class={cn(
-			'group w-full text-left bg-[var(--bg-panel)] border border-[var(--border)] rounded-[var(--radius-card)] cursor-pointer transition-all duration-150 hover:bg-[var(--bg-hover)] hover:border-[var(--accent)] focus-visible:border-[var(--accent)]',
+			'group w-full cursor-pointer rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] text-left transition-all duration-150 hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] focus-visible:border-[var(--accent)]',
 			paddings[padding],
 			className
 		)}
@@ -40,7 +40,7 @@
 {:else}
 	<div
 		class={cn(
-			'bg-[var(--bg-panel)] border border-[var(--border)] rounded-[var(--radius-card)]',
+			'rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]',
 			paddings[padding],
 			className
 		)}

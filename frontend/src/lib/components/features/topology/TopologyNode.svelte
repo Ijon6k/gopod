@@ -102,18 +102,18 @@
 	{onmouseleave}
 	style="transform: translate3d({node.x}px, {node.y}px, 0); width: {node.width}px; height: {node.height}px;"
 	class={cn(
-		'absolute top-0 left-0 cursor-pointer select-none rounded-[var(--radius-sm)] px-3 py-2 transition-all duration-150',
-		'bg-[var(--bg-canvas-node)] border border-[var(--border-canvas-node)] text-left flex flex-col justify-between shadow-xs',
+		'absolute top-0 left-0 cursor-pointer rounded-[var(--radius-sm)] px-3 py-2 transition-all duration-150 select-none',
+		'flex flex-col justify-between border border-[var(--border-canvas-node)] bg-[var(--bg-canvas-node)] text-left shadow-xs',
 		isHovered &&
-			'border-[var(--accent)] bg-[var(--bg-canvas-node-hover)] shadow-sm translate-y-[-1px]',
+			'translate-y-[-1px] border-[var(--accent)] bg-[var(--bg-canvas-node-hover)] shadow-sm',
 		isSelected &&
-			'border-[var(--accent)] ring-2 ring-[var(--accent)]/30 bg-[var(--bg-canvas-node-selected)]'
+			'border-[var(--accent)] bg-[var(--bg-canvas-node-selected)] ring-2 ring-[var(--accent)]/30'
 	)}
 >
 	<!-- Top Row: Icon, Title, Status Indicator -->
-	<div class="flex items-center justify-between gap-1.5 w-full min-w-0">
-		<div class="flex items-center gap-2 min-w-0">
-			<span class="text-[var(--text-secondary)] shrink-0">
+	<div class="flex w-full min-w-0 items-center justify-between gap-1.5">
+		<div class="flex min-w-0 items-center gap-2">
+			<span class="shrink-0 text-[var(--text-secondary)]">
 				{#if node.type === 'domain'}
 					<Globe size={14} class="text-[var(--accent)]" />
 				{:else if isDatabase}
@@ -137,7 +137,7 @@
 				{/if}
 			</span>
 			<span
-				class="text-[13px] font-semibold text-[var(--text-primary)] truncate font-[var(--font-sans)] leading-snug"
+				class="truncate text-[13px] leading-snug font-[var(--font-sans)] font-semibold text-[var(--text-primary)]"
 				title={node.title}
 			>
 				{node.title}
@@ -145,24 +145,29 @@
 		</div>
 
 		{#if node.status}
-			<div class="flex items-center justify-center shrink-0 w-3 h-3 relative" title={`Status: ${node.status}`}>
+			<div
+				class="relative flex h-3 w-3 shrink-0 items-center justify-center"
+				title={`Status: ${node.status}`}
+			>
 				{#if node.status === 'running' || node.status === 'active' || node.status === 'healthy'}
-					<span class="absolute w-2 h-2 rounded-full bg-[var(--status-green)] opacity-35 animate-ping"></span>
+					<span
+						class="absolute h-2 w-2 animate-ping rounded-full bg-[var(--status-green)] opacity-35"
+					></span>
 				{/if}
-				<span class={cn('w-1.5 h-1.5 rounded-full z-10', getStatusColor(node.status))}></span>
+				<span class={cn('z-10 h-1.5 w-1.5 rounded-full', getStatusColor(node.status))}></span>
 			</div>
 		{/if}
 	</div>
 
 	<!-- Bottom Row: Subtitle/Type and Monospace Detail -->
-	<div class="flex items-center justify-between gap-1.5 w-full text-[11px] mt-0.5">
-		<span class="text-[var(--text-tertiary)] truncate text-[11px]" title={node.subtitle}>
+	<div class="mt-0.5 flex w-full items-center justify-between gap-1.5 text-[11px]">
+		<span class="truncate text-[11px] text-[var(--text-tertiary)]" title={node.subtitle}>
 			{node.subtitle || (isDatabase ? 'Database' : isQuadlet ? 'Quadlet Service' : node.type)}
 		</span>
 
 		{#if cleanMonoDetail}
 			<span
-				class="text-[10px] font-mono text-[var(--text-secondary)] bg-[var(--bg-canvas-pill)] px-1.5 py-0.5 rounded border border-[var(--bg-canvas-pill-border)] shrink-0"
+				class="shrink-0 rounded border border-[var(--bg-canvas-pill-border)] bg-[var(--bg-canvas-pill)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
 			>
 				{cleanMonoDetail}
 			</span>

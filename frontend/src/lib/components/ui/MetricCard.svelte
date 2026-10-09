@@ -12,15 +12,15 @@
 </script>
 
 <div class={cn('flex flex-col gap-1.5', className)}>
-	<span class="text-[var(--text-tertiary)] text-[10px] font-medium tracking-[0.1em] uppercase">
+	<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase">
 		{label}
 	</span>
 	<strong
-		class="text-[var(--text-primary)] text-2xl font-medium tracking-[-0.03em] leading-none whitespace-nowrap"
+		class="text-2xl leading-none font-medium tracking-[-0.03em] whitespace-nowrap text-[var(--text-primary)]"
 	>
 		{value}
 	</strong>
 	{#if detail}
-		<small class="text-[var(--text-tertiary)] text-[11px]">{detail}</small>
+		<small class="text-[11px] text-[var(--text-tertiary)]">{detail}</small>
 	{/if}
 </div>

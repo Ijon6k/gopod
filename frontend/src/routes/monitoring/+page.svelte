@@ -2,7 +2,7 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader, AreaChart } from '$lib/components/ui';
+	import { PageHeader, AreaChart, Select } from '$lib/components/ui';
 	import { monitoringData, dataStore } from '$lib/data';
 	import {
 		ServerOverviewBar,
@@ -70,13 +70,14 @@
 		};
 	});
 
-	$effect(() => {
+	function handleRefreshRateChange(val: string) {
+		refreshRate = val as '3s' | '5s' | '15s' | 'paused';
 		if (refreshRate === 'paused') {
 			dataStore.stopStreamingStats();
 		} else {
 			dataStore.startStreamingStats();
 		}
-	});
+	}
 </script>
 
 <svelte:head>
@@ -160,16 +161,21 @@
 				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
 					{refreshRate === 'paused' ? 'Paused' : dataStore.isStreaming ? 'Stream (SSE)' : 'Live'}
 				</span>
-				<select
-					bind:value={refreshRate}
-					class="ml-0.5 cursor-pointer border-0 bg-transparent font-mono text-[11px] text-[var(--text-tertiary)] outline-none hover:text-[var(--text-primary)]"
-					aria-label="Refresh interval"
-				>
-					<option value="3s">3s</option>
-					<option value="5s">5s</option>
-					<option value="15s">15s</option>
-					<option value="paused">Pause</option>
-				</select>
+				<div class="w-[84px]">
+					<Select
+						value={refreshRate}
+						onValueChange={(val: any) => {
+							if (val) handleRefreshRateChange(val);
+						}}
+						options={[
+							{ label: '3s', value: '3s' },
+							{ label: '5s', value: '5s' },
+							{ label: '15s', value: '15s' },
+							{ label: 'Pause', value: 'paused' }
+						]}
+						size="xs"
+					/>
+				</div>
 			</div>
 
 			{#if refreshRate !== 'paused'}

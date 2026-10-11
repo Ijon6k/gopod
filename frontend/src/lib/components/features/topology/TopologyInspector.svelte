@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { SelectedItem } from './types';
 	import { goto } from '$app/navigation';
-	import { Button } from '$lib/components/primitives';
+	import { Button } from '$lib/components/ui';
 	import { StatusBadge } from '$lib/components/ui';
 	import {
 		X,
@@ -81,13 +81,16 @@
 				</span>
 			</div>
 
-			<button
+			<Button
+				variant="ghost"
+				size="xs"
+				shape="square"
 				onclick={onclose}
-				class="flex h-6 w-6 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-				title="Close Inspector (Esc)"
+				title="Close inspector (Esc)"
+				aria-label="Close inspector"
 			>
 				<X size={14} />
-			</button>
+			</Button>
 		</div>
 
 		<!-- Main Content -->
@@ -307,27 +310,27 @@
 							size="sm"
 							onclick={() => goto(`/projects/${node.projectId}`)}
 						>
-							Open Project Page
+							Open project page
 						</Button>
 					{/if}
 					{#if node.type === 'container'}
 						<Button variant="ghost" size="sm" onclick={() => goto('/runtime/containers')}>
-							Runtime Dashboard
+							Runtime dashboard
 						</Button>
 					{/if}
 					{#if node.type === 'volume'}
 						<Button variant="ghost" size="sm" onclick={() => goto('/runtime/volumes')}>
-							View All Volumes
+							View all volumes
 						</Button>
 					{/if}
 					{#if node.type === 'network'}
 						<Button variant="ghost" size="sm" onclick={() => goto('/runtime/networks')}>
-							View All Networks
+							View all networks
 						</Button>
 					{/if}
 					{#if node.type === 'domain'}
 						<Button variant="ghost" size="sm" onclick={() => goto('/networking/domains')}>
-							Networking Table
+							Networking table
 						</Button>
 					{/if}
 				</div>
@@ -406,7 +409,7 @@
 					{#if region.type === 'project' && region.projectId}
 						{#if onFocusProject}
 							<Button variant="primary" size="sm" onclick={() => onFocusProject(region.projectId!)}>
-								Focus Project Topology <ArrowRight size={13} />
+								Focus project topology <ArrowRight size={13} />
 							</Button>
 						{/if}
 						<Button
@@ -414,12 +417,12 @@
 							size="sm"
 							onclick={() => goto(`/projects/${region.projectId}`)}
 						>
-							Open Project Page
+							Open project page
 						</Button>
 					{/if}
 					{#if region.type === 'pod'}
 						<Button variant="secondary" size="sm" onclick={() => goto('/runtime/pods')}>
-							View in Pods Table
+							View in pods table
 						</Button>
 					{/if}
 				</div>

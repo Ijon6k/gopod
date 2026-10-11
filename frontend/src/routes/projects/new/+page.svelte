@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { PageHeader } from '$lib/components/ui';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Button, Input, Field } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { Plus, ArrowClockwise } from 'phosphor-svelte';
 
@@ -64,42 +64,29 @@
 			</div>
 		{/if}
 
-		<div class="flex flex-col gap-2">
-			<label class="text-xs font-medium text-[var(--text-secondary)]" for="project-name"
-				>Project name</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 focus-within:border-[var(--accent)]"
-			>
-				<Input
-					id="project-name"
-					bind:value={name}
-					placeholder="e.g. backend-api, my-workspace"
-					required
-				/>
-			</div>
-			<p class="text-[11px] text-[var(--text-tertiary)]">
-				A descriptive name to identify your project.
-			</p>
-		</div>
+		<Field
+			label="Project name"
+			description="A descriptive name to identify your project."
+			required
+		>
+			<Input
+				id="project-name"
+				bind:value={name}
+				placeholder="e.g. backend-api, my-workspace"
+				required
+			/>
+		</Field>
 
-		<div class="flex flex-col gap-2">
-			<label class="text-xs font-medium text-[var(--text-secondary)]" for="project-desc"
-				>Description</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 focus-within:border-[var(--accent)]"
-			>
-				<Input
-					id="project-desc"
-					bind:value={description}
-					placeholder="A short description for your project"
-				/>
-			</div>
-			<p class="text-[11px] text-[var(--text-tertiary)]">
-				Optional purpose or notes for this workspace.
-			</p>
-		</div>
+		<Field
+			label="Description"
+			description="Optional purpose or notes for this workspace."
+		>
+			<Input
+				id="project-desc"
+				bind:value={description}
+				placeholder="A short description for your project"
+			/>
+		</Field>
 
 		<div class="flex gap-3 pt-2">
 			<Button type="button" variant="ghost" onclick={() => goto('/projects')}>Cancel</Button>

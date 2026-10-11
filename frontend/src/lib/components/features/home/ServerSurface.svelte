@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { cn } from '$lib/utils/cn';
 	import { StatusBadge, MetricCard } from '$lib/components/ui';
+	import { LayerCard } from 'kumo-svelte';
 	import type { Server } from '$lib/types';
 	import { formatCpu, formatStorage } from '$lib/utils/format';
 
@@ -12,27 +13,22 @@
 	let { server, class: className = '' }: Props = $props();
 </script>
 
-<section
-	class={cn(
-		'rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-surface)] px-[34px] pt-[30px] pb-[34px]',
-		className
-	)}
->
+<LayerCard class={cn('p-5 md:p-6', className)}>
 	<div class="flex items-start justify-between">
 		<div>
-			<div class="flex items-center gap-[13px]">
-				<h2 class="m-0 text-xl font-semibold tracking-[-0.02em] text-[var(--text-primary)]">
+			<div class="flex items-center gap-3">
+				<h2 class="m-0 text-lg md:text-xl font-semibold tracking-tight text-[var(--text-primary)]">
 					{server.hostname}
 				</h2>
 				<StatusBadge status="online" size="sm" />
 			</div>
-			<p class="mt-2 mb-0 text-base text-[var(--text-tertiary)]">
+			<p class="mt-1.5 mb-0 text-xs md:text-sm text-[var(--text-tertiary)]">
 				{server.os} · Podman {server.podmanVersion} · Rootless{server.systemd ? ' · systemd' : ''}
 			</p>
 		</div>
 	</div>
 	<div
-		class="mt-[30px] grid grid-cols-4 gap-6 border-t border-[var(--border-subtle)] pt-[26px] max-sm:grid-cols-2 max-sm:gap-x-4 max-sm:gap-y-[22px]"
+		class="mt-5 grid grid-cols-4 gap-4 border-t border-[var(--border-subtle)] pt-4 max-sm:grid-cols-2 max-sm:gap-3"
 	>
 		<MetricCard label="CPU" value={formatCpu(server.cpuUsage)} detail="{server.vcpu} vCPU" />
 		<MetricCard
@@ -47,4 +43,4 @@
 		/>
 		<MetricCard label="Uptime" value={server.uptime} detail="since last boot" />
 	</div>
-</section>
+</LayerCard>

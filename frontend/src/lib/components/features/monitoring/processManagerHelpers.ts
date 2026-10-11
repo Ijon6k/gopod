@@ -127,9 +127,11 @@ export function buildProjectTree(
 
 					const matchesQuery =
 						!query ||
-						service.name.toLowerCase().includes(query) ||
+						(service.name || '').toLowerCase().includes(query) ||
 						containers.some(
-							(c) => c.name.toLowerCase().includes(query) || c.image.toLowerCase().includes(query)
+							(c) =>
+								(c.name || '').toLowerCase().includes(query) ||
+								(c.image || '').toLowerCase().includes(query)
 						);
 
 					return {
@@ -151,7 +153,7 @@ export function buildProjectTree(
 			const totalContainers = serviceNodes.reduce((acc, s) => acc + s.containers.length, 0);
 
 			const projectMatchesQuery =
-				!query || project.name.toLowerCase().includes(query) || serviceNodes.length > 0;
+				!query || (project.name || '').toLowerCase().includes(query) || serviceNodes.length > 0;
 
 			return {
 				project,
@@ -169,9 +171,9 @@ export function buildProjectTree(
 
 	result.sort((a, b) => {
 		const valA: any =
-			sortBy === 'cpu' ? a.totalCpu : sortBy === 'memory' ? a.totalMem : a.project.name;
+			sortBy === 'cpu' ? a.totalCpu : sortBy === 'memory' ? a.totalMem : a.project.name || '';
 		const valB: any =
-			sortBy === 'cpu' ? b.totalCpu : sortBy === 'memory' ? b.totalMem : b.project.name;
+			sortBy === 'cpu' ? b.totalCpu : sortBy === 'memory' ? b.totalMem : b.project.name || '';
 		if (typeof valA === 'string') {
 			return sortDesc ? valB.localeCompare(valA) : valA.localeCompare(valB);
 		}

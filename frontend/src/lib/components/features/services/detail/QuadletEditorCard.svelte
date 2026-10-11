@@ -2,7 +2,8 @@
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { CodeEditor } from '$lib/components/ui';
-	import { Button, Input, CopyButton } from '$lib/components/primitives';
+	import { Input, CopyButton } from '$lib/components/ui';
+	import { LayerCard, Button, useKumoToastManager } from 'kumo-svelte';
 	import {
 		FileText,
 		Eye,
@@ -22,6 +23,8 @@
 	}
 
 	let { service }: Props = $props();
+
+	const toast = useKumoToastManager();
 
 	let providerTab = $state<'raw' | 'git' | 'templates'>('raw');
 	let gitRepoUrl = $state('');
@@ -68,19 +71,27 @@
 		try {
 			await dataStore.updateService(service);
 			saveStatus = 'saved';
+			toast.add({
+				title: 'Quadlet Saved & Reloaded',
+				description: `Systemd unit ${service.name}.container compiled and daemon-reloaded.`,
+				variant: 'success'
+			});
 			setTimeout(() => (saveStatus = 'idle'), 2500);
-		} catch (err) {
+		} catch (err: any) {
 			console.error('Failed to save Quadlet config:', err);
 			saveStatus = 'idle';
+			toast.add({
+				title: 'Quadlet Save Failed',
+				description: err?.message || 'Failed to save Quadlet config',
+				variant: 'error'
+			});
 		}
 	}
 </script>
 
 <div class="flex flex-col gap-6">
 	<!-- 1. Provider Card (Dokploy Style) -->
-	<div
-		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
-	>
+	<LayerCard class="overflow-hidden p-0">
 		<div
 			class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
 		>
@@ -92,14 +103,14 @@
 			</div>
 
 			<!-- Right Action: Preview Systemd Generator Output -->
-			<button
-				type="button"
+			<Button
+				variant="secondary"
 				onclick={() => (previewOpen = !previewOpen)}
-				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+				class="gap-1.5"
 			>
 				<Eye size={14} />
 				{previewOpen ? 'Hide Systemd Output' : 'Preview Systemd Unit'}
-			</button>
+			</Button>
 		</div>
 
 		<!-- Provider Tabs Bar -->
@@ -205,12 +216,10 @@
 				</div>
 			</div>
 		{/if}
-	</div>
+	</LayerCard>
 
-	<!-- 2. Quadlet Unit File Card -->
-	<div
-		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
-	>
+	<!-- 2. Quadlet Unit File Card with Kumo LayerCard -->
+	<LayerCard class="overflow-hidden p-0">
 		<!-- Unit Card Header -->
 		<div
 			class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
@@ -228,35 +237,35 @@
 
 			<!-- Quick Snippets Inserter -->
 			<div class="flex flex-wrap items-center gap-1.5">
-				<span class="mr-1 hidden text-[11px] text-[var(--text-tertiary)] sm:inline">Snippets:</span>
-				<button
-					type="button"
+				<span class="mr-1 hidden text-[11px] text-kumo-subtle sm:inline">Snippets:</span>
+				<Button
+					variant="secondary"
+					size="xs"
 					onclick={() => insertSnippet('Volume=app-data:/data:Z')}
-					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ Volume
-				</button>
-				<button
-					type="button"
+				</Button>
+				<Button
+					variant="secondary"
+					size="xs"
 					onclick={() => insertSnippet('Environment=KEY=value')}
-					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ Env
-				</button>
-				<button
-					type="button"
+				</Button>
+				<Button
+					variant="secondary"
+					size="xs"
 					onclick={() => insertSnippet('UserNS=auto')}
-					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ UserNS
-				</button>
-				<button
-					type="button"
+				</Button>
+				<Button
+					variant="secondary"
+					size="xs"
 					onclick={() => insertSnippet('AutoUpdate=registry')}
-					class="cursor-pointer rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)]"
 				>
 					+ AutoUpdate
-				</button>
+				</Button>
 			</div>
 		</div>
 
@@ -264,20 +273,20 @@
 		<div class="flex flex-col gap-3 p-5">
 			<!-- System path orientation banner -->
 			<div
-				class="flex items-center justify-between rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/60 px-3 py-2 text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]"
+				class="flex items-center justify-between rounded-md border border-kumo-line bg-kumo-elevated px-3 py-2 text-xs font-[var(--font-mono)] text-kumo-subtle"
 			>
 				<div class="flex min-w-0 items-center gap-2">
-					<span class="shrink-0 text-[var(--text-tertiary)]">Host Path:</span>
-					<span class="truncate font-semibold text-[var(--text-primary)]">{unitPath}</span>
+					<span class="shrink-0 text-kumo-subtle">Host Path:</span>
+					<span class="truncate font-semibold text-kumo-default">{unitPath}</span>
 					<CopyButton
 						text={unitPath}
 						title="Copy unit file path"
 						variant="icon"
 						size={13}
-						class="p-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+						class="p-0 text-kumo-subtle hover:text-kumo-default"
 					/>
 				</div>
-				<span class="flex shrink-0 items-center gap-1 text-[var(--status-green)]">
+				<span class="flex shrink-0 items-center gap-1 text-emerald-400">
 					<ShieldCheck size={14} /> Rootless systemd (--user)
 				</span>
 			</div>
@@ -344,15 +353,14 @@ WantedBy=default.target</pre>
 						<Check size={14} weight="bold" /> Saved & Reloaded
 					</span>
 				{/if}
-				<button
-					type="button"
+				<Button
+					variant="primary"
 					onclick={handleSave}
 					disabled={saveStatus === 'saving'}
-					class="cursor-pointer rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
 				>
 					{saveStatus === 'saving' ? 'Reloading...' : 'Save & Reload Systemd'}
-				</button>
+				</Button>
 			</div>
 		</div>
-	</div>
+	</LayerCard>
 </div>

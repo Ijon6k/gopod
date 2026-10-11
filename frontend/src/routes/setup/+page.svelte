@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/auth.svelte';
-	import { Input } from '$lib/components/primitives';
+	import { LayerCard, Input, Button, Badge } from 'kumo-svelte';
 	import {
 		ShieldCheck,
 		Lock,
@@ -12,6 +12,8 @@
 		WarningCircle,
 		Cpu
 	} from 'phosphor-svelte';
+
+	import { setupSchema } from '$lib/schemas';
 
 	let name = $state('');
 	let email = $state('');
@@ -24,35 +26,24 @@
 		e.preventDefault();
 		validationError = null;
 
-		const cleanName = name.trim();
-		const cleanEmail = email.trim();
+		const result = setupSchema.safeParse({
+			name,
+			email,
+			password,
+			confirmPassword
+		});
 
-		if (!cleanName) {
-			validationError = 'Please provide an administrator name.';
-			return;
-		}
-
-		if (!cleanEmail || !cleanEmail.includes('@') || !cleanEmail.includes('.')) {
-			validationError = 'Please provide a valid administrator email address.';
-			return;
-		}
-
-		if (password.length < 8) {
-			validationError = 'Password must be at least 8 characters long.';
-			return;
-		}
-
-		if (password !== confirmPassword) {
-			validationError = 'Passwords do not match. Please re-enter.';
+		if (!result.success) {
+			validationError = result.error.issues[0]?.message || 'Please check your inputs.';
 			return;
 		}
 
 		isSubmitting = true;
 		try {
 			await authStore.setup({
-				name: cleanName,
-				email: cleanEmail,
-				password
+				name: result.data.name,
+				email: result.data.email,
+				password: result.data.password
 			});
 			// Successfully configured initial root admin
 			await goto('/', { replaceState: true });
@@ -69,12 +60,12 @@
 	<title>Initial Administrator Setup — GOPOD</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-[460px]">
+<div class="mx-auto w-full max-w-[460px] py-8">
 	<!-- Branding / Header -->
 	<div class="mb-6 text-center">
 		<div class="mb-3 inline-flex items-center justify-center gap-2">
 			<div
-				class="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-muted)] text-[var(--accent)] shadow-sm"
+				class="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-muted)] text-[var(--accent)] shadow-xs"
 			>
 				<ShieldCheck size={24} weight="duotone" />
 			</div>
@@ -83,10 +74,9 @@
 					<span class="font-mono text-lg font-bold tracking-tight text-[var(--text-primary)]"
 						>GOPOD</span
 					>
-					<span
-						class="rounded border border-[var(--accent)]/20 bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--accent)] uppercase"
-						>Init</span
-					>
+					<Badge variant="secondary" class="!px-1.5 !py-0 !text-[10px] font-mono uppercase">
+						Init
+					</Badge>
 				</div>
 				<span class="text-xs text-[var(--text-tertiary)]">Podman Infrastructure Manager</span>
 			</div>
@@ -101,10 +91,8 @@
 		</p>
 	</div>
 
-	<!-- Setup Card -->
-	<div
-		class="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] p-6 shadow-xl"
-	>
+	<!-- Setup Card with Pure Kumo LayerCard -->
+	<LayerCard class="relative p-6 shadow-lg">
 		<!-- Top accent indicator -->
 		<div
 			class="absolute top-0 right-0 left-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"
@@ -130,9 +118,9 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
 					>
-						<UserIcon size={16} />
+						<UserIcon size={15} />
 					</div>
 					<Input
 						id="setup-name"
@@ -141,7 +129,7 @@
 						placeholder="e.g. Administrator"
 						required
 						autocomplete="name"
-						class="h-10 pl-9 text-sm"
+						class="!h-10 !pl-9 text-sm w-full"
 					/>
 				</div>
 			</div>
@@ -156,9 +144,9 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
 					>
-						<Envelope size={16} />
+						<Envelope size={15} />
 					</div>
 					<Input
 						id="setup-email"
@@ -167,7 +155,7 @@
 						placeholder="admin@yourdomain.com"
 						required
 						autocomplete="email"
-						class="h-10 pl-9 text-sm"
+						class="!h-10 !pl-9 text-sm w-full"
 					/>
 				</div>
 			</div>
@@ -182,9 +170,9 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
 					>
-						<Lock size={16} />
+						<Lock size={15} />
 					</div>
 					<Input
 						id="setup-password"
@@ -193,7 +181,7 @@
 						placeholder="••••••••••••"
 						required
 						autocomplete="new-password"
-						class="h-10 pl-9 text-sm"
+						class="!h-10 !pl-9 text-sm w-full"
 					/>
 				</div>
 			</div>
@@ -208,9 +196,9 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
 					>
-						<Lock size={16} />
+						<Lock size={15} />
 					</div>
 					<Input
 						id="setup-confirm-password"
@@ -219,7 +207,7 @@
 						placeholder="••••••••••••"
 						required
 						autocomplete="new-password"
-						class="h-10 pl-9 text-sm"
+						class="!h-10 !pl-9 text-sm w-full"
 					/>
 				</div>
 			</div>
@@ -230,16 +218,16 @@
 			>
 				<ShieldCheck size={14} class="mt-0.5 shrink-0 text-[var(--accent)]" />
 				<span
-					>Account setup endpoint locks permanently once initialized. Further accounts can only be
-					added via administrator invites.</span
+					>Account setup locks permanently once initialized. Further accounts can only be added via administrator invites.</span
 				>
 			</div>
 
-			<!-- Submit Button -->
-			<button
+			<!-- Submit Button with Kumo Button -->
+			<Button
+				variant="primary"
 				type="submit"
 				disabled={isSubmitting}
-				class="mt-2 flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-sm)] border-0 bg-[var(--accent)] text-sm font-medium text-white shadow-sm transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+				class="mt-2 w-full !h-10 text-sm font-medium gap-2 justify-center shadow-xs"
 			>
 				{#if isSubmitting}
 					<CircleNotch size={16} class="animate-spin" />
@@ -248,9 +236,22 @@
 					<span>Complete Setup & Launch Dashboard</span>
 					<ArrowRight size={16} />
 				{/if}
-			</button>
+			</Button>
 		</form>
-	</div>
+
+		<!-- Link to Login -->
+		<div class="mt-5 border-t border-[var(--border-subtle)] pt-4 text-center">
+			<p class="text-xs text-[var(--text-tertiary)]">
+				Already have an account?
+				<a
+					href="/login"
+					class="font-medium text-[var(--accent)] hover:underline ml-1"
+				>
+					Sign in to GOPOD
+				</a>
+			</p>
+		</div>
+	</LayerCard>
 
 	<!-- Node Info Footer -->
 	<div

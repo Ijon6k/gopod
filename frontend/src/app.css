@@ -1,5 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
+@source "../node_modules/kumo-svelte/dist/**/*.{js,svelte,ts}";
+@import "kumo-svelte/styles.css";
+@import "@xyflow/svelte/dist/style.css";
 @import 'tailwindcss';
 
 /* ──────────────────────────────────────────────
@@ -9,11 +12,12 @@
 
 @theme {
 	/* Background surfaces */
-	--color-bg-outer: #050607;
-	--color-bg-shell: #0d0f12;
-	--color-bg-panel: #111318;
-	--color-bg-surface: #15181d;
-	--color-bg-hover: #191d23;
+	--color-bg-outer: var(--bg-outer);
+	--color-bg-shell: var(--bg-shell);
+	--color-bg-panel: var(--bg-panel);
+	--color-bg-surface: var(--bg-surface);
+	--color-bg-canvas: var(--bg-canvas);
+	--color-bg-hover: var(--bg-hover);
 
 	/* Table row striping & headers */
 	--color-bg-table-header: var(--bg-table-header);
@@ -24,43 +28,64 @@
 	--color-bg-table-subgroup: var(--bg-table-subgroup);
 
 	/* Text hierarchy */
-	--color-text-primary: #e7e8eb;
-	--color-text-secondary: #9498a1;
-	--color-text-tertiary: #656a74;
-	--color-text-muted: #50555e;
+	--color-text-primary: var(--text-primary);
+	--color-text-secondary: var(--text-secondary);
+	--color-text-tertiary: var(--text-tertiary);
+	--color-text-muted: var(--text-muted);
 
-	/* Accent — indigo, used sparingly */
-	--color-accent: #6973a8;
-	--color-accent-hover: #7680b5;
+	/* Accent — Refined Indigo & Lavender Text */
+	--color-accent: var(--accent);
+	--color-accent-hover: var(--accent-hover);
+	--color-accent-muted: var(--accent-muted);
+	--color-accent-text: var(--accent-text);
+	--color-accent-text-hover: var(--accent-text-hover);
 
 	/* Status colors */
-	--color-status-green: #4c9a72;
-	--color-status-amber: #b8893b;
-	--color-status-red: #b85454;
-	--color-status-gray: #656a74;
-	--color-status-blue: #6973a8;
+	--color-status-green: var(--status-green);
+	--color-status-amber: var(--status-amber);
+	--color-status-red: var(--status-red);
+	--color-status-gray: var(--status-gray);
+	--color-status-blue: var(--status-blue);
 
 	/* Fonts */
-	--font-sans: 'Inter', system-ui, sans-serif;
+	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 	--font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-	/* Radii */
-	--radius-shell: 12px;
-	--radius-card: 8px;
-	--radius-sm: 6px;
+	/* Radii - Kumo Standard (Rounded & Smooth) */
+	--radius-shell: 0px;
+	--radius-card: 12px;
+	--radius-sm: 8px;
+
+	/* Kumo semantic tokens */
+	--color-kumo-canvas: var(--color-kumo-canvas);
+	--color-kumo-base: var(--color-kumo-base);
+	--color-kumo-elevated: var(--color-kumo-elevated);
+	--color-kumo-recessed: var(--color-kumo-recessed);
+	--color-kumo-line: var(--color-kumo-line);
+	--color-kumo-hairline: var(--color-kumo-hairline);
+	--color-kumo-fill: var(--color-kumo-fill);
+	--color-kumo-fill-hover: var(--color-kumo-fill-hover);
+	--color-kumo-tint: var(--color-kumo-tint);
+	--color-kumo-contrast: var(--color-kumo-contrast);
+	--color-kumo-strong: var(--color-kumo-strong);
+	--color-kumo-subtle: var(--color-kumo-subtle);
+	--color-kumo-muted: var(--color-kumo-muted);
+	--color-kumo-control: var(--color-kumo-control);
+	--color-kumo-default: var(--color-kumo-contrast);
+	--color-kumo-danger: var(--status-red);
+	--color-kumo-success: var(--status-green);
+	--color-kumo-warning: var(--status-amber);
+	--color-kumo-brand: var(--accent);
 
 	/* ──────────────────────────────────────────────
      Typography Scale Tokens
      ────────────────────────────────────────────── */
-	/* Base text: 14px for all standard/default content */
 	--text-base: 14px;
 	--text-base--line-height: 1.5;
 
-	/* 16px for prominent text / subheadings / emphasis */
 	--text-md: 16px;
 	--text-md--line-height: 1.5;
 
-	/* 18px and above for headings, titles, metrics */
 	--text-lg: 18px;
 	--text-lg--line-height: 1.4;
 
@@ -76,7 +101,6 @@
 	--text-4xl: 32px;
 	--text-4xl--line-height: 1.15;
 
-	/* Explicit Numeric Tokens for Tailwind utilities */
 	--text-14: 14px;
 	--text-14--line-height: 1.5;
 
@@ -95,7 +119,6 @@
 	--text-24: 24px;
 	--text-24--line-height: 1.25;
 
-	/* Semantic utility tokens */
 	--text-body: 14px;
 	--text-body--line-height: 1.5;
 
@@ -113,88 +136,122 @@
 }
 
 :root {
-	/* Legacy CSS vars — used by components directly */
-	--bg-outer: #050607;
-	--bg-shell: #0d0f12;
-	--bg-panel: #111318;
-	--bg-surface: #15181d;
-	--bg-hover: #191d23;
+	/* Clean Neutral Dark Palette (Slightly above pitch-black, zero muddy purple) */
+	--color-kumo-canvas: #09090b;
+	--color-kumo-base: #111114;
+	--color-kumo-elevated: #222227;
+	--color-kumo-recessed: #060608;
+	--color-kumo-line: #2e2e35;
+	--color-kumo-hairline: #222228;
+	--color-kumo-fill: #1f1f24;
+	--color-kumo-fill-hover: #2a2a30;
+	--color-kumo-tint: #26262c;
+	--color-kumo-contrast: #f4f4f5;
+	--color-kumo-strong: #d4d4d8;
+	--color-kumo-subtle: #a1a1aa;
+	--color-kumo-muted: #71717a;
+	--color-kumo-control: #16161a;
 
-	/* Table & Monitoring Tokens (Dark Mode) */
-	--bg-table-header: #141720;
-	--bg-table-row: #111318;
-	--bg-table-row-alt: #171b26;
-	--bg-table-row-hover: #1e2332;
-	--bg-table-group: #181c26;
-	--bg-table-subgroup: #13161f;
+	/* Mapped 1:1 to Kumo Tokens */
+	--bg-canvas: var(--color-kumo-canvas);
+	--bg-outer: var(--color-kumo-canvas);
+	--bg-shell: var(--color-kumo-base);
+	--bg-panel: var(--color-kumo-base);
+	--bg-surface: var(--color-kumo-elevated);
+	--bg-hover: var(--color-kumo-fill-hover);
 
-	/* Form & Input Tokens (Dark Mode) */
-	--bg-input: #15181f;
-	--border-input: rgba(255, 255, 255, 0.12);
-	--border-input-focus: #7680b5;
+	/* Table Tokens */
+	--bg-table-header: var(--color-kumo-base);
+	--bg-table-row: var(--color-kumo-canvas);
+	--bg-table-row-alt: var(--color-kumo-elevated);
+	--bg-table-row-hover: var(--color-kumo-fill-hover);
+	--bg-table-group: var(--color-kumo-recessed);
+	--bg-table-subgroup: var(--color-kumo-elevated);
 
-	--text-primary: #e7e8eb;
-	--text-secondary: #9498a1;
-	--text-tertiary: #656a74;
-	--text-muted: #50555e;
+	/* Form & Input Tokens */
+	--bg-input: var(--color-kumo-base);
+	--border-input: var(--color-kumo-line);
+	--border-input-focus: var(--accent);
 
-	--accent: #6973a8;
-	--accent-hover: #7680b5;
-	--accent-muted: rgba(105, 115, 168, 0.1);
+	/* Text hierarchy */
+	--text-primary: var(--color-kumo-contrast);
+	--text-secondary: var(--color-kumo-strong);
+	--text-tertiary: var(--color-kumo-subtle);
+	--text-muted: var(--color-kumo-muted);
 
-	--status-green: #4c9a72;
-	--status-green-muted: rgba(76, 154, 114, 0.12);
-	--status-amber: #b8893b;
-	--status-amber-muted: rgba(184, 137, 59, 0.12);
-	--status-red: #b85454;
-	--status-red-muted: rgba(184, 84, 84, 0.12);
-	--status-gray: #656a74;
-	--status-blue: #6973a8;
+	/* Refined Slate-Indigo Button Accent (Modern, balanced, not overly purple) */
+	--accent: #5e6ad2;
+	--accent-hover: #6d7ae0;
+	--accent-active: #515cb8;
+	--accent-muted: rgba(94, 106, 210, 0.16);
+	--accent-subtle: rgba(94, 106, 210, 0.08);
 
-	--border: rgba(255, 255, 255, 0.055);
-	--border-subtle: rgba(255, 255, 255, 0.035);
+	/* Distinct Text Accent (Soft light lavender in dark mode, crisp readability) */
+	--accent-text: #c4b5fd;
+	--accent-text-hover: #ddd6fe;
 
-	--radius-shell: 12px;
-	--radius-card: 8px;
-	--radius-sm: 6px;
+	/* Kumo Brand & Button Overrides */
+	--kumo-button-emphasis-bg: var(--accent);
+	--kumo-button-emphasis-ring: var(--accent);
+	--color-kumo-brand: var(--accent);
+	--color-kumo-brand-hover: var(--accent-hover);
 
-	--sidebar-width: 232px;
-	--topbar-height: 52px;
+	/* Status colors */
+	--status-green: #22c55e;
+	--status-green-muted: rgba(34, 197, 94, 0.15);
+	--status-amber: #f59e0b;
+	--status-amber-muted: rgba(245, 158, 11, 0.15);
+	--status-red: #ef4444;
+	--status-red-muted: rgba(239, 68, 68, 0.15);
+	--status-gray: #71717a;
+	--status-blue: #818cf8;
 
-	--font-sans: 'Inter', system-ui, sans-serif;
+	/* Micro-borders */
+	--border: var(--color-kumo-line);
+	--border-subtle: var(--color-kumo-hairline);
+
+	/* Radii - Edge-to-Edge docked Kumo style */
+	--radius-shell: 0px;
+	--radius-card: 6px;
+	--radius-sm: 4px;
+
+	--sidebar-width: 240px;
+	--sidebar-collapsed-width: 57px;
+	--topbar-height: 48px;
+
+	--font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 	--font-mono: 'JetBrains Mono', 'Fira Code', monospace;
 
-	/* Code Editor & Terminal Tokens (Dark Mode) */
-	--bg-editor: #111318;
-	--bg-editor-gutter: rgba(255, 255, 255, 0.015);
-	--bg-terminal: #0d0f13;
-	--code-text: #e7e8eb;
-	--code-comment: #656a74;
-	--code-key: #8fa3d8;
-	--code-string: #a3c9a8;
-	--code-number: #d8b28a;
-	--code-bool: #b89fd6;
-	--code-section: #b89fd6;
-	--code-value: #c0c6d4;
+	/* Code Editor & Terminal Tokens */
+	--bg-editor: var(--color-kumo-base);
+	--bg-editor-gutter: var(--color-kumo-recessed);
+	--bg-terminal: var(--color-kumo-canvas);
+	--code-text: var(--color-kumo-contrast);
+	--code-comment: var(--color-kumo-subtle);
+	--code-key: var(--accent-text);
+	--code-string: #6ee7b7;
+	--code-number: #fcd34d;
+	--code-bool: var(--accent-text);
+	--code-section: var(--accent-text);
+	--code-value: var(--color-kumo-strong);
 
-	/* Canvas / Topology Tokens (Dark Mode) */
-	--bg-canvas: #090a0f;
-	--bg-canvas-dot: #1f2230;
-	--bg-canvas-node: #12151e;
-	--border-canvas-node: rgba(255, 255, 255, 0.08);
-	--bg-canvas-node-hover: #171a27;
-	--bg-canvas-node-selected: #181c2c;
+	/* Canvas / Topology Tokens */
+	--bg-canvas-dot: var(--color-kumo-line);
+	--bg-canvas-node: var(--color-kumo-base);
+	--border-canvas-node: var(--color-kumo-line);
+	--bg-canvas-node-hover: var(--color-kumo-elevated);
+	--bg-canvas-node-selected: var(--color-kumo-tint);
 	--shadow-canvas-node: none;
-	--bg-canvas-pill: rgba(255, 255, 255, 0.035);
-	--bg-canvas-pill-text: var(--text-muted);
-	--bg-canvas-pill-border: rgba(255, 255, 255, 0.045);
-	--border-canvas-edge: rgba(255, 255, 255, 0.13);
-	--border-canvas-edge-glow: rgba(105, 115, 168, 0.4);
-	--bg-canvas-region-project: rgba(12, 14, 20, 0.4);
-	--bg-canvas-region-project-hover: rgba(14, 16, 24, 0.6);
-	--bg-canvas-region-pod: rgba(16, 19, 31, 0.3);
-	--bg-canvas-region-pod-hover: rgba(21, 25, 40, 0.45);
-	--border-canvas-region-pod: rgba(105, 115, 168, 0.28);
+	--bg-canvas-pill: var(--color-kumo-fill);
+	--bg-canvas-pill-text: var(--text-secondary);
+	--bg-canvas-pill-border: var(--color-kumo-line);
+	--border-canvas-edge: var(--color-kumo-line);
+	--border-canvas-edge-glow: rgba(94, 106, 210, 0.25);
+	--bg-canvas-region-project: rgba(0, 0, 0, 0.04);
+	--bg-canvas-region-project-hover: rgba(0, 0, 0, 0.08);
+	--bg-canvas-region-pod: var(--accent-subtle);
+	--bg-canvas-region-pod-hover: var(--accent-muted);
+	--border-canvas-region-pod: var(--accent);
 
 	/* Typography scale tokens (CSS variables) */
 	--font-size-base: 14px;
@@ -215,78 +272,51 @@
 }
 
 [data-theme='light'],
+[data-mode='light'],
 html.light {
-	--bg-outer: #edeef2;
-	--bg-shell: #ffffff;
-	--bg-panel: #f7f8fa;
-	--bg-surface: #eff1f5;
-	--bg-hover: #e4e7ed;
+	/* Clean Neutral Light Palette with subtle elevated cards */
+	--color-kumo-canvas: #f8f8fa;
+	--color-kumo-base: #ffffff;
+	--color-kumo-elevated: #f0f1f4;
+	--color-kumo-recessed: #e9eaee;
+	--color-kumo-line: #e2e4e9;
+	--color-kumo-hairline: #ebedf2;
+	--color-kumo-fill: #f0f1f5;
+	--color-kumo-fill-hover: #e6e8ee;
+	--color-kumo-tint: #eceef3;
+	--color-kumo-contrast: #18181b;
+	--color-kumo-strong: #27272a;
+	--color-kumo-subtle: #71717a;
+	--color-kumo-muted: #a1a1aa;
+	--color-kumo-control: #ffffff;
 
-	/* Table & Monitoring Tokens (Light Mode) */
-	--bg-table-header: #eaecef;
-	--bg-table-row: #ffffff;
-	--bg-table-row-alt: #f2f4f8;
-	--bg-table-row-hover: #e8ebf2;
-	--bg-table-group: #e5e8ef;
-	--bg-table-subgroup: #f8f9fc;
+	/* Clean Indigo for Light Mode */
+	--accent: #4f46e5;
+	--accent-hover: #4338ca;
+	--accent-active: #3730a3;
+	--accent-muted: rgba(79, 70, 229, 0.12);
+	--accent-subtle: rgba(79, 70, 229, 0.05);
 
-	/* Form & Input Tokens (Light Mode) */
-	--bg-input: #ffffff;
-	--border-input: #d1d5db;
-	--border-input-focus: #5b66a3;
+	/* Distinct High-Contrast Text Accent for Light Mode */
+	--accent-text: #4338ca;
+	--accent-text-hover: #3730a3;
 
-	/* Code Editor & Terminal Tokens (Light Mode) */
-	--bg-editor: #f8f9fa;
-	--bg-editor-gutter: rgba(0, 0, 0, 0.025);
-	--bg-terminal: #f5f6f8;
-	--code-text: #1f2328;
-	--code-comment: #6e7781;
-	--code-key: #2e5aac;
-	--code-string: #1a7f37;
-	--code-number: #953800;
-	--code-bool: #8250df;
-	--code-section: #8250df;
-	--code-value: #24292f;
+	/* Kumo Brand & Button Overrides (Light Mode) */
+	--kumo-button-emphasis-bg: var(--accent);
+	--kumo-button-emphasis-ring: var(--accent);
+	--color-kumo-brand: var(--accent);
+	--color-kumo-brand-hover: var(--accent-hover);
 
-	/* Canvas / Topology Tokens (Light Mode) */
-	--bg-canvas: #f4f6fa;
-	--bg-canvas-dot: #cbd2df;
-	--bg-canvas-node: #ffffff;
-	--border-canvas-node: rgba(0, 0, 0, 0.09);
-	--bg-canvas-node-hover: #f8fafd;
-	--bg-canvas-node-selected: #ffffff;
-	--shadow-canvas-node: none;
-	--bg-canvas-pill: #eef1f6;
-	--bg-canvas-pill-text: var(--text-secondary);
-	--bg-canvas-pill-border: rgba(0, 0, 0, 0.06);
-	--border-canvas-edge: rgba(0, 0, 0, 0.16);
-	--border-canvas-edge-glow: rgba(91, 102, 163, 0.25);
-	--bg-canvas-region-project: rgba(0, 0, 0, 0.025);
-	--bg-canvas-region-project-hover: rgba(0, 0, 0, 0.045);
-	--bg-canvas-region-pod: rgba(91, 102, 163, 0.05);
-	--bg-canvas-region-pod-hover: rgba(91, 102, 163, 0.09);
-	--border-canvas-region-pod: rgba(91, 102, 163, 0.35);
+	--border-canvas-edge-glow: rgba(79, 70, 229, 0.2);
+	--border-canvas-region-pod: var(--accent);
+}
 
-	--text-primary: #12141a;
-	--text-secondary: #474d59;
-	--text-tertiary: #6e7582;
-	--text-muted: #8e96a4;
+/* ──────────────────────────────────────────────
+   Kumo Card Surface Elevation
+   ────────────────────────────────────────────── */
 
-	--accent: #5b66a3;
-	--accent-hover: #4a548e;
-	--accent-muted: rgba(91, 102, 163, 0.12);
-
-	--status-green: #2e7d52;
-	--status-green-muted: rgba(46, 125, 82, 0.12);
-	--status-amber: #a67324;
-	--status-amber-muted: rgba(166, 115, 36, 0.12);
-	--status-red: #a83c3c;
-	--status-red-muted: rgba(168, 60, 60, 0.12);
-	--status-gray: #717784;
-	--status-blue: #4a67c4;
-
-	--border: rgba(0, 0, 0, 0.085);
-	--border-subtle: rgba(0, 0, 0, 0.045);
+.kumo-layer-card {
+	background-color: var(--color-kumo-elevated);
 }
 
 /* ──────────────────────────────────────────────
@@ -310,7 +340,7 @@ body {
 	font-size: var(--text-base);
 	line-height: 1.5;
 	color: var(--text-primary);
-	background: var(--bg-outer);
+	background: var(--bg-canvas);
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
 }
@@ -394,3 +424,103 @@ button:focus-visible {
 	white-space: nowrap;
 	border: 0;
 }
+
+/* ──────────────────────────────────────────────
+   Svelte Flow (xyflow) GOPOD Theme Integration
+   ────────────────────────────────────────────── */
+
+.svelte-flow {
+	--xy-background-color: var(--bg-canvas);
+	--xy-edge-stroke-default: var(--border-canvas-edge);
+	--xy-edge-stroke-selected-default: var(--accent);
+	--xy-controls-button-background-color-default: var(--bg-panel);
+	--xy-controls-button-background-color-hover-default: var(--bg-hover);
+	--xy-controls-button-color-default: var(--text-secondary);
+	--xy-controls-button-color-hover-default: var(--text-primary);
+	--xy-controls-button-border-color-default: var(--border);
+	--xy-controls-box-shadow-default: 0 4px 12px 0 rgba(0, 0, 0, 0.25);
+	--xy-minimap-background-color-default: var(--bg-panel);
+	--xy-minimap-mask-background-color-default: rgba(0, 0, 0, 0.45);
+	--xy-minimap-mask-stroke-color-default: var(--border);
+	--xy-minimap-node-background-color-default: var(--bg-hover);
+	--xy-minimap-node-stroke-color-default: var(--border-canvas-node);
+	--xy-node-border-radius-default: var(--radius-sm);
+}
+
+.svelte-flow__handle {
+	width: 8px !important;
+	height: 8px !important;
+	background-color: var(--border) !important;
+	border: 2px solid var(--bg-canvas-node) !important;
+	border-radius: 9999px !important;
+	transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.svelte-flow__handle:hover {
+	background-color: var(--accent) !important;
+	transform: scale(1.35);
+}
+
+.svelte-flow__handle-left {
+	left: -4px !important;
+}
+
+.svelte-flow__handle-right {
+	right: -4px !important;
+}
+
+.svelte-flow__edge-path {
+	stroke: var(--border-canvas-edge);
+	stroke-width: 1.5;
+}
+
+.svelte-flow__edge.selected .svelte-flow__edge-path {
+	stroke: var(--accent);
+	stroke-width: 2;
+}
+
+.svelte-flow__controls {
+	border-radius: var(--radius-card);
+	border: 1px solid var(--border);
+	overflow: hidden;
+}
+
+.svelte-flow__controls-button {
+	border-bottom: 1px solid var(--border) !important;
+}
+.svelte-flow__controls-button:last-child {
+	border-bottom: none !important;
+}
+
+/* SvelteFlow Edge Label Pill: zero black background boxes */
+.svelte-flow__edge-label {
+	background: transparent !important;
+	padding: 0 !important;
+}
+
+/* Form inputs: explicit, crisp borders so inputs are unmistakably distinct from labels */
+input:not([type='checkbox']):not([type='radio']),
+textarea,
+select {
+	border: 1px solid var(--color-kumo-line) !important;
+	background-color: var(--color-kumo-control) !important;
+	border-radius: var(--radius-sm);
+	color: var(--text-primary);
+	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input:not([type='checkbox']):not([type='radio']):focus,
+textarea:focus,
+select:focus {
+	border-color: var(--accent) !important;
+	outline: none !important;
+	box-shadow: 0 0 0 1.5px var(--accent-muted) !important;
+}
+
+input:not([type='checkbox']):not([type='radio']):hover,
+textarea:hover,
+select:hover {
+	border-color: var(--color-kumo-subtle) !important;
+}
+
+

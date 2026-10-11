@@ -2,7 +2,16 @@
 	import type { Service, Container } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { StatusBadge } from '$lib/components/ui';
-	import { Chip } from '$lib/components/primitives';
+	import {
+		Badge,
+		LayerCard,
+		Table,
+		TableHeader,
+		TableHead,
+		TableBody,
+		TableRow,
+		TableCell
+	} from '$lib/components/ui';
 	import { getCpuColor, getMemPercent, getMemColor } from '$lib/utils/format';
 	import { Cube, Terminal, FileText } from 'phosphor-svelte';
 
@@ -135,10 +144,10 @@
 			<span class="text-xs font-semibold text-[var(--text-primary)]">
 				Micro-Workloads & Container Cgroups
 			</span>
-			<Chip variant="mono" size="sm" class="text-[10px]">
+			<Badge variant="neutral" size="sm" class="font-mono text-[10px]">
 				{serviceContainers.length}
 				{serviceContainers.length > 1 ? 'containers' : 'container'}
-			</Chip>
+			</Badge>
 		</div>
 
 		<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
@@ -148,58 +157,57 @@
 		</div>
 	</div>
 
-	<!-- Container Table with Inline Visual Sparkbars (Table Design Standards & Zero Slop) -->
-	<div
-		class="w-full overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs md:overflow-x-visible"
-	>
-		<table class="w-full min-w-[720px] border-collapse">
-			<thead class="sticky top-0 z-20">
-				<tr class="border-b border-[var(--border)] bg-[var(--bg-table-header)]">
-					<th
-						class="sticky top-0 z-20 bg-[var(--bg-table-header)] px-4 py-2.5 text-left text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Workload Container
-					</th>
-					<th
-						class="sticky top-0 z-20 w-28 bg-[var(--bg-table-header)] px-3.5 py-2.5 text-left text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Status
-					</th>
-					<th
-						class="sticky top-0 z-20 w-44 bg-[var(--bg-table-header)] px-4 py-2.5 text-right text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						CPU Utilization
-					</th>
-					<th
-						class="sticky top-0 z-20 w-52 bg-[var(--bg-table-header)] px-4 py-2.5 text-right text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Memory Allocation
-					</th>
-					<th
-						class="sticky top-0 z-20 w-16 bg-[var(--bg-table-header)] px-3 py-2.5 text-center text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						PIDs
-					</th>
-					<th
-						class="sticky top-0 z-20 w-24 bg-[var(--bg-table-header)] px-4 py-2.5 text-right text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Uptime
-					</th>
-				</tr>
-			</thead>
-			<tbody class="divide-y divide-[var(--border-subtle)]">
+	<!-- Container Table with LayerCard wrapper -->
+	<LayerCard class="overflow-hidden p-0">
+		<div class="w-full overflow-x-auto md:overflow-x-visible">
+			<Table class="w-full min-w-[720px] text-left">
+				<TableHeader class="sticky top-0 z-20">
+					<TableRow class="border-b border-kumo-line bg-kumo-base">
+						<TableHead
+							class="sticky top-0 z-20 bg-kumo-base px-4 py-3 text-left text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							Workload Container
+						</TableHead>
+						<TableHead
+							class="sticky top-0 z-20 w-28 bg-kumo-base px-3.5 py-3 text-left text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							Status
+						</TableHead>
+						<TableHead
+							class="sticky top-0 z-20 w-44 bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							CPU
+						</TableHead>
+						<TableHead
+							class="sticky top-0 z-20 w-52 bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							Memory Allocation
+						</TableHead>
+						<TableHead
+							class="sticky top-0 z-20 w-16 bg-kumo-base px-3 py-3 text-center text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							PIDs
+						</TableHead>
+						<TableHead
+							class="sticky top-0 z-20 w-24 bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							Uptime
+						</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody class="divide-y divide-kumo-hairline">
 				{#each serviceContainers as c, idx (c.id)}
 					{@const limit = c.memoryLimit || 512}
 					{@const memPct = getMemPercent(c.memory, limit)}
 
 					<!-- Distinct tokenized zebra striping on flat table + prominent hover state -->
-					<tr
+					<TableRow
 						class="group transition-colors hover:bg-[var(--bg-table-row-hover)] {idx % 2 === 1
 							? 'bg-[var(--bg-table-row-alt)]'
 							: 'bg-[var(--bg-table-row)]'}"
 					>
 						<!-- Name & Image with Hover Actions -->
-						<td
+						<TableCell
 							class="px-4 py-2.5 align-middle text-[13px] whitespace-nowrap text-[var(--text-primary)]"
 						>
 							<div class="flex min-w-0 items-center justify-between pr-1">
@@ -252,15 +260,15 @@
 									{/if}
 								</div>
 							</div>
-						</td>
+						</TableCell>
 
 						<!-- Status Badge -->
-						<td class="px-3.5 py-2.5 align-middle text-[13px] whitespace-nowrap">
+						<TableCell class="px-3.5 py-2.5 align-middle text-[13px] whitespace-nowrap">
 							<StatusBadge status={c.status} size="sm" />
-						</td>
+						</TableCell>
 
 						<!-- CPU Metric + Linear Progress Bar -->
-						<td class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
+						<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
 							<div class="flex items-center justify-end gap-2.5">
 								<div
 									class="hidden h-1 w-16 overflow-hidden rounded-full bg-[var(--bg-surface)] sm:block"
@@ -276,10 +284,10 @@
 									{(c.cpu || 0).toFixed(1)}%
 								</span>
 							</div>
-						</td>
+						</TableCell>
 
 						<!-- Memory Metric + Limit Sparkbar -->
-						<td class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
+						<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
 							<div class="flex items-center justify-end gap-2.5">
 								<div
 									class="hidden h-1 w-16 overflow-hidden rounded-full bg-[var(--bg-surface)] sm:block"
@@ -296,24 +304,25 @@
 									/ {limit} MB
 								</span>
 							</div>
-						</td>
+						</TableCell>
 
 						<!-- PIDs -->
-						<td
-							class="px-3 py-2.5 text-center align-middle font-mono text-[12px] text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
+						<TableCell
+							class="px-3 py-2.5 text-center align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
 						>
 							{c.pids ?? (c.status === 'running' ? 1 : 0)}
-						</td>
+						</TableCell>
 
 						<!-- Uptime -->
-						<td
-							class="px-4 py-2.5 text-right align-middle font-mono text-[11px] text-[13px] whitespace-nowrap text-[var(--text-tertiary)]"
+						<TableCell
+							class="px-4 py-2.5 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-tertiary)]"
 						>
 							{c.uptime || c.startedAt || 'Active'}
-						</td>
-					</tr>
+						</TableCell>
+					</TableRow>
 				{/each}
-			</tbody>
-		</table>
+			</TableBody>
+		</Table>
 	</div>
+</LayerCard>
 </div>

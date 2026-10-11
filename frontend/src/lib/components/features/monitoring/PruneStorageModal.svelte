@@ -1,8 +1,7 @@
 <script lang="ts">
-	import { Button } from '$lib/components/primitives';
-	import { Modal } from '$lib/components/ui';
+	import { Button, Checkbox, Modal } from '$lib/components/ui';
 	import { api } from '$lib/api';
-	import type { SystemDiskUsage } from '$lib/api/system';
+	import type { SystemDiskUsage } from '$lib/types';
 	import {
 		Broom,
 		CircleNotch,
@@ -171,11 +170,7 @@
 			<label
 				class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3 transition-colors hover:bg-[var(--bg-hover)]"
 			>
-				<input
-					type="checkbox"
-					bind:checked={pruneImages}
-					class="mt-1 cursor-pointer rounded accent-[var(--accent)]"
-				/>
+				<Checkbox bind:checked={pruneImages} class="mt-0.5" />
 				<div class="min-w-0 flex-1">
 					<div class="flex items-center justify-between gap-2">
 						<div class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
@@ -197,11 +192,7 @@
 			<label
 				class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3 transition-colors hover:bg-[var(--bg-hover)]"
 			>
-				<input
-					type="checkbox"
-					bind:checked={pruneContainers}
-					class="mt-1 cursor-pointer rounded accent-[var(--accent)]"
-				/>
+				<Checkbox bind:checked={pruneContainers} class="mt-0.5" />
 				<div class="min-w-0 flex-1">
 					<div class="flex items-center justify-between gap-2">
 						<div class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
@@ -225,11 +216,7 @@
 			<label
 				class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3 transition-colors hover:bg-[var(--bg-hover)]"
 			>
-				<input
-					type="checkbox"
-					bind:checked={pruneBuildCache}
-					class="mt-1 cursor-pointer rounded accent-[var(--accent)]"
-				/>
+				<Checkbox bind:checked={pruneBuildCache} class="mt-0.5" />
 				<div class="min-w-0 flex-1">
 					<div class="flex items-center justify-between gap-2">
 						<div class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
@@ -248,11 +235,7 @@
 			<label
 				class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border border-[var(--status-amber)]/30 bg-[var(--bg-panel)] p-3 transition-colors hover:bg-[var(--bg-hover)]"
 			>
-				<input
-					type="checkbox"
-					bind:checked={pruneVolumes}
-					class="mt-1 cursor-pointer rounded accent-[var(--status-amber)]"
-				/>
+				<Checkbox bind:checked={pruneVolumes} class="mt-0.5" />
 				<div class="min-w-0 flex-1">
 					<div class="flex items-center justify-between gap-2">
 						<div class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">

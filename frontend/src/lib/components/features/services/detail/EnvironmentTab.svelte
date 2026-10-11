@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service, ServiceSecretMount, EnvVar } from '$lib/types';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Button, Input, Select, Radio } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import {
@@ -195,7 +195,7 @@
 					<DownloadSimple size={13} /> Export
 				</Button>
 
-				<Button variant="secondary" size="sm" onclick={formatEnv} title="Format spacing">
+				<Button variant="secondary" size="sm" onclick={formatEnv}>
 					<MagicWand size={13} /> Format
 				</Button>
 
@@ -257,47 +257,33 @@
 						<label for="secret-select" class="text-xs font-medium text-[var(--text-secondary)]"
 							>Available Podman Secret</label
 						>
-						<div
-							class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2"
-						>
-							<select
-								id="secret-select"
-								bind:value={selectedSecretId}
-								class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
-							>
-								{#each dataStore.podmanSecrets as s}
-									<option value={s.id}>{s.name} (stored secret)</option>
-								{/each}
-							</select>
-						</div>
+						<Select
+							id="secret-select"
+							value={selectedSecretId}
+							onValueChange={(val: any) => {
+								if (typeof val === 'string') selectedSecretId = val;
+							}}
+							options={dataStore.podmanSecrets.map((s) => ({
+								label: `${s.name} (stored secret)`,
+								value: s.id
+							}))}
+							size="sm"
+						/>
 					</div>
 
 					<div class="flex flex-col gap-1.5">
 						<span class="text-xs font-medium text-[var(--text-secondary)]">Mount Exposure</span>
-						<div class="flex items-center gap-4 pt-2">
-							<label
-								class="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-primary)]"
-							>
-								<input
-									type="radio"
-									bind:group={secretMountType}
-									value="env"
-									class="accent-[var(--accent)]"
-								/>
-								Environment Variable
-							</label>
-							<label
-								class="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-primary)]"
-							>
-								<input
-									type="radio"
-									bind:group={secretMountType}
-									value="file"
-									class="accent-[var(--accent)]"
-								/>
-								File Mount (/run/secrets)
-							</label>
-						</div>
+						<Radio
+							value={secretMountType}
+							onValueChange={(val: any) => {
+								if (val === 'env' || val === 'file') secretMountType = val;
+							}}
+							options={[
+								{ label: 'Environment Variable', value: 'env' },
+								{ label: 'File Mount (/run/secrets)', value: 'file' }
+							]}
+							orientation="horizontal"
+						/>
 					</div>
 				</div>
 

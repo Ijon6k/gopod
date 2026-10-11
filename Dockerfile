@@ -33,6 +33,7 @@ RUN apk add --no-cache ca-certificates tzdata git podman podman-compose
 COPY --from=backend-builder /app/gopod /app/gopod
 
 ENV PORT=8085
+ENV GOPOD_DB_PATH=/app/data/gopod.db
 EXPOSE 8085
 
 ENTRYPOINT ["/app/gopod"]

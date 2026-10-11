@@ -1,5 +1,8 @@
 services:
   gopod:
+    build:
+      context: .
+      dockerfile: Dockerfile
     image: ${GOPOD_IMAGE:-ghcr.io/ijon6k/gopod:latest}
     container_name: gopod
     restart: unless-stopped

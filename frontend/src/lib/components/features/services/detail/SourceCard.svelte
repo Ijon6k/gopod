@@ -1,8 +1,18 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Input, Select } from '$lib/components/ui';
+	import { LayerCard, Button, useKumoToastManager } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
-	import { GitBranch, Package, UploadSimple, Plus, Check } from 'phosphor-svelte';
+	import {
+		GitBranch,
+		Package,
+		UploadSimple,
+		Plus,
+		Check,
+		FileCode,
+		Sparkle,
+		Browser
+	} from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
@@ -16,6 +26,11 @@
 	let branch = $state('main');
 	let buildPath = $state('/');
 	let sshKeyId = $state('');
+
+	// Build configuration (seamlessly unified with Git source)
+	let buildType = $state<'dockerfile' | 'nixpacks' | 'static'>('dockerfile');
+	let dockerfilePath = $state('./Dockerfile');
+	let publishDir = $state('dist');
 
 	let rawImageName = $state('');
 	let selectedRegistry = $state('docker.io');
@@ -53,6 +68,10 @@
 		buildPath = service.buildPath || '/';
 		sshKeyId = service.sshKeyId || (dataStore.sshKeys[0]?.id ?? '');
 
+		buildType = service.buildType || 'dockerfile';
+		dockerfilePath = service.dockerfilePath || './Dockerfile';
+		publishDir = service.publishDir || 'dist';
+
 		const img = service.image || '';
 		if (service.registryId && dataStore.registries.some((r) => r.id === service.registryId)) {
 			selectedRegistry = service.registryId;
@@ -75,6 +94,8 @@
 		}
 	});
 
+	const toast = useKumoToastManager();
+
 	function handleSave() {
 		service.sourceType = sourceType;
 		if (sourceType === 'git') {
@@ -82,6 +103,9 @@
 			service.branch = branch.trim();
 			service.buildPath = buildPath.trim();
 			service.sshKeyId = sshKeyId;
+			service.buildType = buildType;
+			service.dockerfilePath = dockerfilePath.trim();
+			service.publishDir = publishDir.trim();
 		} else if (sourceType === 'image') {
 			service.image = resolvedImage;
 			const isCustom = dataStore.registries.some((r) => r.id === selectedRegistry);
@@ -89,6 +113,11 @@
 		}
 		dataStore.updateService(service);
 		saveStatus = 'saved';
+		toast.add({
+			title: 'Source & Build Saved',
+			description: `Configuration for ${service.name} updated successfully.`,
+			variant: 'success'
+		});
 		setTimeout(() => (saveStatus = 'idle'), 2000);
 	}
 
@@ -100,254 +129,375 @@
 	}
 </script>
 
-<div
-	class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
->
-	<!-- Card Header -->
-	<div class="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
-		<div class="flex flex-col gap-0.5">
-			<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Source & Provider</h3>
-			<p class="m-0 text-xs text-[var(--text-tertiary)]">
-				Select where your application code or container image originates.
-			</p>
-		</div>
-	</div>
-
-	<!-- Source Type Selector -->
-	<div class="flex flex-col gap-5 p-5">
-		<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-3">
-			<button
-				type="button"
-				onclick={() => (sourceType = 'git')}
-				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {sourceType ===
-				'git'
-					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
-					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+<LayerCard class="w-full shadow-xs">
+	<!-- Elevated Header (LayerCard.Secondary) with Title & Save Action -->
+	<LayerCard.Secondary
+		class="flex flex-wrap items-center justify-between gap-3 border-b border-kumo-hairline px-4 py-3"
+	>
+		<div class="flex items-center gap-2.5">
+			<div
+				class="flex size-7 shrink-0 items-center justify-center rounded-md bg-kumo-base text-[var(--accent)] ring ring-kumo-line"
 			>
-				<GitBranch size={18} class={sourceType === 'git' ? 'text-[var(--accent)]' : ''} />
-				<div class="flex flex-col">
-					<span class="text-xs font-medium">Universal Git</span>
-					<span class="text-[11px] text-[var(--text-tertiary)]">GitHub, GitLab, SSH</span>
+				{#if sourceType === 'image'}
+					<Package size={15} weight="duotone" />
+				{:else if sourceType === 'drop'}
+					<UploadSimple size={15} weight="duotone" />
+				{:else}
+					<GitBranch size={15} weight="duotone" />
+				{/if}
+			</div>
+			<div class="flex flex-col">
+				<div class="flex items-center gap-2">
+					<span class="text-xs font-semibold text-kumo-default">Source & Build</span>
+					<span
+						class="rounded-sm bg-kumo-base px-1.5 py-0.5 font-mono text-[10px] font-medium text-kumo-subtle ring-1 ring-kumo-hairline uppercase"
+					>
+						{sourceType}
+					</span>
 				</div>
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (sourceType = 'image')}
-				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {sourceType ===
-				'image'
-					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
-					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-			>
-				<Package size={18} class={sourceType === 'image' ? 'text-[var(--accent)]' : ''} />
-				<div class="flex flex-col">
-					<span class="text-xs font-medium">Container Image</span>
-					<span class="text-[11px] text-[var(--text-tertiary)]">Docker Hub, GHCR</span>
-				</div>
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (sourceType = 'drop')}
-				class="flex cursor-pointer items-center gap-3 rounded-[var(--radius-sm)] border p-3 text-left transition-all {sourceType ===
-				'drop'
-					? 'border-[var(--accent)] bg-[var(--bg-surface)] text-[var(--text-primary)]'
-					: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-			>
-				<UploadSimple size={18} class={sourceType === 'drop' ? 'text-[var(--accent)]' : ''} />
-				<div class="flex flex-col">
-					<span class="text-xs font-medium">Drop (Static Site)</span>
-					<span class="text-[11px] text-[var(--text-tertiary)]">Upload zip / dist</span>
-				</div>
-			</button>
+				<span class="text-[11px] text-kumo-subtle">
+					Origin repository, registry image, and container build strategy
+				</span>
+			</div>
 		</div>
 
-		<!-- Form Fields based on Source Type -->
+		<!-- Action in Header for immediate F-pattern scanning -->
+		<div class="flex items-center gap-2">
+			{#if saveStatus === 'saved'}
+				<span class="flex items-center gap-1 font-mono text-xs text-kumo-success">
+					<Check size={13} weight="bold" /> Saved
+				</span>
+			{/if}
+			<Button
+				variant="primary"
+				size="sm"
+				onclick={handleSave}
+				class="gap-1.5 font-medium shadow-xs"
+			>
+				Save Source & Build
+			</Button>
+		</div>
+	</LayerCard.Secondary>
+
+	<!-- Content Body (LayerCard.Primary) -->
+	<LayerCard.Primary class="flex flex-col gap-4 p-4">
+		<!-- Compact Segmented Selector (Under 36px, zero screen bloat) -->
+		<div class="flex items-center justify-between">
+			<div
+				class="inline-flex rounded-md bg-kumo-elevated p-1 ring-1 ring-kumo-hairline"
+				role="tablist"
+				aria-label="Source Type"
+			>
+				<button
+					type="button"
+					role="tab"
+					aria-selected={sourceType === 'git'}
+					onclick={() => (sourceType = 'git')}
+					class="flex cursor-pointer items-center gap-1.5 rounded-sm px-3 py-1 text-xs font-medium transition-all {sourceType ===
+					'git'
+						? 'bg-kumo-base text-kumo-default shadow-xs ring-1 ring-kumo-line'
+						: 'text-kumo-subtle hover:text-kumo-default'}"
+				>
+					<GitBranch size={14} class={sourceType === 'git' ? 'text-[var(--accent)]' : ''} />
+					<span>Universal Git</span>
+				</button>
+
+				<button
+					type="button"
+					role="tab"
+					aria-selected={sourceType === 'image'}
+					onclick={() => (sourceType = 'image')}
+					class="flex cursor-pointer items-center gap-1.5 rounded-sm px-3 py-1 text-xs font-medium transition-all {sourceType ===
+					'image'
+						? 'bg-kumo-base text-kumo-default shadow-xs ring-1 ring-kumo-line'
+						: 'text-kumo-subtle hover:text-kumo-default'}"
+				>
+					<Package size={14} class={sourceType === 'image' ? 'text-[var(--accent)]' : ''} />
+					<span>Container Image</span>
+				</button>
+
+				<button
+					type="button"
+					role="tab"
+					aria-selected={sourceType === 'drop'}
+					onclick={() => (sourceType = 'drop')}
+					class="flex cursor-pointer items-center gap-1.5 rounded-sm px-3 py-1 text-xs font-medium transition-all {sourceType ===
+					'drop'
+						? 'bg-kumo-base text-kumo-default shadow-xs ring-1 ring-kumo-line'
+						: 'text-kumo-subtle hover:text-kumo-default'}"
+				>
+					<UploadSimple size={14} class={sourceType === 'drop' ? 'text-[var(--accent)]' : ''} />
+					<span>Static Drop</span>
+				</button>
+			</div>
+
+			<span class="hidden font-mono text-[11px] text-kumo-subtle md:inline">
+				{#if sourceType === 'git'}
+					Pull from GitHub, GitLab, or self-hosted Git
+				{:else if sourceType === 'image'}
+					Pull from Docker Hub, GHCR, or Quay
+				{:else}
+					Serve static HTML/JS directly via Caddy
+				{/if}
+			</span>
+		</div>
+
+		<!-- 1. Universal Git Configuration -->
 		{#if sourceType === 'git'}
-			<div class="flex flex-col gap-4">
-				<div class="flex flex-col gap-1.5">
-					<label for="src-git-url" class="text-xs font-medium text-[var(--text-secondary)]">
-						Repository URL <span class="text-[var(--status-red)]">*</span>
-					</label>
-					<Input
-						id="src-git-url"
-						bind:value={repoUrl}
-						placeholder="git@github.com:username/repository.git or https://github.com/..."
-						class="text-xs font-[var(--font-mono)]"
-					/>
-				</div>
+			<div class="flex flex-col gap-3">
+				<!-- Row 1: Repo URL & Branch (2-column layout) -->
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+					<div class="flex flex-col gap-1 sm:col-span-2">
+						<label for="src-git-url" class="text-xs font-medium text-kumo-default">
+							Repository URL <span class="text-kumo-danger">*</span>
+						</label>
+						<Input
+							id="src-git-url"
+							bind:value={repoUrl}
+							placeholder="git@github.com:org/repo.git or https://github.com/org/repo"
+							class="text-xs font-mono"
+						/>
+					</div>
 
-				<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-					<div class="flex flex-col gap-1.5">
-						<label for="src-git-branch" class="text-xs font-medium text-[var(--text-secondary)]"
-							>Branch</label
-						>
+					<div class="flex flex-col gap-1">
+						<label for="src-git-branch" class="text-xs font-medium text-kumo-default">Branch</label>
 						<Input
 							id="src-git-branch"
 							bind:value={branch}
 							placeholder="main"
-							class="text-xs font-[var(--font-mono)]"
+							class="text-xs font-mono"
 						/>
 					</div>
+				</div>
 
-					<div class="flex flex-col gap-1.5">
-						<label for="src-git-path" class="text-xs font-medium text-[var(--text-secondary)]"
-							>Build Path</label
-						>
+				<!-- Row 2: Build Path & SSH Deploy Key -->
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<div class="flex flex-col gap-1">
+						<label for="src-git-path" class="text-xs font-medium text-kumo-default">
+							Build Context Path
+						</label>
 						<Input
 							id="src-git-path"
 							bind:value={buildPath}
 							placeholder="/"
-							class="text-xs font-[var(--font-mono)]"
+							class="text-xs font-mono"
+						/>
+					</div>
+
+					<div class="flex flex-col gap-1">
+						<div class="flex items-center justify-between">
+							<label for="src-ssh-key" class="text-xs font-medium text-kumo-default">
+								SSH Deploy Key (Private Repos)
+							</label>
+							<button
+								type="button"
+								onclick={() => onOpenCredentialModal?.('ssh')}
+								class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline"
+							>
+								<Plus size={11} /> Add Key
+							</button>
+						</div>
+
+						<Select
+							id="src-ssh-key"
+							value={sshKeyId}
+							onValueChange={(val: any) => {
+								if (typeof val === 'string') sshKeyId = val;
+							}}
+							options={[
+								{ label: 'None (Public Repository)', value: '' },
+								...dataStore.sshKeys.map((k) => ({
+									label: `${k.name} (${k.type})`,
+									value: k.id
+								}))
+							]}
+							size="sm"
 						/>
 					</div>
 				</div>
 
-				<!-- SSH Deploy Key selection -->
-				<div class="flex flex-col gap-1.5">
-					<div class="flex items-center justify-between">
-						<label for="src-ssh-key" class="text-xs font-medium text-[var(--text-secondary)]">
-							SSH Deploy Key (for private repos)
-						</label>
-						<button
-							type="button"
-							onclick={() => onOpenCredentialModal?.('ssh')}
-							class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline"
+				<!-- Unified Build Strategy Section -->
+				<div class="mt-1 flex flex-col gap-2 rounded-md bg-kumo-elevated p-3 ring-1 ring-kumo-hairline">
+					<div class="flex flex-wrap items-center justify-between gap-2">
+						<span class="text-xs font-semibold text-kumo-default">Build Strategy</span>
+						<!-- Build Strategy Pills -->
+						<div
+							class="inline-flex rounded bg-kumo-base p-0.5 ring-1 ring-kumo-line"
+							role="tablist"
 						>
-							<Plus size={12} /> Add New Key
-						</button>
+							<button
+								type="button"
+								role="tab"
+								aria-selected={buildType === 'dockerfile'}
+								onclick={() => (buildType = 'dockerfile')}
+								class="flex cursor-pointer items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-all {buildType ===
+								'dockerfile'
+									? 'bg-kumo-elevated text-kumo-default shadow-xs ring-1 ring-kumo-hairline'
+									: 'text-kumo-subtle hover:text-kumo-default'}"
+							>
+								<FileCode size={13} class={buildType === 'dockerfile' ? 'text-[var(--accent)]' : ''} />
+								<span>Dockerfile</span>
+							</button>
+
+							<button
+								type="button"
+								role="tab"
+								aria-selected={buildType === 'nixpacks'}
+								onclick={() => (buildType = 'nixpacks')}
+								class="flex cursor-pointer items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-all {buildType ===
+								'nixpacks'
+									? 'bg-kumo-elevated text-kumo-default shadow-xs ring-1 ring-kumo-hairline'
+									: 'text-kumo-subtle hover:text-kumo-default'}"
+							>
+								<Sparkle size={13} class={buildType === 'nixpacks' ? 'text-[var(--accent)]' : ''} />
+								<span>Nixpacks</span>
+							</button>
+
+							<button
+								type="button"
+								role="tab"
+								aria-selected={buildType === 'static'}
+								onclick={() => (buildType = 'static')}
+								class="flex cursor-pointer items-center gap-1 rounded-sm px-2 py-1 text-[11px] font-medium transition-all {buildType ===
+								'static'
+									? 'bg-kumo-elevated text-kumo-default shadow-xs ring-1 ring-kumo-hairline'
+									: 'text-kumo-subtle hover:text-kumo-default'}"
+							>
+								<Browser size={13} class={buildType === 'static' ? 'text-[var(--accent)]' : ''} />
+								<span>Static SPA</span>
+							</button>
+						</div>
 					</div>
 
-					<div
-						class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-					>
-						<select
-							id="src-ssh-key"
-							bind:value={sshKeyId}
-							class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
-						>
-							<option value="">None (Public Repository)</option>
-							{#each dataStore.sshKeys as k (k.id)}
-								<option value={k.id}>{k.name} ({k.type})</option>
-							{/each}
-						</select>
-					</div>
+					{#if buildType === 'dockerfile'}
+						<div class="flex items-center gap-2">
+							<label for="bld-dockerfile-path" class="shrink-0 text-xs text-kumo-subtle">
+								Path:
+							</label>
+							<Input
+								id="bld-dockerfile-path"
+								bind:value={dockerfilePath}
+								placeholder="./Dockerfile"
+								class="h-7 text-xs font-mono"
+							/>
+							<span class="hidden text-[11px] text-kumo-subtle lg:inline">
+								Relative to build context root
+							</span>
+						</div>
+					{:else if buildType === 'nixpacks'}
+						<div class="text-xs text-kumo-subtle">
+							Zero-config build: Nixpacks automatically detects your stack (Node, Go, Python, Rust,
+							PHP) and generates an optimized container image.
+						</div>
+					{:else}
+						<div class="flex items-center gap-2">
+							<label for="bld-publish-dir" class="shrink-0 text-xs text-kumo-subtle">
+								Publish Directory:
+							</label>
+							<Input
+								id="bld-publish-dir"
+								bind:value={publishDir}
+								placeholder="dist or public"
+								class="h-7 text-xs font-mono"
+							/>
+							<span class="hidden text-[11px] text-kumo-subtle lg:inline">
+								Directory containing HTML/assets
+							</span>
+						</div>
+					{/if}
 				</div>
 			</div>
+
+		<!-- 2. Container Image Configuration -->
 		{:else if sourceType === 'image'}
-			<div class="flex flex-col gap-4">
+			<div class="flex flex-col gap-3">
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-					<!-- 1. Registry Dropdown (Docker Hub default) -->
-					<div class="flex flex-col gap-1.5">
+					<!-- Registry Selection -->
+					<div class="flex flex-col gap-1">
 						<div class="flex items-center justify-between">
-							<label for="src-reg-select" class="text-xs font-medium text-[var(--text-secondary)]">
+							<label for="src-reg-select" class="text-xs font-medium text-kumo-default">
 								Registry
 							</label>
 							<button
 								type="button"
 								onclick={() => onOpenCredentialModal?.('registry')}
 								class="flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline"
-								title="Add private container registry credentials"
 							>
-								<Plus size={11} /> Add Custom
+								<Plus size={11} /> Add
 							</button>
 						</div>
 
-						<div
-							class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-2"
-						>
-							<select
-								id="src-reg-select"
-								bind:value={selectedRegistry}
-								class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
-							>
-								<optgroup label="Public Registries">
-									<option value="docker.io">Docker Hub (docker.io) — Default</option>
-									<option value="ghcr.io">GitHub (ghcr.io)</option>
-									<option value="quay.io">Red Hat Quay (quay.io)</option>
-								</optgroup>
-								{#if dataStore.registries.length > 0}
-									<optgroup label="Saved Private Registries">
-										{#each dataStore.registries as r (r.id)}
-											<option value={r.id}>{r.name} ({r.url})</option>
-										{/each}
-									</optgroup>
-								{/if}
-							</select>
-						</div>
+						<Select
+							id="src-reg-select"
+							value={selectedRegistry}
+							onValueChange={(val: any) => {
+								if (typeof val === 'string') selectedRegistry = val;
+							}}
+							options={[
+								{ label: 'Docker Hub (docker.io)', value: 'docker.io' },
+								{ label: 'GitHub (ghcr.io)', value: 'ghcr.io' },
+								{ label: 'Red Hat Quay (quay.io)', value: 'quay.io' },
+								...dataStore.registries.map((r) => ({
+									label: `${r.name} (${r.url})`,
+									value: r.id
+								}))
+							]}
+							size="sm"
+						/>
 					</div>
 
-					<!-- 2. Image Name & Tag Input -->
-					<div class="flex flex-col gap-1.5 sm:col-span-2">
-						<label for="src-img-name" class="text-xs font-medium text-[var(--text-secondary)]">
-							Image Name & Tag <span class="text-[var(--status-red)]">*</span>
+					<!-- Image Name & Tag -->
+					<div class="flex flex-col gap-1 sm:col-span-2">
+						<label for="src-img-name" class="text-xs font-medium text-kumo-default">
+							Image Name & Tag <span class="text-kumo-danger">*</span>
 						</label>
 						<Input
 							id="src-img-name"
 							bind:value={rawImageName}
 							placeholder={selectedRegistry === 'docker.io'
-								? 'e.g. nginx:alpine or wardy784/erugo:latest'
-								: selectedRegistry === 'ghcr.io'
-									? 'e.g. owner/repo:latest'
-									: 'e.g. my-app:latest'}
-							class="text-xs font-[var(--font-mono)]"
+								? 'e.g. nginx:alpine or traefik/whoami:latest'
+								: 'e.g. my-app:latest'}
+							class="text-xs font-mono"
 						/>
 					</div>
 				</div>
 
-				<!-- Live Resolved Pull Target Preview (Nielsen #1: Visibility of System Status) -->
+				<!-- Live Resolved Pull Target Preview -->
 				{#if resolvedImage}
 					<div
-						class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2.5 text-[11px]"
+						class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-2 text-xs ring-1 ring-kumo-hairline"
 					>
 						<div class="flex min-w-0 items-center gap-2">
-							<span class="shrink-0 font-medium text-[var(--text-tertiary)]"
-								>Resolved Podman target:</span
-							>
-							<code class="truncate font-mono font-semibold text-[var(--accent)] select-all"
-								>{resolvedImage}</code
-							>
+							<span class="shrink-0 text-kumo-subtle">Target:</span>
+							<code class="truncate font-mono font-medium text-[var(--accent)] select-all">
+								{resolvedImage}
+							</code>
 						</div>
-						<span class="ml-2 shrink-0 font-mono text-[10px] text-[var(--status-green)]"
-							>✓ ready to pull</span
-						>
+						<span class="ml-2 shrink-0 font-mono text-[11px] text-kumo-success">✓ resolved</span>
 					</div>
 				{/if}
 			</div>
+
+		<!-- 3. Drop Static Site -->
 		{:else}
-			<!-- Drop static site -->
 			<!-- svelte-ignore a11y_no_static_element_interactions -->
 			<div
 				ondragover={(e) => e.preventDefault()}
 				ondrop={handleDrop}
-				class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-[var(--radius-card)] border-2 border-dashed border-[var(--border)] bg-[var(--bg-surface)]/40 p-8 text-center transition-colors hover:border-[var(--accent)]"
+				class="flex cursor-pointer flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-kumo-line bg-kumo-elevated/40 p-6 text-center transition-colors hover:border-[var(--accent)]"
 			>
-				<UploadSimple size={28} class="text-[var(--text-tertiary)]" />
+				<UploadSimple size={24} class="text-kumo-subtle" />
 				{#if dropFileName}
-					<span class="text-xs font-medium text-[var(--status-green)]"
-						>Uploaded: {dropFileName}</span
-					>
+					<span class="text-xs font-medium text-kumo-success">Uploaded: {dropFileName}</span>
 				{:else}
-					<span class="text-xs font-medium text-[var(--text-primary)]"
-						>Drop static files (.zip or dist folder) here</span
-					>
-					<span class="text-[11px] text-[var(--text-tertiary)]"
-						>Caddy will automatically serve your SPA with zero build overhead</span
-					>
+					<span class="text-xs font-medium text-kumo-default">
+						Drop static files (.zip or dist folder) here
+					</span>
+					<span class="text-[11px] text-kumo-subtle">
+						Caddy will serve your SPA instantly with zero build step
+					</span>
 				{/if}
 			</div>
 		{/if}
-	</div>
-
-	<!-- Explicit Card Footer with 1 Save Button -->
-	<div
-		class="flex items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3"
-	>
-		{#if saveStatus === 'saved'}
-			<span class="mr-2 flex items-center gap-1 text-xs text-[var(--status-green)]">
-				<Check size={14} /> Saved
-			</span>
-		{/if}
-		<Button variant="primary" size="sm" onclick={handleSave}>Save Source</Button>
-	</div>
-</div>
+	</LayerCard.Primary>
+</LayerCard>

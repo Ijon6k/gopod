@@ -1,7 +1,7 @@
 <script lang="ts">
 	import Modal from './Modal.svelte';
-	import { Button } from '$lib/components/primitives';
-	import { WarningCircle, SpinnerGap, Copy, Check } from 'phosphor-svelte';
+	import { Button, Input } from '$lib/components/ui';
+	import { WarningCircle, Copy, Check } from 'phosphor-svelte';
 	import type { Snippet } from 'svelte';
 
 	interface Props {
@@ -64,20 +64,20 @@
 	<div class="flex items-center gap-3">
 		<div
 			class={variant === 'danger'
-				? 'text-red-400'
+				? 'text-[var(--status-red)]'
 				: variant === 'warning'
-					? 'text-amber-400'
-					: 'text-[var(--accent)]'}
+					? 'text-[var(--status-amber)]'
+					: 'text-kumo-brand'}
 		>
 			<WarningCircle size={22} weight="bold" />
 		</div>
-		<h3 class="m-0 text-base font-semibold text-[var(--text-primary)]">
+		<h3 class="m-0 text-base font-semibold text-kumo-default">
 			{title}
 		</h3>
 	</div>
 
 	{#if description}
-		<p class="m-0 text-xs leading-relaxed text-[var(--text-secondary)]">
+		<p class="m-0 text-xs leading-relaxed text-kumo-subtle">
 			{description}
 		</p>
 	{/if}
@@ -85,28 +85,29 @@
 	<!-- Anti-fat-finger text input confirmation -->
 	{#if matchValue}
 		<div class="flex flex-col gap-1.5 pt-1">
-			<div class="flex items-center justify-between text-xs text-[var(--text-secondary)]">
+			<div class="flex items-center justify-between text-xs text-kumo-subtle">
 				<span>{matchLabel ?? 'To confirm, type the exact name below:'}</span>
 				<button
 					type="button"
 					onclick={handleCopy}
-					class="inline-flex cursor-pointer items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
+					class="inline-flex cursor-pointer items-center gap-1 rounded border border-kumo-line bg-kumo-base px-2 py-0.5 text-[11px] font-mono text-kumo-subtle hover:text-kumo-default transition-colors"
 					title="Copy to clipboard"
 				>
 					{#if copied}
-						<Check size={11} class="text-emerald-400" />
-						<span class="text-emerald-400">Copied</span>
+						<Check size={11} class="text-[var(--status-green)]" />
+						<span class="text-[var(--status-green)]">Copied</span>
 					{:else}
 						<Copy size={11} />
 						<span>{matchValue}</span>
 					{/if}
 				</button>
 			</div>
-			<input
+			<Input
 				type="text"
 				bind:value={inputVal}
 				placeholder={matchValue}
-				class="w-full rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder-[var(--text-tertiary)] transition-colors focus:border-red-500 focus:outline-none"
+				size="sm"
+				class="w-full"
 			/>
 		</div>
 	{/if}
@@ -119,22 +120,14 @@
 		<Button variant="secondary" size="sm" disabled={isConfirming} onclick={oncancel}>
 			{cancelText}
 		</Button>
-		<button
-			type="button"
+		<Button
+			variant={variant === 'danger' ? 'destructive' : variant === 'warning' ? 'secondary' : 'primary'}
+			size="sm"
 			disabled={!canConfirm}
+			loading={isConfirming}
 			onclick={onconfirm}
-			class={variant === 'danger'
-				? 'inline-flex cursor-pointer items-center gap-2 rounded-md border-0 bg-red-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-40'
-				: variant === 'warning'
-					? 'inline-flex cursor-pointer items-center gap-2 rounded-md border-0 bg-amber-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-amber-500 disabled:cursor-not-allowed disabled:opacity-40'
-					: 'inline-flex cursor-pointer items-center gap-2 rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40'}
 		>
-			{#if isConfirming}
-				<SpinnerGap size={14} class="animate-spin" />
-				<span>Processing…</span>
-			{:else}
-				<span>{confirmText}</span>
-			{/if}
-		</button>
+			{confirmText}
+		</Button>
 	{/snippet}
 </Modal>

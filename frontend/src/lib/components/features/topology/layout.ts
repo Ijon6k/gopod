@@ -8,7 +8,7 @@ import { computeGlobalLayout } from './layout/global';
 import { computeProjectFocusLayout } from './layout/project';
 
 export { NODE_WIDTH, NODE_HEIGHT, COMPACT_NODE_HEIGHT } from './layout/constants';
-export { createOrthogonalPath, computeBounds } from './layout/path';
+export { createOrthogonalPath, createCurvedBezierPath, computeBounds } from './layout/path';
 export { computeGlobalLayout } from './layout/global';
 export { computeProjectFocusLayout } from './layout/project';
 
@@ -46,7 +46,8 @@ export function computeTopologyGraph({
 			pods,
 			domains,
 			volumes,
-			networks
+			networks,
+			server
 		});
 	}
 }

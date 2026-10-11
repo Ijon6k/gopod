@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { StatusBadge, ConfirmDialog } from '$lib/components/ui';
+	import { StatusBadge, ConfirmDialog, Checkbox } from '$lib/components/ui';
 	import type { Service, Project } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { Trash, HardDrives } from 'phosphor-svelte';
@@ -113,21 +113,17 @@
 	onconfirm={handleDeleteService}
 >
 	<!-- Dokploy-style Persistent Volumes Option Checkbox -->
-	<label
-		class="flex cursor-pointer items-center gap-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-3 select-none"
+	<div
+		class="flex cursor-pointer items-start gap-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-3 select-none"
 	>
-		<input
-			type="checkbox"
-			bind:checked={deleteVolumes}
-			class="h-4 w-4 cursor-pointer rounded border-[var(--border)] text-red-600 focus:ring-0 focus:ring-offset-0"
-		/>
-		<div class="flex flex-col gap-0.5">
+		<Checkbox bind:checked={deleteVolumes} id="delete-volumes" class="mt-0.5" />
+		<label for="delete-volumes" class="flex cursor-pointer flex-col gap-0.5">
 			<span class="text-xs font-medium text-[var(--text-primary)]"
 				>Purge persistent storage & volumes</span
 			>
 			<span class="text-[11px] text-[var(--text-tertiary)]"
 				>Delete named storage volumes and local databases attached to this service</span
 			>
-		</div>
-	</label>
+		</label>
+	</div>
 </ConfirmDialog>

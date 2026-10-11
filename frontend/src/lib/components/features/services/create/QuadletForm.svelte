@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Input, Button } from '$lib/components/primitives';
+	import { Input, Button, Field } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
 	import { CheckCircle, WarningCircle, UploadSimple } from 'phosphor-svelte';
 
@@ -73,31 +73,17 @@ WantedBy=default.target`)
 
 <div class="flex flex-col gap-4">
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
-		<div class="flex flex-col gap-1.5">
-			<label for="quadlet-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
-				Service name <span class="text-[var(--status-red)]">*</span>
-			</label>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
-			>
-				<Input id="quadlet-svc-name" bind:value={name} placeholder="e.g. system-daemon" />
-			</div>
-		</div>
+		<Field label="Service name" required>
+			<Input id="quadlet-svc-name" bind:value={name} placeholder="e.g. system-daemon" />
+		</Field>
 
-		<div class="flex flex-col gap-1.5">
-			<label for="quadlet-svc-desc" class="text-xs font-medium text-[var(--text-secondary)]">
-				Description <span class="text-[var(--text-tertiary)]">(optional)</span>
-			</label>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2 focus-within:border-[var(--accent)]"
-			>
-				<Input
-					id="quadlet-svc-desc"
-					bind:value={description}
-					placeholder="Declarative systemd Quadlet unit"
-				/>
-			</div>
-		</div>
+		<Field label="Description">
+			<Input
+				id="quadlet-svc-desc"
+				bind:value={description}
+				placeholder="Declarative systemd Quadlet unit"
+			/>
+		</Field>
 	</div>
 
 	<div class="flex flex-col gap-2">

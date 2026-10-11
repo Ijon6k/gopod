@@ -38,6 +38,14 @@ type Service struct {
 	GitBranch      string    `json:"gitBranch,omitempty"`
 	DockerfilePath string    `json:"dockerfilePath,omitempty"`
 	SSHKeyID       string    `json:"sshKeyId,omitempty"`
+	SourceType     string    `json:"sourceType,omitempty"`
+	BuildType      string    `json:"buildType,omitempty"`
+	BuildPath      string    `json:"buildPath,omitempty"`
+	PublishDir     string    `json:"publishDir,omitempty"`
+	PodID          string    `json:"podId,omitempty"`
+	RegistryID     string    `json:"registryId,omitempty"`
+	AutoDeploy     bool      `json:"autoDeploy"`
+	WatchPaths     string    `json:"watchPaths,omitempty"`
 	EnvVars        []EnvVar               `json:"envVars"`
 	Advanced       *ServiceAdvancedConfig `json:"advanced,omitempty"`
 	CreatedAt      time.Time              `json:"createdAt"`

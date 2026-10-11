@@ -1,6 +1,15 @@
 <script lang="ts">
 	import { volumes, services, dataStore } from '$lib/data';
-	import { Button } from '$lib/components/primitives';
+	import {
+		Button,
+		LayerCard,
+		Table,
+		TableHeader,
+		TableHead,
+		TableBody,
+		TableRow,
+		TableCell
+	} from '$lib/components/ui';
 	import type { VolumeSnapshot, VolumeBackupSchedule } from '$lib/types';
 	import {
 		Database,
@@ -202,83 +211,79 @@
 	<section class="flex flex-col gap-3">
 		<div class="flex items-center gap-2">
 			<CalendarCheck size={16} class="text-[var(--accent)]" />
-			<h3 class="m-0 text-xs font-semibold tracking-wider text-[var(--text-primary)] uppercase">
-				Automated Backup Policies (Cron)
+			<h3 class="m-0 text-xs font-semibold text-[var(--text-primary)]">
+				Automated backup policies (cron)
 			</h3>
 		</div>
 
-		<div
-			class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)]"
-		>
+		<LayerCard class="overflow-hidden p-0">
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
-				<table class="w-full border-collapse text-left text-xs">
-					<thead
-						class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
-					>
-						<tr>
-							<th
-								class="px-3.5 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Target Volume</th
+				<Table class="w-full text-left text-xs">
+					<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+						<TableRow>
+							<TableHead
+								class="px-3.5 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Target volume</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Schedule (Cron)</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Schedule (cron)</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Retention</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Retention</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Last Run</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Last run</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Next Run</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Next run</TableHead
 							>
-							<th
-								class="px-3.5 py-2.5 text-right text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Policy Status</th
+							<TableHead
+								class="px-3.5 py-2.5 text-right text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Policy status</TableHead
 							>
-						</tr>
-					</thead>
-					<tbody class="divide-y divide-[var(--border-subtle)]">
+						</TableRow>
+					</TableHeader>
+					<TableBody class="divide-y divide-[var(--border-subtle)]">
 						{#if schedules.length === 0}
-							<tr>
-								<td colspan="6" class="py-6 text-center text-xs text-[var(--text-tertiary)]">
+							<TableRow>
+								<TableCell colspan={6} class="py-6 text-center text-xs text-[var(--text-tertiary)]">
 									No automated backup schedules defined for this project.
-								</td>
-							</tr>
+								</TableCell>
+							</TableRow>
 						{:else}
 							{#each schedules as sched (sched.id)}
-								<tr class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
-									<td
+								<TableRow class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
+									<TableCell
 										class="px-3.5 py-2.5 font-mono font-medium whitespace-nowrap text-[var(--text-primary)]"
 									>
 										{sched.volumeName}
-									</td>
-									<td class="px-3 py-2.5 whitespace-nowrap">
+									</TableCell>
+									<TableCell class="px-3 py-2.5 whitespace-nowrap">
 										<div class="flex items-center gap-1.5">
 											<span class="font-mono text-xs text-[var(--text-secondary)]"
 												>{sched.cron}</span
 											>
 											<span class="text-[10.5px] text-[var(--text-tertiary)]">({sched.label})</span>
 										</div>
-									</td>
-									<td class="px-3 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
+									</TableCell>
+									<TableCell class="px-3 py-2.5 whitespace-nowrap text-[var(--text-secondary)]">
 										Keep last {sched.retentionCount} snapshots
-									</td>
-									<td
+									</TableCell>
+									<TableCell
 										class="px-3 py-2.5 font-mono text-[11.5px] whitespace-nowrap text-[var(--text-tertiary)]"
 									>
 										{sched.lastRun || '—'}
-									</td>
-									<td
+									</TableCell>
+									<TableCell
 										class="px-3 py-2.5 font-mono text-[11.5px] whitespace-nowrap text-[var(--text-tertiary)]"
 									>
 										{sched.nextRun || '—'}
-									</td>
-									<td class="px-3.5 py-2.5 text-right whitespace-nowrap">
+									</TableCell>
+									<TableCell class="px-3.5 py-2.5 text-right whitespace-nowrap">
 										<button
 											type="button"
 											onclick={() => handleToggleSchedule(sched.id)}
@@ -288,14 +293,14 @@
 										>
 											{sched.enabled ? '● Active' : '○ Paused'}
 										</button>
-									</td>
-								</tr>
+									</TableCell>
+								</TableRow>
 							{/each}
 						{/if}
-					</tbody>
-				</table>
+					</TableBody>
+				</Table>
 			</div>
-		</div>
+		</LayerCard>
 	</section>
 
 	<!-- 3. Snapshot History & Restore (Clean Table Standards) -->
@@ -303,8 +308,8 @@
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-2">
 				<ClockCounterClockwise size={16} class="text-[var(--accent)]" />
-				<h3 class="m-0 text-xs font-semibold tracking-wider text-[var(--text-primary)] uppercase">
-					Volume Snapshot History ({snapshots.length})
+				<h3 class="m-0 text-xs font-semibold text-[var(--text-primary)]">
+					Volume snapshot history ({snapshots.length})
 				</h3>
 			</div>
 			<span class="text-[11px] text-[var(--text-tertiary)]">
@@ -313,91 +318,87 @@
 			</span>
 		</div>
 
-		<div
-			class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)]"
-		>
+		<LayerCard class="overflow-hidden p-0">
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
-				<table class="w-full border-collapse text-left text-xs">
-					<thead
-						class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
-					>
-						<tr>
-							<th
-								class="px-3.5 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Archive Filename</th
+				<Table class="w-full border-collapse text-left text-xs">
+					<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+						<TableRow>
+							<TableHead
+								class="px-3.5 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Archive filename</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Volume Source</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Volume source</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Size</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Size</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Status</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Status</TableHead
 							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Created</th
+							<TableHead
+								class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Created</TableHead
 							>
-							<th
-								class="px-3.5 py-2.5 text-right text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Actions</th
+							<TableHead
+								class="px-3.5 py-2.5 text-right text-[12px] font-semibold text-[var(--text-tertiary)] normal-case"
+								>Actions</TableHead
 							>
-						</tr>
-					</thead>
-					<tbody class="divide-y divide-[var(--border-subtle)]">
+						</TableRow>
+					</TableHeader>
+					<TableBody class="divide-y divide-[var(--border-subtle)]">
 						{#if snapshots.length === 0}
-							<tr>
-								<td colspan="6" class="py-12 text-center text-xs text-[var(--text-tertiary)]">
+							<TableRow>
+								<TableCell colspan={6} class="py-12 text-center text-xs text-[var(--text-tertiary)]">
 									No volume snapshots taken yet. Click "Snapshot Now" on an active volume above.
-								</td>
-							</tr>
+								</TableCell>
+							</TableRow>
 						{:else}
 							{#each snapshots as snap (snap.id)}
-								<tr class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
+								<TableRow class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
 									<!-- Filename -->
-									<td class="px-3.5 py-3 whitespace-nowrap">
+									<TableCell class="px-3.5 py-3 whitespace-nowrap">
 										<div class="flex items-center gap-2">
 											<FileArchive size={15} class="text-[var(--accent)]" />
 											<span class="font-mono text-xs font-medium text-[var(--text-primary)]">
 												{snap.filename}
 											</span>
 										</div>
-									</td>
+									</TableCell>
 
 									<!-- Volume -->
-									<td
+									<TableCell
 										class="px-3 py-3 font-mono text-xs whitespace-nowrap text-[var(--text-secondary)]"
 									>
 										{snap.volumeName}
-									</td>
+									</TableCell>
 
 									<!-- Size -->
-									<td
+									<TableCell
 										class="px-3 py-3 font-mono text-xs whitespace-nowrap text-[var(--text-primary)]"
 									>
 										{snap.size}
-									</td>
+									</TableCell>
 
 									<!-- Status -->
-									<td class="px-3 py-3 whitespace-nowrap">
+									<TableCell class="px-3 py-3 whitespace-nowrap">
 										<span
 											class="inline-flex items-center gap-1 rounded border border-[var(--status-green)]/30 bg-[var(--status-green-muted)] px-1.5 py-0.5 text-[11px] font-medium text-[var(--status-green)]"
 										>
 											<CheckCircle size={12} /> Ready
 										</span>
-									</td>
+									</TableCell>
 
 									<!-- Created -->
-									<td class="px-3 py-3 whitespace-nowrap text-[var(--text-tertiary)]">
+									<TableCell class="px-3 py-3 whitespace-nowrap text-[var(--text-tertiary)]">
 										{snap.timeAgo}
-									</td>
+									</TableCell>
 
 									<!-- Actions: Restore, Download, Delete -->
-									<td class="px-3.5 py-3 text-right whitespace-nowrap">
+									<TableCell class="px-3.5 py-3 text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-1.5">
 											<button
 												type="button"
@@ -424,14 +425,14 @@
 												<Trash size={14} />
 											</button>
 										</div>
-									</td>
-								</tr>
+									</TableCell>
+								</TableRow>
 							{/each}
 						{/if}
-					</tbody>
-				</table>
+					</TableBody>
+				</Table>
 			</div>
-		</div>
+		</LayerCard>
 	</section>
 </div>
 

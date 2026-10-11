@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Domain } from '$lib/types';
 	import { services, server } from '$lib/data';
-	import { Button } from '$lib/components/primitives';
+	import { Button, Input, Select, Switch } from '$lib/components/ui';
 	import {
 		X,
 		Globe,
@@ -75,9 +75,8 @@
 		}
 	});
 
-	function handleServiceChange(e: Event) {
-		const target = e.target as HTMLSelectElement;
-		const svc = services.find((s) => s.id === target.value);
+	function updateServicePort(svcId: string) {
+		const svc = services.find((s) => s.id === svcId);
 		if (svc && svc.port) {
 			containerPort = svc.port;
 		}
@@ -179,12 +178,11 @@
 						>
 							Domain Name / Hostname
 						</label>
-						<input
+						<Input
 							id="domain-hostname"
-							type="text"
 							bind:value={hostname}
 							placeholder="e.g. app.yourdomain.com"
-							class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
 
@@ -192,33 +190,32 @@
 						<label for="domain-port" class="text-[11px] font-medium text-[var(--text-secondary)]">
 							Container Port
 						</label>
-						<input
+						<Input
 							id="domain-port"
 							type="number"
 							bind:value={containerPort}
 							placeholder="3000"
-							class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
 				</div>
 
-				<div class="flex flex-col gap-1.5">
-					<label for="domain-service" class="text-[11px] font-medium text-[var(--text-secondary)]">
-						Target Service Workload
-					</label>
-					<select
-						id="domain-service"
-						bind:value={selectedServiceId}
-						onchange={handleServiceChange}
-						class="w-full cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 text-xs text-[var(--text-primary)] outline-none"
-					>
-						{#each services as svc}
-							<option value={svc.id}>
-								{svc.name} ({svc.type} · port {svc.port || 3000}) — {svc.projectId}
-							</option>
-						{/each}
-					</select>
-				</div>
+				<Select
+					id="domain-service"
+					label="Target Service Workload"
+					value={selectedServiceId}
+					onValueChange={(val: any) => {
+						if (typeof val === 'string') {
+							selectedServiceId = val;
+							updateServicePort(val);
+						}
+					}}
+					options={services.map((svc) => ({
+						label: `${svc.name} (${svc.type} · port ${svc.port || 3000}) — ${svc.projectId}`,
+						value: svc.id
+					}))}
+					size="sm"
+				/>
 
 				<!-- 2. DNS Resolution Diagnostic Box -->
 				<div
@@ -276,64 +273,62 @@
 
 					<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
 						<!-- Toggle: Auto HTTPS -->
-						<label
-							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						<div
+							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
 						>
-							<input type="checkbox" bind:checked={tls} class="rounded accent-[var(--accent)]" />
 							<div class="flex flex-col">
-								<span class="font-medium text-[var(--text-primary)]">Automatic HTTPS</span>
+								<span class="text-xs font-medium text-[var(--text-primary)]">Automatic HTTPS</span>
 								<span class="text-[10.5px] text-[var(--text-tertiary)]"
 									>Let's Encrypt / ZeroSSL ACME</span
 								>
 							</div>
-						</label>
+							<Switch bind:checked={tls} size="sm" />
+						</div>
 
 						<!-- Toggle: HTTP to HTTPS Redirect -->
-						<label
-							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						<div
+							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
 						>
-							<input
-								type="checkbox"
-								bind:checked={httpsRedirect}
-								class="rounded accent-[var(--accent)]"
-							/>
 							<div class="flex flex-col">
-								<span class="font-medium text-[var(--text-primary)]">HTTP ➔ HTTPS Redirect</span>
+								<span class="text-xs font-medium text-[var(--text-primary)]"
+									>HTTP ➔ HTTPS Redirect</span
+								>
 								<span class="text-[10.5px] text-[var(--text-tertiary)]"
 									>Forces secure 308 redirect</span
 								>
 							</div>
-						</label>
+							<Switch bind:checked={httpsRedirect} size="sm" />
+						</div>
 
 						<!-- Toggle: WebSocket Upgrades -->
-						<label
-							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						<div
+							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
 						>
-							<input
-								type="checkbox"
-								bind:checked={websocket}
-								class="rounded accent-[var(--accent)]"
-							/>
 							<div class="flex flex-col">
-								<span class="font-medium text-[var(--text-primary)]">WebSocket Upgrades</span>
+								<span class="text-xs font-medium text-[var(--text-primary)]"
+									>WebSocket Upgrades</span
+								>
 								<span class="text-[10.5px] text-[var(--text-tertiary)]"
 									>Pass 101 Switching Protocols</span
 								>
 							</div>
-						</label>
+							<Switch bind:checked={websocket} size="sm" />
+						</div>
 
 						<!-- Toggle: CORS Headers -->
-						<label
-							class="flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
+						<div
+							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
 						>
-							<input type="checkbox" bind:checked={cors} class="rounded accent-[var(--accent)]" />
 							<div class="flex flex-col">
-								<span class="font-medium text-[var(--text-primary)]">Enable CORS Headers</span>
+								<span class="text-xs font-medium text-[var(--text-primary)]"
+									>Enable CORS Headers</span
+								>
 								<span class="text-[10.5px] text-[var(--text-tertiary)]"
 									>Allow Cross-Origin Requests</span
 								>
 							</div>
-						</label>
+							<Switch bind:checked={cors} size="sm" />
+						</div>
 					</div>
 				</div>
 
@@ -346,26 +341,20 @@
 						>
 							Path Routing Prefix
 						</label>
-						<input
+						<Input
 							id="domain-path-prefix"
-							type="text"
 							bind:value={pathPrefix}
 							placeholder="/"
-							class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2 font-mono text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
+							class="text-xs font-[var(--font-mono)]"
 						/>
 					</div>
 
 					<div class="flex items-center gap-2.5 pt-5">
-						<label
-							class="flex cursor-pointer items-center gap-2 text-[11.5px] text-[var(--text-secondary)]"
-						>
-							<input
-								type="checkbox"
-								bind:checked={stripPathPrefix}
-								class="rounded accent-[var(--accent)]"
-							/>
-							<span>Strip path prefix before upstream</span>
-						</label>
+						<Switch
+							bind:checked={stripPathPrefix}
+							size="sm"
+							label="Strip path prefix before upstream"
+						/>
 					</div>
 				</div>
 
@@ -373,34 +362,22 @@
 				<div
 					class="flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3"
 				>
-					<label class="flex cursor-pointer items-center justify-between">
+					<div class="flex items-center justify-between">
 						<div class="flex flex-col">
-							<span class="font-medium text-[var(--text-primary)]">Basic HTTP Authentication</span>
+							<span class="text-xs font-medium text-[var(--text-primary)]"
+								>Basic HTTP Authentication</span
+							>
 							<span class="text-[10.5px] text-[var(--text-tertiary)]"
 								>Password protect staging or preview environments</span
 							>
 						</div>
-						<input
-							type="checkbox"
-							bind:checked={basicAuth}
-							class="rounded accent-[var(--accent)]"
-						/>
-					</label>
+						<Switch bind:checked={basicAuth} size="sm" />
+					</div>
 
 					{#if basicAuth}
 						<div class="grid grid-cols-2 gap-2 border-t border-[var(--border-subtle)] pt-2">
-							<input
-								type="text"
-								bind:value={basicAuthUser}
-								placeholder="Username"
-								class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
-							/>
-							<input
-								type="password"
-								placeholder="Password"
-								value="••••••••••••"
-								class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
-							/>
+							<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
+							<Input type="password" placeholder="Password" value="••••••••••••" class="text-xs" />
 						</div>
 					{/if}
 				</div>

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { TopologyRegion } from './types';
+	import { Badge } from 'kumo-svelte';
 	import { cn } from '$lib/utils/cn';
 	import { Folder, SquaresFour } from 'phosphor-svelte';
 
@@ -61,11 +62,12 @@
 		</div>
 
 		{#if region.sublabel}
-			<span
-				class="ml-2 shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10.5px] text-[var(--text-tertiary)]"
+			<Badge
+				variant="secondary"
+				class="ml-2 shrink-0 !rounded !px-2 !py-0.5 !text-[11px] font-normal border border-[var(--border-subtle)] text-[var(--text-tertiary)]"
 			>
 				{region.sublabel}
-			</span>
+			</Badge>
 		{/if}
 	</div>
 </div>

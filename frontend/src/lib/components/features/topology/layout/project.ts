@@ -1,11 +1,15 @@
-import type { Project, Service, Container, Pod, Domain, Volume, Network } from '$lib/types';
+import type { Project, Service, Container, Pod, Domain, Volume, Network, Server } from '$lib/types';
 import type { TopologyNode, TopologyRegion, TopologyEdge, TopologyGraph } from '../types';
 import { NODE_HEIGHT, COMPACT_NODE_HEIGHT } from './constants';
-import { createOrthogonalPath, computeBounds } from './path';
+import { createCurvedBezierPath, computeBounds } from './path';
 
 // ──────────────────────────────────────────────
-// PROJECT FOCUS TOPOLOGY
-// Domain → Service → Pod / Container (Territory) → Volume / Network
+// PROJECT FOCUS TOPOLOGY — 4-TIER ARCHITECTURE PIPELINE
+// Tier 1: Public WAN & Domains (Entrypoint)
+// Tier 2: Caddy Ingress Gateway (Reverse Proxy / TLS)
+// Tier 3: Services & Stacks (Logical Management)
+// Tier 4: Workloads & Containers (Physical Processes, Aligned Sub-trees)
+// Tier 5: Storage & Volumes (Internal Storage)
 // ──────────────────────────────────────────────
 export function computeProjectFocusLayout({
 	projectId,
@@ -15,7 +19,8 @@ export function computeProjectFocusLayout({
 	pods,
 	domains,
 	volumes,
-	networks
+	networks,
+	server
 }: {
 	projectId: string;
 	projects: Project[];
@@ -25,6 +30,7 @@ export function computeProjectFocusLayout({
 	domains: Domain[];
 	volumes: Volume[];
 	networks: Network[];
+	server?: Server;
 }): TopologyGraph {
 	const project = projects.find((p) => p.id === projectId) || projects[0];
 	const projServices = services.filter((s) => s.projectId === project.id);
@@ -40,41 +46,101 @@ export function computeProjectFocusLayout({
 	const regions: TopologyRegion[] = [];
 	const edges: TopologyEdge[] = [];
 
-	// Column coordinates with routing channels
-	const colDomainX = 80;
-	const colServiceX = 390;
-	const colRuntimeX = 730;
-	const colStorageX = 1120;
+	// Column X coordinates for the 5-zone architecture pipeline
+	const colIngressX = 60;
+	const colGatewayX = 360;
+	const colServiceX = 660;
+	const colRuntimeX = 980;
+	const colStorageX = 1300;
 
-	const startY = 100;
-	const itemGap = 24;
+	const startY = 110;
+	const itemGap = 28;
 
-	// ── 1. Ingress / Domains ──
-	let domainY = startY;
-	projDomains.forEach((dom) => {
-		const domNode: TopologyNode = {
-			id: `dom-${dom.id}`,
-			type: 'domain',
-			title: dom.hostname,
-			subtitle: dom.tls ? 'TLS Enabled' : 'HTTP',
-			status: dom.status === 'active' ? 'running' : 'degraded',
-			x: colDomainX,
-			y: domainY,
-			width: 240,
-			height: NODE_HEIGHT,
-			monoDetail: `proxy :${dom.proxyPort || dom.containerPort}`,
-			badge: 'Domain',
-			projectId: project.id,
-			serviceId: dom.serviceId,
-			raw: dom
-		};
-		nodes.push(domNode);
-		domainY += NODE_HEIGHT + itemGap;
-	});
+	// ── 1. Layout Tier 3 (Services) & Tier 4 (Containers) with Sub-Tree Alignment ──
+	let currentY = startY;
+	const serviceNodeMap = new Map<string, TopologyNode>();
+	const containerNodeMap = new Map<string, TopologyNode>();
+	const handledContainerIds = new Set<string>();
 
-	// ── 2. Services ──
-	let serviceY = startY;
 	projServices.forEach((svc) => {
+		// Find physical containers belonging to this service
+		const matchedContainers = projContainers.filter(
+			(c) =>
+				c.serviceId === svc.id ||
+				c.name === svc.name ||
+				c.name.startsWith(`${svc.id}-`) ||
+				c.name.startsWith(`${svc.id}_`) ||
+				(c.labels &&
+					(c.labels['io.gopod.service'] === svc.id ||
+						c.labels['io.gopod.name'] === svc.name ||
+						c.labels['com.docker.compose.service'] === svc.name ||
+						c.labels['io.podman.compose.service'] === svc.name))
+		);
+
+		// If matched, mark them as handled
+		matchedContainers.forEach((c) => handledContainerIds.add(c.id));
+
+		// Determine container workloads for this service
+		type WorkloadItem = {
+			id: string;
+			name: string;
+			image: string;
+			status: string;
+			cpu?: number;
+			memory?: number;
+			raw: any;
+			isPod?: boolean;
+		};
+
+		const workloadItems: WorkloadItem[] = [];
+
+		if (matchedContainers.length > 0) {
+			matchedContainers.forEach((c) => {
+				workloadItems.push({
+					id: `container-${c.id}`,
+					name: c.name,
+					image: c.image.split('/').pop() || c.image,
+					status: c.status,
+					cpu: c.cpu,
+					memory: c.memory,
+					raw: c
+				});
+			});
+		} else if (svc.workloads && svc.workloads.length > 0) {
+			svc.workloads.forEach((wl: any) => {
+				workloadItems.push({
+					id: `workload-${svc.id}-${wl.name}`,
+					name: wl.name,
+					image: wl.image || 'container:latest',
+					status: wl.status || svc.status,
+					cpu: wl.cpu,
+					memory: wl.memory,
+					raw: wl
+				});
+			});
+		} else {
+			// Single container representation for quadlet or standalone service
+			workloadItems.push({
+				id: `container-${svc.id}`,
+				name: svc.type === 'quadlet' ? `${svc.name}.service` : svc.name,
+				image: svc.image ? svc.image.split('/').pop() || svc.image : 'container:latest',
+				status: svc.status,
+				cpu: svc.cpu,
+				memory: svc.memory,
+				raw: svc
+			});
+		}
+
+		// Calculate vertical height of container cluster
+		const containerCount = workloadItems.length;
+		const containerCardHeight = COMPACT_NODE_HEIGHT;
+		const containerGap = 12;
+		const clusterHeight =
+			containerCount * containerCardHeight + Math.max(0, containerCount - 1) * containerGap;
+		const blockHeight = Math.max(NODE_HEIGHT, clusterHeight);
+
+		// Position Service Node (Vertically centered against its container cluster)
+		const svcY = currentY + (blockHeight - NODE_HEIGHT) / 2;
 		let subtitle = 'Application';
 		if (svc.type === 'quadlet') subtitle = 'Quadlet (Systemd)';
 		else if (svc.type === 'compose') subtitle = 'Compose Stack';
@@ -100,8 +166,8 @@ export function computeProjectFocusLayout({
 			subtitle,
 			status: svc.status,
 			x: colServiceX,
-			y: serviceY,
-			width: 250,
+			y: Math.round(svcY),
+			width: 240,
 			height: NODE_HEIGHT,
 			monoDetail: svc.port ? `:${svc.port}` : '',
 			badge: svc.type,
@@ -110,313 +176,249 @@ export function computeProjectFocusLayout({
 			raw: svc
 		};
 		nodes.push(svcNode);
+		serviceNodeMap.set(svc.id, svcNode);
 
-		// Connect Domain -> Service if matching
-		const matchingDomain = projDomains.find((d) => d.serviceId === svc.id);
-		if (matchingDomain) {
-			const domNode = nodes.find((n) => n.id === `dom-${matchingDomain.id}`);
-			if (domNode) {
-				edges.push({
-					id: `edge-${domNode.id}-${svcNode.id}`,
-					sourceId: domNode.id,
-					targetId: svcNode.id,
-					sourceX: domNode.x + domNode.width,
-					sourceY: domNode.y + domNode.height / 2,
-					targetX: svcNode.x,
-					targetY: svcNode.y + svcNode.height / 2,
-					path: createOrthogonalPath(
-						domNode.x + domNode.width,
-						domNode.y + domNode.height / 2,
-						svcNode.x,
-						svcNode.y + svcNode.height / 2
-					),
-					label: `:${svc.port}`
-				});
-			}
+		// Check if this service is in a Pod, or represents a Pod
+		const matchingPod =
+			projPods.find((p) => p.projectId === project.id && p.name.includes(svc.name)) ||
+			(svc.runtimeTarget === 'pod'
+				? { id: `pod-${svc.id}`, name: `${svc.name}-pod`, status: svc.status }
+				: null);
+
+		if (matchingPod) {
+			const podRegion: TopologyRegion = {
+				id: `region-pod-${matchingPod.id}`,
+				type: 'pod',
+				label: matchingPod.name,
+				sublabel: `${containerCount} containers · localhost`,
+				x: colRuntimeX - 10,
+				y: Math.round(currentY - 8),
+				width: 270,
+				height: Math.round(blockHeight + 16),
+				projectId: project.id,
+				status: matchingPod.status,
+				raw: matchingPod
+			};
+			regions.push(podRegion);
 		}
 
-		serviceY += NODE_HEIGHT + itemGap;
+		// Position Container Nodes directly alongside the Service Node
+		const containerStartY = currentY + (blockHeight - clusterHeight) / 2;
+		workloadItems.forEach((w, idx) => {
+			const contY = Math.round(containerStartY + idx * (containerCardHeight + containerGap));
+			const contNode: TopologyNode = {
+				id: w.id,
+				type: 'container',
+				title: w.name,
+				subtitle: w.image,
+				status: w.status,
+				x: colRuntimeX,
+				y: contY,
+				width: 250,
+				height: containerCardHeight,
+				monoDetail: `${(w.cpu || 0).toFixed(1)}% · ${w.memory || 0}MB`,
+				badge: svc.type === 'compose' ? 'Compose' : svc.type === 'quadlet' ? 'Quadlet' : 'Container',
+				projectId: project.id,
+				serviceId: svc.id,
+				raw: w.raw
+			};
+			nodes.push(contNode);
+			containerNodeMap.set(w.name, contNode);
+			containerNodeMap.set(w.id, contNode);
+
+			// Connect Service -> Container with smooth Bézier curve
+			edges.push({
+				id: `edge-${svcNode.id}-${contNode.id}`,
+				sourceId: svcNode.id,
+				targetId: contNode.id,
+				sourceX: svcNode.x + svcNode.width,
+				sourceY: svcNode.y + svcNode.height / 2,
+				targetX: contNode.x,
+				targetY: contNode.y + contNode.height / 2,
+				path: createCurvedBezierPath(
+					svcNode.x + svcNode.width,
+					svcNode.y + svcNode.height / 2,
+					contNode.x,
+					contNode.y + contNode.height / 2
+				),
+				label: svc.type === 'quadlet' ? 'systemd' : undefined,
+				kind: svc.type === 'database' ? 'database' : 'workload'
+			});
+		});
+
+		// Advance Y cleanly for the next service block
+		currentY += blockHeight + itemGap;
 	});
 
-	// ── 3. Runtime Layer: Pod Territories + Quadlet Units + Containers ──
-	let runtimeY = startY;
-	const handledContainerIds = new Set<string>();
-	const handledServiceIds = new Set<string>();
-
-	// Process Pods
-	projPods.forEach((pod) => {
-		const podContainers = projContainers.filter(
-			(c) => pod.containers.includes(c.name) || pod.containers.includes(c.id)
-		);
-
-		const podInternalPadding = 20;
-		const podHeaderHeight = 52;
-		const containerCardHeight = 62;
-		const containerCardGap = 12;
-
-		const podHeight =
-			podHeaderHeight +
-			Math.max(1, podContainers.length) * containerCardHeight +
-			Math.max(0, podContainers.length - 1) * containerCardGap +
-			podInternalPadding;
-		const podWidth = 290;
-
-		const podRegion: TopologyRegion = {
-			id: `region-pod-${pod.id}`,
-			type: 'pod',
-			label: pod.name,
-			sublabel: `${podContainers.length} containers · localhost`,
-			x: colRuntimeX,
-			y: runtimeY,
-			width: podWidth,
-			height: podHeight,
-			projectId: project.id,
-			status: pod.status,
-			raw: pod
-		};
-		regions.push(podRegion);
-
-		let containerInsideY = runtimeY + podHeaderHeight;
-		podContainers.forEach((c) => {
-			handledContainerIds.add(c.id);
-			if (c.serviceId) handledServiceIds.add(c.serviceId);
-
-			const containerNode: TopologyNode = {
+	// If project has standalone containers not bound to any service
+	const standaloneContainers = projContainers.filter((c) => !handledContainerIds.has(c.id));
+	if (standaloneContainers.length > 0) {
+		standaloneContainers.forEach((c) => {
+			const contNode: TopologyNode = {
 				id: `container-${c.id}`,
 				type: 'container',
 				title: c.name,
 				subtitle: c.image.split('/').pop() || c.image,
 				status: c.status,
-				x: colRuntimeX + 16,
-				y: containerInsideY,
-				width: podWidth - 32,
-				height: containerCardHeight,
+				x: colRuntimeX,
+				y: Math.round(currentY),
+				width: 250,
+				height: COMPACT_NODE_HEIGHT,
 				monoDetail: `${c.cpu.toFixed(1)}% · ${c.memory}MB`,
-				badge: 'Container',
+				badge: 'Standalone',
 				projectId: project.id,
-				serviceId: c.serviceId,
-				podId: pod.id,
 				raw: c
 			};
-			nodes.push(containerNode);
-
-			if (c.serviceId) {
-				const parentServiceNode = nodes.find((n) => n.id === `svc-${c.serviceId}`);
-				if (parentServiceNode) {
-					edges.push({
-						id: `edge-${parentServiceNode.id}-${containerNode.id}`,
-						sourceId: parentServiceNode.id,
-						targetId: containerNode.id,
-						sourceX: parentServiceNode.x + parentServiceNode.width,
-						sourceY: parentServiceNode.y + parentServiceNode.height / 2,
-						targetX: containerNode.x,
-						targetY: containerNode.y + containerNode.height / 2,
-						path: createOrthogonalPath(
-							parentServiceNode.x + parentServiceNode.width,
-							parentServiceNode.y + parentServiceNode.height / 2,
-							containerNode.x,
-							containerNode.y + containerNode.height / 2
-						)
-					});
-				}
-			}
-
-			containerInsideY += containerCardHeight + containerCardGap;
+			nodes.push(contNode);
+			containerNodeMap.set(c.name, contNode);
+			currentY += COMPACT_NODE_HEIGHT + itemGap;
 		});
+	}
 
-		runtimeY += podHeight + itemGap + 10;
-	});
+	// Calculate overall vertical center of services to balance Ingress & Gateway
+	const totalServicesHeight = Math.max(NODE_HEIGHT, currentY - startY);
+	const gatewayCenterY = Math.round(startY + (totalServicesHeight - NODE_HEIGHT) / 2);
 
-	// Standalone Containers in projContainers (not in any Pod)
-	const standaloneContainers = projContainers.filter((c) => !handledContainerIds.has(c.id));
-	standaloneContainers.forEach((c) => {
-		if (c.serviceId) handledServiceIds.add(c.serviceId);
+	// ── 2. Layout Tier 2: Caddy Ingress Gateway ──
+	const caddyNode: TopologyNode = {
+		id: 'caddy-gateway',
+		type: 'proxy',
+		title: 'Caddy Ingress',
+		subtitle: 'Reverse Proxy & TLS Termination',
+		status: 'active',
+		x: colGatewayX,
+		y: gatewayCenterY,
+		width: 220,
+		height: NODE_HEIGHT,
+		monoDetail: 'ports 80, 443',
+		badge: 'Caddy Gateway',
+		raw: { server, domainsCount: projDomains.length }
+	};
+	nodes.push(caddyNode);
 
-		const containerNode: TopologyNode = {
-			id: `container-${c.id}`,
-			type: 'container',
-			title: c.name,
-			subtitle: c.image.split('/').pop() || c.image,
-			status: c.status,
-			x: colRuntimeX,
-			y: runtimeY,
-			width: 250,
-			height: NODE_HEIGHT,
-			monoDetail: `${c.cpu.toFixed(1)}% · ${c.memory}MB`,
-			badge: 'Standalone',
-			projectId: project.id,
-			serviceId: c.serviceId,
-			raw: c
-		};
-		nodes.push(containerNode);
-
-		if (c.serviceId) {
-			const parentServiceNode = nodes.find((n) => n.id === `svc-${c.serviceId}`);
-			if (parentServiceNode) {
-				edges.push({
-					id: `edge-${parentServiceNode.id}-${containerNode.id}`,
-					sourceId: parentServiceNode.id,
-					targetId: containerNode.id,
-					sourceX: parentServiceNode.x + parentServiceNode.width,
-					sourceY: parentServiceNode.y + parentServiceNode.height / 2,
-					targetX: containerNode.x,
-					targetY: containerNode.y + containerNode.height / 2,
-					path: createOrthogonalPath(
-						parentServiceNode.x + parentServiceNode.width,
-						parentServiceNode.y + parentServiceNode.height / 2,
-						containerNode.x,
-						containerNode.y + containerNode.height / 2
-					)
-				});
-			}
-		}
-
-		runtimeY += NODE_HEIGHT + itemGap;
-	});
-
-	// Remaining services (Quadlets, Compose stacks, apps)
+	// Connect Caddy Gateway -> All Services (Reverse Proxy Upstream Routing)
 	projServices.forEach((svc) => {
-		if (handledServiceIds.has(svc.id)) return;
+		const svcNode = serviceNodeMap.get(svc.id);
+		if (!svcNode) return;
 
-		if (svc.type === 'quadlet') {
-			const quadletNode: TopologyNode = {
-				id: `runtime-quadlet-${svc.id}`,
-				type: 'container',
-				title: `${svc.name}.service`,
-				subtitle: `Systemd · ${svc.source || svc.name + '.container'}`,
-				status: svc.status,
-				x: colRuntimeX,
-				y: runtimeY,
-				width: 250,
-				height: NODE_HEIGHT,
-				monoDetail: `${svc.cpu ? svc.cpu.toFixed(1) + '%' : '0.4%'} · ${svc.memory ? svc.memory + 'MB' : '128MB'}`,
-				badge: 'Quadlet',
-				projectId: project.id,
-				serviceId: svc.id,
-				raw: { ...svc, isQuadlet: true }
-			};
-			nodes.push(quadletNode);
-
-			const parentServiceNode = nodes.find((n) => n.id === `svc-${svc.id}`);
-			if (parentServiceNode) {
-				edges.push({
-					id: `edge-${parentServiceNode.id}-${quadletNode.id}`,
-					sourceId: parentServiceNode.id,
-					targetId: quadletNode.id,
-					sourceX: parentServiceNode.x + parentServiceNode.width,
-					sourceY: parentServiceNode.y + parentServiceNode.height / 2,
-					targetX: quadletNode.x,
-					targetY: quadletNode.y + quadletNode.height / 2,
-					path: createOrthogonalPath(
-						parentServiceNode.x + parentServiceNode.width,
-						parentServiceNode.y + parentServiceNode.height / 2,
-						quadletNode.x,
-						quadletNode.y + quadletNode.height / 2
-					),
-					label: 'systemd'
-				});
-			}
-
-			runtimeY += NODE_HEIGHT + itemGap;
-			handledServiceIds.add(svc.id);
-		} else if (svc.workloads && svc.workloads.length > 0) {
-			svc.workloads.forEach((wl: any) => {
-				const wlNode: TopologyNode = {
-					id: `workload-${svc.id}-${wl.name}`,
-					type: 'container',
-					title: wl.name,
-					subtitle: wl.image,
-					status: wl.status || svc.status,
-					x: colRuntimeX,
-					y: runtimeY,
-					width: 250,
-					height: COMPACT_NODE_HEIGHT,
-					monoDetail: `${wl.cpu || 0}% · ${wl.memory || 0}MB`,
-					badge: 'Compose',
-					projectId: project.id,
-					serviceId: svc.id,
-					raw: wl
-				};
-				nodes.push(wlNode);
-
-				const parentServiceNode = nodes.find((n) => n.id === `svc-${svc.id}`);
-				if (parentServiceNode) {
-					edges.push({
-						id: `edge-${parentServiceNode.id}-${wlNode.id}`,
-						sourceId: parentServiceNode.id,
-						targetId: wlNode.id,
-						sourceX: parentServiceNode.x + parentServiceNode.width,
-						sourceY: parentServiceNode.y + parentServiceNode.height / 2,
-						targetX: wlNode.x,
-						targetY: wlNode.y + wlNode.height / 2,
-						path: createOrthogonalPath(
-							parentServiceNode.x + parentServiceNode.width,
-							parentServiceNode.y + parentServiceNode.height / 2,
-							wlNode.x,
-							wlNode.y + wlNode.height / 2
-						)
-					});
-				}
-				runtimeY += COMPACT_NODE_HEIGHT + itemGap;
-			});
-			handledServiceIds.add(svc.id);
-		} else {
-			const autoNode: TopologyNode = {
-				id: `runtime-auto-${svc.id}`,
-				type: 'container',
-				title: svc.name,
-				subtitle: svc.image || (svc.type === 'application' ? 'app:latest' : 'container:latest'),
-				status: svc.status,
-				x: colRuntimeX,
-				y: runtimeY,
-				width: 250,
-				height: NODE_HEIGHT,
-				monoDetail: `${svc.cpu ? svc.cpu.toFixed(1) + '%' : '0.0%'} · ${svc.memory ? svc.memory + 'MB' : '0MB'}`,
-				badge: svc.type === 'database' ? 'Database' : 'Container',
-				projectId: project.id,
-				serviceId: svc.id,
-				raw: svc
-			};
-			nodes.push(autoNode);
-
-			const parentServiceNode = nodes.find((n) => n.id === `svc-${svc.id}`);
-			if (parentServiceNode) {
-				edges.push({
-					id: `edge-${parentServiceNode.id}-${autoNode.id}`,
-					sourceId: parentServiceNode.id,
-					targetId: autoNode.id,
-					sourceX: parentServiceNode.x + parentServiceNode.width,
-					sourceY: parentServiceNode.y + parentServiceNode.height / 2,
-					targetX: autoNode.x,
-					targetY: autoNode.y + autoNode.height / 2,
-					path: createOrthogonalPath(
-						parentServiceNode.x + parentServiceNode.width,
-						parentServiceNode.y + parentServiceNode.height / 2,
-						autoNode.x,
-						autoNode.y + autoNode.height / 2
-					)
-				});
-			}
-			runtimeY += NODE_HEIGHT + itemGap;
-			handledServiceIds.add(svc.id);
-		}
+		edges.push({
+			id: `edge-caddy-${svcNode.id}`,
+			sourceId: caddyNode.id,
+			targetId: svcNode.id,
+			sourceX: caddyNode.x + caddyNode.width,
+			sourceY: caddyNode.y + caddyNode.height / 2,
+			targetX: svcNode.x,
+			targetY: svcNode.y + svcNode.height / 2,
+			path: createCurvedBezierPath(
+				caddyNode.x + caddyNode.width,
+				caddyNode.y + caddyNode.height / 2,
+				svcNode.x,
+				svcNode.y + svcNode.height / 2
+			),
+			label: svc.port ? `:${svc.port}` : ':80',
+			kind: 'ingress'
+		});
 	});
 
-	// ── 4. Storage (Volumes) & Network ──
-	let storageY = startY;
+	// ── 3. Layout Tier 1: Ingress & WAN Entrypoints ──
+	if (projDomains.length > 0) {
+		// Stack Domains vertically around the Gateway Center
+		const domainClusterHeight =
+			projDomains.length * NODE_HEIGHT + Math.max(0, projDomains.length - 1) * 16;
+		let domainStartY = Math.max(startY, Math.round(gatewayCenterY + (NODE_HEIGHT - domainClusterHeight) / 2));
 
+		projDomains.forEach((dom) => {
+			const domNode: TopologyNode = {
+				id: `dom-${dom.id}`,
+				type: 'domain',
+				title: dom.hostname,
+				subtitle: dom.tls ? 'Let’s Encrypt TLS' : 'HTTP Only',
+				status: dom.status === 'active' ? 'running' : 'degraded',
+				x: colIngressX,
+				y: domainStartY,
+				width: 220,
+				height: NODE_HEIGHT,
+				monoDetail: `proxy :${dom.proxyPort || dom.containerPort}`,
+				badge: 'Domain',
+				projectId: project.id,
+				serviceId: dom.serviceId,
+				raw: dom
+			};
+			nodes.push(domNode);
+
+			// Connect Domain -> Caddy Gateway
+			edges.push({
+				id: `edge-dom-${dom.id}-caddy`,
+				sourceId: domNode.id,
+				targetId: caddyNode.id,
+				sourceX: domNode.x + domNode.width,
+				sourceY: domNode.y + domNode.height / 2,
+				targetX: caddyNode.x,
+				targetY: caddyNode.y + caddyNode.height / 2,
+				path: createCurvedBezierPath(
+					domNode.x + domNode.width,
+					domNode.y + domNode.height / 2,
+					caddyNode.x,
+					caddyNode.y + caddyNode.height / 2
+				),
+				label: dom.tls ? 'TLS' : 'HTTP',
+				kind: 'ingress'
+			});
+
+			domainStartY += NODE_HEIGHT + 16;
+		});
+	} else {
+		// Default Public WAN Entrypoint if no custom domains are yet assigned
+		const internetNode: TopologyNode = {
+			id: 'ingress-internet-project',
+			type: 'internet',
+			title: 'Public Internet',
+			subtitle: 'IPv4 / IPv6 Client Ingress',
+			status: 'active',
+			x: colIngressX,
+			y: gatewayCenterY,
+			width: 220,
+			height: NODE_HEIGHT,
+			monoDetail: server?.ip ? `${server.ip}` : '0.0.0.0/0',
+			badge: 'WAN Ingress',
+			raw: { ip: server?.ip || '0.0.0.0/0' }
+		};
+		nodes.push(internetNode);
+
+		// Connect Internet -> Caddy Gateway
+		edges.push({
+			id: 'edge-internet-caddy-proj',
+			sourceId: internetNode.id,
+			targetId: caddyNode.id,
+			sourceX: internetNode.x + internetNode.width,
+			sourceY: internetNode.y + internetNode.height / 2,
+			targetX: caddyNode.x,
+			targetY: caddyNode.y + caddyNode.height / 2,
+			path: createCurvedBezierPath(
+				internetNode.x + internetNode.width,
+				internetNode.y + internetNode.height / 2,
+				caddyNode.x,
+				caddyNode.y + caddyNode.height / 2
+			),
+			label: 'HTTPS',
+			kind: 'ingress'
+		});
+	}
+
+	// ── 4. Layout Tier 5: Storage & Volumes ──
+	let storageY = startY;
 	projVolumes.forEach((vol) => {
 		const volNode: TopologyNode = {
 			id: `vol-${vol.id}`,
 			type: 'volume',
 			title: vol.name,
-			subtitle: `Mount: ${vol.mount}`,
-			status: vol.status === 'mounted' ? 'running' : 'stopped',
+			subtitle: `Mount: ${vol.mount || 'local'}`,
+			status: 'active',
 			x: colStorageX,
-			y: storageY,
+			y: Math.round(storageY),
 			width: 210,
-			height: NODE_HEIGHT,
-			monoDetail: vol.size,
+			height: COMPACT_NODE_HEIGHT,
+			monoDetail: vol.size || 'Persistent',
 			badge: 'Volume',
 			projectId: project.id,
 			serviceId: vol.serviceId,
@@ -424,12 +426,18 @@ export function computeProjectFocusLayout({
 		};
 		nodes.push(volNode);
 
-		const relatedContainer = nodes.find(
-			(n) =>
-				n.type === 'container' &&
-				(n.serviceId === vol.serviceId || n.title.includes(vol.serviceName))
-		);
-		const relatedSource = relatedContainer || nodes.find((n) => n.id === `svc-${vol.serviceId}`);
+		// Find related container/workload to connect
+		let relatedSource: TopologyNode | undefined;
+		if (vol.serviceId) {
+			relatedSource =
+				Array.from(containerNodeMap.values()).find((n) => n.serviceId === vol.serviceId) ||
+				serviceNodeMap.get(vol.serviceId);
+		} else {
+			relatedSource = Array.from(containerNodeMap.values()).find((n) =>
+				n.title.toLowerCase().includes(vol.name.toLowerCase())
+			);
+		}
+
 		if (relatedSource) {
 			edges.push({
 				id: `edge-${relatedSource.id}-${volNode.id}`,
@@ -439,17 +447,19 @@ export function computeProjectFocusLayout({
 				sourceY: relatedSource.y + relatedSource.height / 2,
 				targetX: volNode.x,
 				targetY: volNode.y + volNode.height / 2,
-				path: createOrthogonalPath(
+				path: createCurvedBezierPath(
 					relatedSource.x + relatedSource.width,
 					relatedSource.y + relatedSource.height / 2,
 					volNode.x,
 					volNode.y + volNode.height / 2
 				),
-				dashed: true
+				dashed: true,
+				label: 'mount',
+				kind: 'storage'
 			});
 		}
 
-		storageY += NODE_HEIGHT + itemGap;
+		storageY += COMPACT_NODE_HEIGHT + itemGap;
 	});
 
 	if (projNetwork) {
@@ -460,16 +470,15 @@ export function computeProjectFocusLayout({
 			subtitle: `Driver: ${projNetwork.driver}`,
 			status: 'active',
 			x: colStorageX,
-			y: storageY,
+			y: Math.round(storageY),
 			width: 210,
-			height: NODE_HEIGHT,
+			height: COMPACT_NODE_HEIGHT,
 			monoDetail: projNetwork.subnet,
 			badge: 'Network',
 			projectId: project.id,
 			raw: projNetwork
 		};
 		nodes.push(netNode);
-		storageY += NODE_HEIGHT + itemGap;
 	}
 
 	const bounds = computeBounds(nodes, regions);

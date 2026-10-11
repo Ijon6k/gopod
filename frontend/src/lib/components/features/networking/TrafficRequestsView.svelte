@@ -1,6 +1,15 @@
 <script lang="ts">
 	import { accessLogs, domains } from '$lib/data';
-	import { Button } from '$lib/components/primitives';
+	import { Button, Select, SearchInput } from '$lib/components/ui';
+	import {
+		LayerCard,
+		Table,
+		TableHeader,
+		TableHead,
+		TableBody,
+		TableRow,
+		TableCell
+	} from 'kumo-svelte';
 	import type { CaddyAccessLog } from '$lib/types';
 	import {
 		Pulse,
@@ -279,54 +288,64 @@
 	<div class="flex flex-col items-stretch justify-between gap-2.5 sm:flex-row sm:items-center">
 		<div class="flex flex-1 flex-wrap items-center gap-2">
 			<!-- Search query -->
-			<div class="relative max-w-xs min-w-[200px] flex-1">
-				<MagnifyingGlass
-					size={13}
-					class="absolute top-1/2 left-2.5 -translate-y-1/2 text-[var(--text-tertiary)]"
-				/>
-				<input
-					type="text"
+			<div class="w-full sm:w-64">
+				<SearchInput
 					bind:value={searchQuery}
 					placeholder="Filter path, IP, hostname..."
-					class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-shell)] py-1.5 pr-3 pl-7 text-xs text-[var(--text-primary)] outline-none focus:border-[var(--accent)]"
 				/>
 			</div>
 
 			<!-- Host select -->
-			<select
-				bind:value={selectedHost}
-				class="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-shell)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] outline-none"
-			>
-				<option value="all">All Hostnames</option>
-				{#each uniqueHosts.filter((h) => h !== 'all') as h}
-					<option value={h}>{h}</option>
-				{/each}
-			</select>
+			<div class="w-40">
+				<Select
+					value={selectedHost}
+					onValueChange={(val) => {
+						if (typeof val === 'string') selectedHost = val;
+					}}
+					options={[
+						{ label: 'All Hostnames', value: 'all' },
+						...uniqueHosts.filter((h) => h !== 'all').map((h) => ({ label: h, value: h }))
+					]}
+					size="sm"
+				/>
+			</div>
 
 			<!-- Status category -->
-			<select
-				bind:value={selectedStatusGroup}
-				class="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-shell)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] outline-none"
-			>
-				<option value="all">All Statuses</option>
-				<option value="2xx">2xx Success</option>
-				<option value="3xx">3xx Redirect</option>
-				<option value="4xx">4xx Client Error</option>
-				<option value="5xx">5xx Server Error</option>
-			</select>
+			<div class="w-36">
+				<Select
+					value={selectedStatusGroup}
+					onValueChange={(val) => {
+						if (typeof val === 'string') selectedStatusGroup = val as any;
+					}}
+					options={[
+						{ label: 'All Statuses', value: 'all' },
+						{ label: '2xx Success', value: '2xx' },
+						{ label: '3xx Redirect', value: '3xx' },
+						{ label: '4xx Client Error', value: '4xx' },
+						{ label: '5xx Server Error', value: '5xx' }
+					]}
+					size="sm"
+				/>
+			</div>
 
 			<!-- Method select -->
-			<select
-				bind:value={selectedMethod}
-				class="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-shell)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] outline-none"
-			>
-				<option value="all">All Methods</option>
-				<option value="GET">GET</option>
-				<option value="POST">POST</option>
-				<option value="PUT">PUT</option>
-				<option value="DELETE">DELETE</option>
-				<option value="OPTIONS">OPTIONS</option>
-			</select>
+			<div class="w-32">
+				<Select
+					value={selectedMethod}
+					onValueChange={(val) => {
+						if (typeof val === 'string') selectedMethod = val;
+					}}
+					options={[
+						{ label: 'All Methods', value: 'all' },
+						{ label: 'GET', value: 'GET' },
+						{ label: 'POST', value: 'POST' },
+						{ label: 'PUT', value: 'PUT' },
+						{ label: 'DELETE', value: 'DELETE' },
+						{ label: 'OPTIONS', value: 'OPTIONS' }
+					]}
+					size="sm"
+				/>
+			</div>
 
 			{#if searchQuery || selectedHost !== 'all' || selectedStatusGroup !== 'all' || selectedMethod !== 'all'}
 				<button
@@ -374,15 +393,21 @@
 				</span>
 			</div>
 			<div class="flex items-center gap-2">
-				<select
-					bind:value={retentionDays}
-					class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-1 text-xs text-[var(--text-primary)]"
-				>
-					<option value={3}>3 Days</option>
-					<option value={7}>7 Days (Recommended)</option>
-					<option value={14}>14 Days</option>
-					<option value={30}>30 Days</option>
-				</select>
+				<div class="w-44">
+					<Select
+						value={retentionDays}
+						onValueChange={(val) => {
+							if (typeof val === 'number') retentionDays = val;
+						}}
+						options={[
+							{ label: '3 Days', value: 3 },
+							{ label: '7 Days (Recommended)', value: 7 },
+							{ label: '14 Days', value: 14 },
+							{ label: '30 Days', value: 30 }
+						]}
+						size="sm"
+					/>
+				</div>
 				<Button variant="secondary" size="sm" onclick={() => (isRetentionModalOpen = false)}>
 					Apply
 				</Button>
@@ -391,43 +416,33 @@
 	{/if}
 
 	<!-- 4. Real Structured Access Logs Table (Clean Table Standards) -->
-	<div
-		class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)]"
-	>
+	<LayerCard class="overflow-hidden p-0">
 		<!-- Table Container with desktop sticky preservation -->
 		<div class="w-full overflow-x-auto md:overflow-x-visible">
-			<table class="w-full border-collapse text-left text-xs">
-				<thead
-					class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
-				>
-					<tr>
-						<th
-							class="px-3.5 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-							>Status</th
-						>
-						<th
-							class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-							>Method</th
-						>
-						<th
-							class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-							>Request URI & Host</th
-						>
-						<th
-							class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-							>Upstream Latency</th
-						>
-						<th
-							class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-							>Client IP</th
-						>
-						<th
-							class="px-3.5 py-2.5 text-right text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-							>Time</th
-						>
-					</tr>
-				</thead>
-				<tbody class="divide-y divide-[var(--border-subtle)]">
+			<Table class="w-full text-left text-xs">
+				<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+					<TableRow>
+						<TableHead class="px-3.5 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							Status
+						</TableHead>
+						<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							Method
+						</TableHead>
+						<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							Request URI & host
+						</TableHead>
+						<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							Upstream latency
+						</TableHead>
+						<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							Client IP
+						</TableHead>
+						<TableHead class="px-3.5 py-2.5 text-right text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							Time
+						</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody class="divide-y divide-[var(--border-subtle)]">
 					{#if filteredLogs.length === 0}
 						<tr>
 							<td colspan="6" class="py-12 text-center text-xs text-[var(--text-tertiary)]">
@@ -502,16 +517,16 @@
 							</tr>
 						{/each}
 					{/if}
-				</tbody>
-			</table>
+				</TableBody>
+			</Table>
 		</div>
 
 		<!-- Table Footer -->
 		<div
-			class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
+			class="flex items-center justify-between border-t border-kumo-line bg-kumo-base px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
 		>
 			<span>Showing {filteredLogs.length} of {accessLogs.length} recent requests</span>
 			<span class="font-mono text-[11px]">Stream: Caddy /var/log/caddy/access.log</span>
 		</div>
-	</div>
+	</LayerCard>
 </div>

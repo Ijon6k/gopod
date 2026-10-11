@@ -1,9 +1,21 @@
 <script lang="ts">
 	import { dataStore } from '$lib/stores/data.svelte';
-	import { Button } from '$lib/components/primitives';
+	import * as echarts from 'echarts';
+	import {
+		Button,
+		Chart,
+		Meter,
+		LayerCard,
+		Table,
+		TableHeader,
+		TableHead,
+		TableBody,
+		TableRow,
+		TableCell
+	} from '$lib/components/ui';
 	import PruneStorageModal from './PruneStorageModal.svelte';
 	import { api } from '$lib/api';
-	import type { SystemDiskUsage } from '$lib/api/system';
+	import type { SystemDiskUsage } from '$lib/types';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import {
@@ -131,9 +143,55 @@
 
 	let totalPodmanNum = $derived(storageCategories.reduce((acc, c) => acc + c.sizeGB, 0));
 
-	// Donut SVG parameters
+	// Donut SVG & ECharts parameters
 	const donutRadius = 65;
 	const donutCircumference = 2 * Math.PI * donutRadius; // ~408.4
+
+	let echartOptions = $derived({
+		tooltip: {
+			trigger: 'item' as const,
+			backgroundColor: '#18181b',
+			borderColor: '#27272a',
+			textStyle: { color: '#f4f4f5', fontSize: 12 },
+			dangerousHtmlFormatter: '{b}: {c} GB ({d}%)'
+		},
+		series: [
+			{
+				name: 'Podman Storage',
+				type: 'pie' as const,
+				radius: ['64%', '88%'],
+				center: ['50%', '50%'],
+				avoidLabelOverlap: false,
+				itemStyle: {
+					borderRadius: 4,
+					borderColor: '#13171f',
+					borderWidth: 2
+				},
+				label: { show: false },
+				emphasis: {
+					scale: true,
+					scaleSize: 4
+				},
+				data: [
+					{
+						value: storageCategories[0]?.sizeGB || 0,
+						name: 'Images',
+						itemStyle: { color: '#f6821f' }
+					},
+					{
+						value: storageCategories[1]?.sizeGB || 0,
+						name: 'Volumes',
+						itemStyle: { color: '#38bdf8' }
+					},
+					{
+						value: storageCategories[2]?.sizeGB || 0,
+						name: 'Containers',
+						itemStyle: { color: '#4ade80' }
+					}
+				]
+			}
+		]
+	});
 
 	let donutSegments = $derived.by(() => {
 		const total = totalPodmanNum > 0 ? totalPodmanNum : 1;
@@ -215,9 +273,7 @@
 	{/if}
 
 	<!-- Master Storage Allocation Panel with Toggleable Donut & Bar Views -->
-	<div
-		class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
-	>
+	<LayerCard class="overflow-hidden p-0">
 		<!-- Header with Title, Toggle, and Actions -->
 		<div
 			class="flex flex-col justify-between gap-4 border-b border-[var(--border)] p-5 sm:flex-row sm:items-center"
@@ -283,37 +339,15 @@
 			{#if chartMode === 'donut'}
 				<!-- DONUT CHART VIEW -->
 				<div class="flex flex-col items-center justify-around gap-6 md:flex-row">
-					<!-- SVG Donut -->
-					<div class="relative h-[190px] w-[190px] shrink-0">
-						<svg width="190" height="190" viewBox="0 0 190 190" class="overflow-visible">
-							<!-- Background Track -->
-							<circle
-								cx="95"
-								cy="95"
-								r={donutRadius}
-								fill="transparent"
-								stroke="var(--bg-surface)"
-								stroke-width="20"
-							/>
-							<!-- Segments with rotate(-90) to start from top -->
-							<g transform="rotate(-90 95 95)">
-								{#each donutSegments as seg}
-									{#if seg.sizeGB > 0}
-										<circle
-											cx="95"
-											cy="95"
-											r={donutRadius}
-											fill="transparent"
-											stroke={seg.strokeColor}
-											stroke-width="20"
-											stroke-dasharray="{seg.dash} {seg.gap}"
-											stroke-dashoffset={seg.offset}
-											class="transition-all duration-700"
-										/>
-									{/if}
-								{/each}
-							</g>
-						</svg>
+					<!-- Native Kumo ECharts Donut -->
+					<div class="relative flex h-[210px] w-[210px] shrink-0 items-center justify-center">
+						<Chart
+							{echarts}
+							options={echartOptions}
+							isDarkMode={true}
+							height={210}
+							class="h-[210px] w-[210px]"
+						/>
 
 						<!-- Donut Center Label -->
 						<div
@@ -375,17 +409,24 @@
 					</div>
 				</div>
 			{:else}
-				<!-- HORIZONTAL BAR VIEW -->
+				<!-- HORIZONTAL ALLOCATION VIEW VIA KUMO METERS -->
 				<div class="flex flex-col gap-4">
-					<div class="flex h-3 w-full overflow-hidden rounded-full bg-[var(--bg-surface)]">
+					<div class="flex flex-col gap-3">
 						{#each storageCategories as cat}
-							{#if cat.sizeGB > 0}
-								<div
-									class="h-full {cat.colorClass} transition-all duration-500"
-									style="width: {(cat.sizeGB / (totalPodmanNum || 1)) * 100}%;"
-									title="{cat.name}: {cat.sizeDisplay}"
-								></div>
-							{/if}
+							{@const pct = Math.round((cat.sizeGB / (totalPodmanNum || 1)) * 100)}
+							<div class="flex flex-col gap-1.5">
+								<div class="flex items-center justify-between text-xs">
+									<div class="flex items-center gap-2">
+										<span class="h-2 w-2 rounded-full {cat.colorClass}"></span>
+										<span class="font-medium text-[var(--text-primary)]">{cat.name}</span>
+									</div>
+									<div class="flex items-center gap-2 font-mono text-[11px]">
+										<span class="font-bold text-[var(--text-primary)]">{cat.sizeDisplay}</span>
+										<span class="text-[var(--text-tertiary)]">({pct}%)</span>
+									</div>
+								</div>
+								<Meter value={pct} max={100} label={cat.name} size="sm" class="w-full" />
+							</div>
 						{/each}
 					</div>
 
@@ -412,71 +453,71 @@
 		</div>
 
 		<!-- Clean Subsystem Table (UI Standards Parity) -->
-		<div class="overflow-x-auto border-t border-[var(--border)]">
-			<table class="w-full border-collapse text-left text-xs">
-				<thead>
-					<tr
-						class="border-b border-[var(--border)] bg-[var(--bg-table-header)] text-[11px] font-medium text-[var(--text-tertiary)]"
+		<div class="overflow-x-auto border-t border-kumo-line">
+			<Table class="w-full text-left text-xs">
+				<TableHeader>
+					<TableRow
+						class="border-b border-kumo-line bg-kumo-base text-[11px] font-medium text-kumo-subtle"
 					>
-						<th class="px-5 py-2.5 font-medium">Subsystem</th>
-						<th class="px-4 py-2.5 font-medium">Artifacts</th>
-						<th class="px-4 py-2.5 font-medium">Allocated Size</th>
-						<th class="px-4 py-2.5 font-medium">Reclaimable</th>
-						<th class="px-5 py-2.5 text-right font-medium">Quick Action</th>
-					</tr>
-				</thead>
-				<tbody class="divide-y divide-[var(--border-subtle)]">
+						<TableHead class="px-5 py-3 font-medium">Subsystem</TableHead>
+						<TableHead class="px-4 py-3 font-medium">Artifacts</TableHead>
+						<TableHead class="px-4 py-3 font-medium">Allocated Size</TableHead>
+						<TableHead class="px-4 py-3 font-medium">Reclaimable</TableHead>
+						<TableHead class="px-5 py-3 text-right font-medium">Quick Action</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody class="divide-y divide-kumo-hairline">
 					{#each storageCategories as cat, idx}
 						{@const Icon = cat.icon}
-						<tr
-							class="transition-colors hover:bg-[var(--bg-table-row-hover)] {idx % 2 === 1
-								? 'bg-[var(--bg-table-row-alt)]'
-								: 'bg-[var(--bg-table-row)]'}"
+						<TableRow
+							class="transition-colors hover:bg-kumo-fill {idx % 2 === 1
+								? 'bg-kumo-elevated'
+								: 'bg-kumo-base'}"
 						>
 							<!-- Subsystem -->
-							<td class="px-5 py-3">
+							<TableCell class="px-5 py-3">
 								<div class="flex items-center gap-2.5">
 									<span class="text-[var(--accent)]">
 										<Icon size={15} />
 									</span>
-									<span class="font-medium text-[var(--text-primary)]">
+									<span class="font-medium text-kumo-default">
 										{cat.name}
 									</span>
 								</div>
-							</td>
+							</TableCell>
 
 							<!-- Artifacts Count & Status -->
-							<td class="px-4 py-3 text-[var(--text-secondary)]">
-								<span class="font-mono font-medium text-[var(--text-primary)]"
+							<TableCell class="px-4 py-3 text-kumo-subtle">
+								<span class="font-mono font-medium text-kumo-default"
 									>{cat.totalCount}</span
 								>
-								<span class="ml-1 text-[11px] text-[var(--text-tertiary)]">
+								<span class="ml-1 text-[11px] text-kumo-subtle">
 									({cat.activeText} · {cat.inactiveText})
 								</span>
-							</td>
+							</TableCell>
 
 							<!-- Size -->
-							<td class="px-4 py-3 font-mono font-bold text-[var(--text-primary)]">
+							<TableCell class="px-4 py-3 font-mono font-bold text-kumo-default">
 								{cat.sizeDisplay}
-							</td>
+							</TableCell>
 
 							<!-- Reclaimable -->
-							<td class="px-4 py-3">
+							<TableCell class="px-4 py-3">
 								{#if cat.reclaimableDisplay && cat.reclaimableDisplay !== '0 B' && cat.reclaimableDisplay !== '0B (0%)'}
 									<span
 										class="font-mono text-[11.5px] font-medium {cat.id === 'volumes'
 											? 'text-[var(--status-amber)]'
-											: 'text-[var(--status-green)]'}"
+											: 'text-emerald-400'}"
 									>
 										~{cat.reclaimableDisplay}
 									</span>
 								{:else}
-									<span class="font-mono text-[11px] text-[var(--text-tertiary)]">—</span>
+									<span class="font-mono text-[11px] text-kumo-subtle">—</span>
 								{/if}
-							</td>
+							</TableCell>
 
 							<!-- Action -->
-							<td class="px-5 py-3 text-right">
+							<TableCell class="px-5 py-3 text-right">
 								{#if cat.viewPath}
 									<button
 										type="button"
@@ -495,83 +536,81 @@
 										Clear Cache <ArrowRight size={11} />
 									</button>
 								{/if}
-							</td>
-						</tr>
+							</TableCell>
+						</TableRow>
 					{/each}
-				</tbody>
-			</table>
+				</TableBody>
+			</Table>
 		</div>
-	</div>
+	</LayerCard>
 
 	<!-- 2. Largest Storage Consumers (Concise Diagnostic Table) -->
-	<div
-		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
-	>
-		<div class="flex items-center justify-between border-b border-[var(--border)] px-5 py-3">
-			<h4 class="text-xs font-semibold text-[var(--text-primary)]">Largest Disk Consumers</h4>
-			<span class="font-mono text-[11px] text-[var(--text-tertiary)]"> Ranked by size </span>
+	<LayerCard class="overflow-hidden p-0">
+		<div class="flex items-center justify-between border-b border-kumo-line bg-kumo-base px-5 py-3">
+			<h4 class="text-xs font-semibold text-kumo-default">Largest Disk Consumers</h4>
+			<span class="font-mono text-[11px] text-kumo-subtle"> Ranked by size </span>
 		</div>
 
 		<div class="overflow-x-auto">
-			<table class="w-full border-collapse text-left text-xs">
-				<thead>
-					<tr
-						class="border-b border-[var(--border)] bg-[var(--bg-table-header)] text-[11px] font-medium text-[var(--text-tertiary)]"
+			<Table class="w-full text-left text-xs">
+				<TableHeader>
+					<TableRow
+						class="border-b border-kumo-line bg-kumo-base text-[11px] font-medium text-kumo-subtle"
 					>
-						<th class="px-5 py-2.5 font-medium">Artifact Name</th>
-						<th class="px-4 py-2.5 font-medium">Type</th>
-						<th class="px-4 py-2.5 font-medium">Context / Owner</th>
-						<th class="px-4 py-2.5 font-medium">Size</th>
-						<th class="px-5 py-2.5 text-right font-medium">State</th>
-					</tr>
-				</thead>
-				<tbody class="divide-y divide-[var(--border-subtle)]">
+						<TableHead class="px-5 py-3 font-medium">Artifact Name</TableHead>
+						<TableHead class="px-4 py-3 font-medium">Type</TableHead>
+						<TableHead class="px-4 py-3 font-medium">Context / Owner</TableHead>
+						<TableHead class="px-4 py-3 font-medium">Size</TableHead>
+						<TableHead class="px-5 py-3 text-right font-medium">State</TableHead>
+					</TableRow>
+				</TableHeader>
+				<TableBody class="divide-y divide-kumo-hairline">
 					{#each topConsumers as item, idx}
-						<tr
-							class="transition-colors hover:bg-[var(--bg-table-row-hover)] {idx % 2 === 1
-								? 'bg-[var(--bg-table-row-alt)]'
-								: 'bg-[var(--bg-table-row)]'}"
+						<TableRow
+							class="transition-colors hover:bg-kumo-fill {idx % 2 === 1
+								? 'bg-kumo-elevated'
+								: 'bg-kumo-base'}"
 						>
-							<td
-								class="max-w-[280px] truncate px-5 py-2.5 font-mono text-[11.5px] text-[var(--text-primary)]"
+							<TableCell
+								class="max-w-[280px] truncate px-5 py-3 font-mono text-[11.5px] text-kumo-default"
 								title={item.name}
 							>
 								{item.name}
-							</td>
-							<td class="px-4 py-2.5 text-[var(--text-secondary)] capitalize">
+							</TableCell>
+							<TableCell class="px-4 py-3 capitalize">
 								<span
-									class="rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px]"
+									class="rounded bg-kumo-fill px-1.5 py-0.5 font-mono text-[10px] text-kumo-subtle"
 								>
 									{item.type}
 								</span>
-							</td>
-							<td class="px-4 py-2.5 text-[11.5px] text-[var(--text-secondary)]">
+							</TableCell>
+							<TableCell class="px-4 py-3 text-[11.5px] text-kumo-subtle">
 								{item.detail}
-							</td>
-							<td class="px-4 py-2.5 font-mono font-medium text-[var(--text-primary)]">
+							</TableCell>
+							<TableCell class="px-4 py-3 font-mono font-medium text-kumo-default">
 								{item.size}
-							</td>
-							<td class="px-5 py-2.5 text-right">
+							</TableCell>
+							<TableCell class="px-5 py-3 text-right">
 								{#if item.reclaimable}
 									<span
-										class="rounded border border-[var(--status-green)] bg-[var(--status-green-muted)] px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--status-green)]"
+										class="rounded bg-emerald-500/10 px-1.5 py-0.5 font-mono text-[10px] font-medium text-emerald-400"
 									>
 										Reclaimable
 									</span>
 								{:else}
 									<span
-										class="rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-tertiary)]"
+										class="rounded bg-kumo-fill px-1.5 py-0.5 font-mono text-[10px] text-kumo-subtle"
 									>
 										In-use
 									</span>
 								{/if}
-							</td>
-						</tr>
+							</TableCell>
+						</TableRow>
 					{/each}
-				</tbody>
-			</table>
+				</TableBody>
+			</Table>
 		</div>
-	</div>
+	</LayerCard>
 </div>
 
 <!-- Prune Storage Modal -->

@@ -73,6 +73,6 @@
 		title={service.name}
 		{workloads}
 		bind:selectedWorkload={containerOverride}
-		height="480px"
+		height="calc(100dvh - 280px)"
 	/>
 </div>

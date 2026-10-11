@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/auth.svelte';
-	import { Input } from '$lib/components/primitives';
+	import { LayerCard, Input, Button, Badge } from 'kumo-svelte';
 	import {
 		Lock,
 		Envelope,
@@ -13,6 +13,8 @@
 		Cpu
 	} from 'phosphor-svelte';
 
+	import { loginSchema } from '$lib/schemas';
+
 	let email = $state('');
 	let password = $state('');
 	let validationError = $state<string | null>(null);
@@ -22,19 +24,15 @@
 		e.preventDefault();
 		validationError = null;
 
-		const cleanEmail = email.trim();
-		if (!cleanEmail || !password) {
-			validationError = 'Please enter your email and password.';
+		const result = loginSchema.safeParse({ email, password });
+		if (!result.success) {
+			validationError = result.error.issues[0]?.message || 'Please check your inputs.';
 			return;
 		}
 
 		isSubmitting = true;
 		try {
-			await authStore.login({
-				email: cleanEmail,
-				password
-			});
-			// Successfully authenticated
+			await authStore.login(result.data);
 			await goto('/', { replaceState: true });
 		} catch (err: any) {
 			validationError = err.message || 'Invalid email or password.';
@@ -48,12 +46,12 @@
 	<title>Sign In — GOPOD</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-[420px]">
+<div class="mx-auto w-full max-w-[420px] py-8">
 	<!-- Branding / Header -->
 	<div class="mb-6 text-center">
 		<div class="mb-3 inline-flex items-center justify-center gap-2">
 			<div
-				class="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-muted)] text-[var(--accent)] shadow-sm"
+				class="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-muted)] text-[var(--accent)] shadow-xs"
 			>
 				<TerminalWindow size={24} weight="duotone" />
 			</div>
@@ -62,10 +60,9 @@
 					<span class="font-mono text-lg font-bold tracking-tight text-[var(--text-primary)]"
 						>GOPOD</span
 					>
-					<span
-						class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--text-tertiary)] uppercase"
-						>v0.1.0</span
-					>
+					<Badge variant="secondary" class="!px-1.5 !py-0 !text-[10px] font-mono uppercase">
+						v0.1.0
+					</Badge>
 				</div>
 				<span class="text-xs text-[var(--text-tertiary)]">Infrastructure Control Plane</span>
 			</div>
@@ -79,10 +76,8 @@
 		</p>
 	</div>
 
-	<!-- Login Card -->
-	<div
-		class="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] p-6 shadow-xl"
-	>
+	<!-- Login Card with Pure Kumo LayerCard -->
+	<LayerCard class="relative p-6 shadow-lg">
 		<!-- Top accent indicator -->
 		<div
 			class="absolute top-0 right-0 left-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"
@@ -108,9 +103,9 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
 					>
-						<Envelope size={16} />
+						<Envelope size={15} />
 					</div>
 					<Input
 						id="login-email"
@@ -119,7 +114,7 @@
 						placeholder="admin@yourdomain.com"
 						required
 						autocomplete="username"
-						class="h-10 pl-9 text-sm"
+						class="!h-10 !pl-9 text-sm w-full"
 					/>
 				</div>
 			</div>
@@ -136,9 +131,9 @@
 				</div>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)]"
+						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
 					>
-						<Lock size={16} />
+						<Lock size={15} />
 					</div>
 					<Input
 						id="login-password"
@@ -147,16 +142,17 @@
 						placeholder="••••••••••••"
 						required
 						autocomplete="current-password"
-						class="h-10 pl-9 text-sm"
+						class="!h-10 !pl-9 text-sm w-full"
 					/>
 				</div>
 			</div>
 
-			<!-- Submit Button -->
-			<button
+			<!-- Submit Button using Kumo Button -->
+			<Button
+				variant="primary"
 				type="submit"
 				disabled={isSubmitting}
-				class="mt-2 flex h-10 w-full cursor-pointer items-center justify-center gap-2 rounded-[var(--radius-sm)] border-0 bg-[var(--accent)] text-sm font-medium text-white shadow-sm transition-colors hover:bg-[var(--accent-hover)] disabled:cursor-not-allowed disabled:opacity-50"
+				class="mt-2 w-full !h-10 text-sm font-medium gap-2 justify-center shadow-xs"
 			>
 				{#if isSubmitting}
 					<CircleNotch size={16} class="animate-spin" />
@@ -165,17 +161,25 @@
 					<span>Sign In</span>
 					<ArrowRight size={16} />
 				{/if}
-			</button>
+			</Button>
 		</form>
 
-		<!-- Dokploy-style Invitation Notice (Strictly no register button) -->
+		<!-- Setup / Register Link -->
 		<div class="mt-5 border-t border-[var(--border-subtle)] pt-4 text-center">
-			<p class="text-[11px] leading-relaxed text-[var(--text-muted)]">
-				Registration is invite-only. New accounts must be created or invited by a cluster
-				administrator.
+			<p class="text-xs text-[var(--text-tertiary)]">
+				First time running GoPod?
+				<a
+					href="/setup"
+					class="font-medium text-[var(--accent)] hover:underline ml-1"
+				>
+					Create admin account
+				</a>
+			</p>
+			<p class="mt-1 text-[11px] leading-relaxed text-[var(--text-muted)]">
+				Registration is invite-only. New accounts must be created or invited by an administrator.
 			</p>
 		</div>
-	</div>
+	</LayerCard>
 
 	<!-- Secure Node Footer -->
 	<div

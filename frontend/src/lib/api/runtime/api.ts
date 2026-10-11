@@ -1,0 +1,93 @@
+import apiClient from '../client';
+import type { Pod, Image, Volume, Network, PodmanContainerItem, ContainerLogsResponse } from './types';
+
+export const runtimeApi = {
+	containers: {
+		async list(): Promise<PodmanContainerItem[]> {
+			const res = await apiClient.get<PodmanContainerItem[]>('/containers');
+			return res.data;
+		},
+
+		async start(id: string): Promise<{ message: string; id: string }> {
+			const res = await apiClient.post<{ message: string; id: string }>(`/containers/${id}/start`);
+			return res.data;
+		},
+
+		async stop(id: string): Promise<{ message: string; id: string }> {
+			const res = await apiClient.post<{ message: string; id: string }>(`/containers/${id}/stop`);
+			return res.data;
+		},
+
+		async restart(id: string): Promise<{ message: string; id: string }> {
+			const res = await apiClient.post<{ message: string; id: string }>(
+				`/containers/${id}/restart`
+			);
+			return res.data;
+		},
+
+		async delete(id: string, force = false): Promise<{ message: string; id: string }> {
+			const res = await apiClient.delete<{ message: string; id: string }>(`/containers/${id}`, {
+				params: { force }
+			});
+			return res.data;
+		},
+
+		async logs(id: string, tail = 100): Promise<ContainerLogsResponse> {
+			const res = await apiClient.get<ContainerLogsResponse>(`/containers/${id}/logs`, {
+				params: { tail }
+			});
+			return res.data;
+		},
+
+		getTerminalWsUrl(id: string, cols = 80, rows = 24, cmd = 'sh'): string {
+			if (typeof window === 'undefined') return '';
+			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const token =
+				typeof localStorage !== 'undefined' ? localStorage.getItem('gopod_token') || '' : '';
+			const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
+			return `${protocol}//${window.location.host}/api/containers/${encodeURIComponent(id)}/exec?cmd=${encodeURIComponent(cmd)}&cols=${cols}&rows=${rows}${tokenParam}`;
+		}
+	},
+
+	pods: {
+		async list(): Promise<Pod[]> {
+			const res = await apiClient.get<Pod[]>('/pods');
+			return res.data;
+		}
+	},
+
+	images: {
+		async list(): Promise<Image[]> {
+			const res = await apiClient.get<Image[]>('/images');
+			return res.data;
+		},
+
+		async prune(all = false): Promise<{ message: string }> {
+			const res = await apiClient.post<{ message: string }>('/images/prune', null, {
+				params: { all }
+			});
+			return res.data;
+		}
+	},
+
+	volumes: {
+		async list(): Promise<Volume[]> {
+			const res = await apiClient.get<Volume[]>('/volumes');
+			return res.data;
+		},
+
+		async prune(): Promise<{ message: string }> {
+			const res = await apiClient.post<{ message: string }>('/volumes/prune');
+			return res.data;
+		}
+	},
+
+	networks: {
+		async list(): Promise<Network[]> {
+			const res = await apiClient.get<Network[]>('/networks');
+			return res.data;
+		}
+	}
+};
+
+export default runtimeApi;

@@ -5,7 +5,6 @@
 	import ComposeEditorCard from './ComposeEditorCard.svelte';
 	import SourceCard from './SourceCard.svelte';
 	import PortMappingCard from './PortMappingCard.svelte';
-	import BuildTypeCard from './BuildTypeCard.svelte';
 	import RuntimeTargetCard from './RuntimeTargetCard.svelte';
 	import DeployTriggerCard from './DeployTriggerCard.svelte';
 	import AddCredentialModal from './AddCredentialModal.svelte';
@@ -28,7 +27,7 @@
 	}
 </script>
 
-<div class="flex w-full flex-col gap-6">
+<div class="flex w-full flex-col gap-4">
 	<!-- 1. Dokploy-style Operational Action Bar at top of General tab -->
 	<DeploySettingsCard {service} {onTerminalClick} {onRedeploy} />
 
@@ -41,17 +40,16 @@
 		<ComposeEditorCard {service} />
 	{:else}
 		<!-- Standard Application / Image / Container Workloads -->
+		<!-- Unified Source & Build Configuration -->
 		<SourceCard {service} onOpenCredentialModal={handleOpenCredentialModal} />
 
 		<!-- Dedicated Port Configuration Card -->
 		<PortMappingCard {service} />
 
-		{#if (service.sourceType || 'git') !== 'image'}
-			<BuildTypeCard {service} />
-		{/if}
-
+		<!-- Runtime Target & Resource Limits -->
 		<RuntimeTargetCard {service} />
 
+		<!-- Automated Triggers & Webhooks -->
 		<DeployTriggerCard {service} />
 	{/if}
 </div>

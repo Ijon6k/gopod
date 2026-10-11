@@ -115,6 +115,29 @@ func NewServer(cfg Config) http.Handler {
 		return len(svcs), nil
 	})
 
+	projectService.SetProviders(
+		func(ctx context.Context, projectID string) ([]services.Service, error) {
+			return serviceRepo.List(ctx, projectID)
+		},
+		func(ctx context.Context, projectID string) ([]projects.ProjectDomain, error) {
+			domains, err := ingressRepo.List(ctx, projectID)
+			if err != nil {
+				return nil, err
+			}
+			res := make([]projects.ProjectDomain, len(domains))
+			for i, d := range domains {
+				res[i] = projects.ProjectDomain{
+					ID:        d.ID,
+					Hostname:  d.Hostname,
+					ServiceID: d.ServiceID,
+					TLS:       d.TLS,
+					Status:    d.DNSStatus,
+				}
+			}
+			return res, nil
+		},
+	)
+
 	workloadService.SetIngressCleaner(func(ctx context.Context, serviceID string) {
 		doms, err := ingressRepo.List(ctx, "")
 		if err == nil {
@@ -167,6 +190,13 @@ func NewServer(cfg Config) http.Handler {
 				defer f.Close()
 				stat, err := f.Stat()
 				if err == nil && !stat.IsDir() {
+					if cleanPath == "index.html" {
+						w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+						w.Header().Set("Pragma", "no-cache")
+						w.Header().Set("Expires", "0")
+					} else if strings.HasPrefix(cleanPath, "_app/immutable/") {
+						w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+					}
 					fileServer.ServeHTTP(w, r)
 					return
 				}
@@ -182,6 +212,9 @@ func NewServer(cfg Config) http.Handler {
 
 			stat, _ := indexFile.Stat()
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
 			if stat != nil {
 				http.ServeContent(w, r, "index.html", stat.ModTime(), indexFile.(io.ReadSeeker))
 			} else {

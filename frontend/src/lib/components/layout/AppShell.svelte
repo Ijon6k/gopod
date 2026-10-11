@@ -2,6 +2,7 @@
 	import { page } from '$app/state';
 	import Sidebar from './Sidebar.svelte';
 	import Topbar from './Topbar.svelte';
+	import { Sidebar as KumoSidebar, Toasty } from 'kumo-svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { onMount, type Snippet } from 'svelte';
 
@@ -19,50 +20,39 @@
 	});
 </script>
 
-{#if isAuthPage}
-	<!-- Standalone Fullscreen View for Setup & Login -->
-	<div
-		class="box-border flex h-screen max-h-screen w-screen max-w-full flex-col items-center justify-center overflow-y-auto bg-[var(--bg-outer)] p-4 transition-colors duration-200 md:p-6"
-	>
-		{@render children()}
-	</div>
-{:else}
-	<div
-		class="box-border flex h-screen max-h-screen w-screen max-w-full items-stretch overflow-hidden bg-[var(--bg-shell)] p-0 transition-colors duration-200 md:gap-3 md:bg-[var(--bg-outer)] md:p-[12px] md:px-3.5"
-	>
-		<!-- Sidebar — Desktop (Seamlessly transitions between expanded and minimized rail) -->
-		<div class="hidden h-full max-h-full shrink-0 overflow-hidden md:flex">
-			<Sidebar />
-		</div>
-
-		<!-- Mobile sidebar overlay drawer -->
-		{#if ui.sidebarMobileOpen}
-			<button
-				class="fixed inset-0 z-50 cursor-default border-0 bg-black/70 backdrop-blur-xs md:hidden"
-				onclick={() => ui.closeMobileSidebar()}
-				aria-label="Close navigation"
-			></button>
-			<div
-				class="fixed top-0 bottom-0 left-0 z-50 w-[260px] bg-[var(--bg-outer)] shadow-2xl md:hidden"
-			>
-				<Sidebar onclose={() => ui.closeMobileSidebar()} />
-			</div>
-		{/if}
-
-		<!-- Main content shell: seamless edge-to-edge on mobile, framed on desktop -->
+<Toasty>
+	{#if isAuthPage}
+		<!-- Standalone Fullscreen View for Setup & Login -->
 		<div
-			class="flex h-full max-h-full min-w-0 flex-1 flex-col overflow-hidden rounded-none border-0 bg-[var(--bg-shell)] shadow-none transition-colors duration-200 md:rounded-[var(--radius-shell)] md:border md:border-[var(--border)] md:shadow-sm"
+			class="box-border flex h-screen max-h-screen w-screen max-w-full flex-col items-center justify-center overflow-y-auto bg-[var(--bg-canvas)] p-4 md:p-6"
 		>
-			<Topbar />
-			<main
-				class="min-h-0 flex-1 {isFullBleed
-					? 'overflow-hidden p-0'
-					: 'overflow-x-hidden overflow-y-auto px-3.5 pb-4 md:px-8 md:pb-7'}"
-			>
-				<div class="flex w-full flex-1 flex-col {isFullBleed ? 'h-full pt-0' : 'pt-4 md:pt-7'}">
-					{@render children()}
-				</div>
-			</main>
+			{@render children()}
 		</div>
-	</div>
-{/if}
+	{:else}
+		<!-- Cloudflare Kumo Docked Edge-to-Edge Architecture -->
+		<KumoSidebar.Provider
+			defaultOpen={true}
+			collapsible="icon"
+			defaultWidth={240}
+			class="h-screen max-h-screen w-screen max-w-full overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)]"
+		>
+			<!-- Level 2: Left Docked Navigation (Handles desktop rail & mobile drawer) -->
+			<Sidebar />
+
+			<!-- Main Workspace (Edge-to-Edge Natural Flow, No Wrapper Box Clutter) -->
+			<div class="flex flex-1 flex-col min-w-0 min-h-0 h-screen overflow-hidden">
+				<!-- Level 1: Global Context - Sticky Docked Topbar -->
+				<Topbar />
+
+				<!-- Level 4: Action & Content Canvas (Docked Edge-to-Edge) -->
+				<main
+					class="min-h-0 flex-1 w-full {isFullBleed
+						? 'overflow-hidden p-0'
+						: 'overflow-x-hidden overflow-y-auto px-4 py-5 md:px-6 md:py-6'}"
+				>
+					{@render children()}
+				</main>
+			</div>
+		</KumoSidebar.Provider>
+	{/if}
+</Toasty>

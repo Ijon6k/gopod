@@ -23,11 +23,17 @@ func Open(customPath string) (*DB, error) {
 		dbPath = os.Getenv("GOPOD_DB_PATH")
 	}
 	if dbPath == "" {
-		home, err := os.UserHomeDir()
-		if err == nil {
-			dbPath = filepath.Join(home, ".local", "share", "gopod", "data", "gopod.db")
+		if _, err := os.Stat("/app/data"); err == nil {
+			dbPath = "/app/data/gopod.db"
+		} else if _, err := os.Stat("data"); err == nil {
+			dbPath = "data/gopod.db"
 		} else {
-			dbPath = "gopod.db"
+			home, err := os.UserHomeDir()
+			if err == nil {
+				dbPath = filepath.Join(home, ".local", "share", "gopod", "data", "gopod.db")
+			} else {
+				dbPath = "gopod.db"
+			}
 		}
 	}
 

@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { Button, Input, CopyButton } from '$lib/components/primitives';
+	import { Input, CopyButton } from '$lib/components/ui';
+	import { LayerCard, Button, Switch, useKumoToastManager } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
-	import { SettingCard } from '$lib/components/ui';
+	import { api } from '$lib/api';
 	import { Lightning, Check } from 'phosphor-svelte';
 
 	interface Props {
@@ -11,13 +12,11 @@
 
 	let { service }: Props = $props();
 
+	const toast = useKumoToastManager();
+
 	let autoDeploy = $state(true);
 	let watchPaths = $state('');
-	let webhookUrl = $derived(
-		typeof window !== 'undefined'
-			? `${window.location.protocol}//${window.location.host}/api/deploy/webhook/${service.webhookToken || service.id}`
-			: `/api/deploy/webhook/${service.webhookToken || service.id}`
-	);
+	let webhookUrl = $derived(api.services.getWebhookUrl(service.webhookToken || service.id));
 	let saveStatus = $state<'idle' | 'saved'>('idle');
 
 	$effect(() => {
@@ -30,65 +29,113 @@
 		service.watchPaths = watchPaths.trim();
 		dataStore.updateService(service);
 		saveStatus = 'saved';
+		toast.add({
+			title: 'Triggers Saved',
+			description: 'Webhook and auto-deploy settings updated.',
+			variant: 'success'
+		});
 		setTimeout(() => (saveStatus = 'idle'), 2000);
 	}
 </script>
 
-{#snippet cardFooter()}
-	{#if saveStatus === 'saved'}
-		<span class="mr-2 flex items-center gap-1 text-xs text-[var(--status-green)]">
-			<Check size={14} /> Saved
-		</span>
-	{/if}
-	<Button variant="primary" size="sm" onclick={handleSave}>Save Triggers</Button>
-{/snippet}
-
-<SettingCard
-	title="Deployment Triggers & Webhook"
-	subtitle="Automate deployments when changes are pushed to your Git repository."
-	icon={Lightning}
-	footer={cardFooter}
->
-	<div class="flex flex-col gap-1.5">
-		<div class="flex items-center justify-between">
-			<label for="trig-webhook-url" class="text-xs font-medium text-[var(--text-secondary)]"
-				>Webhook URL</label
+<LayerCard class="w-full shadow-xs">
+	<!-- Elevated Header (LayerCard.Secondary) with Title & Save Action -->
+	<LayerCard.Secondary
+		class="flex flex-wrap items-center justify-between gap-3 border-b border-kumo-hairline px-4 py-3"
+	>
+		<div class="flex items-center gap-2.5">
+			<div
+				class="flex size-7 shrink-0 items-center justify-center rounded-md bg-kumo-base text-[var(--accent)] ring ring-kumo-line"
 			>
-			<CopyButton text={webhookUrl} label="Copy Webhook URL" variant="inline" />
+				<Lightning size={15} weight="duotone" />
+			</div>
+			<div class="flex flex-col">
+				<div class="flex items-center gap-2">
+					<span class="text-xs font-semibold text-kumo-default">Deployment Triggers</span>
+					<span
+						class="rounded-sm bg-kumo-base px-1.5 py-0.5 font-mono text-[10px] text-kumo-subtle ring-1 ring-kumo-hairline"
+					>
+						{autoDeploy ? 'Auto-Deploy Enabled' : 'Manual Only'}
+					</span>
+				</div>
+				<span class="text-[11px] text-kumo-subtle">
+					Git webhook triggers and repository path filters
+				</span>
+			</div>
 		</div>
 
-		<div
-			class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-2.5 text-[11px] font-[var(--font-mono)] break-all text-[var(--text-secondary)] select-all"
-		>
-			{webhookUrl}
+		<!-- Action in Header -->
+		<div class="flex items-center gap-2">
+			{#if saveStatus === 'saved'}
+				<span class="flex items-center gap-1 font-mono text-xs text-kumo-success">
+					<Check size={13} weight="bold" /> Saved
+				</span>
+			{/if}
+			<Button
+				variant="primary"
+				size="sm"
+				onclick={handleSave}
+				class="gap-1.5 font-medium shadow-xs"
+			>
+				Save Triggers
+			</Button>
 		</div>
-		<span class="text-[11px] text-[var(--text-tertiary)]">
-			Paste this into GitHub / GitLab repository webhook settings (Content type: <code
-				>application/json</code
-			>, Event: Push).
-		</span>
-	</div>
+	</LayerCard.Secondary>
 
-	<div class="grid grid-cols-1 gap-4 border-t border-[var(--border-subtle)] pt-2 sm:grid-cols-2">
-		<label class="flex cursor-pointer items-center gap-2.5 text-xs text-[var(--text-secondary)]">
-			<input
-				type="checkbox"
-				bind:checked={autoDeploy}
-				class="cursor-pointer accent-[var(--accent)]"
-			/>
-			<span>Automatic deployment on git push</span>
-		</label>
-
+	<!-- Content Body (LayerCard.Primary) -->
+	<LayerCard.Primary class="flex flex-col gap-3.5 p-4">
+		<!-- Webhook URL Row with Copy Button -->
 		<div class="flex flex-col gap-1">
-			<label for="trig-watch-paths" class="text-xs font-medium text-[var(--text-secondary)]"
-				>Watch Paths (Optional)</label
+			<div class="flex items-center justify-between">
+				<label for="trig-webhook-url" class="text-xs font-medium text-kumo-default">
+					Webhook Endpoint
+				</label>
+				<CopyButton text={webhookUrl} label="Copy Webhook URL" variant="inline" />
+			</div>
+
+			<div
+				class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-1.5 text-xs font-mono text-kumo-subtle ring-1 ring-kumo-hairline select-all break-all"
 			>
-			<Input
-				id="trig-watch-paths"
-				bind:value={watchPaths}
-				placeholder="src/**, packages/backend/**"
-				class="text-xs font-[var(--font-mono)]"
-			/>
+				<span>{webhookUrl}</span>
+			</div>
+			<span class="text-[11px] text-kumo-subtle">
+				Paste into GitHub or GitLab webhook settings (payload: JSON, event: Push).
+			</span>
 		</div>
-	</div>
-</SettingCard>
+
+		<!-- 2-column: Auto-deploy Toggle + Watch Paths -->
+		<div class="grid grid-cols-1 items-center gap-3 pt-1 sm:grid-cols-2">
+			<div class="flex items-center gap-2.5">
+				<Switch
+					size="sm"
+					id="auto-deploy-switch"
+					bind:checked={autoDeploy}
+					aria-label="Automatic deployment on git push"
+				/>
+				<div class="flex flex-col">
+					<label
+						for="auto-deploy-switch"
+						class="cursor-pointer text-xs font-medium text-kumo-default"
+					>
+						Auto-deploy on Git Push
+					</label>
+					<span class="text-[11px] text-kumo-subtle">
+						Trigger fresh build and rollout on every commit
+					</span>
+				</div>
+			</div>
+
+			<div class="flex flex-col gap-1">
+				<label for="trig-watch-paths" class="text-xs font-medium text-kumo-default">
+					Watch Paths (Optional)
+				</label>
+				<Input
+					id="trig-watch-paths"
+					bind:value={watchPaths}
+					placeholder="src/**, packages/backend/**"
+					class="text-xs font-mono"
+				/>
+			</div>
+		</div>
+	</LayerCard.Primary>
+</LayerCard>

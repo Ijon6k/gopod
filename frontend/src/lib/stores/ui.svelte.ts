@@ -44,10 +44,12 @@ class UIStore {
 		if (typeof document !== 'undefined') {
 			if (this.theme === 'light') {
 				document.documentElement.setAttribute('data-theme', 'light');
+				document.documentElement.setAttribute('data-mode', 'light');
 				document.documentElement.classList.add('light');
 				document.documentElement.classList.remove('dark');
 			} else {
 				document.documentElement.setAttribute('data-theme', 'dark');
+				document.documentElement.setAttribute('data-mode', 'dark');
 				document.documentElement.classList.add('dark');
 				document.documentElement.classList.remove('light');
 			}

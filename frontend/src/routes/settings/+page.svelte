@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { cn } from '$lib/utils/cn';
 	import { PageHeader, Tabs } from '$lib/components/ui';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Button, Input, Field } from '$lib/components/ui';
 	import { server } from '$lib/data';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { Sun, Moon } from 'phosphor-svelte';
@@ -57,38 +57,17 @@
 				</div>
 			</div>
 
-			<div class="flex flex-col gap-2">
-				<label for="setting-hostname" class="text-xs font-medium text-[var(--text-secondary)]"
-					>Hostname</label
-				>
-				<div
-					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 focus-within:border-[var(--accent)]"
-				>
-					<Input id="setting-hostname" bind:value={hostname} />
-				</div>
-			</div>
+			<Field label="Hostname">
+				<Input id="setting-hostname" bind:value={hostname} />
+			</Field>
 
-			<div class="flex flex-col gap-2">
-				<label for="setting-ip" class="text-xs font-medium text-[var(--text-secondary)]"
-					>Server IP</label
-				>
-				<div
-					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 opacity-60"
-				>
-					<Input id="setting-ip" value={server.ip} disabled />
-				</div>
-			</div>
+			<Field label="Server IP">
+				<Input id="setting-ip" value={server.ip} disabled />
+			</Field>
 
-			<div class="flex flex-col gap-2">
-				<label for="setting-os" class="text-xs font-medium text-[var(--text-secondary)]"
-					>Operating System</label
-				>
-				<div
-					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2.5 opacity-60"
-				>
-					<Input id="setting-os" value={server.os} disabled />
-				</div>
-			</div>
+			<Field label="Operating System">
+				<Input id="setting-os" value={server.os} disabled />
+			</Field>
 
 			<div class="pt-2">
 				<Button variant="primary">Save changes</Button>

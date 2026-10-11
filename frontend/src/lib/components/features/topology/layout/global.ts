@@ -1,7 +1,7 @@
 import type { Project, Service, Domain, Server } from '$lib/types';
 import type { TopologyNode, TopologyRegion, TopologyEdge, TopologyGraph } from '../types';
 import { COMPACT_NODE_HEIGHT } from './constants';
-import { createOrthogonalPath, computeBounds } from './path';
+import { createCurvedBezierPath, computeBounds } from './path';
 
 // ──────────────────────────────────────────────
 // GLOBAL INFRASTRUCTURE TOPOLOGY
@@ -22,7 +22,19 @@ export function computeGlobalLayout({
 	const regions: TopologyRegion[] = [];
 	const edges: TopologyEdge[] = [];
 
-	// Internet Ingress Node
+	// Pre-calculate project territory heights to vertically center WAN Entrypoint & Caddy Gateway
+	let calculatedTotalHeight = 0;
+	const regionGap = 32;
+	projects.forEach((proj, idx) => {
+		const projServices = services.filter((s) => s.projectId === proj.id);
+		const svcCount = Math.max(1, projServices.length);
+		const rHeight = Math.max(130, 44 + svcCount * (COMPACT_NODE_HEIGHT + 12) + 16);
+		calculatedTotalHeight += rHeight + (idx < projects.length - 1 ? regionGap : 0);
+	});
+
+	const gatewayCenterY = Math.max(120, Math.round(40 + (calculatedTotalHeight - 62) / 2));
+
+	// 1. Internet Ingress Node
 	const internetNode: TopologyNode = {
 		id: 'ingress-internet',
 		type: 'internet',
@@ -30,7 +42,7 @@ export function computeGlobalLayout({
 		subtitle: 'IPv4 / IPv6 Traffic',
 		status: 'active',
 		x: 60,
-		y: 220,
+		y: gatewayCenterY,
 		width: 170,
 		height: 62,
 		monoDetail: '0.0.0.0/0',
@@ -39,7 +51,7 @@ export function computeGlobalLayout({
 	};
 	nodes.push(internetNode);
 
-	// Caddy Reverse Proxy Node
+	// 2. Caddy Reverse Proxy Node
 	const caddyNode: TopologyNode = {
 		id: 'proxy-caddy',
 		type: 'proxy',
@@ -47,7 +59,7 @@ export function computeGlobalLayout({
 		subtitle: 'Reverse Proxy & TLS',
 		status: server.status === 'online' ? 'running' : 'degraded',
 		x: 300,
-		y: 220,
+		y: gatewayCenterY,
 		width: 180,
 		height: 62,
 		monoDetail: `ports 80, 443`,
@@ -65,19 +77,19 @@ export function computeGlobalLayout({
 		sourceY: internetNode.y + internetNode.height / 2,
 		targetX: caddyNode.x,
 		targetY: caddyNode.y + caddyNode.height / 2,
-		path: createOrthogonalPath(
+		path: createCurvedBezierPath(
 			internetNode.x + internetNode.width,
 			internetNode.y + internetNode.height / 2,
 			caddyNode.x,
 			caddyNode.y + caddyNode.height / 2
 		),
-		label: 'HTTPS'
+		label: 'HTTPS',
+		kind: 'ingress'
 	});
 
-	// Project Territories Layout
+	// 3. Project Territories Layout
 	const projectRegionX = 560;
 	let currentY = 40;
-	const regionGap = 32;
 
 	projects.forEach((proj) => {
 		const projServices = services.filter((s) => s.projectId === proj.id);
@@ -153,14 +165,14 @@ export function computeGlobalLayout({
 					sourceY: caddyNode.y + caddyNode.height / 2,
 					targetX: svcNode.x,
 					targetY: svcNode.y + svcNode.height / 2,
-					path: createOrthogonalPath(
+					path: createCurvedBezierPath(
 						caddyNode.x + caddyNode.width,
 						caddyNode.y + caddyNode.height / 2,
 						svcNode.x,
-						svcNode.y + svcNode.height / 2,
-						520
+						svcNode.y + svcNode.height / 2
 					),
-					label: svc.port ? `:${svc.port}` : undefined
+					label: svc.port ? `:${svc.port}` : undefined,
+					kind: 'ingress'
 				});
 			}
 

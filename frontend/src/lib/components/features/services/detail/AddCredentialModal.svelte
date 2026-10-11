@@ -1,9 +1,8 @@
 <script lang="ts">
 	import { dataStore } from '$lib/data';
-	import { credentialsApi } from '$lib/api/credentials';
+	import { api } from '$lib/api';
 	import { sshKeySchema, registrySchema } from '$lib/schemas';
-	import { Button, Input, CopyButton, FormField } from '$lib/components/primitives';
-	import { Modal } from '$lib/components/ui';
+	import { Button, Input, CopyButton, Field, Select, SensitiveInput, Modal } from '$lib/components/ui';
 	import { Key, Package, ArrowsClockwise } from 'phosphor-svelte';
 
 	interface Props {
@@ -36,7 +35,7 @@
 		isGenerating = true;
 		errorMessage = '';
 		try {
-			const res = await credentialsApi.sshKeys.generate(keyName.trim() || 'deploy-key');
+			const res = await api.credentials.sshKeys.generate(keyName.trim() || 'deploy-key');
 			generatedPublicKey = res.publicKey;
 			generatedPrivateKey = res.privateKey || '';
 			generatedFingerprint = res.fingerprint;
@@ -180,14 +179,14 @@
 	{/if}
 
 	{#if activeTab === 'ssh'}
-		<FormField label="Key Name" required forId="ssh-key-name">
+		<Field label="Key Name" required>
 			<Input
 				id="ssh-key-name"
 				bind:value={keyName}
 				placeholder="e.g. GitHub Personal or GitLab Work"
 				class="text-xs"
 			/>
-		</FormField>
+		</Field>
 
 		<div class="flex flex-col gap-1.5">
 			<div class="flex items-center justify-between">
@@ -222,42 +221,43 @@
 			</span>
 		</div>
 	{:else}
-		<FormField label="Registry Name" required forId="reg-name">
+		<Field label="Registry Name" required>
 			<Input id="reg-name" bind:value={regName} placeholder="e.g. My Docker Hub" class="text-xs" />
-		</FormField>
+		</Field>
 
 		<div class="grid grid-cols-2 gap-3">
-			<FormField label="Registry Host" forId="reg-url">
-				<select
-					id="reg-url"
-					bind:value={regUrl}
-					class="w-full rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
-				>
-					<option value="docker.io">Docker Hub (docker.io)</option>
-					<option value="ghcr.io">GitHub (ghcr.io)</option>
-					<option value="quay.io">Quay.io</option>
-					<option value="custom">Custom Registry</option>
-				</select>
-			</FormField>
+			<Select
+				label="Registry Host"
+				value={regUrl}
+				onValueChange={(val) => {
+					if (typeof val === 'string') regUrl = val;
+				}}
+				options={[
+					{ label: 'Docker Hub (docker.io)', value: 'docker.io' },
+					{ label: 'GitHub (ghcr.io)', value: 'ghcr.io' },
+					{ label: 'Quay.io', value: 'quay.io' },
+					{ label: 'Custom Registry', value: 'custom' }
+				]}
+				size="sm"
+			/>
 
-			<FormField label="Username" required forId="reg-username">
+			<Field label="Username" required>
 				<Input
 					id="reg-username"
 					bind:value={regUsername}
 					placeholder="username / org"
 					class="text-xs"
 				/>
-			</FormField>
+			</Field>
 		</div>
 
-		<FormField label="Password or Access Token (PAT)" forId="reg-token">
-			<Input
-				id="reg-token"
-				type="password"
+		<Field label="Password or Access Token (PAT)">
+			<SensitiveInput
 				bind:value={regToken}
 				placeholder="dckr_pat_..."
-				class="text-xs font-[var(--font-mono)]"
+				size="sm"
+				class="font-[var(--font-mono)] text-xs"
 			/>
-		</FormField>
+		</Field>
 	{/if}
 </Modal>

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Input, Button } from '$lib/components/primitives';
+	import { Input, Button } from '$lib/components/ui';
 	import { Plus, Trash } from 'phosphor-svelte';
 
 	interface ContainerEntry {

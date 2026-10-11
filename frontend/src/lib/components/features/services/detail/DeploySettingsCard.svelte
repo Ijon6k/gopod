@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
+	import { Button } from '$lib/components/ui';
+	import { LayerCard, Switch, Badge, useKumoToastManager } from 'kumo-svelte';
 	import {
 		RocketLaunch,
 		ArrowClockwise,
@@ -21,6 +23,8 @@
 
 	let { service, onTerminalClick, onRedeploy }: Props = $props();
 
+	const toast = useKumoToastManager();
+
 	let autoDeploy = $state(true);
 	let inPod = $state(false);
 
@@ -28,6 +32,7 @@
 		autoDeploy = service.autoDeploy ?? true;
 		inPod = service.inPod || service.runtimeTarget === 'pod';
 	});
+
 	let isDeploying = $state(false);
 	let isRebuilding = $state(false);
 	let isFreshingVolumes = $state(false);
@@ -41,6 +46,12 @@
 		feedbackTimeout = setTimeout(() => {
 			feedbackMessage = null;
 		}, 3500);
+
+		toast.add({
+			title: type === 'success' ? 'Success' : 'Notice',
+			description: text,
+			variant: type === 'success' ? 'success' : 'info'
+		});
 	}
 
 	function handleToggleInPod() {
@@ -92,7 +103,10 @@
 		}
 	});
 
+	let isRunning = $derived(service.status === 'running' || service.status === 'healthy');
+
 	async function handleDeploy() {
+		if (isDeploying) return;
 		isDeploying = true;
 		showFeedback(
 			service.type === 'quadlet'
@@ -116,6 +130,7 @@
 	}
 
 	async function handleRebuild() {
+		if (isRebuilding) return;
 		isRebuilding = true;
 		showFeedback('Pulling fresh image layers and initiating rebuild...', 'info');
 
@@ -134,6 +149,7 @@
 	}
 
 	async function handleFreshVolumes() {
+		if (isFreshingVolumes) return;
 		isFreshingVolumes = true;
 		showFeedback('Purging ephemeral volumes and triggering clean rollout...', 'info');
 
@@ -150,18 +166,17 @@
 	async function handleTogglePower() {
 		if (isTogglingPower) return;
 		isTogglingPower = true;
-		const isRunning = service.status === 'running' || service.status === 'healthy';
 
 		try {
 			if (isRunning) {
 				showFeedback('Stopping service workload...', 'info');
 				const updated = await dataStore.stopService(service.id);
-				service.status = updated.status || 'stopped';
+				service.status = updated?.status || 'stopped';
 				showFeedback('Workload stopped successfully.', 'info');
 			} else {
 				showFeedback('Starting service workload...', 'info');
 				const updated = await dataStore.startService(service.id);
-				service.status = updated.status || 'running';
+				service.status = updated?.status || 'running';
 				showFeedback('Workload started successfully.', 'success');
 			}
 		} catch (err: any) {
@@ -171,8 +186,8 @@
 		}
 	}
 
-	function handleToggleAutodeploy() {
-		autoDeploy = !autoDeploy;
+	function handleToggleAutodeploy(checked?: boolean) {
+		autoDeploy = checked !== undefined ? checked : !autoDeploy;
 		service.autoDeploy = autoDeploy;
 		dataStore.updateService(service);
 		showFeedback(
@@ -184,184 +199,176 @@
 	}
 </script>
 
-<div
-	class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
->
-	<!-- Card Header (Dokploy style) -->
-	<div
-		class="flex items-center justify-between gap-4 border-b border-[var(--border-subtle)] px-5 py-4"
+<LayerCard class="w-full shadow-xs">
+	<!-- 1. Card Header (Previous commit position, styled with Kumo UI) -->
+	<LayerCard.Secondary
+		class="flex items-center justify-between gap-4 border-b border-kumo-hairline px-5 py-3.5"
 	>
 		<div class="flex flex-col gap-0.5">
 			<div class="flex items-center gap-2">
-				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Deploy Settings</h3>
+				<h3 class="m-0 text-sm font-semibold text-kumo-default">Deploy settings</h3>
 			</div>
-			<p class="m-0 text-xs text-[var(--text-tertiary)]">{subtitle}</p>
+			<p class="m-0 text-xs text-kumo-subtle">{subtitle}</p>
 		</div>
 
 		<!-- Workload Type Badge -->
-		<span
-			class="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1 text-xs font-[var(--font-mono)] font-semibold text-[var(--text-primary)]"
-		>
+		<Badge variant="neutral" class="shrink-0 px-2.5 py-1 font-mono text-xs">
 			{#if service.type === 'quadlet'}
-				<Sparkle size={13} class="text-[var(--accent)]" />
+				<Sparkle size={13} class="mr-1 inline text-[var(--accent)]" />
 			{/if}
 			{typeLabel}
-		</span>
-	</div>
+		</Badge>
+	</LayerCard.Secondary>
 
-	<!-- Action Buttons Bar (Exact Dokploy layout with high visual hierarchy) -->
-	<div class="flex flex-wrap items-center justify-between gap-4 p-5">
+	<!-- 2. Action Buttons Bar (Previous commit position: Actions on Left, Autodeploy on Right) -->
+	<div class="flex flex-wrap items-center justify-between gap-4 p-5 bg-kumo-base">
+		<!-- Left: Cluster of Action Buttons -->
 		<div class="flex flex-wrap items-center gap-2.5">
 			<!-- 1. Deploy (High-contrast Primary Button) -->
-			<button
-				type="button"
+			<Button
+				variant="primary"
+				size="sm"
 				onclick={handleDeploy}
 				disabled={isDeploying || service.status === 'deploying'}
-				class="flex cursor-pointer items-center gap-2 rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[var(--bg-shell)] shadow-xs transition-all hover:opacity-90 disabled:opacity-50"
+				class="gap-2 px-4 py-2 font-medium shadow-xs"
 			>
 				{#if isDeploying || service.status === 'deploying'}
-					<ArrowClockwise size={15} class="animate-spin text-inherit" /> Deploying…
+					<ArrowClockwise size={14} class="animate-spin text-inherit" />
+					<span>Deploying…</span>
 				{:else}
-					<RocketLaunch size={15} weight="fill" class="text-inherit" /> Deploy
+					<RocketLaunch size={14} weight="fill" class="text-inherit" />
+					<span>Deploy</span>
 				{/if}
-			</button>
+			</Button>
 
 			<!-- 2. Fresh Volumes (Dokploy signature action) -->
-			<button
-				type="button"
+			<Button
+				variant="secondary"
+				size="sm"
 				onclick={handleFreshVolumes}
 				disabled={isFreshingVolumes || isDeploying || service.status === 'deploying'}
-				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
-				title="Purge and mount fresh storage volumes"
+				class="gap-1.5 shadow-xs"
 			>
 				{#if isFreshingVolumes}
-					<ArrowClockwise size={14} class="animate-spin text-inherit" /> Purging…
+					<ArrowClockwise size={13} class="animate-spin text-inherit" />
+					<span>Purging…</span>
 				{:else}
-					<Database size={14} /> Fresh Volumes
+					<Database size={13} />
+					<span>Fresh Volumes</span>
 				{/if}
-			</button>
+			</Button>
 
 			<!-- 3. Rebuild (Clean rebuild & image re-pull) -->
-			<button
-				type="button"
+			<Button
+				variant="secondary"
+				size="sm"
 				onclick={handleRebuild}
 				disabled={isRebuilding || isDeploying || service.status === 'deploying'}
-				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
-				title="Force rebuild container image and reload unit"
+				class="gap-1.5 shadow-xs"
 			>
-				<ArrowClockwise size={14} class={isRebuilding ? 'animate-spin' : ''} /> Rebuild
-			</button>
+				<ArrowClockwise size={13} class={isRebuilding ? 'animate-spin' : ''} />
+				<span>Rebuild</span>
+			</Button>
 
-			<!-- 4. Stop / Start Button (Subtle red destructive / green start) -->
-			{#if service.status === 'running' || service.status === 'healthy'}
-				<button
-					type="button"
+			<!-- 4. Stop / Start Button -->
+			{#if isRunning}
+				<Button
+					variant="secondary-destructive"
+					size="sm"
 					onclick={handleTogglePower}
 					disabled={isTogglingPower}
-					class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--status-red)]/25 bg-[var(--status-red)]/10 px-3.5 py-2 text-xs font-medium text-[var(--status-red)] transition-colors hover:bg-[var(--status-red)]/20 disabled:opacity-50"
-					title="Gracefully stop service workload"
+					class="gap-1.5 shadow-xs"
 				>
 					{#if isTogglingPower}
-						<ArrowClockwise size={14} class="animate-spin" /> Stopping…
+						<ArrowClockwise size={13} class="animate-spin" />
+						<span>Stopping…</span>
 					{:else}
-						<Stop size={14} weight="fill" /> Stop
+						<Stop size={13} weight="fill" />
+						<span>Stop</span>
 					{/if}
-				</button>
+				</Button>
 			{:else}
-				<button
-					type="button"
+				<Button
+					variant="secondary"
+					size="sm"
 					onclick={handleTogglePower}
 					disabled={isTogglingPower || service.status === 'deploying'}
-					class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--status-green)]/25 bg-[var(--status-green)]/10 px-3.5 py-2 text-xs font-medium text-[var(--status-green)] transition-colors hover:bg-[var(--status-green)]/20 disabled:opacity-50"
-					title="Start service workload"
+					class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
 				>
 					{#if isTogglingPower}
-						<ArrowClockwise size={14} class="animate-spin" /> Starting…
+						<ArrowClockwise size={13} class="animate-spin" />
+						<span>Starting…</span>
 					{:else}
-						<Play size={14} weight="fill" /> Start
+						<Play size={13} weight="fill" />
+						<span>Start</span>
 					{/if}
-				</button>
+				</Button>
 			{/if}
 
 			<!-- 5. Open Terminal -->
-			<button
-				type="button"
+			<Button
+				variant="secondary"
+				size="sm"
 				onclick={onTerminalClick}
-				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3.5 py-2 text-xs font-[var(--font-mono)] font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-				title="Open interactive terminal console"
+				class="gap-1.5 font-mono text-xs shadow-xs"
 			>
-				<Terminal size={14} /> &gt;_ Open Terminal
-			</button>
+				<Terminal size={13} />
+				<span>&gt;_ Open Terminal</span>
+			</Button>
 		</div>
 
-		<!-- 6. Autodeploy Toggle Switch (Dokploy style) -->
-		<div class="flex items-center gap-3 pl-2 sm:border-l sm:border-[var(--border-subtle)]">
-			<span class="text-xs font-medium text-[var(--text-secondary)]">Autodeploy</span>
-			<button
-				type="button"
-				role="switch"
-				aria-checked={autoDeploy}
-				onclick={handleToggleAutodeploy}
-				class="relative h-5 w-9 cursor-pointer rounded-full border-0 p-0 transition-colors {autoDeploy
-					? 'bg-[var(--accent)]'
-					: 'bg-zinc-700'}"
-				title="Toggle automatic deployment on webhook or registry push"
-			>
-				<span
-					class="absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform {autoDeploy
-						? 'left-4.5'
-						: 'left-0.5'}"
-				></span>
-			</button>
+		<!-- Right: Autodeploy Toggle Switch (Kumo UI Switch) -->
+		<div class="flex items-center gap-3 pl-2 sm:border-l sm:border-kumo-line">
+			<span class="text-xs font-medium text-kumo-subtle select-none">Autodeploy</span>
+			<Switch
+				size="sm"
+				checked={autoDeploy}
+				onCheckedChange={handleToggleAutodeploy}
+				aria-label="Toggle automatic deployment on webhook or registry push"
+			/>
 		</div>
 	</div>
 
-	<!-- Podman Execution & Pod Strategy (UX Heuristics #1: Visibility & User Control) -->
+	<!-- 3. Podman Execution & Pod Strategy (Previous commit position, styled with Kumo UI) -->
 	<div
-		class="flex flex-wrap items-center justify-between gap-3 border-t border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-3 text-xs"
+		class="flex flex-wrap items-center justify-between gap-3 border-t border-kumo-hairline bg-kumo-elevated px-5 py-3 text-xs"
 	>
-		<div class="flex items-center gap-2.5">
-			<label class="flex cursor-pointer items-center gap-2 select-none">
-				<input
-					type="checkbox"
-					checked={inPod}
-					onchange={handleToggleInPod}
-					class="h-4 w-4 cursor-pointer rounded border-[var(--border)] accent-[var(--accent)]"
-				/>
-				<span class="font-medium text-[var(--text-primary)]">
-					{service.type === 'compose'
-						? 'Encapsulate stack inside Podman Pod'
-						: 'Run inside Podman Pod'}
-				</span>
-			</label>
-			<span class="hidden text-[11px] text-[var(--text-tertiary)] sm:inline">
+		<div class="flex items-center gap-3">
+			<Switch
+				checked={inPod}
+				onCheckedChange={handleToggleInPod}
+				aria-label="Toggle encapsulation inside Podman Pod"
+			/>
+			<span class="font-medium text-kumo-default">
+				{service.type === 'compose'
+					? 'Encapsulate stack inside Podman Pod'
+					: 'Run inside Podman Pod'}
+			</span>
+			<span class="hidden text-[11px] text-kumo-subtle sm:inline">
 				{inPod
 					? `(Shared localhost network namespace · pod_${service.id})`
 					: '(Independent containers attached to gopod-net bridge)'}
 			</span>
 		</div>
 		<div class="flex items-center gap-2">
-			<span
-				class="rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)]"
-			>
+			<Badge variant="neutral" class="font-mono text-[11px]">
 				network: gopod-net
-			</span>
-			<span
-				class="rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-0.5 text-[11px] font-[var(--font-mono)] {inPod
-					? 'border-[var(--accent)]/40 text-[var(--accent)]'
-					: 'text-[var(--text-secondary)]'}"
+			</Badge>
+			<Badge
+				variant="neutral"
+				class="font-mono text-[11px] {inPod ? 'text-[var(--accent)]' : 'text-kumo-subtle'}"
 			>
 				mode: {inPod ? 'podman-pod' : 'standalone'}
-			</span>
+			</Badge>
 		</div>
 	</div>
 
-	<!-- Instant Feedback Banner (Nielsen #1: Visibility of System Status) -->
+	<!-- 4. Instant Feedback Banner (Nielsen #1: Visibility of System Status) -->
 	{#if feedbackMessage}
 		<div
-			class="flex items-center justify-between border-t border-[var(--border-subtle)] px-5 py-2.5 text-xs {feedbackMessage.type ===
+			class="flex items-center justify-between border-t border-kumo-hairline px-5 py-2.5 text-xs {feedbackMessage.type ===
 			'success'
-				? 'bg-emerald-500/10 text-emerald-400'
+				? 'bg-kumo-success-tint text-kumo-success'
 				: 'bg-blue-500/10 text-blue-400'}"
 		>
 			<div class="flex items-center gap-2">
@@ -381,4 +388,4 @@
 			</button>
 		</div>
 	{/if}
-</div>
+</LayerCard>

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import type { Service, Workload, TimeSeriesPoint, Container } from '$lib/types';
-	import { StatusBadge } from '$lib/components/ui';
+	import { StatusBadge, Select } from '$lib/components/ui';
+	import { Button } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { MicroWorkloadTable } from '$lib/components/features/monitoring';
@@ -35,10 +36,30 @@
 	});
 
 	let selectedContainer = $state('all');
+	let containerOptions = $derived.by(() => {
+		const opts: { label: string; value: string }[] = [];
+		if (matchingContainers.length > 1) {
+			opts.push({ label: `All Containers (${matchingContainers.length} Aggregate)`, value: 'all' });
+		}
+		for (const c of matchingContainers) {
+			opts.push({ label: `${c.name} (${c.id.slice(0, 12)}) — ${c.status}`, value: c.name });
+		}
+		if (matchingContainers.length === 0) {
+			opts.push({ label: `${service.name} (Waiting for container to start)`, value: 'all' });
+		}
+		return opts;
+	});
+
 	let timeRange = $state<'1h' | '6h' | '24h' | '7d'>('24h');
 	let isRefreshing = $state(false);
 	let isRestartingContainer = $state(false);
 	let refreshRate = $state<'3s' | '5s' | '15s' | 'paused'>('3s');
+	const refreshOptions = [
+		{ label: '3s', value: '3s' },
+		{ label: '5s', value: '5s' },
+		{ label: '15s', value: '15s' },
+		{ label: 'Pause', value: 'paused' }
+	];
 	let lastUpdatedSec = $state(0);
 
 	// Currently targeted container (null if aggregate 'all')
@@ -234,38 +255,30 @@
 			<!-- Dokploy Parity Container Selector -->
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
-				<div
-					class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1"
-				>
-					<select
-						bind:value={selectedContainer}
-						class="cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
-					>
-						{#if matchingContainers.length > 1}
-							<option value="all">All Containers ({matchingContainers.length} Aggregate)</option>
-						{/if}
-						{#each matchingContainers as c}
-							<option value={c.name}>{c.name} ({c.id.slice(0, 12)}) — {c.status}</option>
-						{/each}
-						{#if matchingContainers.length === 0}
-							<option value="all">{service.name} (Waiting for container to start)</option>
-						{/if}
-					</select>
+				<div class="min-w-[200px]">
+					<Select
+						value={selectedContainer}
+						onValueChange={(val: any) => {
+							if (typeof val === 'string') selectedContainer = val;
+						}}
+						options={containerOptions}
+						size="sm"
+					/>
 				</div>
 			</div>
 
 			<!-- Quick Restart Action (Dokploy Parity) -->
 			{#if matchingContainers.length > 0}
-				<button
-					type="button"
+				<Button
+					variant="secondary"
+					size="xs"
 					onclick={handleRestartContainer}
 					disabled={isRestartingContainer}
-					class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
 					title="Restart container via Podman socket"
 				>
 					<ArrowClockwise size={12} class={isRestartingContainer ? 'animate-spin' : ''} />
 					<span>Restart Container</span>
-				</button>
+				</Button>
 			{/if}
 
 			<!-- Polling & Live Socket Indicator -->
@@ -278,17 +291,18 @@
 						: 'animate-pulse bg-emerald-400'}"
 				></span>
 				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
-					{refreshRate === 'paused' ? 'Paused' : `Live Polling (${refreshRate})`}
+					{refreshRate === 'paused' ? 'Paused' : 'Live'}
 				</span>
-				<select
-					bind:value={refreshRate}
-					class="ml-0.5 cursor-pointer border-0 bg-transparent font-mono text-[11px] text-[var(--text-tertiary)] outline-none hover:text-[var(--text-primary)]"
-				>
-					<option value="3s">3s</option>
-					<option value="5s">5s</option>
-					<option value="15s">15s</option>
-					<option value="paused">Pause</option>
-				</select>
+				<div class="w-[80px]">
+					<Select
+						value={refreshRate}
+						onValueChange={(val: any) => {
+							if (val) refreshRate = val;
+						}}
+						options={refreshOptions}
+						size="xs"
+					/>
+				</div>
 			</div>
 
 			{#if refreshRate !== 'paused'}

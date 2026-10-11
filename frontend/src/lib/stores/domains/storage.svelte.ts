@@ -28,6 +28,20 @@ export class StorageDomainStore {
 		this.volumeSnapshots = this.volumeSnapshots.filter((s) => s.id !== id);
 	}
 
+	async restoreVolumeSnapshot(id: string) {
+		await api.volumes.restoreSnapshot(id);
+	}
+
+	downloadVolumeSnapshot(id: string, filename: string) {
+		const url = api.volumes.getDownloadUrl(id);
+		const a = document.createElement('a');
+		a.href = url;
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+	}
+
 	async toggleVolumeSchedule(id: string) {
 		const updated = await api.volumes.toggleSchedule(id);
 		const idx = this.volumeSchedules.findIndex((s) => s.id === id);

@@ -2,8 +2,11 @@
 	import { onMount } from 'svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader, Tabs, DataTable, StatusBadge } from '$lib/components/ui';
+	import { PageHeader, Tabs, DataTable, StatusBadge, Modal, CodeEditor } from '$lib/components/ui';
+	import { Button, Badge } from 'kumo-svelte';
+	import { Play, Stop, ArrowClockwise, FileCode } from 'phosphor-svelte';
 	import { dataStore } from '$lib/stores/data.svelte';
+	import type { QuadletUnit } from '$lib/types';
 
 	let activeTab = $derived(page.params.tab ?? 'containers');
 
@@ -12,6 +15,10 @@
 	let images = $derived(dataStore.images);
 	let volumes = $derived(dataStore.volumes);
 	let networks = $derived(dataStore.networks);
+	let quadlets = $derived(dataStore.quadlets);
+
+	let viewingQuadlet = $state<QuadletUnit | null>(null);
+	let isReloading = $state(false);
 
 	onMount(() => {
 		dataStore.fetchRuntimeData();
@@ -20,6 +27,7 @@
 
 	const tabs = [
 		{ id: 'containers', label: 'Containers' },
+		{ id: 'quadlets', label: 'Quadlets' },
 		{ id: 'pods', label: 'Pods' },
 		{ id: 'images', label: 'Images' },
 		{ id: 'volumes', label: 'Volumes' },
@@ -60,6 +68,45 @@
 			rows={containers}
 			keyExtractor={(c) => c.id}
 		/>
+	{:else if activeTab === 'quadlets'}
+		<div class="flex flex-col gap-4">
+			<div class="flex items-center justify-between">
+				<p class="m-0 text-xs text-[var(--text-secondary)]">
+					Systemd Quadlet units installed in declarative search paths (<code class="font-mono"
+						>~/.config/containers/systemd/</code
+					>).
+				</p>
+				<Button
+					variant="secondary"
+					size="sm"
+					disabled={isReloading}
+					onclick={async () => {
+						isReloading = true;
+						try {
+							await dataStore.reloadQuadlets();
+						} finally {
+							isReloading = false;
+						}
+					}}
+				>
+					<ArrowClockwise size={14} class={isReloading ? 'animate-spin' : ''} />
+					<span>Daemon Reload</span>
+				</Button>
+			</div>
+
+			<DataTable
+				columns={[
+					{ key: 'name', label: 'Unit File', mono: true },
+					{ key: 'type', label: 'Type', render: quadletTypeSnippet },
+					{ key: 'unitName', label: 'Service Unit', mono: true },
+					{ key: 'status', label: 'Status', render: quadletStatusSnippet },
+					{ key: 'path', label: 'Path', mono: true }
+				]}
+				rows={quadlets}
+				keyExtractor={(q) => q.name}
+				actions={quadletActionsSnippet}
+			/>
+		</div>
 	{:else if activeTab === 'pods'}
 		<DataTable
 			columns={[
@@ -140,3 +187,76 @@
 {#snippet volumeStatusSnippet(row: (typeof volumes)[0])}
 	<StatusBadge status={row.status} size="md" />
 {/snippet}
+
+{#snippet quadletTypeSnippet(row: (typeof quadlets)[0])}
+	<Badge variant="secondary" class="font-mono uppercase text-[11px]">{row.type}</Badge>
+{/snippet}
+
+{#snippet quadletStatusSnippet(row: (typeof quadlets)[0])}
+	<StatusBadge
+		status={row.status === 'active' ? 'running' : row.status === 'failed' ? 'failed' : 'stopped'}
+		size="md"
+	/>
+{/snippet}
+
+{#snippet quadletActionsSnippet(row: (typeof quadlets)[0])}
+	<div class="flex items-center justify-end gap-1">
+		{#if row.status === 'active'}
+			<button
+				type="button"
+				title="Stop Quadlet"
+				class="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--status-red)]"
+				onclick={() => dataStore.stopQuadlet(row.name)}
+			>
+				<Stop size={14} />
+			</button>
+			<button
+				type="button"
+				title="Restart Quadlet"
+				class="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)]"
+				onclick={() => dataStore.restartQuadlet(row.name)}
+			>
+				<ArrowClockwise size={14} />
+			</button>
+		{:else}
+			<button
+				type="button"
+				title="Start Quadlet"
+				class="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--status-green)]"
+				onclick={() => dataStore.startQuadlet(row.name)}
+			>
+				<Play size={14} />
+			</button>
+		{/if}
+		<button
+			type="button"
+			title="View Unit Source"
+			class="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)]"
+			onclick={() => (viewingQuadlet = row)}
+		>
+			<FileCode size={14} />
+		</button>
+	</div>
+{/snippet}
+
+<Modal
+	open={!!viewingQuadlet}
+	onclose={() => (viewingQuadlet = null)}
+	title={viewingQuadlet?.name ?? 'Quadlet Unit'}
+	subtitle={`Systemd unit source at ${viewingQuadlet?.path ?? ''}`}
+	size="lg"
+>
+	{#if viewingQuadlet}
+		<div class="flex flex-col gap-3">
+			<CodeEditor
+				value={viewingQuadlet.content}
+				language="quadlet"
+				readOnly={true}
+				height="260px"
+			/>
+			<div class="flex justify-end">
+				<Button variant="secondary" onclick={() => (viewingQuadlet = null)}>Close</Button>
+			</div>
+		</div>
+	{/if}
+</Modal>

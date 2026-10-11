@@ -14,7 +14,14 @@ import (
 type LogManager struct {
 	baseDir     string
 	mu          sync.RWMutex
+	filesMu     sync.Mutex
+	writers     map[string]*logWriter
 	subscribers map[string][]chan string
+}
+
+type logWriter struct {
+	file  *os.File
+	timer *time.Timer
 }
 
 // NewLogManager creates a new log manager storing logs in baseDir/deployments.
@@ -23,7 +30,51 @@ func NewLogManager(baseDir string) *LogManager {
 	_ = os.MkdirAll(dir, 0755)
 	return &LogManager{
 		baseDir:     dir,
+		writers:     make(map[string]*logWriter),
 		subscribers: make(map[string][]chan string),
+	}
+}
+
+func (m *LogManager) getWriter(deploymentID string) (*os.File, error) {
+	m.filesMu.Lock()
+	defer m.filesMu.Unlock()
+
+	if lw, ok := m.writers[deploymentID]; ok {
+		if lw.timer != nil {
+			lw.timer.Stop()
+		}
+		lw.timer = time.AfterFunc(5*time.Second, func() {
+			m.CloseLog(deploymentID)
+		})
+		return lw.file, nil
+	}
+
+	logFilePath := filepath.Join(m.baseDir, fmt.Sprintf("%s.log", deploymentID))
+	f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return nil, err
+	}
+
+	lw := &logWriter{file: f}
+	lw.timer = time.AfterFunc(5*time.Second, func() {
+		m.CloseLog(deploymentID)
+	})
+	m.writers[deploymentID] = lw
+	return f, nil
+}
+
+// CloseLog safely flushes and closes open file handles for a deployment.
+func (m *LogManager) CloseLog(deploymentID string) {
+	m.filesMu.Lock()
+	defer m.filesMu.Unlock()
+
+	if lw, ok := m.writers[deploymentID]; ok {
+		if lw.timer != nil {
+			lw.timer.Stop()
+		}
+		_ = lw.file.Sync()
+		_ = lw.file.Close()
+		delete(m.writers, deploymentID)
 	}
 }
 
@@ -32,11 +83,8 @@ func (m *LogManager) LogLine(deploymentID, line string) {
 	timeStr := time.Now().Format("15:04:05")
 	formatted := fmt.Sprintf("[%s] %s\n", timeStr, line)
 
-	logFilePath := filepath.Join(m.baseDir, fmt.Sprintf("%s.log", deploymentID))
-	f, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0644)
-	if err == nil {
+	if f, err := m.getWriter(deploymentID); err == nil {
 		_, _ = f.WriteString(formatted)
-		_ = f.Close()
 	}
 
 	m.mu.RLock()

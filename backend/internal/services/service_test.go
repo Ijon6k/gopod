@@ -134,3 +134,132 @@ func TestDeploymentCRUD(t *testing.T) {
 		t.Errorf("unexpected deployment list: %+v", list)
 	}
 }
+
+func TestQuadletUnitNameAndContent(t *testing.T) {
+	s := Service{
+		ID:        "svc-1234",
+		ProjectID: "proj-alpha",
+		Name:      "My Cool Service! 99",
+	}
+
+	clean := QuadletUnitName(s)
+	if clean != "My-Cool-Service-99" {
+		t.Errorf("expected My-Cool-Service-99, got %s", clean)
+	}
+
+	d := &Deployer{dataDir: t.TempDir()}
+	content := d.prepareQuadletContent(s, clean)
+
+	if !strings.Contains(content, "ContainerName=svc-1234") {
+		t.Errorf("content missing ContainerName directive:\n%s", content)
+	}
+	if !strings.Contains(content, "Network=gopod-net") {
+		t.Errorf("content missing Network=gopod-net directive:\n%s", content)
+	}
+	if !strings.Contains(content, "Label=io.gopod.service=svc-1234") {
+		t.Errorf("content missing Label=io.gopod.service directive:\n%s", content)
+	}
+
+	// Quadlet specification: Restart= MUST NOT be in [Container] section
+	containerIdx := strings.Index(content, "[Container]")
+	serviceIdx := strings.Index(content, "[Service]")
+	if containerIdx != -1 && serviceIdx != -1 {
+		containerSection := content[containerIdx:serviceIdx]
+		if strings.Contains(containerSection, "Restart=") {
+			t.Errorf("[Container] section must not contain Restart= directive:\n%s", containerSection)
+		}
+	}
+}
+
+func TestDeployByWebhookAuth(t *testing.T) {
+	tempDB := filepath.Join(t.TempDir(), "test.db")
+	database, err := db.Open(tempDB)
+	if err != nil {
+		t.Fatalf("failed to open test db: %v", err)
+	}
+
+	repo := NewSQLiteRepository(database.DB)
+	ctx := context.Background()
+
+	_, err = database.DB.Exec("INSERT INTO projects (id, name) VALUES ('test-proj', 'Test Project')")
+	if err != nil {
+		t.Fatalf("failed to insert test project: %v", err)
+	}
+
+	secretToken := "secret-webhook-token-xyz"
+	svc := Service{
+		ID:           "svc-secure-1",
+		ProjectID:    "test-proj",
+		Name:         "secure-service",
+		Type:         "image",
+		Status:       "stopped",
+		WebhookToken: secretToken,
+	}
+	if err := repo.Create(ctx, svc); err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	ws := NewWorkloadService(repo, nil, nil)
+
+	// 1. Calling with empty token must fail
+	if _, err := ws.DeployByWebhook(ctx, ""); err == nil {
+		t.Error("expected error for empty webhook token, got nil")
+	}
+
+	// 2. Calling with service ID (bypass attempt) must fail
+	if _, err := ws.DeployByWebhook(ctx, svc.ID); err == nil {
+		t.Error("expected error when passing service ID as webhook token, got nil")
+	}
+
+	// 3. Calling with valid webhook token succeeds
+	matched, err := ws.DeployByWebhook(ctx, secretToken)
+	if err != nil {
+		t.Errorf("expected success with valid webhook token, got error: %v", err)
+	}
+	if matched == nil || matched.ID != svc.ID {
+		t.Errorf("unexpected service returned: %+v", matched)
+	}
+}
+
+func TestParseQuadlet(t *testing.T) {
+	sampleQuadlet := `[Unit]
+Description=Uptime Kuma Monitoring Service
+After=network-online.target
+
+[Container]
+ContainerName=uptime-kuma
+Image=docker.io/louislam/uptime-kuma:1
+PublishPort=3001:3001
+Volume=uptime-kuma-data:/app/data:Z
+Environment=NODE_ENV=production
+Restart=always
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target`
+
+	parsed := ParseQuadlet(sampleQuadlet)
+	if parsed.Image != "docker.io/louislam/uptime-kuma:1" {
+		t.Errorf("expected Image docker.io/louislam/uptime-kuma:1, got %s", parsed.Image)
+	}
+	if parsed.ContainerName != "uptime-kuma" {
+		t.Errorf("expected ContainerName uptime-kuma, got %s", parsed.ContainerName)
+	}
+	if parsed.HostPort != 3001 || parsed.Port != 3001 {
+		t.Errorf("expected HostPort 3001 and Port 3001, got %d, %d", parsed.HostPort, parsed.Port)
+	}
+	if len(parsed.Ports) != 1 || parsed.Ports[0] != "3001:3001" {
+		t.Errorf("unexpected Ports: %+v", parsed.Ports)
+	}
+	if len(parsed.Volumes) != 1 || parsed.Volumes[0] != "uptime-kuma-data:/app/data:Z" {
+		t.Errorf("unexpected Volumes: %+v", parsed.Volumes)
+	}
+	if parsed.Env["NODE_ENV"] != "production" {
+		t.Errorf("expected NODE_ENV=production, got %s", parsed.Env["NODE_ENV"])
+	}
+	if parsed.RestartPolicy != "always" {
+		t.Errorf("expected RestartPolicy always, got %s", parsed.RestartPolicy)
+	}
+}

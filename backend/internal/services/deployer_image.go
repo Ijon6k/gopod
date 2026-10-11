@@ -17,7 +17,15 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID string, log
 	}
 
 	logLine(fmt.Sprintf("📦 Pulling container image '%s'...", imageToRun))
-	pullCmd := exec.CommandContext(ctx, "podman", "pull", imageToRun)
+	var pullArgs []string
+	if s.RegistryID != "" && d.registryProvider != nil {
+		if reg, err := d.registryProvider.GetRegistry(ctx, s.RegistryID); err == nil && reg != nil && reg.Username != "" {
+			logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
+			pullArgs = append(pullArgs, "--creds", fmt.Sprintf("%s:%s", reg.Username, reg.Token))
+		}
+	}
+	pullArgs = append(pullArgs, "pull", imageToRun)
+	pullCmd := exec.CommandContext(ctx, "podman", pullArgs...)
 	d.setupCmdEnv(pullCmd)
 	pStdout, _ := pullCmd.StdoutPipe()
 	pStderr, _ := pullCmd.StderrPipe()

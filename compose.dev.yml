@@ -17,6 +17,7 @@ services:
     volumes:
       - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:z"
       - "./data:/app/data:Z"
+      - "${HOME}/.config/containers/systemd:/root/.config/containers/systemd:z"
     networks:
       - gopod-net
     security_opt:

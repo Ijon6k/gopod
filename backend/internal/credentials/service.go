@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -185,6 +186,14 @@ func (s *Service) DeleteRegistry(ctx context.Context, id string) error {
 	return s.repo.DeleteRegistry(ctx, id)
 }
 
+// GetRegistry returns credentials for a single registry including unredacted token.
+func (s *Service) GetRegistry(ctx context.Context, id string) (*ContainerRegistry, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	return s.repo.GetRegistry(ctx, id)
+}
+
 // ── Secrets ──
 
 func (s *Service) ListSecrets(ctx context.Context) ([]Secret, error) {
@@ -224,6 +233,14 @@ func (s *Service) CreateSecret(ctx context.Context, sec Secret) (*Secret, error)
 	if err := s.repo.CreateSecret(ctx, sec); err != nil {
 		return nil, err
 	}
+
+	// Real Podman secret creation
+	if _, err := exec.LookPath("podman"); err == nil {
+		cmd := exec.CommandContext(ctx, "podman", "secret", "create", sec.Name, "-")
+		cmd.Stdin = strings.NewReader(sec.Value)
+		_ = cmd.Run()
+	}
+
 	sec.Value = ""
 	return &sec, nil
 }
@@ -231,6 +248,12 @@ func (s *Service) CreateSecret(ctx context.Context, sec Secret) (*Secret, error)
 func (s *Service) DeleteSecret(ctx context.Context, id string) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
+	}
+	sec, _ := s.repo.GetSecret(ctx, id)
+	if sec != nil && sec.Name != "" {
+		if _, err := exec.LookPath("podman"); err == nil {
+			_ = exec.CommandContext(ctx, "podman", "secret", "rm", sec.Name).Run()
+		}
 	}
 	return s.repo.DeleteSecret(ctx, id)
 }

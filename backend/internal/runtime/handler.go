@@ -51,6 +51,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/networks", h.middleware.RequireAuth(h.handleListNetworks))
 	mux.HandleFunc("POST /api/system/prune", h.middleware.RequireAuth(h.handlePruneSystem))
 	mux.HandleFunc("GET /api/system/df", h.middleware.RequireAuth(h.handleGetDiskUsage))
+
+	// Protected Quadlet systemd resources
+	mux.HandleFunc("GET /api/quadlets", h.middleware.RequireAuth(h.handleListQuadlets))
+	mux.HandleFunc("POST /api/quadlets/{name}/start", h.middleware.RequireAuth(h.handleQuadletStart))
+	mux.HandleFunc("POST /api/quadlets/{name}/stop", h.middleware.RequireAuth(h.handleQuadletStop))
+	mux.HandleFunc("POST /api/quadlets/{name}/restart", h.middleware.RequireAuth(h.handleQuadletRestart))
+	mux.HandleFunc("POST /api/quadlets/reload", h.middleware.RequireAuth(h.handleQuadletReload))
+	mux.HandleFunc("GET /api/quadlets/{name}/content", h.middleware.RequireAuth(h.handleQuadletContent))
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -209,5 +217,61 @@ func (h *Handler) handleGetDiskUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, df)
+}
+
+// ── Quadlet Handlers ──
+
+func (h *Handler) handleListQuadlets(w http.ResponseWriter, r *http.Request) {
+	quadlets, err := h.service.ListQuadlets(r.Context())
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, quadlets)
+}
+
+func (h *Handler) handleQuadletStart(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := h.service.StartQuadlet(r.Context(), name); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Quadlet started successfully"})
+}
+
+func (h *Handler) handleQuadletStop(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := h.service.StopQuadlet(r.Context(), name); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Quadlet stopped successfully"})
+}
+
+func (h *Handler) handleQuadletRestart(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := h.service.RestartQuadlet(r.Context(), name); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Quadlet restarted successfully"})
+}
+
+func (h *Handler) handleQuadletReload(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.ReloadQuadlets(r.Context()); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Systemd user daemon reloaded"})
+}
+
+func (h *Handler) handleQuadletContent(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	content, err := h.service.GetQuadletContent(name)
+	if err != nil {
+		httputil.WriteError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"name": name, "content": content})
 }
 

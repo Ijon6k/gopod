@@ -23,7 +23,6 @@ Image=ghcr.io/alexta69/metube:latest
 PublishPort=8081:8081
 Volume=metube-downloads:/downloads:Z
 AutoUpdate=registry
-Restart=always
 
 [Service]
 Restart=always
@@ -46,7 +45,6 @@ After=network-online.target
 Image=docker.io/library/nginx:alpine
 PublishPort=8080:80
 AutoUpdate=registry
-Restart=always
 
 [Service]
 Restart=always
@@ -69,7 +67,6 @@ Image=docker.io/library/postgres:17-alpine
 PublishPort=5432:5432
 Environment=POSTGRES_PASSWORD=postgres_secure_pass
 Volume=postgres-data:/var/lib/postgresql/data:Z
-Restart=always
 
 [Service]
 Restart=always
@@ -91,7 +88,6 @@ After=network-online.target
 [Container]
 Image=docker.io/library/redis:7-alpine
 PublishPort=6379:6379
-Restart=always
 
 [Service]
 Restart=always
@@ -116,7 +112,6 @@ PublishPort=443:443
 Volume=caddy-data:/data:Z
 Volume=caddy-config:/config:Z
 AutoUpdate=registry
-Restart=always
 
 [Service]
 Restart=always

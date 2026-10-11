@@ -7,9 +7,31 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
+
+func getVolumeSize(mountPoint string) string {
+	if mountPoint == "" {
+		return "—"
+	}
+	var total int64
+	_ = filepath.Walk(mountPoint, func(_ string, info os.FileInfo, err error) error {
+		if err != nil {
+			return nil
+		}
+		if !info.IsDir() {
+			total += info.Size()
+		}
+		return nil
+	})
+	if total == 0 {
+		return "0 B"
+	}
+	return formatBytes(total)
+}
 
 // GetVolumes returns list of local named volumes.
 func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
@@ -44,7 +66,7 @@ func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 				Name:       item.Name,
 				Driver:     item.Driver,
 				MountPoint: item.Mountpoint,
-				Size:       "Active",
+				Size:       getVolumeSize(item.Mountpoint),
 			})
 		}
 		return vols, nil
@@ -64,11 +86,12 @@ func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 
 	var vols []VolumeItem
 	for _, item := range raw {
+		mountPoint := getString(item, "Mountpoint")
 		vols = append(vols, VolumeItem{
 			Name:       getString(item, "Name"),
 			Driver:     getString(item, "Driver"),
-			MountPoint: getString(item, "Mountpoint"),
-			Size:       "Calculated",
+			MountPoint: mountPoint,
+			Size:       getVolumeSize(mountPoint),
 		})
 	}
 	return vols, nil

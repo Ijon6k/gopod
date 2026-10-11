@@ -78,6 +78,15 @@ export interface Network {
 	created?: string;
 }
 
+export interface QuadletUnit {
+	name: string;
+	unitName: string;
+	type: 'container' | 'pod' | 'volume' | 'network' | 'kube' | string;
+	path: string;
+	status: 'active' | 'inactive' | 'failed' | 'activating' | 'unmanaged' | string;
+	content: string;
+}
+
 export interface PortMapping {
 	id: string;
 	hostPort: number;

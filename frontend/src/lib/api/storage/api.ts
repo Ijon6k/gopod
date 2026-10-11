@@ -23,6 +23,15 @@ export const storageApi = {
 		return res.data;
 	},
 
+	async restoreSnapshot(id: string): Promise<{ message: string }> {
+		const res = await apiClient.post<{ message: string }>(`/volumes/snapshots/${id}/restore`);
+		return res.data;
+	},
+
+	getDownloadUrl(id: string): string {
+		return `/api/volumes/snapshots/${id}/download`;
+	},
+
 	async listSchedules(projectId?: string): Promise<VolumeBackupSchedule[]> {
 		const res = await apiClient.get<VolumeBackupSchedule[]>('/volumes/schedules', {
 			params: projectId ? { projectId } : undefined

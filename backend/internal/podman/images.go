@@ -12,6 +12,19 @@ import (
 	"time"
 )
 
+// SplitImageNameTag separates image repository from tag, correctly handling registry port colons.
+func SplitImageNameTag(fullName string) (string, string) {
+	if fullName == "" {
+		return "<none>", "<none>"
+	}
+	lastColon := strings.LastIndex(fullName, ":")
+	lastSlash := strings.LastIndex(fullName, "/")
+	if lastColon > -1 && lastColon > lastSlash {
+		return fullName[:lastColon], fullName[lastColon+1:]
+	}
+	return fullName, "latest"
+}
+
 // GetImages returns container images in local storage.
 func (c *Client) GetImages(ctx context.Context) ([]ImageItem, error) {
 	if c.httpClient != nil {
@@ -57,10 +70,14 @@ func (c *Client) GetImages(ctx context.Context) ([]ImageItem, error) {
 			}
 
 			if fullName != "" {
-				parts := strings.Split(fullName, ":")
-				repo = parts[0]
-				if len(parts) > 1 {
-					tag = parts[1]
+				lastColon := strings.LastIndex(fullName, ":")
+				lastSlash := strings.LastIndex(fullName, "/")
+				if lastColon > -1 && lastColon > lastSlash {
+					repo = fullName[:lastColon]
+					tag = fullName[lastColon+1:]
+				} else {
+					repo = fullName
+					tag = "latest"
 				}
 			}
 

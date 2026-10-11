@@ -78,8 +78,9 @@
 		isRestoring = true;
 
 		try {
+			await dataStore.restoreVolumeSnapshot(restoringSnapshot.id);
 			const targetVol = restoringSnapshot.volumeName;
-			restoreSuccessMessage = `Snapshot restore initialized for volume "${targetVol}".`;
+			restoreSuccessMessage = `Snapshot restored successfully for volume "${targetVol}".`;
 			setTimeout(() => (restoreSuccessMessage = null), 4000);
 		} catch (err) {
 			console.error('Failed to restore snapshot:', err);
@@ -93,8 +94,8 @@
 		dataStore.toggleVolumeSchedule(id);
 	}
 
-	function handleDownload(filename: string) {
-		alert(`Preparing download for ${filename} (compressed zstd archive)`);
+	function handleDownload(snap: VolumeSnapshot) {
+		dataStore.downloadVolumeSnapshot(snap.id, snap.filename);
 	}
 </script>
 
@@ -410,7 +411,7 @@
 											</button>
 											<button
 												type="button"
-												onclick={() => handleDownload(snap.filename)}
+												onclick={() => handleDownload(snap)}
 												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 												title="Download Archive"
 											>

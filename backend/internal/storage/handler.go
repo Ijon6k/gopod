@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"gopod/internal/auth"
@@ -26,6 +27,8 @@ func NewHandler(service *Service, mw *auth.Middleware) *Handler {
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/storage/snapshots", h.middleware.RequireAuth(h.handleListSnapshots))
 	mux.HandleFunc("POST /api/storage/snapshots", h.middleware.RequireAuth(h.handleCreateSnapshot))
+	mux.HandleFunc("POST /api/storage/snapshots/{id}/restore", h.middleware.RequireAuth(h.handleRestoreSnapshot))
+	mux.HandleFunc("GET /api/storage/snapshots/{id}/download", h.middleware.RequireAuth(h.handleDownloadSnapshot))
 	mux.HandleFunc("DELETE /api/storage/snapshots/{id}", h.middleware.RequireAuth(h.handleDeleteSnapshot))
 
 	mux.HandleFunc("GET /api/storage/schedules", h.middleware.RequireAuth(h.handleListSchedules))
@@ -37,6 +40,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/volumes/snapshots", h.middleware.RequireAuth(h.handleListSnapshots))
 	mux.HandleFunc("POST /api/volumes/snapshots", h.middleware.RequireAuth(h.handleCreateSnapshot))
 	mux.HandleFunc("POST /api/volumes/snapshot", h.middleware.RequireAuth(h.handleCreateSnapshot))
+	mux.HandleFunc("POST /api/volumes/snapshots/{id}/restore", h.middleware.RequireAuth(h.handleRestoreSnapshot))
+	mux.HandleFunc("GET /api/volumes/snapshots/{id}/download", h.middleware.RequireAuth(h.handleDownloadSnapshot))
 	mux.HandleFunc("DELETE /api/volumes/snapshots/{id}", h.middleware.RequireAuth(h.handleDeleteSnapshot))
 	mux.HandleFunc("GET /api/volumes/schedules", h.middleware.RequireAuth(h.handleListSchedules))
 	mux.HandleFunc("POST /api/volumes/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
@@ -78,6 +83,26 @@ func (h *Handler) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Snapshot deleted"})
+}
+
+func (h *Handler) handleRestoreSnapshot(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.service.RestoreSnapshot(r.Context(), id); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Snapshot restored successfully"})
+}
+
+func (h *Handler) handleDownloadSnapshot(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	filePath, filename, err := h.service.GetSnapshotFilePath(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusNotFound, err.Error())
+		return
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+	http.ServeFile(w, r, filePath)
 }
 
 // ── Schedules ──

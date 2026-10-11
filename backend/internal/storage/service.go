@@ -1,14 +1,17 @@
 package storage
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,6 +42,13 @@ func (s *Service) ListSnapshots(ctx context.Context, projectID string) ([]Volume
 	return s.repo.ListSnapshots(ctx, projectID)
 }
 
+func setupCmdEnv(cmd *exec.Cmd) {
+	cmd.Env = os.Environ()
+	if socket := os.Getenv("PODMAN_SOCKET"); socket != "" {
+		cmd.Env = append(cmd.Env, fmt.Sprintf("CONTAINER_HOST=unix://%s", socket))
+	}
+}
+
 func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*VolumeSnapshot, error) {
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
@@ -53,23 +63,26 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 		snap.ID = fmt.Sprintf("snap-%s", hex.EncodeToString(b))
 	}
 	if snap.Filename == "" {
-		snap.Filename = fmt.Sprintf("%s-%d.tar.zst", snap.VolumeName, time.Now().Unix())
+		snap.Filename = fmt.Sprintf("%s-%d.tar.gz", snap.VolumeName, time.Now().Unix())
 	}
 	if snap.Compression == "" {
-		snap.Compression = "zstd"
+		snap.Compression = "gzip"
 	}
 	snap.CreatedAt = time.Now()
 
-	// Perform real Podman volume export
+	// Perform real Podman volume export with standard gzip compression
 	backupDir := "./data/backups"
 	_ = os.MkdirAll(backupDir, 0755)
 	filePath := filepath.Join(backupDir, snap.Filename)
 
 	outFile, err := os.Create(filePath)
 	if err == nil {
+		gw := gzip.NewWriter(outFile)
 		cmd := exec.CommandContext(ctx, "podman", "volume", "export", snap.VolumeName)
-		cmd.Stdout = outFile
+		setupCmdEnv(cmd)
+		cmd.Stdout = gw
 		if exportErr := cmd.Run(); exportErr == nil {
+			_ = gw.Close()
 			_ = outFile.Close()
 			if fi, statErr := os.Stat(filePath); statErr == nil {
 				snap.SizeBytes = fi.Size()
@@ -80,6 +93,7 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 				snap.Status = "completed"
 			}
 		} else {
+			_ = gw.Close()
 			_ = outFile.Close()
 			_ = os.Remove(filePath)
 			snap.Size = "0 MB"
@@ -94,6 +108,59 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 		return nil, err
 	}
 	return &snap, nil
+}
+
+// RestoreSnapshot restores volume contents from a real snapshot archive.
+func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
+	if s.repo == nil {
+		return errors.New("repository not initialized")
+	}
+	snap, err := s.repo.GetSnapshot(ctx, id)
+	if err != nil || snap == nil {
+		return fmt.Errorf("snapshot not found: %s", id)
+	}
+
+	filePath := filepath.Join("./data/backups", snap.Filename)
+	inFile, err := os.Open(filePath)
+	if err != nil {
+		return fmt.Errorf("snapshot file missing: %w", err)
+	}
+	defer inFile.Close()
+
+	var reader io.Reader = inFile
+	if strings.HasSuffix(snap.Filename, ".gz") || snap.Compression == "gzip" {
+		gr, err := gzip.NewReader(inFile)
+		if err != nil {
+			return fmt.Errorf("invalid gzip snapshot archive: %w", err)
+		}
+		defer gr.Close()
+		reader = gr
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "volume", "import", snap.VolumeName, "-")
+	setupCmdEnv(cmd)
+	cmd.Stdin = reader
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("podman volume import error: %s (%w)", strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}
+
+// GetSnapshotFilePath returns physical path and target download filename.
+func (s *Service) GetSnapshotFilePath(ctx context.Context, id string) (string, string, error) {
+	if s.repo == nil {
+		return "", "", errors.New("repository not initialized")
+	}
+	snap, err := s.repo.GetSnapshot(ctx, id)
+	if err != nil || snap == nil {
+		return "", "", fmt.Errorf("snapshot not found: %s", id)
+	}
+	filePath := filepath.Join("./data/backups", snap.Filename)
+	if _, err := os.Stat(filePath); err != nil {
+		return "", "", fmt.Errorf("snapshot file not found on disk: %w", err)
+	}
+	return filePath, snap.Filename, nil
 }
 
 func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {

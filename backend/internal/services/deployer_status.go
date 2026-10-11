@@ -11,10 +11,12 @@ import (
 
 // GetRuntimeStatus queries real-time status of the workload from Podman or systemd.
 func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
-	// 1. Quadlet Unit
+	unitName := QuadletUnitName(s)
+
+	// 1. Quadlet Unit via systemd
 	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
 		if _, err := exec.LookPath("systemctl"); err == nil {
-			cmd := exec.CommandContext(ctx, "systemctl", "--user", "is-active", fmt.Sprintf("%s.service", s.Name))
+			cmd := exec.CommandContext(ctx, "systemctl", "--user", "is-active", fmt.Sprintf("%s.service", unitName))
 			out, err := cmd.CombinedOutput()
 			st := strings.TrimSpace(string(out))
 			if err == nil && st == "active" {
@@ -26,7 +28,6 @@ func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 			if st == "activating" {
 				return "deploying"
 			}
-			return "stopped"
 		}
 	}
 
@@ -49,6 +50,8 @@ func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 					firstName := strings.TrimPrefix(c.Names[0], "/")
 					if firstName == s.ID ||
 						firstName == s.Name ||
+						firstName == unitName ||
+						firstName == fmt.Sprintf("systemd-%s", unitName) ||
 						strings.HasPrefix(firstName, s.ID) ||
 						strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) ||
 						strings.HasPrefix(firstName, fmt.Sprintf("pod_%s", s.ID)) {
@@ -125,8 +128,9 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 		}
 
 		// 1. Quadlet Unit
+		unitName := QuadletUnitName(s)
 		if (s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "") && hasSystemctl {
-			cmd := exec.CommandContext(ctx, "systemctl", "--user", "is-active", fmt.Sprintf("%s.service", s.Name))
+			cmd := exec.CommandContext(ctx, "systemctl", "--user", "is-active", fmt.Sprintf("%s.service", unitName))
 			out, err := cmd.CombinedOutput()
 			st := strings.TrimSpace(string(out))
 			if err == nil && st == "active" {
@@ -141,8 +145,6 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 				result[s.ID] = "deploying"
 				continue
 			}
-			result[s.ID] = "stopped"
-			continue
 		}
 
 		// 2. Match Containers
@@ -162,6 +164,8 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 				firstName := strings.TrimPrefix(c.Names[0], "/")
 				if firstName == s.ID ||
 					firstName == s.Name ||
+					firstName == unitName ||
+					firstName == fmt.Sprintf("systemd-%s", unitName) ||
 					strings.HasPrefix(firstName, s.ID) ||
 					strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) ||
 					strings.HasPrefix(firstName, fmt.Sprintf("pod_%s", s.ID)) {

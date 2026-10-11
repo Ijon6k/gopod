@@ -118,9 +118,7 @@
 	let secretMounts = $state<ServiceSecretMount[]>([]);
 
 	$effect(() => {
-		secretMounts = service.secretMounts ?? [
-			{ secretId: 'sec-2', secretName: 'jwt_secret', type: 'env', envVar: 'JWT_SECRET' }
-		];
+		secretMounts = service.secretMounts ?? [];
 	});
 
 	let isAddingSecret = $state(false);
@@ -133,7 +131,7 @@
 		dataStore.podmanSecrets.find((s) => s.id === selectedSecretId) ?? dataStore.podmanSecrets[0]
 	);
 
-	function addSecretMount() {
+	async function addSecretMount() {
 		if (!currentSelectedSecret) return;
 		const mount: ServiceSecretMount = {
 			secretId: currentSelectedSecret.id,
@@ -153,11 +151,21 @@
 		isAddingSecret = false;
 		customEnvVar = '';
 		customFilePath = '';
+		try {
+			await dataStore.updateService(service);
+		} catch (err) {
+			console.error('Failed to persist secret mounts:', err);
+		}
 	}
 
-	function removeSecretMount(index: number) {
+	async function removeSecretMount(index: number) {
 		secretMounts.splice(index, 1);
 		service.secretMounts = secretMounts;
+		try {
+			await dataStore.updateService(service);
+		} catch (err) {
+			console.error('Failed to persist secret mounts removal:', err);
+		}
 	}
 </script>
 

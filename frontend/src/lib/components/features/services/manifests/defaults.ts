@@ -11,7 +11,6 @@ After=network-online.target
 Image=${service.image || 'docker.io/library/nginx:alpine'}
 PublishPort=${service.port || 8080}:80
 AutoUpdate=registry
-Restart=always
 
 [Service]
 Restart=always

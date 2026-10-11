@@ -1,5 +1,5 @@
 import apiClient from '../client';
-import type { Pod, Image, Volume, Network, PodmanContainerItem, ContainerLogsResponse } from './types';
+import type { Pod, Image, Volume, Network, PodmanContainerItem, ContainerLogsResponse, QuadletUnit } from './types';
 
 export const runtimeApi = {
 	containers: {
@@ -85,6 +85,40 @@ export const runtimeApi = {
 	networks: {
 		async list(): Promise<Network[]> {
 			const res = await apiClient.get<Network[]>('/networks');
+			return res.data;
+		}
+	},
+
+	quadlets: {
+		async list(): Promise<QuadletUnit[]> {
+			const res = await apiClient.get<QuadletUnit[]>('/quadlets');
+			return res.data;
+		},
+
+		async start(name: string): Promise<{ message: string }> {
+			const res = await apiClient.post<{ message: string }>(`/quadlets/${encodeURIComponent(name)}/start`);
+			return res.data;
+		},
+
+		async stop(name: string): Promise<{ message: string }> {
+			const res = await apiClient.post<{ message: string }>(`/quadlets/${encodeURIComponent(name)}/stop`);
+			return res.data;
+		},
+
+		async restart(name: string): Promise<{ message: string }> {
+			const res = await apiClient.post<{ message: string }>(`/quadlets/${encodeURIComponent(name)}/restart`);
+			return res.data;
+		},
+
+		async reload(): Promise<{ message: string }> {
+			const res = await apiClient.post<{ message: string }>('/quadlets/reload');
+			return res.data;
+		},
+
+		async getContent(name: string): Promise<{ name: string; content: string }> {
+			const res = await apiClient.get<{ name: string; content: string }>(
+				`/quadlets/${encodeURIComponent(name)}/content`
+			);
 			return res.data;
 		}
 	}

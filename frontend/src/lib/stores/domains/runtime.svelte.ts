@@ -1,4 +1,4 @@
-import type { Container, Pod, Image, Volume, Network, PortMapping } from '$lib/types';
+import type { Container, Pod, Image, Volume, Network, PortMapping, QuadletUnit } from '$lib/types';
 import { api } from '$lib/api';
 
 export class RuntimeDomainStore {
@@ -8,6 +8,7 @@ export class RuntimeDomainStore {
 	volumes = $state<Volume[]>([]);
 	networks = $state<Network[]>([]);
 	ports = $state<PortMapping[]>([]);
+	quadlets = $state<QuadletUnit[]>([]);
 
 	getServiceContainers(serviceId: string): Container[] {
 		return this.containers.filter((c) => c.serviceId === serviceId);
@@ -46,14 +47,52 @@ export class RuntimeDomainStore {
 		await api.system.prune();
 	}
 
+	async fetchQuadlets() {
+		try {
+			const data = await api.runtime.quadlets.list();
+			if (Array.isArray(data)) {
+				this.quadlets = data;
+			}
+		} catch (e) {
+			console.warn('[RuntimeDomainStore] Error fetching quadlets:', e);
+		}
+	}
+
+	async startQuadlet(name: string) {
+		const found = this.quadlets.find((q) => q.name === name);
+		if (found) found.status = 'active';
+		await api.runtime.quadlets.start(name);
+	}
+
+	async stopQuadlet(name: string) {
+		const found = this.quadlets.find((q) => q.name === name);
+		if (found) found.status = 'inactive';
+		await api.runtime.quadlets.stop(name);
+	}
+
+	async restartQuadlet(name: string) {
+		await api.runtime.quadlets.restart(name);
+		await this.fetchQuadlets();
+	}
+
+	async reloadQuadlets() {
+		await api.runtime.quadlets.reload();
+		await this.fetchQuadlets();
+	}
+
 	async fetchRuntimeData() {
 		try {
-			const [podsData, imagesData, volumesData, networksData] = await Promise.all([
+			const [podsData, imagesData, volumesData, networksData, quadletsData] = await Promise.all([
 				api.runtime.pods.list().catch(() => []),
 				api.runtime.images.list().catch(() => []),
 				api.runtime.volumes.list().catch(() => []),
-				api.runtime.networks.list().catch(() => [])
+				api.runtime.networks.list().catch(() => []),
+				api.runtime.quadlets.list().catch(() => [])
 			]);
+
+			if (Array.isArray(quadletsData)) {
+				this.quadlets = quadletsData;
+			}
 
 			if (Array.isArray(podsData)) {
 				this.pods = podsData.map((p: any) => ({

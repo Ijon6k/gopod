@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"sync/atomic"
 
 	"gopod/pkg/httputil"
 )
@@ -9,6 +10,7 @@ import (
 // Middleware provides HTTP authentication guards.
 type Middleware struct {
 	authService *Service
+	initialized atomic.Bool
 }
 
 // NewMiddleware creates a new auth middleware handler.
@@ -19,14 +21,17 @@ func NewMiddleware(authService *Service) *Middleware {
 // RequireAuth wraps an http.HandlerFunc to ensure the request is from an authenticated session.
 func (m *Middleware) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		count, err := m.authService.CountUsers(r.Context())
-		if err != nil {
-			httputil.WriteError(w, http.StatusInternalServerError, "Cluster authorization error")
-			return
-		}
-		if count == 0 {
-			httputil.WriteError(w, http.StatusForbidden, "GOPOD cluster setup required. Please visit /setup.")
-			return
+		if !m.initialized.Load() {
+			count, err := m.authService.CountUsers(r.Context())
+			if err != nil {
+				httputil.WriteError(w, http.StatusInternalServerError, "Cluster authorization error")
+				return
+			}
+			if count == 0 {
+				httputil.WriteError(w, http.StatusForbidden, "GOPOD cluster setup required. Please visit /setup.")
+				return
+			}
+			m.initialized.Store(true)
 		}
 
 		session, user, err := m.authService.GetSessionUser(r)

@@ -177,8 +177,9 @@
 		}
 	}
 
-	// Record live data point whenever container stats update
-	$effect(() => {
+	async function tickStats() {
+		await dataStore.fetchLiveStats();
+		lastUpdatedSec = 0;
 		const cpu = currentCpu;
 		const mem = currentMem;
 		const netRxMb = parseNetToMb(currentNetRx);
@@ -192,13 +193,15 @@
 		recordPoint(cpuHistory, cpu, timeStr, labelStr);
 		recordPoint(memoryHistory, mem, timeStr, labelStr);
 		recordPoint(networkHistory, netTotal, timeStr, labelStr);
-	});
+	}
 
-	function handleRefresh() {
+	async function handleRefresh() {
 		isRefreshing = true;
-		dataStore.fetchLiveStats();
-		lastUpdatedSec = 0;
-		setTimeout(() => (isRefreshing = false), 500);
+		try {
+			await tickStats();
+		} finally {
+			setTimeout(() => (isRefreshing = false), 400);
+		}
 	}
 
 	async function handleRestartContainer() {
@@ -208,7 +211,7 @@
 		isRestartingContainer = true;
 		try {
 			await api.runtime.containers.restart(targetId);
-			await dataStore.fetchLiveStats();
+			await tickStats();
 		} catch (err) {
 			console.error('Failed to restart container:', err);
 		} finally {
@@ -217,7 +220,7 @@
 	}
 
 	onMount(() => {
-		dataStore.fetchLiveStats();
+		tickStats();
 		let pollTimer: any;
 
 		function setupTimer() {
@@ -225,10 +228,7 @@
 			if (refreshRate === 'paused') return;
 
 			const ms = refreshRate === '3s' ? 3000 : refreshRate === '5s' ? 5000 : 15000;
-			pollTimer = setInterval(() => {
-				dataStore.fetchLiveStats();
-				lastUpdatedSec = 0;
-			}, ms);
+			pollTimer = setInterval(tickStats, ms);
 		}
 
 		setupTimer();

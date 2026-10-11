@@ -22,8 +22,11 @@
 		class: className = ''
 	}: Props = $props();
 
+	const chartWidth = 1000;
+	const gradientId = `area-grad-${Math.random().toString(36).slice(2, 8)}`;
+
 	// Compute SVG path from data
-	let viewBox = $derived(`0 0 ${data.length > 0 ? data.length - 1 : 1} ${height}`);
+	let viewBox = $derived(`0 0 ${chartWidth} ${height}`);
 
 	let maxVal = $derived(
 		maxValue !== undefined && maxValue > 0 ? maxValue : Math.max(...data.map((d) => d.value), 1)
@@ -33,7 +36,7 @@
 		data.map((d, i) => {
 			const clamped = Math.min(Math.max(d.value, 0), maxVal);
 			return {
-				x: data.length > 1 ? (i / (data.length - 1)) * (data.length - 1) : 0,
+				x: data.length > 1 ? (i / (data.length - 1)) * chartWidth : 0,
 				y: height - (clamped / maxVal) * (height - 16) - 8
 			};
 		})
@@ -65,8 +68,6 @@
 		const firstX = points[0]?.x ?? 0;
 		return `${linePath} L ${lastX} ${height} L ${firstX} ${height} Z`;
 	});
-
-	let gradientId = $derived(`area-grad-${Math.random().toString(36).slice(2, 8)}`);
 </script>
 
 <div class={cn('w-full', className)} style="height: {height}px">
@@ -81,7 +82,7 @@
 			<line
 				x1="0"
 				y1="8"
-				x2={data.length > 0 ? data.length - 1 : 1}
+				x2={chartWidth}
 				y2="8"
 				stroke="var(--border)"
 				stroke-width="1"
@@ -92,7 +93,7 @@
 			<line
 				x1="0"
 				y1={height / 2}
-				x2={data.length > 0 ? data.length - 1 : 1}
+				x2={chartWidth}
 				y2={height / 2}
 				stroke="var(--border)"
 				stroke-width="1"
@@ -103,7 +104,7 @@
 			<line
 				x1="0"
 				y1={height - 8}
-				x2={data.length > 0 ? data.length - 1 : 1}
+				x2={chartWidth}
 				y2={height - 8}
 				stroke="var(--border)"
 				stroke-width="1"

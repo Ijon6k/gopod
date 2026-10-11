@@ -1,6 +1,6 @@
 // ──────────────────────────────────────────────
-// GOPOD — Mock Data Index
-// Re-exports all JSON data with proper typing + helpers
+// GOPOD — Data Index
+// Re-exports live reactive dataStore with compatibility proxies + helpers
 // ──────────────────────────────────────────────
 
 import type {
@@ -12,34 +12,6 @@ import type {
 	TimeSeriesPoint,
 	AuditLog
 } from '$lib/types';
-
-// Reference Dummy Mock Data (Preserved for documentation, testing, and offline fallback)
-import dummyProjectsJson from './mock/dummy_projects.json';
-import dummyServicesJson from './mock/dummy_services.json';
-import dummyDeploymentsJson from './mock/dummy_deployments.json';
-import dummyContainersJson from './mock/dummy_containers.json';
-import dummyPodsJson from './mock/dummy_pods.json';
-import dummyImagesJson from './mock/dummy_images.json';
-import dummyVolumesJson from './mock/dummy_volumes.json';
-import dummyNetworksJson from './mock/dummy_networks.json';
-import dummyDomainsJson from './mock/dummy_domains.json';
-import dummyServerJson from './mock/dummy_server.json';
-import dummyAuditLogsJson from './mock/dummy_auditLogs.json';
-
-export const dummyMockData = {
-	projects: dummyProjectsJson,
-	services: dummyServicesJson,
-	deployments: dummyDeploymentsJson,
-	containers: dummyContainersJson,
-	pods: dummyPodsJson,
-	images: dummyImagesJson,
-	volumes: dummyVolumesJson,
-	networks: dummyNetworksJson,
-	domains: dummyDomainsJson,
-	server: dummyServerJson,
-	auditLogs: dummyAuditLogsJson
-};
-
 import { dataStore } from '$lib/stores/data.svelte';
 
 // Typed exports — dynamic proxies delegating to live reactive dataStore
@@ -106,6 +78,7 @@ export const podmanSecrets = createArrayProxy(() => dataStore.podmanSecrets);
 export const sshKeys = createArrayProxy(() => dataStore.sshKeys);
 export const registries = createArrayProxy(() => dataStore.registries);
 export const ports = createArrayProxy(() => dataStore.ports);
+export const quadlets = createArrayProxy(() => dataStore.quadlets);
 export const accessLogs = createArrayProxy(() => dataStore.accessLogs);
 export const volumeSnapshots = createArrayProxy(() => dataStore.volumeSnapshots);
 export const volumeSchedules = createArrayProxy(() => dataStore.volumeSchedules);

@@ -21,7 +21,8 @@ import type {
 	PortMapping,
 	CaddyAccessLog,
 	VolumeSnapshot,
-	VolumeBackupSchedule
+	VolumeBackupSchedule,
+	QuadletUnit
 } from '$lib/types';
 
 import { api } from '$lib/api';
@@ -107,6 +108,13 @@ export class DataStore {
 	}
 	set ports(val: PortMapping[]) {
 		this.runtimeStore.ports = val;
+	}
+
+	get quadlets(): QuadletUnit[] {
+		return this.runtimeStore.quadlets;
+	}
+	set quadlets(val: QuadletUnit[]) {
+		this.runtimeStore.quadlets = val;
 	}
 
 	get sshKeys(): SSHKey[] {
@@ -250,6 +258,21 @@ export class DataStore {
 	pruneImages(all = false) {
 		return this.runtimeStore.pruneImages(all);
 	}
+	startQuadlet(name: string) {
+		return this.runtimeStore.startQuadlet(name);
+	}
+	stopQuadlet(name: string) {
+		return this.runtimeStore.stopQuadlet(name);
+	}
+	restartQuadlet(name: string) {
+		return this.runtimeStore.restartQuadlet(name);
+	}
+	reloadQuadlets() {
+		return this.runtimeStore.reloadQuadlets();
+	}
+	fetchQuadlets() {
+		return this.runtimeStore.fetchQuadlets();
+	}
 	pruneVolumes() {
 		return this.runtimeStore.pruneVolumes();
 	}
@@ -289,6 +312,12 @@ export class DataStore {
 	}
 	deleteVolumeSnapshot(id: string) {
 		return this.storageStore.deleteVolumeSnapshot(id);
+	}
+	restoreVolumeSnapshot(id: string) {
+		return this.storageStore.restoreVolumeSnapshot(id);
+	}
+	downloadVolumeSnapshot(id: string, filename: string) {
+		return this.storageStore.downloadVolumeSnapshot(id, filename);
 	}
 	toggleVolumeSchedule(id: string) {
 		return this.storageStore.toggleVolumeSchedule(id);

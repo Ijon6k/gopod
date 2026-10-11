@@ -81,6 +81,7 @@ func NewServer(cfg Config) http.Handler {
 
 	serviceRepo := services.NewSQLiteRepository(sqlDB)
 	deployer := services.NewDeployer(podmanClient, credentialsService, logMgr, dataDir)
+	deployer.SetRegistryProvider(credentialsService)
 	workloadService := services.NewWorkloadService(serviceRepo, deployer, logMgr)
 	serviceHandler := services.NewHandler(workloadService, authMiddleware)
 

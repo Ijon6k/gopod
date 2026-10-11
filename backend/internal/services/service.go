@@ -7,6 +7,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -98,6 +101,12 @@ func (s *WorkloadService) GetService(ctx context.Context, id string) (*Service, 
 	if err != nil || svc == nil {
 		return svc, err
 	}
+	if svc.WebhookToken == "" {
+		b := make([]byte, 16)
+		_, _ = rand.Read(b)
+		svc.WebhookToken = "wh_" + hex.EncodeToString(b)
+		_ = s.repo.Update(ctx, *svc)
+	}
 	s.reconcileRuntimeStatus(ctx, svc)
 	return svc, nil
 }
@@ -135,6 +144,19 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 		}
 	}
 
+	if svc.Type == "quadlet" && strings.TrimSpace(svc.QuadletConfig) != "" {
+		parsed := ParseQuadlet(svc.QuadletConfig)
+		if parsed.Image != "" {
+			svc.Image = parsed.Image
+		}
+		if parsed.Port > 0 {
+			svc.Port = parsed.Port
+		}
+		if parsed.HostPort > 0 {
+			svc.HostPort = parsed.HostPort
+		}
+	}
+
 	svc.CreatedAt = time.Now()
 
 	if err := s.repo.Create(ctx, svc); err != nil {
@@ -146,10 +168,23 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 	return &svc, nil
 }
 
-// UpdateService modifies service configuration.
+// UpdateService modifies service configuration and syncs declarative units.
 func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
+	}
+
+	if (svc.Type == "quadlet" || svc.RuntimeTarget == "quadlet") && strings.TrimSpace(svc.QuadletConfig) != "" {
+		parsed := ParseQuadlet(svc.QuadletConfig)
+		if parsed.Image != "" {
+			svc.Image = parsed.Image
+		}
+		if parsed.Port > 0 {
+			svc.Port = parsed.Port
+		}
+		if parsed.HostPort > 0 {
+			svc.HostPort = parsed.HostPort
+		}
 	}
 
 	if strings.TrimSpace(svc.ComposeYaml) != "" {
@@ -159,7 +194,38 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 		}
 	}
 
-	return s.repo.Update(ctx, svc)
+	if err := s.repo.Update(ctx, svc); err != nil {
+		return err
+	}
+
+	// Real Quadlet unit compilation to disk and systemd daemon-reload
+	if (svc.Type == "quadlet" || svc.RuntimeTarget == "quadlet" || strings.TrimSpace(svc.QuadletConfig) != "") && s.deployer != nil {
+		cleanName := QuadletUnitName(svc)
+		content := s.deployer.prepareQuadletContent(svc, cleanName)
+		quadletDir := filepath.Join(s.deployer.dataDir, "quadlets")
+		_ = os.MkdirAll(quadletDir, 0755)
+		_ = os.WriteFile(filepath.Join(quadletDir, fmt.Sprintf("%s.container", cleanName)), []byte(content), 0644)
+
+		systemdDir := os.Getenv("QUADLET_DIR")
+		if systemdDir == "" {
+			if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+				systemdDir = filepath.Join(homeDir, ".config", "containers", "systemd")
+			}
+		}
+		if systemdDir != "" {
+			_ = os.MkdirAll(systemdDir, 0755)
+			_ = os.WriteFile(filepath.Join(systemdDir, fmt.Sprintf("%s.container", cleanName)), []byte(content), 0644)
+		}
+
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
+			if svc.Status == "running" {
+				_ = exec.CommandContext(ctx, "systemctl", "--user", "restart", fmt.Sprintf("%s.service", cleanName)).Run()
+			}
+		}
+	}
+
+	return nil
 }
 
 // DeleteService removes a service, stopping and tearing down all running workloads (Dokploy parity).
@@ -473,16 +539,24 @@ func (s *WorkloadService) SubscribeLogs(deploymentID string) (<-chan string, fun
 	return s.logManager.Subscribe(deploymentID)
 }
 
-// GetServiceByWebhookToken finds a service by its secret webhook token.
+// GetServiceByWebhookToken finds a service by its secret webhook token or ID.
 func (s *WorkloadService) GetServiceByWebhookToken(ctx context.Context, token string) (*Service, error) {
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	return s.repo.GetByWebhookToken(ctx, token)
+	svc, err := s.repo.GetByWebhookToken(ctx, token)
+	if err != nil || svc == nil {
+		return s.repo.Get(ctx, token)
+	}
+	return svc, nil
 }
 
 // DeployByWebhook verifies webhook token and triggers deployment asynchronously.
 func (s *WorkloadService) DeployByWebhook(ctx context.Context, token string) (*Service, error) {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil, errors.New("unauthorized webhook token")
+	}
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
 	}

@@ -13,12 +13,18 @@ import (
 	"strings"
 	"sync"
 
+	"gopod/internal/credentials"
 	"gopod/internal/podman"
 )
 
 // SSHKeyProvider provides private SSH keys for Git authentication.
 type SSHKeyProvider interface {
 	GetPrivateKey(ctx context.Context, id string) (string, error)
+}
+
+// RegistryProvider provides credentials for private container registries.
+type RegistryProvider interface {
+	GetRegistry(ctx context.Context, id string) (*credentials.ContainerRegistry, error)
 }
 
 // DeployResult holds metadata about a completed deployment.
@@ -32,10 +38,11 @@ type DeployResult struct {
 
 // Deployer manages container lifecycle, rolling updates, compose stacks, and source builds.
 type Deployer struct {
-	podmanClient   *podman.Client
-	sshKeyProvider SSHKeyProvider
-	logManager     *LogManager
-	dataDir        string
+	podmanClient     *podman.Client
+	sshKeyProvider   SSHKeyProvider
+	registryProvider RegistryProvider
+	logManager       *LogManager
+	dataDir          string
 }
 
 // NewDeployer creates a new container deployer.
@@ -50,6 +57,11 @@ func NewDeployer(client *podman.Client, keyProvider SSHKeyProvider, logMgr *LogM
 		logManager:     logMgr,
 		dataDir:        dataDir,
 	}
+}
+
+// SetRegistryProvider configures private registry credential resolution.
+func (d *Deployer) SetRegistryProvider(rp RegistryProvider) {
+	d.registryProvider = rp
 }
 
 // setupCmdEnv configures environment variables so that subprocesses (podman CLI, podman-compose) connect to the host Podman socket.
@@ -105,6 +117,12 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 	if len(trigger) > 0 && trigger[0] != "" {
 		trig = trigger[0]
 	}
+
+	defer func() {
+		if d.logManager != nil {
+			d.logManager.CloseLog(depID)
+		}
+	}()
 
 	logLine := func(line string) {
 		if d.logManager != nil {

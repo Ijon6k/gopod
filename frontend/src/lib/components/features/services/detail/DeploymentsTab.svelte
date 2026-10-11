@@ -32,43 +32,8 @@
 	let statusFilter = $state<string>('all');
 	let searchQuery = $state('');
 
-	import { createDeploymentsQuery } from '$lib/queries';
-
-	// Reactive TanStack Query with smart adaptive polling
-	const deploymentsQuery = createDeploymentsQuery(() => service.id);
-
-	// Deployments from TanStack Query reactive cache fallback to dataStore
+	// Deployments from Svelte 5 reactive dataStore
 	let rawDeployments = $derived.by(() => {
-		const qData = deploymentsQuery.data;
-		if (Array.isArray(qData) && qData.length > 0) {
-			return qData.map(
-				(item: any, idx: number) =>
-					({
-						id: item.id,
-						projectId: item.projectId || service.projectId,
-						projectName: item.projectId || service.projectId,
-						serviceId: item.serviceId || service.id,
-						serviceName: service.name,
-						number: item.number || qData.length - idx,
-						version: item.version || (item.image ? item.image.split(':').pop() : 'latest'),
-						commit: item.commit || item.commitHash || '',
-						commitMessage:
-							item.commitMessage ||
-							(item.trigger === 'compose' ? 'Docker Compose rollout' : 'Deployment rollout'),
-						branch: item.branch || service.branch || 'main',
-						status: item.status || 'running',
-						duration: item.duration || '0s',
-						timeAgo: item.startedAt ? 'Recently' : 'Just now',
-						startedAt: item.startedAt || new Date().toISOString(),
-						finishedAt: item.finishedAt || '',
-						trigger: item.trigger || 'manual',
-						author: item.author || 'operator',
-						image: item.image,
-						commitHash: item.commitHash,
-						isCurrent: item.isCurrent
-					}) as Deployment
-			);
-		}
 		return dataStore.getServiceDeployments(service.id);
 	});
 
@@ -124,7 +89,6 @@
 		isDeploying = true;
 		try {
 			await dataStore.deployService(service.id);
-			await deploymentsQuery.refetch();
 		} catch (err) {
 			console.error('Deploy error:', err);
 		} finally {
@@ -137,7 +101,6 @@
 		try {
 			const targetCommit = dep.commit || dep.commitHash;
 			await dataStore.deployService(service.id, 'rollback', targetCommit, dep.image);
-			await deploymentsQuery.refetch();
 		} catch (err) {
 			console.error('Rollback error:', err);
 		} finally {

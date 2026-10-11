@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"net/mail"
 	"strings"
 
 	"gopod/pkg/httputil"
@@ -62,16 +63,31 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	password := req.Password
 
-	if name == "" {
-		httputil.WriteError(w, http.StatusBadRequest, "Administrator name is required")
+	if name == "" || len(name) < 2 {
+		httputil.WriteError(w, http.StatusBadRequest, "Administrator name must be at least 2 characters long")
 		return
 	}
-	if email == "" || !strings.Contains(email, "@") {
-		httputil.WriteError(w, http.StatusBadRequest, "Valid email address is required")
+	if len(name) > 64 {
+		httputil.WriteError(w, http.StatusBadRequest, "Administrator name cannot exceed 64 characters")
 		return
 	}
+
+	if email == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "Administrator email address is required")
+		return
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		httputil.WriteError(w, http.StatusBadRequest, "Please provide a valid administrator email address")
+		return
+	}
+
 	if len(password) < 8 {
 		httputil.WriteError(w, http.StatusBadRequest, "Password must be at least 8 characters long")
+		return
+	}
+	if len(password) > 128 {
+		httputil.WriteError(w, http.StatusBadRequest, "Password cannot exceed 128 characters")
 		return
 	}
 
@@ -95,8 +111,18 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	email := strings.ToLower(strings.TrimSpace(req.Email))
 	password := req.Password
 
-	if email == "" || password == "" {
-		httputil.WriteError(w, http.StatusBadRequest, "Email and password are required")
+	if email == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "Email address is required")
+		return
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		httputil.WriteError(w, http.StatusBadRequest, "Please enter a valid email address")
+		return
+	}
+
+	if password == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "Password is required")
 		return
 	}
 

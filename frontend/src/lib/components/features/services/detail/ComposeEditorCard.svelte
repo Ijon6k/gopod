@@ -2,16 +2,16 @@
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { CodeEditor } from '$lib/components/ui';
-	import { Input } from '$lib/components/primitives';
+	import { Input } from '$lib/components/ui';
+	import { LayerCard, Button, Switch, useKumoToastManager } from 'kumo-svelte';
 	import {
 		Stack,
 		Eye,
 		Check,
+		FileCode,
 		GitBranch,
 		GithubLogo,
-		GitlabLogo,
-		FileCode,
-		ArrowSquareOut
+		GitlabLogo
 	} from 'phosphor-svelte';
 
 	import { getDefaultComposeYaml } from '../manifests/defaults';
@@ -22,7 +22,10 @@
 
 	let { service }: Props = $props();
 
-	let providerTab = $state<'raw' | 'github' | 'gitlab' | 'git'>('raw');
+	const toast = useKumoToastManager();
+
+	let providerMode = $state<'raw' | 'git'>('raw');
+	let gitProvider = $state<'github' | 'gitlab' | 'custom'>('github');
 	let gitRepoUrl = $state('');
 	let gitBranch = $state('main');
 	let gitComposePath = $state('docker-compose.yml');
@@ -30,9 +33,7 @@
 
 	let previewOpen = $state(false);
 	let saveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
-
 	let lastLoadedServiceId = $state<string | null>(null);
-
 	let inPod = $state(false);
 
 	$effect(() => {
@@ -43,14 +44,22 @@
 			gitComposePath = 'docker-compose.yml';
 			composeYaml = service.composeYaml || service.k8sYaml || getDefaultComposeYaml(service);
 			inPod = service.inPod || service.runtimeTarget === 'pod';
+			providerMode = service.source && service.source.trim() !== '' ? 'git' : 'raw';
 		}
 	});
 
-	function toggleInPod() {
-		inPod = !inPod;
+	function toggleInPod(checked?: boolean) {
+		inPod = checked !== undefined ? checked : !inPod;
 		service.inPod = inPod;
 		service.runtimeTarget = inPod ? 'pod' : 'standalone';
 		dataStore.updateService(service);
+		toast.add({
+			title: inPod ? 'Podman Pod Mode Enabled' : 'Standalone Mode Enabled',
+			description: inPod
+				? 'Services will share localhost network namespace in an isolated Pod.'
+				: 'Services will run as independent containers with bridge DNS.',
+			variant: 'info'
+		});
 	}
 
 	// Simple parser for previewing services defined in Compose
@@ -68,7 +77,6 @@
 					continue;
 				}
 				if (inServices) {
-					// 2 spaces indentation = service name
 					const matchSvc = line.match(/^ {2}([a-zA-Z0-9_-]+):/);
 					if (matchSvc) {
 						if (currentSvc) servicesFound.push(currentSvc);
@@ -111,248 +119,266 @@
 		}
 		service.inPod = inPod;
 		service.runtimeTarget = inPod ? 'pod' : 'standalone';
-		if (providerTab !== 'raw') {
-			service.source = gitRepoUrl;
-			service.branch = gitBranch;
+		if (providerMode === 'git') {
+			service.source = gitRepoUrl.trim();
+			service.branch = gitBranch.trim();
+		} else {
+			service.source = '';
 		}
 
 		try {
 			await dataStore.updateService(service);
 			saveStatus = 'saved';
+			toast.add({
+				title: 'Compose Manifest Saved',
+				description: `Configuration and Pod strategy for ${service.name} have been updated.`,
+				variant: 'success'
+			});
 			setTimeout(() => (saveStatus = 'idle'), 2500);
-		} catch (err) {
+		} catch (err: any) {
 			console.error('Failed to save compose config:', err);
 			saveStatus = 'idle';
+			toast.add({
+				title: 'Save Failed',
+				description: err?.message || 'Failed to save compose configuration',
+				variant: 'error'
+			});
 		}
 	}
 </script>
 
-<div class="flex flex-col gap-6">
-	<!-- 1. Provider Card (Dokploy exact replica) -->
-	<div
-		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
-	>
-		<div
-			class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
-		>
-			<div class="flex flex-col gap-0.5">
-				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Provider</h3>
-				<p class="m-0 text-xs text-[var(--text-tertiary)]">Select the source of your code</p>
+<LayerCard class="w-full shadow-xs">
+	<!-- Elevated Header (LayerCard.Secondary) -->
+	<LayerCard.Secondary class="flex flex-wrap items-center justify-between gap-3 border-b border-kumo-hairline px-4 py-3">
+		<div class="flex items-center gap-2.5">
+			<div
+				class="flex size-7 shrink-0 items-center justify-center rounded-md bg-kumo-base text-[var(--accent)] ring ring-kumo-line"
+			>
+				<FileCode size={15} weight="duotone" />
+			</div>
+			<div class="flex flex-col">
+				<h3 class="m-0 text-xs font-semibold text-kumo-default">Compose Specification</h3>
+				<span class="text-[11px] text-kumo-subtle">
+					Multi-container orchestration definition for Podman & Docker Compose
+				</span>
+			</div>
+		</div>
+
+		<!-- Right Controls: Source Mode Selector + Preview Button -->
+		<div class="flex items-center gap-2.5">
+			<!-- Compact Source Segmented Pill -->
+			<div
+				class="inline-flex items-center rounded-md bg-kumo-base p-0.5 ring ring-kumo-hairline"
+				role="tablist"
+			>
+				<button
+					type="button"
+					onclick={() => (providerMode = 'raw')}
+					class="cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors {providerMode ===
+					'raw'
+						? 'bg-kumo-elevated text-kumo-default shadow-xs ring ring-kumo-line'
+						: 'text-kumo-subtle hover:text-kumo-default'}"
+				>
+					Inline YAML
+				</button>
+				<button
+					type="button"
+					onclick={() => (providerMode = 'git')}
+					class="cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors {providerMode ===
+					'git'
+						? 'bg-kumo-elevated text-kumo-default shadow-xs ring ring-kumo-line'
+						: 'text-kumo-subtle hover:text-kumo-default'}"
+				>
+					Git Repo
+				</button>
 			</div>
 
-			<!-- Right: Preview Compose Button -->
-			<button
-				type="button"
+			<!-- Preview Button -->
+			<Button
+				variant="secondary"
+				size="sm"
 				onclick={() => (previewOpen = !previewOpen)}
-				class="flex cursor-pointer items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+				class="gap-1.5"
 			>
-				<Eye size={14} />
-				{previewOpen ? 'Hide Preview' : 'Preview Compose'}
-			</button>
+				<Eye size={13} />
+				<span>{previewOpen ? 'Hide' : 'Preview Stack'}</span>
+			</Button>
 		</div>
+	</LayerCard.Secondary>
 
-		<!-- Provider Sub-Tabs (Dokploy Screenshot: GitHub, GitLab, Bitbucket, Gitea, Git, Raw) -->
-		<div
-			class="flex items-center gap-2 overflow-x-auto border-b border-[var(--border-subtle)] bg-[var(--bg-surface)]/30 px-5 py-3"
-		>
-			<button
-				type="button"
-				onclick={() => (providerTab = 'github')}
-				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
-				'github'
-					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
+	<!-- Main Body (LayerCard.Primary) -->
+	<LayerCard.Primary class="flex flex-col gap-4 p-4">
+		<!-- Git Source Inputs (Shown only if Git mode selected) -->
+		{#if providerMode === 'git'}
+			<div
+				class="flex flex-col gap-3 rounded-md bg-kumo-base p-3.5 ring ring-kumo-line"
 			>
-				<GithubLogo size={14} /> GitHub
-			</button>
+				<!-- Quick Provider selector -->
+				<div class="flex items-center gap-2">
+					<button
+						type="button"
+						onclick={() => (gitProvider = 'github')}
+						class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {gitProvider ===
+						'github'
+							? 'bg-kumo-elevated text-kumo-default ring ring-kumo-line font-medium'
+							: 'text-kumo-subtle hover:text-kumo-default'}"
+					>
+						<GithubLogo size={13} /> GitHub
+					</button>
+					<button
+						type="button"
+						onclick={() => (gitProvider = 'gitlab')}
+						class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {gitProvider ===
+						'gitlab'
+							? 'bg-kumo-elevated text-kumo-default ring ring-kumo-line font-medium'
+							: 'text-kumo-subtle hover:text-kumo-default'}"
+					>
+						<GitlabLogo size={13} /> GitLab
+					</button>
+					<button
+						type="button"
+						onclick={() => (gitProvider = 'custom')}
+						class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {gitProvider ===
+						'custom'
+							? 'bg-kumo-elevated text-kumo-default ring ring-kumo-line font-medium'
+							: 'text-kumo-subtle hover:text-kumo-default'}"
+					>
+						<GitBranch size={13} /> Custom Git / SSH
+					</button>
+				</div>
 
-			<button
-				type="button"
-				onclick={() => (providerTab = 'gitlab')}
-				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
-				'gitlab'
-					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
-			>
-				<GitlabLogo size={14} /> GitLab
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (providerTab = 'git')}
-				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
-				'git'
-					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
-			>
-				<GitBranch size={14} /> Git / SSH
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (providerTab = 'raw')}
-				class="flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
-				'raw'
-					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
-			>
-				<FileCode size={14} /> Raw
-			</button>
-		</div>
-
-		<!-- Provider Content if Git based -->
-		{#if providerTab !== 'raw'}
-			<div class="flex flex-col gap-4 p-5">
 				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-					<div class="flex flex-col gap-1.5 sm:col-span-2">
-						<label for="compose-repo" class="text-xs font-medium text-[var(--text-secondary)]"
-							>Repository URL</label
-						>
+					<div class="flex flex-col gap-1 sm:col-span-2">
+						<label for="compose-repo" class="text-xs font-medium text-kumo-subtle">
+							Repository URL
+						</label>
 						<Input
 							id="compose-repo"
 							bind:value={gitRepoUrl}
-							placeholder="https://github.com/user/my-stack.git"
-							class="text-xs font-[var(--font-mono)]"
+							placeholder="https://github.com/user/stack-repo.git"
+							class="font-mono text-xs"
 						/>
 					</div>
-					<div class="flex flex-col gap-1.5">
-						<label for="compose-branch" class="text-xs font-medium text-[var(--text-secondary)]"
-							>Branch</label
-						>
+
+					<div class="flex flex-col gap-1">
+						<label for="compose-branch" class="text-xs font-medium text-kumo-subtle">
+							Branch
+						</label>
 						<Input
 							id="compose-branch"
 							bind:value={gitBranch}
 							placeholder="main"
-							class="text-xs font-[var(--font-mono)]"
+							class="font-mono text-xs"
 						/>
 					</div>
 				</div>
-				<div class="flex flex-col gap-1.5">
-					<label for="compose-path" class="text-xs font-medium text-[var(--text-secondary)]"
-						>Compose File Path in Repo</label
-					>
+
+				<div class="flex flex-col gap-1">
+					<label for="compose-path" class="text-xs font-medium text-kumo-subtle">
+						Compose File Path in Repo
+					</label>
 					<Input
 						id="compose-path"
 						bind:value={gitComposePath}
 						placeholder="docker-compose.yml"
-						class="text-xs font-[var(--font-mono)]"
+						class="font-mono text-xs"
 					/>
 				</div>
 			</div>
 		{/if}
-	</div>
 
-	<!-- 2. Compose File Editor Card -->
-	<div
-		class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs"
-	>
+		<!-- Podman Pod Encapsulation Banner -->
 		<div
-			class="flex items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"
+			class="flex flex-col justify-between gap-2.5 rounded-md bg-kumo-base p-3 ring ring-kumo-line sm:flex-row sm:items-center"
 		>
-			<div class="flex flex-col gap-0.5">
-				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Compose File</h3>
-				<p class="m-0 text-xs text-[var(--text-tertiary)]">
-					Configure your Docker / Podman Compose file for this service.
-				</p>
-			</div>
-
-			<span class="text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]"> YAML </span>
-		</div>
-
-		<div class="flex flex-col gap-4 p-5">
-			<!-- Podman Pod Encapsulation Checkbox (Refactoring UI / UX Heuristics) -->
-			<div
-				class="flex flex-col justify-between gap-3 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-3.5 sm:flex-row sm:items-center"
-			>
-				<div class="flex items-start gap-3">
-					<input
-						type="checkbox"
-						id="compose-in-pod"
-						checked={inPod}
-						onchange={toggleInPod}
-						class="mt-0.5 h-4 w-4 cursor-pointer rounded border-[var(--border)] accent-[var(--accent)]"
-					/>
-					<label for="compose-in-pod" class="flex cursor-pointer flex-col select-none">
-						<span class="text-xs font-semibold text-[var(--text-primary)]">
-							Encapsulate stack inside Podman Pod
-						</span>
-						<span class="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-							When enabled, podman-compose creates an isolated Pod with shared localhost. Uncheck to
-							run services as independent containers with bridge DNS.
-						</span>
-					</label>
-				</div>
-				<span
-					class="shrink-0 rounded border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-[11px] font-[var(--font-mono)] {inPod
-						? 'border-[var(--accent)]/40 text-[var(--accent)]'
-						: 'text-[var(--text-secondary)]'}"
-				>
-					{inPod ? 'Flag: --in-pod true' : 'Flag: --in-pod false'}
-				</span>
-			</div>
-
-			<!-- Monospace Code Editor -->
-			<div class="overflow-hidden rounded-md border border-[var(--border)] shadow-inner">
-				<CodeEditor bind:value={composeYaml} language="yaml" height="auto" />
-			</div>
-
-			<!-- Compose Preview Drawer -->
-			{#if previewOpen}
-				<div
-					class="flex flex-col gap-3 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 p-4"
-				>
-					<span class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]">
-						<Stack size={14} class="text-[var(--accent)]" /> Detected Workloads in Stack ({parsedServices.length})
+			<div class="flex items-start gap-2.5">
+				<Switch
+					size="sm"
+					id="compose-in-pod"
+					bind:checked={inPod}
+					onCheckedChange={toggleInPod}
+					aria-label="Encapsulate stack inside Podman Pod"
+					class="mt-0.5"
+				/>
+				<label for="compose-in-pod" class="flex cursor-pointer flex-col select-none">
+					<span class="text-xs font-semibold text-kumo-default">
+						Encapsulate stack inside Podman Pod
 					</span>
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3">
-						{#each parsedServices as svc}
-							<div
-								class="flex flex-col gap-1 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-3"
-							>
-								<span class="text-xs font-[var(--font-mono)] font-bold text-[var(--text-primary)]"
-									>{svc.name}</span
-								>
-								{#if svc.image}
-									<span
-										class="truncate text-[11px] font-[var(--font-mono)] text-[var(--text-secondary)]"
-										>{svc.image}</span
-									>
-								{/if}
-								{#if svc.ports}
-									<span class="text-[10px] font-[var(--font-mono)] text-[var(--accent)]"
-										>{svc.ports}</span
-									>
-								{/if}
-							</div>
-						{/each}
-					</div>
-				</div>
-			{/if}
+					<span class="text-[11px] text-kumo-subtle leading-normal">
+						Creates an isolated Pod with shared localhost. Uncheck to run services as independent containers with bridge network DNS.
+					</span>
+				</label>
+			</div>
+
+			<span
+				class="shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] {inPod
+					? 'border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent-text)]'
+					: 'border-kumo-line bg-kumo-recessed text-kumo-subtle'}"
+			>
+				{inPod ? '--in-pod=true' : '--in-pod=false'}
+			</span>
 		</div>
 
-		<!-- Single Explicit Save Button -->
+		<!-- Monospace Code Editor -->
+		<div class="overflow-hidden rounded-md ring ring-kumo-line">
+			<CodeEditor bind:value={composeYaml} language="yaml" height="auto" />
+		</div>
+
+		<!-- Workload Preview Drawer -->
+		{#if previewOpen}
+			<div
+				class="flex flex-col gap-2.5 rounded-md bg-kumo-base p-3.5 ring ring-kumo-line"
+			>
+				<span class="flex items-center gap-1.5 text-xs font-semibold text-kumo-default">
+					<Stack size={14} class="text-[var(--accent)]" /> Detected Workloads in Stack ({parsedServices.length})
+				</span>
+				<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3">
+					{#each parsedServices as svc}
+						<div
+							class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring ring-kumo-hairline"
+						>
+							<span class="font-mono text-xs font-bold text-kumo-default truncate">
+								{svc.name}
+							</span>
+							{#if svc.image}
+								<span class="truncate font-mono text-[11px] text-kumo-subtle">
+									{svc.image}
+								</span>
+							{/if}
+							{#if svc.ports}
+								<span class="font-mono text-[10px] text-[var(--accent-text)]">
+									{svc.ports}
+								</span>
+							{/if}
+						</div>
+					{/each}
+				</div>
+			</div>
+		{/if}
+
+		<!-- Footer with Save CTA -->
 		<div
-			class="flex items-center justify-between gap-3 border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3"
+			class="flex items-center justify-between border-t border-kumo-hairline pt-3"
 		>
-			<span class="text-xs text-[var(--text-tertiary)]">
-				Saved configuration is stored in the GoPod workspace engine.
+			<span class="text-xs text-kumo-subtle">
+				Configuration is synchronized with the GoPod runtime engine.
 			</span>
 
 			<div class="flex items-center gap-2">
 				{#if saveStatus === 'saved'}
-					<span class="mr-1 flex items-center gap-1 text-xs text-[var(--status-green)]">
+					<span class="flex items-center gap-1 text-xs text-kumo-success">
 						<Check size={14} weight="bold" /> Saved
 					</span>
 				{/if}
-				<button
-					type="button"
+				<Button
+					variant="primary"
+					size="sm"
 					onclick={handleSave}
 					disabled={saveStatus === 'saving'}
-					class="cursor-pointer rounded-md border-0 bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
 				>
-					{saveStatus === 'saving' ? 'Saving...' : 'Save Compose'}
-				</button>
+					{saveStatus === 'saving' ? 'Saving…' : 'Save Compose'}
+				</Button>
 			</div>
 		</div>
-	</div>
-</div>
+	</LayerCard.Primary>
+</LayerCard>

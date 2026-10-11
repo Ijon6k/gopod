@@ -6,8 +6,10 @@
 		ArrowsOut,
 		ArrowCounterClockwise,
 		Stack,
-		Globe
+		Globe,
+		CaretDown
 	} from 'phosphor-svelte';
+	import { DropdownMenu } from 'kumo-svelte';
 	import { cn } from '$lib/utils/cn';
 
 	interface Props {
@@ -38,39 +40,48 @@
 <div class="flex w-full flex-wrap items-center justify-between gap-3">
 	<!-- Left: View Mode Selector & Breadcrumb -->
 	<div class="flex items-center gap-2">
-		<div
-			class="relative flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5"
-		>
-			<span class="mr-2 shrink-0 text-[var(--text-tertiary)]">
-				{#if viewMode === 'global'}
-					<Globe size={14} />
-				{:else}
-					<Stack size={14} />
-				{/if}
-			</span>
-
-			<label for="topology-view-select" class="sr-only">Select Topology View</label>
-			<select
-				id="topology-view-select"
-				value={viewMode}
-				onchange={(e) => onViewModeChange((e.target as HTMLSelectElement).value)}
-				class="cursor-pointer border-0 bg-transparent pr-4 text-base font-[var(--font-sans)] font-medium text-[var(--text-primary)] outline-none"
+		<!-- Kumo DropdownMenu Selector -->
+		<DropdownMenu>
+			<DropdownMenu.Trigger
+				class="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-[var(--font-sans)] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none"
 			>
-				<option value="global" class="bg-[var(--bg-shell)] text-[var(--text-primary)]">
-					Global Infrastructure (Overview)
-				</option>
-				<optgroup
-					label="Projects (Territories)"
-					class="bg-[var(--bg-shell)] text-[var(--text-tertiary)]"
+				<span class="shrink-0 text-[var(--text-tertiary)]">
+					{#if viewMode === 'global'}
+						<Globe size={14} />
+					{:else}
+						<Stack size={14} />
+					{/if}
+				</span>
+				<span class="max-w-[200px] truncate">
+					{#if viewMode === 'global'}
+						Global Infrastructure (Overview)
+					{:else}
+						{currentProject ? `Project: ${currentProject.name}` : viewMode}
+					{/if}
+				</span>
+				<CaretDown size={11} class="text-[var(--text-tertiary)] shrink-0" />
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content class="w-64" align="start">
+				<DropdownMenu.Item
+					selected={viewMode === 'global'}
+					onclick={() => onViewModeChange('global')}
 				>
-					{#each projects as proj}
-						<option value={proj.id} class="bg-[var(--bg-shell)] text-[var(--text-primary)]">
-							Project: {proj.name}
-						</option>
-					{/each}
-				</optgroup>
-			</select>
-		</div>
+					<span class="text-xs">Global Infrastructure (Overview)</span>
+				</DropdownMenu.Item>
+				<DropdownMenu.Separator />
+				<div class="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
+					Projects (Territories)
+				</div>
+				{#each projects as proj}
+					<DropdownMenu.Item
+						selected={viewMode === proj.id}
+						onclick={() => onViewModeChange(proj.id)}
+					>
+						<span class="truncate text-xs">Project: {proj.name}</span>
+					</DropdownMenu.Item>
+				{/each}
+			</DropdownMenu.Content>
+		</DropdownMenu>
 
 		{#if viewMode !== 'global'}
 			<button

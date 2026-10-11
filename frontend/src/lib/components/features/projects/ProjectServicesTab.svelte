@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { StatusBadge } from '$lib/components/ui';
-	import { Button, Card, Chip } from '$lib/components/primitives';
+	import { Button, LayerCard, Badge } from '$lib/components/ui';
 	import { containers, pods, volumes, networks, server, projects } from '$lib/data';
 	import type { WorkloadChoice } from '$lib/components/features/services/create/WorkloadTypeSelector.svelte';
 	import {
 		TopologyCanvas,
 		TopologyInspector,
 		computeTopologyGraph,
+		type TopologyGraph,
 		type SelectedItem
 	} from '$lib/components/features/topology';
 	import {
@@ -36,23 +37,38 @@
 
 	let viewMode = $state<'cards' | 'table' | 'topology'>('cards');
 	let topoSelectedItem: SelectedItem = $state(null);
-	let topoZoom = $state(0.9);
-	let topoPanX = $state(40);
-	let topoPanY = $state(40);
 
-	let projectTopologyGraph = $derived(
-		computeTopologyGraph({
-			projects,
-			services,
-			containers,
-			pods,
-			domains: projectDomains,
-			volumes,
-			networks,
-			server,
-			viewMode: project.id
-		})
-	);
+	// Memoize project topology graph so telemetry ticks don't re-create nodes
+	let projectStructureKey = $derived.by(() => {
+		const s1 = services.map((s) => s.id + s.status + s.name).join(';');
+		const s2 = containers.map((c) => c.id + c.status + c.name).join(';');
+		const s3 = pods.map((p) => p.id + p.status).join(';');
+		const s4 = projectDomains.map((d) => d.id + (d.hostname || '')).join(';');
+		const s5 = volumes.map((v) => v.id + v.name).join(';');
+		return `${project.id}:${s1}:${s2}:${s3}:${s4}:${s5}`;
+	});
+
+	let cachedProjectGraph: TopologyGraph | null = null;
+	let lastProjectStructureKey = '';
+
+	let projectTopologyGraph = $derived.by(() => {
+		const key = projectStructureKey;
+		if (key !== lastProjectStructureKey || !cachedProjectGraph) {
+			lastProjectStructureKey = key;
+			cachedProjectGraph = computeTopologyGraph({
+				projects,
+				services,
+				containers,
+				pods,
+				domains: projectDomains,
+				volumes,
+				networks,
+				server,
+				viewMode: project.id
+			});
+		}
+		return cachedProjectGraph;
+	});
 
 	// ── Service Category Filtering (Dokploy & PaaS Standard) ──
 	type ServiceCategory = 'all' | 'application' | 'quadlet' | 'compose' | 'database';
@@ -367,11 +383,9 @@
 				{@const domainInfo = getServiceDomain(svc)}
 				{@const sourceInfo = formatSource(svc)}
 				{@const categoryLabel = getCategoryLabel(svc)}
-				<Card
-					interactive
-					padding="md"
+				<LayerCard
 					onclick={() => goto(`/projects/${project.id}/services/${svc.id}`)}
-					class="flex h-full flex-col justify-between gap-4"
+					class="group flex h-full cursor-pointer flex-col justify-between gap-4 p-4 transition-colors hover:border-kumo-line-hover"
 				>
 					<div class="flex flex-col gap-2.5">
 						<!-- Top Row: Name + Status on left, Category Chip on right -->
@@ -384,12 +398,12 @@
 								</span>
 								<StatusBadge status={svc.status} size="sm" />
 							</div>
-							<Chip
+							<Badge
 								size="sm"
-								variant={svc.type === 'quadlet' || svc.type === 'kubernetes' ? 'mono' : 'default'}
+								variant={svc.type === 'quadlet' || svc.type === 'kubernetes' ? 'neutral' : 'outline'}
 							>
 								{categoryLabel}
-							</Chip>
+							</Badge>
 						</div>
 
 						<!-- Middle: Description or Source snippet -->
@@ -437,14 +451,12 @@
 							/>
 						</div>
 					</div>
-				</Card>
+				</LayerCard>
 			{/each}
 		</div>
 	{:else if viewMode === 'table'}
 		<!-- Table / List View -->
-		<div
-			class="flex flex-col divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
-		>
+		<LayerCard class="overflow-hidden p-0 divide-y divide-kumo-line">
 			{#each filteredServices as svc}
 				{@const domainInfo = getServiceDomain(svc)}
 				{@const sourceInfo = formatSource(svc)}
@@ -465,14 +477,14 @@
 							<StatusBadge status={svc.status} size="sm" />
 						</div>
 
-						<!-- Category Chip -->
+						<!-- Category Badge -->
 						<div class="min-w-[110px]">
-							<Chip
+							<Badge
 								size="sm"
-								variant={svc.type === 'quadlet' || svc.type === 'kubernetes' ? 'mono' : 'default'}
+								variant={svc.type === 'quadlet' || svc.type === 'kubernetes' ? 'neutral' : 'outline'}
 							>
 								{categoryLabel}
-							</Chip>
+							</Badge>
 						</div>
 
 						<!-- Source / Image -->
@@ -502,7 +514,7 @@
 					</span>
 				</button>
 			{/each}
-		</div>
+		</LayerCard>
 	{:else if viewMode === 'topology'}
 		<!-- In-Page Project Topology Architecture Studio -->
 		<div
@@ -512,14 +524,6 @@
 				graph={projectTopologyGraph}
 				selectedItem={topoSelectedItem}
 				onselect={(item) => (topoSelectedItem = item)}
-				bind:zoom={topoZoom}
-				bind:panX={topoPanX}
-				bind:panY={topoPanY}
-				onViewportChange={(v) => {
-					topoZoom = v.zoom;
-					topoPanX = v.panX;
-					topoPanY = v.panY;
-				}}
 			/>
 
 			<!-- Floating Controls in Project Canvas (Top-Left) -->

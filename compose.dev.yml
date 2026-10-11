@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: gopod:dev
     container_name: gopod-dev
     restart: unless-stopped
     ports:

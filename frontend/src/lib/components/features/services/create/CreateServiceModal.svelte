@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Button, Input, FormField } from '$lib/components/primitives';
+	import { Button, Input, Field, Select } from '$lib/components/ui';
 	import { Modal } from '$lib/components/ui';
 	import { dataStore, projects } from '$lib/data';
 	import type { Service, ServiceType } from '$lib/types';
@@ -225,25 +225,17 @@
 			</div>
 
 			{#if !projectId && projects.length > 1}
-				<div class="flex max-w-[280px] flex-col gap-1.5">
-					<label
-						for="inline-select-project"
-						class="text-xs font-medium text-[var(--text-secondary)]">Target Project</label
-					>
-					<div
-						class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-					>
-						<select
-							id="inline-select-project"
-							value={selectedProjectId}
-							onchange={(e) => (projectOverride = (e.target as HTMLSelectElement).value)}
-							class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
-						>
-							{#each projects as p}
-								<option value={p.id}>{p.name}</option>
-							{/each}
-						</select>
-					</div>
+				<div class="max-w-[280px]">
+					<Select
+						id="inline-select-project"
+						label="Target Project"
+						value={selectedProjectId}
+						options={projects.map((p) => ({ label: p.name, value: p.id }))}
+						onValueChange={(val) => {
+							if (typeof val === 'string') projectOverride = val;
+						}}
+						size="sm"
+					/>
 				</div>
 			{/if}
 
@@ -441,11 +433,11 @@
 				</div>
 			{/if}
 
-			<!-- Service Name FormField -->
-			<FormField
+			<!-- Service Name Field -->
+			<Field
 				label="Service Name"
 				required
-				error={createError}
+				error={createError || undefined}
 				description={selectedType === 'quadlet' && serviceName
 					? `Target unit: ~/.config/containers/systemd/${slugify(serviceName)}.container`
 					: undefined}
@@ -456,10 +448,10 @@
 					placeholder="e.g. metube, web-app, or cache"
 					class="text-xs"
 				/>
-			</FormField>
+			</Field>
 
 			{#if selectedType === 'application'}
-				<FormField
+				<Field
 					label="Container Port (Optional)"
 					description="Internal listening port inside container (default: 3000, e.g. 80 for Whoami/Nginx)."
 				>
@@ -469,7 +461,7 @@
 						placeholder="3000 (e.g. 80, 8080)"
 						class="text-xs font-[var(--font-mono)]"
 					/>
-				</FormField>
+				</Field>
 			{/if}
 
 			{#snippet footer()}

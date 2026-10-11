@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service, Domain } from '$lib/types';
-	import { Button, Input, CopyButton, FormField } from '$lib/components/primitives';
+	import { Button, Input, CopyButton, Field, Select, Switch } from '$lib/components/ui';
 	import { StatusBadge } from '$lib/components/ui';
 	import { dataStore, server } from '$lib/data';
 	import {
@@ -162,36 +162,32 @@
 
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 				<div class="sm:col-span-2">
-					<FormField label="Domain Name" required forId="new-domain-host">
+					<Field label="Domain Name" required>
 						<Input
 							id="new-domain-host"
 							bind:value={domainName}
 							placeholder="e.g. app.example.com or api.example.com"
 							class="text-xs font-[var(--font-mono)]"
 						/>
-					</FormField>
+					</Field>
 				</div>
 
-				<FormField label="Target Container Port" forId="new-domain-port">
+				<Field label="Target Container Port">
 					<Input
 						id="new-domain-port"
 						bind:value={targetPort}
 						placeholder="3000"
 						class="text-xs font-[var(--font-mono)]"
 					/>
-				</FormField>
+				</Field>
 			</div>
 
 			<div class="flex items-center gap-3 pt-1">
-				<label class="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]">
-					<input
-						type="checkbox"
-						bind:checked={autoHttps}
-						class="cursor-pointer accent-[var(--accent)]"
-					/>
-					<ShieldCheck size={14} class="text-[var(--status-green)]" />
-					<span>Automatic HTTPS (TLS via Let's Encrypt / ZeroSSL)</span>
-				</label>
+				<Switch
+					bind:checked={autoHttps}
+					size="sm"
+					label="Automatic HTTPS (TLS via Let's Encrypt / ZeroSSL)"
+				/>
 			</div>
 
 			<!-- Advanced Caddy Settings Accordion -->
@@ -213,40 +209,37 @@
 					<div
 						class="grid grid-cols-1 gap-4 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)]/40 p-3.5 sm:grid-cols-2"
 					>
-						<FormField label="Max Upload Body Size" forId="adv-body-limit">
+						<Field label="Max Upload Body Size">
 							<Input
 								id="adv-body-limit"
 								bind:value={maxBodySize}
 								placeholder="e.g. 50MB or 100MB"
 								class="text-xs font-[var(--font-mono)]"
 							/>
-						</FormField>
+						</Field>
 
-						<FormField label="WWW Redirect" forId="adv-redirect">
-							<select
-								id="adv-redirect"
-								bind:value={wwwRedirect}
-								class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1.5 text-xs text-[var(--text-primary)]"
-							>
-								<option value="none">None (Direct)</option>
-								<option value="to-non-www">Redirect www → non-www</option>
-								<option value="to-www">Redirect non-www → www</option>
-							</select>
-						</FormField>
+						<Select
+							label="WWW Redirect"
+							value={wwwRedirect}
+							onValueChange={(val) => {
+								if (typeof val === 'string') wwwRedirect = val as any;
+							}}
+							options={[
+								{ label: 'None (Direct)', value: 'none' },
+								{ label: 'Redirect www → non-www', value: 'to-non-www' },
+								{ label: 'Redirect non-www → www', value: 'to-www' }
+							]}
+							size="sm"
+						/>
 
 						<div
 							class="flex flex-col gap-2 border-t border-[var(--border-subtle)] pt-2 sm:col-span-2"
 						>
-							<label
-								class="flex cursor-pointer items-center gap-2 text-xs text-[var(--text-secondary)]"
-							>
-								<input
-									type="checkbox"
-									bind:checked={basicAuthEnabled}
-									class="cursor-pointer accent-[var(--accent)]"
-								/>
-								<span>Enable Basic Authentication (Password protect staging/preview)</span>
-							</label>
+							<Switch
+								bind:checked={basicAuthEnabled}
+								size="sm"
+								label="Enable Basic Authentication (Password protect staging/preview)"
+							/>
 
 							{#if basicAuthEnabled}
 								<div class="grid grid-cols-2 gap-3 pt-1">

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { Button, Input, SectionCard } from '$lib/components/primitives';
+	import { Button, Input, SectionCard, Switch, Select, Radio } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
 	import {
 		DownloadSimple,
@@ -285,49 +285,25 @@ spec:
 		<!-- Rootless / Rootful (Rootless is default; neither labeled "Recommended") -->
 		<div class="flex flex-col gap-1.5 pt-2">
 			<span class="text-xs font-medium text-[var(--text-secondary)]">Podman Mode</span>
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<label
-					class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border p-3 transition-colors {runtimeMode ===
-					'rootless'
-						? 'border-[var(--accent)] bg-[var(--bg-surface)]'
-						: 'border-[var(--border)] bg-[var(--bg-panel)]'}"
-				>
-					<input
-						type="radio"
-						bind:group={runtimeMode}
-						value="rootless"
-						class="mt-0.5 accent-[var(--accent)]"
-					/>
-					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium text-[var(--text-primary)]">Rootless (Default)</span>
-						<span class="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-							Runs entirely in unprivileged user space without root privileges. Standard for PaaS
-							workloads.
-						</span>
-					</div>
-				</label>
-
-				<label
-					class="flex cursor-pointer items-start gap-3 rounded-[var(--radius-sm)] border p-3 transition-colors {runtimeMode ===
-					'rootful'
-						? 'border-[var(--accent)] bg-[var(--bg-surface)]'
-						: 'border-[var(--border)] bg-[var(--bg-panel)]'}"
-				>
-					<input
-						type="radio"
-						bind:group={runtimeMode}
-						value="rootful"
-						class="mt-0.5 accent-[var(--accent)]"
-					/>
-					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium text-[var(--text-primary)]">Rootful</span>
-						<span class="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-							Runs via system daemon with root permissions. Required for low privileged system ports
-							&lt;1024 or direct raw devices.
-						</span>
-					</div>
-				</label>
-			</div>
+			<Radio
+				value={runtimeMode}
+				onValueChange={(val: any) => {
+					if (val === 'rootless' || val === 'rootful') runtimeMode = val;
+				}}
+				appearance="card"
+				options={[
+					{
+						label: 'Rootless (Default)',
+						value: 'rootless',
+						description: 'Runs entirely in unprivileged user space without root privileges. Standard for PaaS workloads.'
+					},
+					{
+						label: 'Rootful',
+						value: 'rootful',
+						description: 'Runs via system daemon with root permissions. Required for low privileged system ports <1024 or direct raw devices.'
+					}
+				]}
+			/>
 		</div>
 
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -376,7 +352,7 @@ spec:
 	>
 		<div class="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2">
 			<div
-				class="flex items-start justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+				class="mt-2 flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
 			>
 				<div class="flex flex-col gap-0.5">
 					<span class="text-xs font-medium text-[var(--text-primary)]"
@@ -386,28 +362,24 @@ spec:
 						Automatically generates a systemd user service unit for process supervision.
 					</span>
 				</div>
-				<input type="checkbox" bind:checked={quadletEnabled} class="mt-1 accent-[var(--accent)]" />
+				<Switch bind:checked={quadletEnabled} size="sm" />
 			</div>
 
-			<div class="flex flex-col gap-1.5">
-				<label for="lc-restart" class="text-xs font-medium text-[var(--text-secondary)]"
-					>Restart Policy</label
-				>
-				<div
-					class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-				>
-					<select
-						id="lc-restart"
-						bind:value={restartPolicy}
-						class="w-full cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
-					>
-						<option value="always">always</option>
-						<option value="on-failure">on-failure</option>
-						<option value="unless-stopped">unless-stopped</option>
-						<option value="no">no</option>
-					</select>
-				</div>
-			</div>
+			<Select
+				id="lc-restart"
+				label="Restart Policy"
+				value={restartPolicy}
+				onValueChange={(val) => {
+					if (typeof val === 'string') restartPolicy = val as any;
+				}}
+				options={[
+					{ label: 'always', value: 'always' },
+					{ label: 'on-failure', value: 'on-failure' },
+					{ label: 'unless-stopped', value: 'unless-stopped' },
+					{ label: 'no', value: 'no' }
+				]}
+				size="sm"
+			/>
 		</div>
 	</SectionCard>
 
@@ -421,7 +393,7 @@ spec:
 		bind:open={openSections.security}
 	>
 		<div
-			class="mt-2 flex items-start justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+			class="mt-2 flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
 		>
 			<div class="flex flex-col gap-0.5">
 				<span class="text-xs font-medium text-[var(--text-primary)]">Privileged Container Mode</span
@@ -431,7 +403,7 @@ spec:
 					standard PaaS apps.
 				</span>
 			</div>
-			<input type="checkbox" bind:checked={isPrivileged} class="mt-1 accent-[var(--status-red)]" />
+			<Switch bind:checked={isPrivileged} size="sm" />
 		</div>
 
 		<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">

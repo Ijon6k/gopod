@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Input } from '$lib/components/ui';
+	import { LayerCard, Button, useKumoToastManager } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
 	import { Check, Globe, Network } from 'phosphor-svelte';
 
@@ -9,6 +10,8 @@
 	}
 
 	let { service }: Props = $props();
+
+	const toast = useKumoToastManager();
 
 	let containerPort = $state('3000');
 	let hostPort = $state('');
@@ -24,117 +27,124 @@
 		service.hostPort = parseInt(hostPort, 10) || 0;
 		dataStore.updateService(service);
 		saveStatus = 'saved';
+		toast.add({
+			title: 'Port Settings Saved',
+			description: `Internal listening port set to :${containerPort}.`,
+			variant: 'success'
+		});
 		setTimeout(() => (saveStatus = 'idle'), 2000);
 	}
 </script>
 
-<div
-	class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
->
-	<!-- Card Header -->
-	<div class="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
+<LayerCard class="w-full shadow-xs">
+	<!-- Elevated Header (LayerCard.Secondary) with Title & Save Action -->
+	<LayerCard.Secondary
+		class="flex flex-wrap items-center justify-between gap-3 border-b border-kumo-hairline px-4 py-3"
+	>
 		<div class="flex items-center gap-2.5">
 			<div
-				class="flex h-8 w-8 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--accent)]"
+				class="flex size-7 shrink-0 items-center justify-center rounded-md bg-kumo-base text-[var(--accent)] ring ring-kumo-line"
 			>
-				<Network size={18} />
+				<Network size={15} weight="duotone" />
 			</div>
-			<div class="flex flex-col gap-0.5">
-				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">
-					Port Mapping & Networking
-				</h3>
-				<p class="m-0 text-xs text-[var(--text-tertiary)]">
-					Configure the internal application listening port and host publishing.
-				</p>
+			<div class="flex flex-col">
+				<div class="flex items-center gap-2">
+					<span class="text-xs font-semibold text-kumo-default">Port Mapping & Ingress</span>
+					<!-- Live Routing Badge -->
+					<div
+						class="flex items-center gap-1.5 rounded-sm bg-kumo-base px-2 py-0.5 font-mono text-[10px] text-kumo-subtle ring-1 ring-kumo-hairline"
+					>
+						{#if hostPort && parseInt(hostPort, 10) > 0}
+							<span class="size-1.5 rounded-full bg-kumo-success"></span>
+							<span>Host 0.0.0.0:{hostPort} &rarr; :{containerPort || '80'}</span>
+						{:else}
+							<span class="size-1.5 rounded-full bg-[var(--accent)]"></span>
+							<span>Caddy Ingress (:{containerPort || '80'})</span>
+						{/if}
+					</div>
+				</div>
+				<span class="text-[11px] text-kumo-subtle">
+					Internal container listening port and optional host publishing
+				</span>
 			</div>
 		</div>
 
-		<!-- Live Routing Badge -->
-		<div
-			class="flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1 text-xs font-[var(--font-mono)] text-[var(--text-secondary)]"
-		>
-			{#if hostPort && parseInt(hostPort, 10) > 0}
-				<span class="h-2 w-2 rounded-full bg-[var(--status-green)]"></span>
-				<span>Host 0.0.0.0:{hostPort} &rarr; Container :{containerPort || '80'}</span>
-			{:else}
-				<span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span>
-				<span>Caddy Ingress (Internal :{containerPort || '80'})</span>
+		<!-- Action in Header -->
+		<div class="flex items-center gap-2">
+			{#if saveStatus === 'saved'}
+				<span class="flex items-center gap-1 font-mono text-xs text-kumo-success">
+					<Check size={13} weight="bold" /> Saved
+				</span>
 			{/if}
+			<Button
+				variant="primary"
+				size="sm"
+				onclick={handleSave}
+				class="gap-1.5 font-medium shadow-xs"
+			>
+				Save Ports
+			</Button>
 		</div>
-	</div>
+	</LayerCard.Secondary>
 
-	<!-- Content -->
-	<div class="flex flex-col gap-4 p-5">
-		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+	<!-- Content Body (LayerCard.Primary) -->
+	<LayerCard.Primary class="flex flex-col gap-3.5 p-4">
+		<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 			<!-- Internal Container Port -->
-			<div class="flex flex-col gap-1.5">
+			<div class="flex flex-col gap-1">
 				<label
 					for="pm-container-port"
-					class="flex items-center justify-between text-xs font-medium text-[var(--text-secondary)]"
+					class="flex items-center justify-between text-xs font-medium text-kumo-default"
 				>
-					<span>Internal Container Port *</span>
-					<span class="text-[10px] font-normal text-[var(--text-tertiary)]">Target port</span>
+					<span>Internal Container Port <span class="text-kumo-danger">*</span></span>
+					<span class="text-[10px] text-kumo-subtle font-mono">Target port</span>
 				</label>
 				<Input
 					id="pm-container-port"
 					bind:value={containerPort}
 					placeholder="80 or 3000"
-					class="text-xs font-[var(--font-mono)]"
+					class="text-xs font-mono"
 				/>
-				<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-					Port where your app listens inside the container (e.g. <strong>80</strong> for
-					Nginx/Whoami, <strong>3000</strong> for Node, <strong>8080</strong> for Java).
+				<p class="m-0 text-[11px] text-kumo-subtle">
+					Port your app listens on inside container (e.g. <strong>80</strong> for Nginx/Whoami,
+					<strong>3000</strong> for Node, <strong>8080</strong> for Java).
 				</p>
 			</div>
 
 			<!-- Published Host Port -->
-			<div class="flex flex-col gap-1.5">
+			<div class="flex flex-col gap-1">
 				<label
 					for="pm-host-port"
-					class="flex items-center justify-between text-xs font-medium text-[var(--text-secondary)]"
+					class="flex items-center justify-between text-xs font-medium text-kumo-default"
 				>
 					<span>Published Host Port (Optional)</span>
-					<span class="text-[10px] font-normal text-[var(--text-tertiary)]">Server access</span>
+					<span class="text-[10px] text-kumo-subtle font-mono">Direct server IP</span>
 				</label>
 				<Input
 					id="pm-host-port"
 					bind:value={hostPort}
 					placeholder="e.g. 8088"
-					class="text-xs font-[var(--font-mono)]"
+					class="text-xs font-mono"
 				/>
-				<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-					Port on host machine for direct IP access (e.g. <code>http://IP:8088</code>). Leave empty
-					to route via Domains tab only.
+				<p class="m-0 text-[11px] text-kumo-subtle">
+					Direct host port (e.g. <code>http://IP:8088</code>). Leave empty to route via Domains tab
+					only.
 				</p>
 			</div>
 		</div>
 
-		<!-- Ingress Notice / Education -->
+		<!-- Compact Ingress Architecture Notice -->
 		<div
-			class="flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-xs text-[var(--text-secondary)]"
+			class="flex items-center gap-2 rounded-md bg-kumo-elevated px-3 py-2 text-xs text-kumo-subtle ring-1 ring-kumo-hairline"
 		>
-			<Globe size={16} class="mt-0.5 shrink-0 text-[var(--accent)]" />
-			<div class="flex flex-col gap-0.5">
-				<span class="font-medium text-[var(--text-primary)]">Dokploy & PaaS Ingress Mode</span>
-				<span class="text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-					If you leave <strong>Published Host Port</strong> empty, your container is protected and
-					reachable exclusively through your domain via Caddy Reverse Proxy. To expose directly on
-					your server's IP without a domain, enter a Host Port like <code>8088</code> or
-					<code>3001</code>.
+			<Globe size={15} class="shrink-0 text-[var(--accent)]" />
+			<div class="flex flex-wrap items-center gap-1 leading-normal">
+				<span class="font-medium text-kumo-default">Ingress Architecture:</span>
+				<span>
+					Leaving Host Port empty keeps the container isolated; Caddy routes traffic via your
+					domain. Specifying a host port exposes it directly on your server IP.
 				</span>
 			</div>
 		</div>
-	</div>
-
-	<!-- Explicit Card Footer -->
-	<div
-		class="flex items-center justify-end gap-2 border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3"
-	>
-		{#if saveStatus === 'saved'}
-			<span class="mr-2 flex items-center gap-1 text-xs text-[var(--status-green)]">
-				<Check size={14} /> Saved
-			</span>
-		{/if}
-		<Button variant="primary" size="sm" onclick={handleSave}>Save Port Settings</Button>
-	</div>
-</div>
+	</LayerCard.Primary>
+</LayerCard>

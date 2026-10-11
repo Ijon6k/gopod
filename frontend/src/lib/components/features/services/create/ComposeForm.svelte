@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Input, Button } from '$lib/components/primitives';
+	import { Input, Button } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
 	import { CheckCircle, WarningCircle } from 'phosphor-svelte';
 

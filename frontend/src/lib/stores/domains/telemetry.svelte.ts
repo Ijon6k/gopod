@@ -39,7 +39,7 @@ export class TelemetryDomainStore {
 
 	accessLogs = $state<CaddyAccessLog[]>([]);
 	isStreaming = $state<boolean>(false);
-	private sseSource: EventSource | null = null;
+	private stopStream: (() => void) | null = null;
 
 	// Live reactive streaming telemetry buffers
 	cpuHistory = $state<TimeSeriesPoint[]>(initSeries(5));
@@ -65,15 +65,12 @@ export class TelemetryDomainStore {
 
 	startStreamingStats(onStats?: (stats: any[]) => void) {
 		if (typeof window === 'undefined') return;
-		if (this.sseSource) return;
+		if (this.stopStream) return;
 
 		try {
-			this.sseSource = new EventSource('/api/stats/stream');
 			this.isStreaming = true;
-
-			this.sseSource.onmessage = (event) => {
-				try {
-					const data = JSON.parse(event.data);
+			this.stopStream = api.system.streamStats(
+				(data) => {
 					if (data.system) {
 						this.applySystemUpdate(data.system);
 					}
@@ -96,23 +93,21 @@ export class TelemetryDomainStore {
 							onStats(data.stats);
 						}
 					}
-				} catch {
-					// Ignore parse error
+				},
+				() => {
+					// Fallback to polled stats if stream drops
+					this.fetchLiveStats();
 				}
-			};
-
-			this.sseSource.onerror = () => {
-				// Reconnects automatically
-			};
+			);
 		} catch {
 			this.fetchLiveStats();
 		}
 	}
 
 	stopStreamingStats() {
-		if (this.sseSource) {
-			this.sseSource.close();
-			this.sseSource = null;
+		if (this.stopStream) {
+			this.stopStream();
+			this.stopStream = null;
 			this.isStreaming = false;
 		}
 	}

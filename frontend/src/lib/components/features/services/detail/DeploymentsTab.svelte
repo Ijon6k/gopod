@@ -1,9 +1,9 @@
 <script lang="ts">
 	import type { Service, Deployment } from '$lib/types';
-	import { Button, Input, Chip } from '$lib/components/primitives';
-	import { SearchInput } from '$lib/components/ui';
+	import { Button } from '$lib/components/ui';
+	import { SearchInput, Tabs } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
-	import { api } from '$lib/api';
+	import { Empty } from 'kumo-svelte';
 	import {
 		DeploymentCard,
 		DeploymentLogsModal,
@@ -13,9 +13,6 @@
 		ArrowClockwise,
 		Trash,
 		Globe,
-		MagnifyingGlass,
-		X,
-		Funnel,
 		RocketLaunch
 	} from 'phosphor-svelte';
 
@@ -32,7 +29,7 @@
 	let isWebhookModalOpen = $state(false);
 
 	// Filter states
-	let statusFilter = $state<'all' | 'running' | 'building' | 'failed'>('all');
+	let statusFilter = $state<string>('all');
 	let searchQuery = $state('');
 
 	import { createDeploymentsQuery } from '$lib/queries';
@@ -174,19 +171,19 @@
 
 <div class="flex w-full flex-col gap-5">
 	<!-- ══════════════════════════════════════════════════════════════
-	     1. HEADER & GLOBAL ACTIONS (Dokploy / Coolify Inspired)
+	     1. HEADER & ACTIONS
 	     ══════════════════════════════════════════════════════════════ -->
 	<div
-		class="flex flex-col justify-between gap-4 border-b border-[var(--border)] pb-2 sm:flex-row sm:items-center"
+		class="flex flex-col justify-between gap-4 border-b border-kumo-hairline pb-4 sm:flex-row sm:items-center"
 	>
-		<div class="flex flex-col gap-0.5">
+		<div class="flex flex-col gap-1">
 			<div class="flex items-center gap-2">
-				<h2 class="m-0 text-sm font-medium text-[var(--text-primary)]">Deployment History</h2>
-				<span class="font-mono text-xs text-[var(--text-tertiary)] tabular-nums">
+				<h2 class="m-0 text-base font-semibold text-kumo-default">Deployment history</h2>
+				<span class="font-mono text-xs text-kumo-subtle tabular-nums">
 					({counts.total})
 				</span>
 			</div>
-			<p class="m-0 text-xs text-[var(--text-tertiary)]">
+			<p class="m-0 text-sm text-kumo-subtle">
 				Rolling container updates, systemd Quadlet daemon reloads, and audit logs.
 			</p>
 		</div>
@@ -210,121 +207,85 @@
 					variant="secondary"
 					size="sm"
 					onclick={handleClearHistory}
-					class="gap-1.5 text-[var(--text-secondary)] hover:text-[var(--status-red)]"
+					class="gap-1.5 text-kumo-danger hover:text-kumo-danger"
 					title="Clear finished deployment history (preserves active live deployment)"
 				>
 					<Trash size={13} />
-					<span>Prune History</span>
+					<span>Prune history</span>
 				</Button>
 			{/if}
 
 			<!-- Trigger Deploy Now -->
-			<Button variant="primary" size="sm" onclick={handleTriggerDeploy} class="gap-1.5">
+			<Button
+				variant="primary"
+				size="sm"
+				onclick={handleTriggerDeploy}
+				loading={isDeploying}
+				class="gap-1.5"
+			>
 				<ArrowClockwise size={13} />
-				<span>Deploy Now</span>
+				<span>Deploy now</span>
 			</Button>
 		</div>
 	</div>
 
 	<!-- ══════════════════════════════════════════════════════════════
-	     2. FILTERS & SEARCH TOOLBAR
+	     2. FILTERS & SEARCH TOOLBAR (Kumo Segmented Tabs)
 	     ══════════════════════════════════════════════════════════════ -->
 	<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
-		<!-- Status Filter Pills -->
-		<div
-			class="flex items-center gap-1 overflow-x-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5 text-xs"
-		>
-			<button
-				type="button"
-				onclick={() => (statusFilter = 'all')}
-				class="cursor-pointer rounded border-0 px-2.5 py-1 transition-colors {statusFilter === 'all'
-					? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
-					: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
-			>
-				All ({counts.total})
-			</button>
-
-			<button
-				type="button"
-				onclick={() => (statusFilter = 'running')}
-				class="flex cursor-pointer items-center gap-1.5 rounded border-0 px-2.5 py-1 transition-colors {statusFilter ===
-				'running'
-					? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
-					: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
-			>
-				<span class="h-1.5 w-1.5 rounded-full bg-[var(--status-green)]"></span>
-				Success ({counts.running})
-			</button>
-
-			{#if counts.building > 0}
-				<button
-					type="button"
-					onclick={() => (statusFilter = 'building')}
-					class="flex cursor-pointer items-center gap-1.5 rounded border-0 px-2.5 py-1 transition-colors {statusFilter ===
-					'building'
-						? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
-						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
-				>
-					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--accent)]"></span>
-					Building ({counts.building})
-				</button>
-			{/if}
-
-			{#if counts.failed > 0}
-				<button
-					type="button"
-					onclick={() => (statusFilter = 'failed')}
-					class="flex cursor-pointer items-center gap-1.5 rounded border-0 px-2.5 py-1 transition-colors {statusFilter ===
-					'failed'
-						? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
-						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
-				>
-					<span class="h-1.5 w-1.5 rounded-full bg-[var(--status-red)]"></span>
-					Failed ({counts.failed})
-				</button>
-			{/if}
-		</div>
+		<!-- Segmented Status Tabs -->
+		<Tabs
+			variant="segmented"
+			size="sm"
+			tabs={[
+				{ id: 'all', label: `All (${counts.total})` },
+				{ id: 'running', label: `Success (${counts.running})` },
+				...(counts.building > 0 ? [{ id: 'building', label: `Building (${counts.building})` }] : []),
+				...(counts.failed > 0 ? [{ id: 'failed', label: `Failed (${counts.failed})` }] : [])
+			]}
+			bind:active={statusFilter}
+		/>
 
 		<!-- Search Input -->
 		<SearchInput
 			bind:value={searchQuery}
-			placeholder="Search commit, message, version..."
+			placeholder="Search commit, message, version…"
 			class="w-full max-w-[280px]"
 		/>
 	</div>
 
 	<!-- ══════════════════════════════════════════════════════════════
-	     3. DEPLOYMENT LIST (Komponen Panjang / Horizontal Cards)
+	     3. DEPLOYMENT LIST
 	     ══════════════════════════════════════════════════════════════ -->
 	{#if filteredDeployments.length === 0}
-		<div
-			class="flex w-full flex-col items-center justify-center gap-2.5 rounded-[var(--radius-card)] border border-dashed border-[var(--border)] bg-[var(--bg-panel)] py-14 text-center"
-		>
-			<div class="rounded-full bg-[var(--bg-surface)] p-2.5 text-[var(--text-tertiary)]">
-				<RocketLaunch size={20} />
-			</div>
-			<div class="flex flex-col gap-0.5">
-				<span class="text-xs font-medium text-[var(--text-primary)]"
-					>No deployments match your criteria</span
-				>
-				<span class="text-[11px] text-[var(--text-tertiary)]">
-					{searchQuery
-						? 'Try clearing your search query'
-						: 'Trigger your first deployment to build and reload this service'}
-				</span>
-			</div>
-			{#if searchQuery}
-				<Button variant="secondary" size="sm" onclick={() => (searchQuery = '')} class="mt-1">
-					Clear Filter
-				</Button>
-			{:else}
-				<Button variant="primary" size="sm" onclick={handleTriggerDeploy} class="mt-1">
-					Deploy Now
-				</Button>
-			{/if}
+		<div class="py-4">
+			<Empty
+				size="sm"
+				title={searchQuery ? 'No matching deployments' : 'No deployments yet'}
+				description={searchQuery
+					? 'Try clearing your search query to see previous deployments.'
+					: 'Trigger your first deployment to build and reload this service.'}
+			>
+				{#snippet icon()}
+					<div class="rounded-full bg-kumo-recessed p-2.5 text-kumo-subtle">
+						<RocketLaunch size={22} />
+					</div>
+				{/snippet}
+				<div class="mt-2">
+					{#if searchQuery}
+						<Button variant="secondary" size="sm" onclick={() => (searchQuery = '')}>
+							Clear filter
+						</Button>
+					{:else}
+						<Button variant="primary" size="sm" onclick={handleTriggerDeploy}>
+							Deploy now
+						</Button>
+					{/if}
+				</div>
+			</Empty>
 		</div>
 	{:else}
-		<div class="flex flex-col gap-2.5">
+		<div class="flex flex-col gap-2">
 			{#each filteredDeployments as dep, i (dep.id)}
 				{@const isCurrent =
 					dep.isCurrent ?? (i === 0 && (dep.status === 'running' || dep.status === 'healthy'))}

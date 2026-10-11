@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { Deployment } from '$lib/types';
-	import { Button, Chip } from '$lib/components/primitives';
-	import { StatusBadge } from '$lib/components/ui';
+	import { Button } from '$lib/components/ui';
+	import { Badge } from 'kumo-svelte';
+	import { dataStore } from '$lib/data';
 	import {
 		Terminal,
 		ArrowCounterClockwise,
@@ -14,12 +15,14 @@
 		Globe,
 		StopCircle,
 		Copy,
-		Check
+		Check,
+		FolderSimple
 	} from 'phosphor-svelte';
 
 	interface Props {
 		deployment: Deployment;
 		isCurrent?: boolean;
+		showProjectContext?: boolean;
 		onViewLogs: (dep: Deployment) => void;
 		onRedeploy: (dep: Deployment) => void;
 		onCancel?: (dep: Deployment) => void;
@@ -29,6 +32,7 @@
 	let {
 		deployment,
 		isCurrent = false,
+		showProjectContext = true,
 		onViewLogs,
 		onRedeploy,
 		onCancel,
@@ -36,6 +40,20 @@
 	}: Props = $props();
 
 	let copiedCommit = $state(false);
+
+	let resolvedProjectName = $derived(
+		deployment.projectName ||
+		dataStore.getProjectById(deployment.projectId)?.name ||
+		deployment.projectId ||
+		'Default'
+	);
+
+	let resolvedServiceName = $derived(
+		deployment.serviceName ||
+		dataStore.getServiceById(deployment.serviceId)?.name ||
+		deployment.serviceId ||
+		'Service'
+	);
 
 	async function copyCommit(e: MouseEvent) {
 		e.stopPropagation();
@@ -51,152 +69,192 @@
 		}
 	}
 
+	const isSuccess = $derived(
+		deployment.status === 'success' ||
+		deployment.status === 'running' ||
+		deployment.status === 'healthy'
+	);
+
 	const isBuilding = $derived(
 		deployment.status === 'deploying' || deployment.status === 'building'
+	);
+
+	const isFailed = $derived(deployment.status === 'failed');
+
+	const badgeVariant = $derived(
+		isSuccess
+			? 'success'
+			: isFailed
+				? 'error'
+				: isBuilding
+					? 'warning'
+					: 'neutral'
+	);
+
+	const statusLabel = $derived(
+		isSuccess
+			? 'Success'
+			: isBuilding
+				? 'Building'
+				: isFailed
+					? 'Failed'
+					: deployment.status
 	);
 </script>
 
 <div
-	class="group relative flex w-full flex-col justify-between gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-4 transition-all hover:bg-[var(--bg-hover)] md:flex-row md:items-center"
+	class="group relative flex w-full flex-col justify-between gap-3.5 rounded-lg bg-kumo-base p-4 ring ring-kumo-line transition-colors hover:bg-kumo-tint md:flex-row md:items-center"
 >
-	<!-- Left / Main: Status, Commit Info, Branch, Trigger -->
-	<div class="flex min-w-0 flex-1 items-start gap-3.5">
-		<!-- Status Indicator Icon -->
+	<!-- Left / Primary: Status, Number, Commit Message, Metadata -->
+	<div class="flex min-w-0 flex-1 items-start gap-3">
+		<!-- Status Dot Badge -->
 		<div class="mt-0.5 flex shrink-0 items-center justify-center">
-			<StatusBadge status={deployment.status} size="sm" />
+			<Badge variant={badgeVariant} appearance="dot">
+				{statusLabel}
+			</Badge>
 		</div>
 
 		<div class="flex min-w-0 flex-1 flex-col gap-1.5">
-			<!-- Row 1: Number, Current live badge, Commit message -->
+			<!-- Context Eyebrow: Project & Service Breadcrumb (Global View) -->
+			{#if showProjectContext}
+				<div class="flex items-center gap-1.5 text-xs text-kumo-subtle">
+					<FolderSimple size={13} class="shrink-0 text-kumo-subtle/70" />
+					<a
+						href="/projects/{deployment.projectId}"
+						class="font-medium text-kumo-subtle hover:text-kumo-default transition-colors no-underline"
+						title="Go to project {resolvedProjectName}"
+					>
+						{resolvedProjectName}
+					</a>
+					<span class="text-kumo-hairline select-none">/</span>
+					<a
+						href="/projects/{deployment.projectId}/services/{deployment.serviceId}"
+						class="font-mono text-xs text-[var(--accent)] hover:underline"
+						title="Go to service {resolvedServiceName}"
+					>
+						{resolvedServiceName}
+					</a>
+				</div>
+			{/if}
+
+			<!-- Line 1: Number, Live badge, Commit message -->
 			<div class="flex flex-wrap items-center gap-2">
-				<span class="text-xs font-[var(--font-mono)] font-semibold text-[var(--text-primary)]">
+				<span class="font-mono text-sm font-semibold text-kumo-default">
 					#{deployment.number}
 				</span>
 
 				{#if isCurrent}
-					<Chip variant="accent" size="sm" class="text-[10px] font-medium">Live</Chip>
+					<Badge variant="secondary" class="text-xs">Live</Badge>
 				{/if}
 
 				<span
-					class="max-w-[420px] truncate text-xs font-medium text-[var(--text-primary)]"
+					class="truncate text-sm font-medium text-kumo-default"
 					title={deployment.commitMessage}
 				>
 					{deployment.commitMessage}
 				</span>
 			</div>
 
-			<!-- Row 2: Commit SHA, Branch, Trigger, Author -->
-			<div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-tertiary)]">
+			<!-- Line 2: Commit SHA, Branch, Trigger, Author -->
+			<div class="flex flex-wrap items-center gap-2 text-xs text-kumo-subtle">
 				{#if deployment.commit && deployment.commit !== '—' && deployment.commit.trim() !== ''}
 					<button
 						type="button"
 						onclick={copyCommit}
-						class="inline-flex cursor-pointer items-center gap-1 rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10.5px] font-[var(--font-mono)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)]"
+						class="inline-flex cursor-pointer items-center gap-1 rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-xs text-kumo-default ring ring-kumo-hairline/60 transition-colors hover:bg-kumo-fill"
 						title="Copy commit hash"
 					>
-						<GitCommit size={11} />
+						<GitCommit size={12} />
 						<span>{deployment.commit.substring(0, 7)}</span>
 						{#if copiedCommit}
-							<Check size={10} class="text-[var(--status-green)]" />
+							<Check size={11} class="text-kumo-success" />
 						{:else}
-							<Copy size={10} class="opacity-60" />
+							<Copy size={11} class="opacity-60" />
 						{/if}
 					</button>
 				{/if}
 
 				{#if deployment.branch && deployment.branch !== '—' && deployment.branch.trim() !== ''}
-					<span
-						class="inline-flex items-center gap-1 font-[var(--font-mono)] text-[var(--text-secondary)]"
-					>
-						<GitBranch size={11} class="text-[var(--text-tertiary)]" />
+					<span class="inline-flex items-center gap-1 font-mono text-kumo-subtle">
+						<GitBranch size={12} />
 						{deployment.branch}
 					</span>
 				{/if}
 
 				{#if (deployment.commit && deployment.commit !== '—' && deployment.commit.trim() !== '') || (deployment.branch && deployment.branch !== '—' && deployment.branch.trim() !== '')}
-					<span class="text-[var(--border)]">•</span>
+					<span class="text-kumo-hairline">•</span>
 				{/if}
 
 				<!-- Trigger Type -->
 				<span class="inline-flex items-center gap-1">
 					{#if deployment.trigger === 'rollback'}
-						<ArrowCounterClockwise size={11} class="text-[var(--status-amber)]" />
+						<ArrowCounterClockwise size={12} class="text-kumo-warning" />
 						<span>Rollback</span>
 					{:else if deployment.trigger === 'webhook'}
-						<Globe size={11} class="text-[var(--accent)]" />
+						<Globe size={12} class="text-[var(--accent)]" />
 						<span>Webhook</span>
 					{:else if deployment.trigger === 'compose'}
-						<Terminal size={11} class="text-[var(--accent)]" />
+						<Terminal size={12} class="text-[var(--accent)]" />
 						<span>Compose</span>
 					{:else if deployment.trigger === 'quadlet'}
-						<Terminal size={11} class="text-[var(--text-secondary)]" />
+						<Terminal size={12} class="text-kumo-subtle" />
 						<span>Quadlet</span>
 					{:else if deployment.trigger === 'git-push' || (deployment.commit && deployment.commit !== '—' && deployment.commit.trim() !== '')}
-						<GitCommit size={11} />
-						<span>Git Push</span>
+						<GitCommit size={12} />
+						<span>Git push</span>
 					{:else}
-						<User size={11} />
+						<User size={12} />
 						<span>Manual</span>
 					{/if}
 				</span>
 
 				{#if deployment.author}
-					<span class="text-[var(--border)]">•</span>
+					<span class="text-kumo-hairline">•</span>
 					<span>by {deployment.author}</span>
 				{/if}
 			</div>
 		</div>
 	</div>
 
-	<!-- Middle: Image Tag & Duration/Timestamp -->
+	<!-- Middle: Artifact tag & Timing -->
 	<div
-		class="flex shrink-0 flex-wrap items-center gap-4 pl-7 text-xs text-[var(--text-secondary)] sm:flex-nowrap md:gap-6 md:pl-0"
+		class="flex shrink-0 flex-wrap items-center gap-3 text-xs text-kumo-subtle sm:flex-nowrap md:gap-5"
 	>
-		<!-- Version or Image Pill -->
-		<div class="flex flex-col gap-0.5">
-			<span class="text-[10.5px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-				>Artifact</span
-			>
+		<!-- Artifact tag -->
+		{#if deployment.version}
 			<span
-				class="max-w-[190px] truncate rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2 py-0.5 text-[11.5px] font-[var(--font-mono)] text-[var(--text-primary)]"
+				class="max-w-[190px] truncate rounded bg-kumo-recessed px-2 py-0.5 font-mono text-xs text-kumo-default ring ring-kumo-hairline/60"
 				title={deployment.version}
 			>
 				{deployment.version}
 			</span>
-		</div>
+		{/if}
 
-		<!-- Duration & Time -->
-		<div class="flex min-w-[90px] flex-col gap-0.5">
-			<span class="text-[10.5px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-				>Timing</span
-			>
-			<div class="flex items-center gap-2 text-[11px] text-[var(--text-secondary)]">
-				<span class="inline-flex items-center gap-1" title="Execution duration">
-					<Timer size={11} class="text-[var(--text-tertiary)]" />
-					{deployment.duration}
-				</span>
-				<span class="text-[var(--border)]">•</span>
-				<span class="inline-flex items-center gap-1" title={deployment.startedAt}>
-					<Clock size={11} class="text-[var(--text-tertiary)]" />
-					{deployment.timeAgo}
-				</span>
-			</div>
+		<!-- Timing -->
+		<div class="flex items-center gap-1.5 tabular-nums text-kumo-subtle">
+			<span class="inline-flex items-center gap-1" title="Duration">
+				<Timer size={13} />
+				{deployment.duration}
+			</span>
+			<span class="text-kumo-hairline">•</span>
+			<span class="inline-flex items-center gap-1" title={deployment.startedAt}>
+				<Clock size={13} />
+				{deployment.timeAgo}
+			</span>
 		</div>
 	</div>
 
 	<!-- Right: Actions -->
-	<div
-		class="flex shrink-0 items-center gap-2 border-t border-[var(--border-subtle)] pt-3 pl-7 md:border-t-0 md:pt-0 md:pl-0"
-	>
-		<!-- View Logs Button (Dokploy / Coolify style) -->
+	<div class="flex shrink-0 items-center gap-1.5">
+		<!-- View Logs Button -->
 		<Button
 			variant="secondary"
 			size="sm"
 			onclick={() => onViewLogs(deployment)}
-			class="h-8 gap-1.5"
+			class="gap-1.5"
 		>
 			<Terminal size={13} />
-			<span>View Logs</span>
+			<span>View logs</span>
 		</Button>
 
 		<!-- Rollback / Redeploy Button -->
@@ -205,40 +263,35 @@
 				variant="ghost"
 				size="sm"
 				onclick={() => onRedeploy(deployment)}
-				class="h-8 gap-1 text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+				class="gap-1.5"
 				title={isCurrent ? 'Redeploy this version' : 'Rollback to this deployment'}
 			>
-				{#if isCurrent}
-					<ArrowCounterClockwise size={13} />
-					<span class="hidden sm:inline">Redeploy</span>
-				{:else}
-					<ArrowCounterClockwise size={13} />
-					<span class="hidden sm:inline">Rollback</span>
-				{/if}
+				<ArrowCounterClockwise size={13} />
+				<span>{isCurrent ? 'Redeploy' : 'Rollback'}</span>
 			</Button>
 		{:else if onCancel}
-			<!-- Cancel Active Deployment Button -->
 			<Button
-				variant="ghost"
+				variant="destructive"
 				size="sm"
 				onclick={() => onCancel(deployment)}
-				class="h-8 gap-1 text-[var(--status-red)] hover:bg-[rgba(184,84,84,0.12)]"
+				class="gap-1.5"
 				title="Cancel active deployment"
 			>
 				<StopCircle size={13} />
-				<span class="hidden sm:inline">Cancel</span>
+				<span>Cancel</span>
 			</Button>
 		{/if}
 
-		<!-- Delete from history -->
-		<button
-			type="button"
+		<!-- Delete Button -->
+		<Button
+			variant="ghost"
+			size="sm"
+			shape="square"
 			onclick={() => onDelete(deployment)}
-			class="cursor-pointer rounded-[var(--radius-sm)] border-0 bg-transparent p-2 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--status-red)]"
 			title="Delete deployment record"
 			aria-label="Delete deployment"
 		>
-			<Trash size={14} />
-		</button>
+			<Trash size={14} class="text-kumo-subtle hover:text-kumo-danger" />
+		</Button>
 	</div>
 </div>

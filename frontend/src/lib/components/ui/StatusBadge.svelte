@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { Badge } from 'kumo-svelte';
+	import type { BadgeVariant } from 'kumo-svelte';
 	import { cn } from '$lib/utils/cn';
 
 	interface Props {
@@ -10,80 +12,43 @@
 
 	let { status, label, size = 'md', class: className = '' }: Props = $props();
 
-	interface StatusConfig {
-		color: string;
-		dotClass: string;
-		shadowColor: string;
-		label: string;
-	}
+	// Map GOPOD statuses to Kumo semantic badge variants
+	const variantMap: Record<string, { variant: BadgeVariant; label: string }> = {
+		running: { variant: 'success', label: 'Running' },
+		healthy: { variant: 'success', label: 'Healthy' },
+		active: { variant: 'success', label: 'Active' },
+		online: { variant: 'success', label: 'Online' },
+		mounted: { variant: 'success', label: 'Mounted' },
 
-	const greenConfig: StatusConfig = {
-		color: 'text-[var(--text-secondary)]',
-		dotClass: 'bg-[var(--status-green)]',
-		shadowColor: 'var(--status-green-muted)',
-		label: 'Healthy'
+		stopped: { variant: 'neutral', label: 'Stopped' },
+		cancelled: { variant: 'neutral', label: 'Cancelled' },
+		unmounted: { variant: 'neutral', label: 'Unmounted' },
+
+		building: { variant: 'info', label: 'Building' },
+		deploying: { variant: 'info', label: 'Deploying' },
+
+		degraded: { variant: 'warning', label: 'Degraded' },
+		pending: { variant: 'warning', label: 'Pending' },
+		queued: { variant: 'warning', label: 'Queued' },
+
+		failed: { variant: 'error', label: 'Failed' },
+		unhealthy: { variant: 'error', label: 'Unhealthy' },
+		error: { variant: 'error', label: 'Error' }
 	};
 
-	const redConfig: StatusConfig = {
-		color: 'text-[var(--text-secondary)]',
-		dotClass: 'bg-[var(--status-red)]',
-		shadowColor: 'var(--status-red-muted)',
-		label: 'Failed'
-	};
-
-	const amberConfig: StatusConfig = {
-		color: 'text-[var(--text-secondary)]',
-		dotClass: 'bg-[var(--status-amber)]',
-		shadowColor: 'var(--status-amber-muted)',
-		label: 'Pending'
-	};
-
-	const blueConfig: StatusConfig = {
-		color: 'text-[var(--text-secondary)]',
-		dotClass: 'bg-[var(--status-blue)]',
-		shadowColor: 'var(--accent-muted)',
-		label: 'Deploying'
-	};
-
-	const grayConfig: StatusConfig = {
-		color: 'text-[var(--text-secondary)]',
-		dotClass: 'bg-[var(--status-gray)]',
-		shadowColor: 'rgba(101, 106, 116, 0.15)',
-		label: 'Stopped'
-	};
-
-	const config: Record<string, StatusConfig> = {
-		running: { ...greenConfig, label: 'Running' },
-		healthy: { ...greenConfig, label: 'Healthy' },
-		active: { ...greenConfig, label: 'Active' },
-		online: { ...greenConfig, label: 'Online' },
-		mounted: { ...greenConfig, label: 'Mounted' },
-
-		stopped: { ...grayConfig, label: 'Stopped' },
-		cancelled: { ...grayConfig, label: 'Cancelled' },
-		unmounted: { ...grayConfig, label: 'Unmounted' },
-
-		building: { ...blueConfig, label: 'Building' },
-		deploying: { ...blueConfig, label: 'Deploying' },
-
-		degraded: { ...amberConfig, label: 'Degraded' },
-		pending: { ...amberConfig, label: 'Pending' },
-		queued: { ...amberConfig, label: 'Queued' },
-
-		failed: { ...redConfig, label: 'Failed' },
-		unhealthy: { ...redConfig, label: 'Unhealthy' },
-		error: { ...redConfig, label: 'Error' }
-	};
-
-	let c = $derived(config[status] ?? { ...grayConfig, label: status });
-	let dotSize = $derived(size === 'sm' ? 'w-[5px] h-[5px]' : 'w-1.5 h-1.5');
-	let fontSize = $derived(size === 'sm' ? 'text-xs' : 'text-base');
+	let info = $derived(
+		variantMap[status?.toLowerCase()] ?? {
+			variant: 'neutral' as BadgeVariant,
+			label: status || 'Unknown'
+		}
+	);
 </script>
 
-<span class={cn('inline-flex items-center gap-[5px] font-normal', fontSize, c.color, className)}>
-	<span
-		class={cn('shrink-0 rounded-full', dotSize, c.dotClass)}
-		style="box-shadow: 0 0 0 2px {c.shadowColor};"
-	></span>
-	{label ?? c.label}
-</span>
+<Badge
+	variant={info.variant}
+	appearance="dot"
+	class={cn(size === 'sm' ? 'text-[11px] py-0 px-1.5' : 'text-xs', className)}
+>
+	{label ?? info.label}
+</Badge>
+

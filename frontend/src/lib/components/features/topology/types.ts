@@ -50,9 +50,10 @@ export interface TopologyEdge {
 	sourceY: number;
 	targetX: number;
 	targetY: number;
-	path: string; // SVG orthogonal 90-degree path "M ... L ..."
+	path: string; // SVG path
 	label?: string;
 	dashed?: boolean;
+	kind?: 'ingress' | 'database' | 'storage' | 'workload';
 }
 
 export interface TopologyGraph {

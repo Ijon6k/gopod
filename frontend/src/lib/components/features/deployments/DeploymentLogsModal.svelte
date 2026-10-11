@@ -1,20 +1,15 @@
 <script lang="ts">
 	import type { Deployment } from '$lib/types';
-	import { Button } from '$lib/components/primitives';
-	import { StatusBadge, SearchInput } from '$lib/components/ui';
+	import { Button } from '$lib/components/ui';
+	import { SearchInput } from '$lib/components/ui';
+	import { DeploymentPipelineStepper } from '$lib/components/features/deployments';
+	import { LayerDialog, Badge, Switch } from 'kumo-svelte';
 	import { api } from '$lib/api';
 	import { getDeploymentSteps, getDeploymentLogs } from '$lib/utils/deploymentLogs';
 	import {
-		X,
 		Copy,
 		Check,
-		DownloadSimple,
-		MagnifyingGlass,
-		CircleNotch,
-		CheckCircle,
-		XCircle,
-		Clock,
-		ArrowSquareOut
+		DownloadSimple
 	} from 'phosphor-svelte';
 
 	interface Props {
@@ -92,23 +87,23 @@
 					if (isSubscribed) isLogsLoading = false;
 				});
 
-			// If active building/deploying, subscribe to SSE stream
-			let es: EventSource | null = null;
+			// If active building/deploying, subscribe to SSE stream via centralized API
+			let unsubscribeStream: (() => void) | null = null;
 			if (deployment.status === 'building' || deployment.status === 'deploying') {
 				try {
-					es = new EventSource(`/api/deployments/${depId}/logs/stream`);
-					es.onmessage = (event) => {
-						if (!isSubscribed) return;
-						if (event.data) {
-							const clean = sanitizeLogLine(event.data);
+					unsubscribeStream = api.services.streamDeploymentLogs(
+						depId,
+						(raw) => {
+							if (!isSubscribed) return;
+							const clean = sanitizeLogLine(raw);
 							if (!fetchedLogs.includes(clean)) {
 								fetchedLogs = [...fetchedLogs, clean];
 							}
+						},
+						() => {
+							unsubscribeStream?.();
 						}
-					};
-					es.onerror = () => {
-						es?.close();
-					};
+					);
 				} catch (e) {
 					console.warn('SSE stream error:', e);
 				}
@@ -116,9 +111,9 @@
 
 			return () => {
 				isSubscribed = false;
-				if (es) es.close();
+				if (unsubscribeStream) unsubscribeStream();
 			};
-		} else {
+		} else if (fetchedLogs.length > 0) {
 			fetchedLogs = [];
 		}
 	});
@@ -158,50 +153,61 @@
 		document.body.removeChild(a);
 		URL.revokeObjectURL(url);
 	}
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') {
-			onclose();
-		}
-	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
 {#if open && deployment}
-	<!-- Modal Backdrop -->
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(5,6,7,0.82)] p-3 backdrop-blur-[3px] sm:p-5"
-		role="dialog"
-		aria-modal="true"
+	<LayerDialog.Root
+		open={true}
+		onOpenChange={(isOpen) => {
+			if (!isOpen) onclose();
+		}}
 	>
-		<div
-			class="animate-in fade-in zoom-in-95 flex h-[88vh] max-h-[860px] w-full max-w-[880px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] duration-150"
+		<LayerDialog.Content
+			size="xl"
+			class="h-[88vh] max-h-[860px] sm:max-w-4xl p-0 overflow-hidden flex flex-col"
 		>
-			<!-- Top Modal Header -->
+		{#if deployment}
+			<!-- Top Modal Header (Padding-right reserved for Kumo's close X button) -->
 			<div
-				class="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3.5"
+				class="flex shrink-0 items-center justify-between border-b border-kumo-hairline bg-kumo-base px-5 py-3.5 pr-14"
 			>
 				<div class="flex min-w-0 items-center gap-3">
 					<div class="flex items-center gap-2">
-						<span class="text-sm font-[var(--font-mono)] font-semibold text-[var(--text-primary)]">
+						<span class="font-mono text-sm font-semibold text-kumo-default">
 							#{deployment.number}
 						</span>
-						<StatusBadge status={deployment.status} size="sm" />
+						<Badge
+							variant={deployment.status === 'success' || deployment.status === 'running' || deployment.status === 'healthy'
+								? 'success'
+								: deployment.status === 'failed'
+									? 'error'
+									: deployment.status === 'building' || deployment.status === 'deploying'
+										? 'warning'
+										: 'neutral'}
+							appearance="dot"
+						>
+							{deployment.status === 'success' || deployment.status === 'running' || deployment.status === 'healthy'
+								? 'Success'
+								: deployment.status === 'building' || deployment.status === 'deploying'
+									? 'Building'
+									: deployment.status === 'failed'
+										? 'Failed'
+										: deployment.status}
+						</Badge>
 					</div>
 
-					<span class="hidden text-[var(--border)] sm:inline">•</span>
+					<span class="hidden text-kumo-hairline sm:inline">•</span>
 
 					<div class="flex min-w-0 items-center gap-2">
 						<span
-							class="max-w-[280px] truncate text-xs font-medium text-[var(--text-secondary)]"
+							class="max-w-[320px] truncate text-sm font-medium text-kumo-default"
 							title={deployment.commitMessage}
 						>
 							{deployment.commitMessage}
 						</span>
 						{#if deployment.commit && deployment.commit !== '—'}
 							<span
-								class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 text-[10.5px] font-[var(--font-mono)] text-[var(--text-tertiary)]"
+								class="rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-xs text-kumo-subtle ring ring-kumo-hairline/60"
 							>
 								{deployment.commit.substring(0, 7)}
 							</span>
@@ -209,108 +215,67 @@
 					</div>
 				</div>
 
-				<div class="flex shrink-0 items-center gap-2">
-					<span class="hidden text-xs text-[var(--text-tertiary)] tabular-nums sm:inline">
-						Duration: {deployment.duration}
-					</span>
-
-					<button
-						type="button"
-						onclick={onclose}
-						class="cursor-pointer rounded-[var(--radius-sm)] border-0 bg-transparent p-1 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
-						aria-label="Close logs dialog"
-					>
-						<X size={18} />
-					</button>
+				<div class="hidden shrink-0 items-center gap-2 text-xs text-kumo-subtle tabular-nums sm:flex">
+					<span>Duration: {deployment.duration}</span>
 				</div>
 			</div>
 
-			<!-- Pipeline Stages Stepper (Dokploy & Coolify UX) -->
-			<div class="shrink-0 border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-5 py-3">
+			<!-- Minimalist Pipeline Stages Stepper -->
+			<div class="shrink-0 border-b border-kumo-hairline bg-kumo-base px-5 py-3">
 				<div class="flex flex-col gap-1.5">
-					<span
-						class="text-[10px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Deployment Pipeline
-					</span>
-
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-5">
-						{#each steps as step, i}
-							<div
-								class="flex items-center gap-2 rounded-[var(--radius-sm)] border p-2 text-xs {step.status ===
-								'success'
-									? 'border-[rgba(76,154,114,0.25)] bg-[rgba(76,154,114,0.06)] text-[var(--text-primary)]'
-									: step.status === 'running'
-										? 'border-[rgba(105,115,168,0.35)] bg-[rgba(105,115,168,0.08)] text-[var(--text-primary)]'
-										: step.status === 'failed'
-											? 'border-[rgba(184,84,84,0.30)] bg-[rgba(184,84,84,0.08)] text-[var(--text-primary)]'
-											: 'border-[var(--border-subtle)] bg-[var(--bg-panel)] text-[var(--text-tertiary)]'}"
-							>
-								<!-- Icon based on status -->
-								{#if step.status === 'success'}
-									<CheckCircle size={14} class="shrink-0 text-[var(--status-green)]" />
-								{:else if step.status === 'running'}
-									<CircleNotch size={14} class="shrink-0 animate-spin text-[var(--accent)]" />
-								{:else if step.status === 'failed'}
-									<XCircle size={14} class="shrink-0 text-[var(--status-red)]" />
-								{:else}
-									<Clock size={14} class="shrink-0 text-[var(--text-tertiary)] opacity-60" />
-								{/if}
-
-								<div class="flex min-w-0 flex-1 flex-col leading-tight">
-									<span class="truncate text-[11px] font-medium">
-										{step.name}
-									</span>
-									{#if step.duration}
-										<span class="text-[10px] text-[var(--text-tertiary)] tabular-nums">
-											{step.duration}
-										</span>
-									{/if}
-								</div>
-							</div>
-						{/each}
+					<div class="flex items-center justify-between">
+						<span class="text-xs font-medium text-kumo-subtle">Pipeline stages</span>
+						<span class="font-mono text-xs text-kumo-subtle tabular-nums sm:hidden">
+							Duration: {deployment.duration}
+						</span>
 					</div>
+					<DeploymentPipelineStepper {steps} />
 				</div>
 			</div>
 
 			<!-- Terminal Logs Toolbar -->
 			<div
-				class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-panel)] px-5 py-2.5 text-xs"
+				class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-kumo-hairline bg-kumo-base px-5 py-2.5"
 			>
 				<!-- Search Filter -->
 				<SearchInput
 					bind:value={searchQuery}
-					placeholder="Search in deployment logs..."
-					class="max-w-[320px] flex-1 text-xs"
+					placeholder="Search deployment logs…"
+					class="max-w-[320px] flex-1 text-sm"
 				/>
 
 				<!-- Actions: AutoScroll, Copy, Download -->
-				<div class="flex items-center gap-2 text-xs">
-					<label
-						class="flex cursor-pointer items-center gap-1.5 text-[var(--text-secondary)] select-none hover:text-[var(--text-primary)]"
+				<div class="flex items-center gap-3">
+					<Switch
+						size="sm"
+						bind:checked={autoScroll}
+						label="Auto-scroll"
+					/>
+
+					<div class="h-4 w-px bg-kumo-hairline"></div>
+
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={copyAllLogs}
+						class="h-7 gap-1.5 text-xs text-kumo-default"
 					>
-						<input
-							type="checkbox"
-							bind:checked={autoScroll}
-							class="cursor-pointer rounded border-[var(--border)] text-[var(--accent)] accent-[var(--accent)]"
-						/>
-						<span class="text-[11px]">Auto-scroll</span>
-					</label>
-
-					<div class="h-3.5 w-px bg-[var(--border)]"></div>
-
-					<Button variant="ghost" size="sm" onclick={copyAllLogs} class="h-7 gap-1 text-[11px]">
 						{#if copiedLogs}
-							<Check size={12} class="text-[var(--status-green)]" />
-							<span class="text-[var(--status-green)]">Copied</span>
+							<Check size={13} class="text-kumo-success" />
+							<span class="text-kumo-success font-medium">Copied</span>
 						{:else}
-							<Copy size={12} />
-							<span>Copy Logs</span>
+							<Copy size={13} />
+							<span>Copy logs</span>
 						{/if}
 					</Button>
 
-					<Button variant="ghost" size="sm" onclick={downloadLogFile} class="h-7 gap-1 text-[11px]">
-						<DownloadSimple size={12} />
+					<Button
+						variant="ghost"
+						size="sm"
+						onclick={downloadLogFile}
+						class="h-7 gap-1.5 text-xs text-kumo-default"
+					>
+						<DownloadSimple size={13} />
 						<span>Download</span>
 					</Button>
 				</div>
@@ -319,12 +284,10 @@
 			<!-- Terminal Logs Canvas -->
 			<div
 				bind:this={logContainer}
-				class="min-h-0 flex-1 overflow-y-auto bg-[var(--bg-terminal)] p-4 text-[12px] leading-[20px] font-[var(--font-mono)] select-text selection:bg-[rgba(105,115,168,0.3)]"
+				class="min-h-0 flex-1 overflow-y-auto bg-[var(--bg-terminal)] p-4 font-mono text-[13px] leading-5 select-text selection:bg-[var(--accent)]/30"
 			>
 				{#if filteredLogs.length === 0}
-					<div
-						class="py-12 text-center text-xs font-[var(--font-sans)] text-[var(--text-tertiary)]"
-					>
+					<div class="py-14 text-center font-sans text-sm text-kumo-subtle">
 						No log lines matching "{searchQuery}".
 					</div>
 				{:else}
@@ -337,10 +300,10 @@
 							{@const isPodman = line.includes('[podman]')}
 							{@const isSystemd = line.includes('[systemd]')}
 							<div
-								class="group flex items-start gap-3 rounded px-1.5 py-0.5 transition-colors hover:bg-[rgba(255,255,255,0.02)]"
+								class="group flex items-start gap-3 rounded px-1.5 py-0.5 transition-colors hover:bg-white/[0.03]"
 							>
 								<span
-									class="min-w-[26px] text-right text-[11px] text-[var(--text-tertiary)] opacity-40 select-none group-hover:opacity-75"
+									class="min-w-[28px] text-right text-xs text-kumo-subtle/50 select-none group-hover:text-kumo-subtle"
 								>
 									{idx + 1}
 								</span>
@@ -355,7 +318,7 @@
 													? 'text-[var(--code-string)]'
 													: isSystemd
 														? 'text-[var(--code-section)]'
-														: 'text-[var(--code-text)]'}"
+														: 'text-kumo-default'}"
 								>
 									{line}
 								</span>
@@ -367,21 +330,24 @@
 
 			<!-- Modal Footer -->
 			<div
-				class="flex shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-2.5 text-[11px] text-[var(--text-tertiary)]"
+				class="flex shrink-0 items-center justify-between border-t border-kumo-hairline bg-kumo-base px-5 py-2.5 text-xs text-kumo-subtle"
 			>
 				<div class="flex items-center gap-2">
 					<span
-						class="h-1.5 w-1.5 rounded-full {deployment.status === 'running'
-							? 'bg-[var(--status-green)]'
+						class="size-1.5 rounded-full {deployment.status === 'running' || deployment.status === 'healthy'
+							? 'bg-kumo-success'
 							: deployment.status === 'failed'
-								? 'bg-[var(--status-red)]'
+								? 'bg-kumo-danger'
 								: 'bg-[var(--accent)]'}"
 					></span>
 					<span>Stream finished • {logs.length} lines captured</span>
 				</div>
 
-				<Button variant="secondary" size="sm" onclick={onclose} class="h-7 text-xs">Close</Button>
+				<Button variant="secondary" size="sm" onclick={onclose}>
+					Close
+				</Button>
 			</div>
-		</div>
-	</div>
+		{/if}
+	</LayerDialog.Content>
+</LayerDialog.Root>
 {/if}

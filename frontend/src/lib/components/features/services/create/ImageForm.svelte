@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Input } from '$lib/components/primitives';
+	import { Input } from '$lib/components/ui';
 
 	interface Props {
 		name: string;

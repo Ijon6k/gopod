@@ -76,8 +76,8 @@
 				) {
 					api.system
 						.info()
-						.then((sys: any) => {
-							if (sys) dataStore.applySystemUpdate(sys);
+						.then((sys) => {
+							if (sys) dataStore.applySystemUpdate(sys as unknown as import('$lib/types').Server);
 						})
 						.catch(() => {});
 				}
@@ -103,7 +103,7 @@
 
 <QueryClientProvider client={queryClient}>
 	{#if !initialCheckDone && page.url.pathname !== '/login' && page.url.pathname !== '/setup'}
-		<div class="flex h-screen w-screen items-center justify-center bg-[var(--bg-outer)]">
+		<div class="flex h-screen w-screen items-center justify-center bg-[var(--bg-canvas)]">
 			<div class="flex flex-col items-center gap-3">
 				<div
 					class="h-8 w-8 animate-spin rounded-full border-2 border-[var(--accent)] border-t-transparent"

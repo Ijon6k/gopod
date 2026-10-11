@@ -13,12 +13,11 @@
 	let { title, subtitle, meta, actions, class: className = '' }: Props = $props();
 </script>
 
-<header class={cn('mb-4 flex items-start justify-between gap-3 md:mb-7 md:gap-4', className)}>
-	<div class="flex flex-col gap-1.5">
+<!-- Level 3: View Level Sub-Header (Kumo Sentence Case, font-semibold, normal tracking) -->
+<header class={cn('flex flex-col justify-between gap-3 sm:flex-row sm:items-center sm:gap-4', className)}>
+	<div class="flex flex-col gap-1">
 		<div class="flex items-center gap-3">
-			<h1
-				class="m-0 text-2xl leading-tight font-semibold tracking-[-0.02em] text-[var(--text-primary)]"
-			>
+			<h1 class="m-0 text-xl font-semibold text-[var(--text-primary)]">
 				{title}
 			</h1>
 			{#if meta}
@@ -26,7 +25,7 @@
 			{/if}
 		</div>
 		{#if subtitle}
-			<p class="m-0 text-base text-[var(--text-tertiary)]">{subtitle}</p>
+			<p class="m-0 text-xs text-[var(--text-tertiary)]">{subtitle}</p>
 		{/if}
 	</div>
 	{#if actions}

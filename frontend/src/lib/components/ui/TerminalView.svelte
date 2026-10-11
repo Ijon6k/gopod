@@ -1,8 +1,17 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
 	import { browser } from '$app/environment';
-	import { Button } from '$lib/components/primitives';
-	import { Terminal as TerminalIcon, ArrowClockwise } from 'phosphor-svelte';
+	import { Button, Badge } from '$lib/components/ui';
+	import {
+		Terminal as TerminalIcon,
+		ArrowClockwise,
+		ArrowsOut,
+		ArrowsIn,
+		CaretDown
+	} from 'phosphor-svelte';
+	import { DropdownMenu } from 'kumo-svelte';
+	import { cn } from '$lib/utils/cn';
+	import { api } from '$lib/api';
 	import { Terminal } from '@xterm/xterm';
 	import { FitAddon } from '@xterm/addon-fit';
 	import { ClipboardAddon } from '@xterm/addon-clipboard';
@@ -27,7 +36,7 @@
 		title = '',
 		workloads = [],
 		selectedWorkload = $bindable(''),
-		height = '480px',
+		height = 'calc(100dvh - 280px)',
 		class: className = '',
 		quickCommands = ['ps aux', 'df -h', 'env', 'uname -a']
 	}: Props = $props();
@@ -36,6 +45,7 @@
 	let activeShell = $state<'sh' | 'bash'>('sh');
 	let isConnected = $state(false);
 	let exitMessage = $state<string | null>(null);
+	let isFullscreen = $state(false);
 
 	let term: Terminal | null = null;
 	let fitAddon: FitAddon | null = null;
@@ -95,14 +105,9 @@
 			} catch {}
 		}
 
-		const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const token =
-			typeof localStorage !== 'undefined' ? localStorage.getItem('gopod_token') || '' : '';
 		const cols = term ? term.cols : 80;
 		const rows = term ? term.rows : 24;
-
-		const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-		const url = `${protocol}//${location.host}/api/containers/${encodeURIComponent(target)}/exec?cmd=${encodeURIComponent(activeShell)}&cols=${cols}&rows=${rows}${tokenParam}`;
+		const url = api.runtime.containers.getTerminalWsUrl(target, cols, rows, activeShell);
 
 		try {
 			const socket = new WebSocket(url);
@@ -159,12 +164,12 @@
 			lineHeight: 1.45,
 			fontFamily: 'JetBrains Mono, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
 			theme: {
-				background: '#0a0d14',
-				foreground: '#e2e8f0',
-				cursor: '#38bdf8',
-				cursorAccent: '#0a0d14',
-				selectionBackground: 'rgba(56, 189, 248, 0.3)',
-				black: '#0a0d14',
+				background: '#0d1117',
+				foreground: '#f1f5f9',
+				cursor: '#f6821f',
+				cursorAccent: '#0d1117',
+				selectionBackground: 'rgba(246, 130, 31, 0.25)',
+				black: '#0d1117',
 				red: '#f87171',
 				green: '#4ade80',
 				yellow: '#facc15',
@@ -273,31 +278,65 @@
 		activeShell = shell;
 		connectSession();
 	}
+
+	function toggleFullscreen() {
+		isFullscreen = !isFullscreen;
+		setTimeout(() => {
+			if (fitAddon) {
+				try {
+					fitAddon.fit();
+					sendResize();
+				} catch {}
+			}
+		}, 60);
+	}
+
+	function handleKeydown(e: KeyboardEvent) {
+		if (e.key === 'Escape' && isFullscreen) {
+			toggleFullscreen();
+		}
+	}
 </script>
 
-<div class="flex w-full flex-col gap-3 {className}">
+<svelte:window onkeydown={handleKeydown} />
+
+<div
+	class={cn(
+		'flex w-full flex-col gap-3 transition-all',
+		isFullscreen
+			? 'fixed inset-0 z-50 h-[100dvh] w-screen bg-[var(--bg-canvas)] p-3 md:p-4'
+			: className
+	)}
+>
 	<!-- Top Controls Toolbar (Dokploy Parity & Theme Aware) -->
 	<div
 		class="flex flex-col justify-between gap-3 border-b border-[var(--border-subtle)] pb-2 sm:flex-row sm:items-center"
 	>
 		<div class="flex flex-wrap items-center gap-3">
-			<!-- Workload / Container Selector -->
+			<!-- Workload / Container Selector using Kumo DropdownMenu -->
 			{#if workloads.length > 1}
 				<div class="flex items-center gap-2">
 					<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
-					<div
-						class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1"
-					>
-						<select
-							value={selectedWorkload || workloads[0]?.name}
-							onchange={(e) => handleTargetChange((e.target as HTMLSelectElement).value)}
-							class="cursor-pointer border-0 bg-transparent text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none"
+					<DropdownMenu>
+						<DropdownMenu.Trigger
+							class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-[var(--font-sans)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none"
 						>
+							<span class="max-w-[140px] truncate sm:max-w-[200px]">
+								{selectedWorkload || workloads[0]?.name}
+							</span>
+							<CaretDown size={11} class="text-[var(--text-tertiary)] shrink-0" />
+						</DropdownMenu.Trigger>
+						<DropdownMenu.Content class="w-56" align="start">
 							{#each workloads as w (w.name)}
-								<option value={w.name}>{w.name} {w.image ? `(${w.image})` : ''}</option>
+								<DropdownMenu.Item
+									selected={(selectedWorkload || workloads[0]?.name) === w.name}
+									onclick={() => handleTargetChange(w.name)}
+								>
+									<span class="truncate text-xs">{w.name} {w.image ? `(${w.image})` : ''}</span>
+								</DropdownMenu.Item>
 							{/each}
-						</select>
-					</div>
+						</DropdownMenu.Content>
+					</DropdownMenu>
 				</div>
 			{:else if title}
 				<div class="flex items-center gap-2">
@@ -334,21 +373,19 @@
 				</button>
 			</div>
 
-			<!-- Status indicator -->
+			<!-- Status indicator using Kumo Badge -->
 			{#if isConnected}
-				<span class="flex items-center gap-1.5 text-[11px] font-medium text-[var(--status-green)]">
-					<span class="h-1.5 w-1.5 animate-pulse rounded-full bg-[var(--status-green)]"></span>
+				<Badge variant="primary" size="sm">
 					Connected
-				</span>
+				</Badge>
 			{:else}
-				<span class="flex items-center gap-1.5 text-[11px] font-medium text-[var(--text-tertiary)]">
-					<span class="h-1.5 w-1.5 rounded-full bg-[var(--text-tertiary)]"></span>
+				<Badge variant="neutral" size="sm">
 					Disconnected
-				</span>
+				</Badge>
 			{/if}
 		</div>
 
-		<!-- Quick actions & reconnect -->
+		<!-- Quick actions, reconnect & Fullscreen (100dvh) -->
 		<div class="flex flex-wrap items-center gap-2">
 			{#each quickCommands as q (q)}
 				<button
@@ -371,13 +408,27 @@
 			<Button variant="ghost" size="sm" onclick={() => reconnect()} title="Reconnect session">
 				<ArrowClockwise size={13} />
 			</Button>
+
+			<Button
+				variant="ghost"
+				size="sm"
+				onclick={toggleFullscreen}
+				title={isFullscreen ? 'Exit full screen (100dvh)' : 'Full screen (100dvh)'}
+				class="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+			>
+				{#if isFullscreen}
+					<ArrowsIn size={13} />
+				{:else}
+					<ArrowsOut size={13} />
+				{/if}
+			</Button>
 		</div>
 	</div>
 
 	<!-- Real Interactive xterm.js Terminal Canvas -->
 	<div
-		style="height: {height};"
-		class="relative flex w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[#0a0d14] p-3 shadow-inner"
+		style={isFullscreen ? 'height: calc(100dvh - 58px);' : `height: ${height}; min-height: 520px;`}
+		class="relative flex w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[#0d1117] p-3 shadow-inner"
 	>
 		<div bind:this={terminalContainer} class="h-full w-full"></div>
 

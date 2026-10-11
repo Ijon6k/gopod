@@ -2,7 +2,16 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { PageHeader, Tabs } from '$lib/components/ui';
-	import { Button } from '$lib/components/primitives';
+	import { Button } from '$lib/components/ui';
+	import {
+		LayerCard,
+		Table,
+		TableHeader,
+		TableHead,
+		TableBody,
+		TableRow,
+		TableCell
+	} from 'kumo-svelte';
 	import { domains, server, ports, dataStore } from '$lib/data';
 	import type { Domain } from '$lib/types';
 	import { DomainSettingsModal, TrafficRequestsView } from '$lib/components/features/networking';
@@ -139,42 +148,32 @@
 		</div>
 
 		<!-- Domains Table -->
-		<div
-			class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)]"
-		>
+		<LayerCard class="overflow-hidden p-0">
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
-				<table class="w-full border-collapse text-left text-xs">
-					<thead
-						class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
-					>
-						<tr>
-							<th
-								class="px-3.5 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Domain</th
-							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Upstream Service</th
-							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>DNS Status</th
-							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>TLS Certificate</th
-							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Features</th
-							>
-							<th
-								class="px-3.5 py-2.5 text-right text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Actions</th
-							>
-						</tr>
-					</thead>
-					<tbody class="divide-y divide-[var(--border-subtle)]">
+				<Table class="w-full text-left text-xs">
+					<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+						<TableRow>
+							<TableHead class="px-3.5 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Domain
+							</TableHead>
+							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Upstream service
+							</TableHead>
+							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								DNS status
+							</TableHead>
+							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								TLS certificate
+							</TableHead>
+							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Features
+							</TableHead>
+							<TableHead class="px-3.5 py-2.5 text-right text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Actions
+							</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody class="divide-y divide-[var(--border-subtle)]">
 						{#if domains.length === 0}
 							<tr>
 								<td colspan="6" class="py-12 text-center text-xs text-[var(--text-tertiary)]">
@@ -317,18 +316,18 @@
 								</tr>
 							{/each}
 						{/if}
-					</tbody>
-				</table>
+					</TableBody>
+				</Table>
 			</div>
 
 			<!-- Footer -->
 			<div
-				class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
+				class="flex items-center justify-between border-t border-kumo-line bg-kumo-base px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
 			>
 				<span>{domains.length} active domain routing configurations</span>
 				<span class="font-mono text-[11px]">Engine: Caddy v{server.caddy} (Rootless Ingress)</span>
 			</div>
-		</div>
+		</LayerCard>
 
 		<!-- TAB 2: TRAFFIC & REQUESTS TELEMETRY (DOKPLOY PARITY) -->
 	{:else if activeTab === 'requests'}
@@ -336,38 +335,29 @@
 
 		<!-- TAB 3: HOST PORT BINDINGS -->
 	{:else if activeTab === 'ports'}
-		<div
-			class="overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)]"
-		>
+		<LayerCard class="overflow-hidden p-0">
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
-				<table class="w-full border-collapse text-left text-xs">
-					<thead
-						class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
-					>
-						<tr>
-							<th
-								class="px-3.5 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Host Port</th
-							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Protocol</th
-							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Target Service / Container</th
-							>
-							<th
-								class="px-3 py-2.5 text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Bind Address</th
-							>
-							<th
-								class="px-3.5 py-2.5 text-right text-[11px] font-medium tracking-wider text-[var(--text-tertiary)] uppercase"
-								>Status</th
-							>
-						</tr>
-					</thead>
-					<tbody class="divide-y divide-[var(--border-subtle)]">
+				<Table class="w-full text-left text-xs">
+					<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+						<TableRow>
+							<TableHead class="px-3.5 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Host port
+							</TableHead>
+							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Protocol
+							</TableHead>
+							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Target service / container
+							</TableHead>
+							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Bind address
+							</TableHead>
+							<TableHead class="px-3.5 py-2.5 text-right text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+								Status
+							</TableHead>
+						</TableRow>
+					</TableHeader>
+					<TableBody class="divide-y divide-[var(--border-subtle)]">
 						{#each ports as p (p.id)}
 							<tr class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
 								<!-- Host Port -->
@@ -424,18 +414,18 @@
 								</td>
 							</tr>
 						{/each}
-					</tbody>
-				</table>
+					</TableBody>
+				</Table>
 			</div>
 
 			<!-- Footer -->
 			<div
-				class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
+				class="flex items-center justify-between border-t border-kumo-line bg-kumo-base px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
 			>
 				<span>{ports.length} ports mapped on host network</span>
 				<span class="font-mono text-[11px]">Kernel Netfilter / pasta rootless bridge</span>
 			</div>
-		</div>
+		</LayerCard>
 	{/if}
 </div>
 

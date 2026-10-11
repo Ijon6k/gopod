@@ -1,43 +1,54 @@
 // ──────────────────────────────────────────────
-// GOPOD — Modular API Client Index
-// Fully typed Axios integration for backend endpoints
+// GOPOD — Modular API Index
+// Clean exports of domain modules & centralized api object
 // ──────────────────────────────────────────────
 
 export { apiClient, ApiError } from './client';
-export { projectsApi } from './projects';
-export { servicesApi } from './services';
-export { domainsApi } from './domains';
-export { runtimeApi } from './runtime';
-export { systemApi } from './system';
-export { volumesApi } from './volumes';
-export { trafficApi } from './traffic';
-export { credentialsApi } from './credentials';
-export { authApi } from './auth';
-export { auditApi } from './audit';
 
-// Default aggregated API service
-import projectsApi from './projects';
-import servicesApi from './services';
-import domainsApi from './domains';
-import runtimeApi from './runtime';
-import systemApi from './system';
-import volumesApi from './volumes';
-import trafficApi from './traffic';
-import credentialsApi from './credentials';
-import authApi from './auth';
-import auditApi from './audit';
+export * as projectsDomain from './projects';
+export * as servicesDomain from './services';
+export * as runtimeDomain from './runtime';
+export * as systemDomain from './system';
+export * as credentialsDomain from './credentials';
+export * as domainsDomain from './domains';
+export * as storageDomain from './storage';
+export * as auditDomain from './audit';
+export * as trafficDomain from './traffic';
+export * as authDomain from './auth';
+
+export { projectsApi } from './projects/api';
+export { servicesApi } from './services/api';
+export { runtimeApi } from './runtime/api';
+export { systemApi } from './system/api';
+export { credentialsApi } from './credentials/api';
+export { domainsApi } from './domains/api';
+export { storageApi as volumesApi } from './storage/api';
+export { auditApi } from './audit/api';
+export { trafficApi } from './traffic/api';
+export { authApi } from './auth/api';
+
+import { projectsApi } from './projects/api';
+import { servicesApi } from './services/api';
+import { runtimeApi } from './runtime/api';
+import { systemApi } from './system/api';
+import { credentialsApi } from './credentials/api';
+import { domainsApi } from './domains/api';
+import { storageApi } from './storage/api';
+import { auditApi } from './audit/api';
+import { trafficApi } from './traffic/api';
+import { authApi } from './auth/api';
 
 export const api = {
 	projects: projectsApi,
 	services: servicesApi,
-	domains: domainsApi,
 	runtime: runtimeApi,
 	system: systemApi,
-	volumes: volumesApi,
-	traffic: trafficApi,
 	credentials: credentialsApi,
-	auth: authApi,
-	audit: auditApi
+	domains: domainsApi,
+	volumes: storageApi,
+	audit: auditApi,
+	traffic: trafficApi,
+	auth: authApi
 };
 
 export default api;

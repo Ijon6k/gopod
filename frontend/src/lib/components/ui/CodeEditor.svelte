@@ -11,6 +11,8 @@
 	import { EditorState } from '@codemirror/state';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { yaml } from '@codemirror/lang-yaml';
+	import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle } from '@codemirror/language';
+	import { tags } from '@lezer/highlight';
 	import { cn } from '$lib/utils/cn';
 
 	interface Props {
@@ -83,9 +85,25 @@
 		{ dark: true }
 	);
 
+	const gopodHighlightStyle = HighlightStyle.define([
+		{ tag: tags.keyword, color: 'var(--accent, #7c5ce6)', fontWeight: '600' },
+		{ tag: [tags.propertyName, tags.definition(tags.propertyName)], color: '#c084fc', fontWeight: '500' },
+		{ tag: [tags.string, tags.special(tags.string)], color: '#34d399' },
+		{ tag: [tags.number, tags.integer], color: '#fbbf24' },
+		{ tag: [tags.bool, tags.null], color: '#f472b6' },
+		{ tag: [tags.comment, tags.lineComment, tags.blockComment], color: '#71717a', fontStyle: 'italic' },
+		{ tag: tags.punctuation, color: '#94a3b8' },
+		{ tag: tags.operator, color: '#e2e8f0' },
+		{ tag: tags.variableName, color: '#38bdf8' },
+		{ tag: tags.heading, color: 'var(--accent, #7c5ce6)', fontWeight: 'bold' },
+		{ tag: tags.atom, color: '#f472b6' }
+	]);
+
 	function buildExtensions() {
 		const extensions = [
 			gopodTheme,
+			syntaxHighlighting(gopodHighlightStyle),
+			syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
 			history(),
 			keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
 			EditorView.updateListener.of((update) => {

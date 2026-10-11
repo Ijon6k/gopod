@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { Button, Input } from '$lib/components/primitives';
+	import { Input } from '$lib/components/ui';
+	import { LayerCard, Button, useKumoToastManager } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
 	import { FileCode, Sparkle, Browser, Check } from 'phosphor-svelte';
 
@@ -9,6 +10,8 @@
 	}
 
 	let { service }: Props = $props();
+
+	const toast = useKumoToastManager();
 
 	let buildType = $state<'dockerfile' | 'nixpacks' | 'static'>('dockerfile');
 	let dockerfilePath = $state('./Dockerfile');
@@ -25,13 +28,16 @@
 		service.dockerfilePath = dockerfilePath.trim();
 		dataStore.updateService(service);
 		saveStatus = 'saved';
+		toast.add({
+			title: 'Build Settings Saved',
+			description: `Build strategy set to ${buildType}.`,
+			variant: 'success'
+		});
 		setTimeout(() => (saveStatus = 'idle'), 2000);
 	}
 </script>
 
-<div
-	class="flex flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
->
+<LayerCard class="overflow-hidden p-0">
 	<!-- Card Header -->
 	<div class="flex items-center justify-between border-b border-[var(--border-subtle)] px-5 py-4">
 		<div class="flex flex-col gap-0.5">
@@ -140,4 +146,4 @@
 		{/if}
 		<Button variant="primary" size="sm" onclick={handleSave}>Save Build Settings</Button>
 	</div>
-</div>
+</LayerCard>

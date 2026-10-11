@@ -1,7 +1,17 @@
 <script lang="ts">
 	import { dataStore } from '$lib/data';
 	import type { Container } from '$lib/types';
-	import { StatusBadge, SearchInput } from '$lib/components/ui';
+	import {
+		StatusBadge,
+		SearchInput,
+		LayerCard,
+		Table,
+		TableHeader,
+		TableHead,
+		TableBody,
+		TableRow,
+		TableCell
+	} from '$lib/components/ui';
 	import {
 		CaretDown,
 		CaretRight,
@@ -32,9 +42,7 @@
 	let filterAnomaliesOnly = $state(false);
 
 	$effect(() => {
-		if (initialViewMode) {
-			viewMode = initialViewMode;
-		}
+		viewMode = initialViewMode;
 	});
 
 	let openProjects = $state<Record<string, boolean>>({});
@@ -78,10 +86,10 @@
 			const q = searchQuery.toLowerCase().trim();
 			list = list.filter(
 				(c) =>
-					c.name.toLowerCase().includes(q) ||
-					c.image.toLowerCase().includes(q) ||
-					c.projectName.toLowerCase().includes(q) ||
-					c.serviceName.toLowerCase().includes(q)
+					(c.name || '').toLowerCase().includes(q) ||
+					(c.image || '').toLowerCase().includes(q) ||
+					(c.projectName || '').toLowerCase().includes(q) ||
+					(c.serviceName || '').toLowerCase().includes(q)
 			);
 		}
 
@@ -207,101 +215,100 @@
 	<!-- ══════════════════════════════════════════════════════════════
 	     PROCESS & WORKLOAD TABLE
 	     ══════════════════════════════════════════════════════════════ -->
-	<div
-		class="w-full overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] shadow-xs md:overflow-x-visible"
-	>
-		<table class="w-full min-w-[700px] border-collapse">
-			<thead class="sticky top-0 z-20">
-				<tr class="border-b border-[var(--border)] bg-[var(--bg-table-header)]">
-					<th
-						class="sticky top-0 z-20 cursor-pointer border-b border-[var(--border)] bg-[var(--bg-table-header)] px-3.5 py-2.5 text-left text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase transition-colors select-none hover:text-[var(--text-primary)]"
-						onclick={() => handleSort('name')}
-						title="Click to sort by name"
-					>
-						<div class="inline-flex items-center gap-1.5">
-							<span>{viewMode === 'tree' ? 'Workload / Entity Tree' : 'Workload Name'}</span>
-							{#if sortBy === 'name'}
-								{#if sortDesc}
-									<CaretDown size={12} class="text-[var(--accent)]" />
-								{:else}
-									<CaretUp size={12} class="text-[var(--accent)]" />
+	<LayerCard class="overflow-hidden p-0">
+		<div class="w-full overflow-x-auto md:overflow-x-visible">
+			<Table class="w-full min-w-[700px] text-left">
+				<TableHeader class="sticky top-0 z-20">
+					<TableRow class="border-b border-kumo-line bg-kumo-base">
+						<TableHead
+							class="sticky top-0 z-20 cursor-pointer bg-kumo-base px-4 py-3 text-left text-[12px] font-semibold text-kumo-subtle normal-case transition-colors select-none hover:text-kumo-default"
+							onclick={() => handleSort('name')}
+							title="Click to sort by name"
+						>
+							<div class="inline-flex items-center gap-1.5">
+								<span>{viewMode === 'tree' ? 'Workload / entity tree' : 'Workload name'}</span>
+								{#if sortBy === 'name'}
+									{#if sortDesc}
+										<CaretDown size={12} class="text-[var(--accent)]" />
+									{:else}
+										<CaretUp size={12} class="text-[var(--accent)]" />
+									{/if}
 								{/if}
-							{/if}
-						</div>
-					</th>
+							</div>
+						</TableHead>
 
-					<th
-						class="sticky top-0 z-20 w-24 border-b border-[var(--border)] bg-[var(--bg-table-header)] px-3.5 py-2.5 text-left text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Status
-					</th>
+						<TableHead
+							class="sticky top-0 z-20 w-24 bg-kumo-base px-4 py-3 text-left text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							Status
+						</TableHead>
 
-					<th
-						class="sticky top-0 z-20 w-36 cursor-pointer border-b border-[var(--border)] bg-[var(--bg-table-header)] px-3.5 py-2.5 text-right text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase transition-colors select-none hover:text-[var(--text-primary)]"
-						onclick={() => handleSort('cpu')}
-						title="Click to sort by CPU usage"
-					>
-						<div class="inline-flex w-full items-center justify-end gap-1.5">
-							<span>CPU Utilization</span>
-							{#if sortBy === 'cpu'}
-								{#if sortDesc}
-									<CaretDown size={12} class="text-[var(--accent)]" />
-								{:else}
-									<CaretUp size={12} class="text-[var(--accent)]" />
+						<TableHead
+							class="sticky top-0 z-20 w-36 cursor-pointer bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case transition-colors select-none hover:text-kumo-default"
+							onclick={() => handleSort('cpu')}
+							title="Click to sort by CPU usage"
+						>
+							<div class="inline-flex w-full items-center justify-end gap-1.5">
+								<span>CPU utilization</span>
+								{#if sortBy === 'cpu'}
+									{#if sortDesc}
+										<CaretDown size={12} class="text-[var(--accent)]" />
+									{:else}
+										<CaretUp size={12} class="text-[var(--accent)]" />
+									{/if}
 								{/if}
-							{/if}
-						</div>
-					</th>
+							</div>
+						</TableHead>
 
-					<th
-						class="sticky top-0 z-20 w-44 cursor-pointer border-b border-[var(--border)] bg-[var(--bg-table-header)] px-3.5 py-2.5 text-right text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase transition-colors select-none hover:text-[var(--text-primary)]"
-						onclick={() => handleSort('memory')}
-						title="Click to sort by Memory usage"
-					>
-						<div class="inline-flex w-full items-center justify-end gap-1.5">
-							<span>Memory</span>
-							{#if sortBy === 'memory'}
-								{#if sortDesc}
-									<CaretDown size={12} class="text-[var(--accent)]" />
-								{:else}
-									<CaretUp size={12} class="text-[var(--accent)]" />
+						<TableHead
+							class="sticky top-0 z-20 w-44 cursor-pointer bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case transition-colors select-none hover:text-kumo-default"
+							onclick={() => handleSort('memory')}
+							title="Click to sort by Memory usage"
+						>
+							<div class="inline-flex w-full items-center justify-end gap-1.5">
+								<span>Memory</span>
+								{#if sortBy === 'memory'}
+									{#if sortDesc}
+										<CaretDown size={12} class="text-[var(--accent)]" />
+									{:else}
+										<CaretUp size={12} class="text-[var(--accent)]" />
+									{/if}
 								{/if}
-							{/if}
-						</div>
-					</th>
+							</div>
+						</TableHead>
 
-					<th
-						class="sticky top-0 z-20 w-24 border-b border-[var(--border)] bg-[var(--bg-table-header)] px-3.5 py-2.5 text-right text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Net I/O
-					</th>
+						<TableHead
+							class="sticky top-0 z-20 w-24 bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							Net I/O
+						</TableHead>
 
-					<th
-						class="sticky top-0 z-20 w-16 cursor-pointer border-b border-[var(--border)] bg-[var(--bg-table-header)] px-3.5 py-2.5 text-center text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase transition-colors select-none hover:text-[var(--text-primary)]"
-						onclick={() => handleSort('pids')}
-						title="Click to sort by PIDs"
-					>
-						<div class="inline-flex w-full items-center justify-center gap-1">
-							<span>PIDs</span>
-							{#if sortBy === 'pids'}
-								{#if sortDesc}
-									<CaretDown size={12} class="text-[var(--accent)]" />
-								{:else}
-									<CaretUp size={12} class="text-[var(--accent)]" />
+						<TableHead
+							class="sticky top-0 z-20 w-16 cursor-pointer bg-kumo-base px-4 py-3 text-center text-[12px] font-semibold text-kumo-subtle normal-case transition-colors select-none hover:text-kumo-default"
+							onclick={() => handleSort('pids')}
+							title="Click to sort by PIDs"
+						>
+							<div class="inline-flex w-full items-center justify-center gap-1">
+								<span>PIDs</span>
+								{#if sortBy === 'pids'}
+									{#if sortDesc}
+										<CaretDown size={12} class="text-[var(--accent)]" />
+									{:else}
+										<CaretUp size={12} class="text-[var(--accent)]" />
+									{/if}
 								{/if}
-							{/if}
-						</div>
-					</th>
+							</div>
+						</TableHead>
 
-					<th
-						class="sticky top-0 z-20 w-28 border-b border-[var(--border)] bg-[var(--bg-table-header)] px-3.5 py-2.5 text-right text-[11px] font-semibold tracking-wider text-[var(--text-tertiary)] uppercase"
-					>
-						Uptime
-					</th>
-				</tr>
-			</thead>
+						<TableHead
+							class="sticky top-0 z-20 w-28 bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+						>
+							Uptime
+						</TableHead>
+					</TableRow>
+				</TableHeader>
 
-			<tbody>
+				<TableBody class="divide-y divide-kumo-hairline">
 				{#if viewMode === 'tree'}
 					<!-- HIERARCHICAL TREE VIEW -->
 					{#if projectTree.length === 0}
@@ -508,7 +515,8 @@
 						{/each}
 					{/if}
 				{/if}
-			</tbody>
-		</table>
-	</div>
+				</TableBody>
+			</Table>
+		</div>
+	</LayerCard>
 </div>

@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { cn } from '$lib/utils/cn';
 	import { Tabs, AreaChart } from '$lib/components/ui';
+	import { LayerCard } from 'kumo-svelte';
 	import type { TimeSeriesPoint } from '$lib/types';
 
 	interface Props {
@@ -23,12 +24,7 @@
 	let currentMeta = $derived(chartMeta[activeTab]);
 </script>
 
-<section
-	class={cn(
-		'flex flex-col rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] px-[22px] pt-5 pb-4',
-		className
-	)}
->
+<LayerCard class={cn('flex flex-col p-5', className)}>
 	<div class="mb-4 flex min-h-[22px] items-center justify-between gap-4">
 		<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase">
 			Resource usage
@@ -36,12 +32,12 @@
 		<Tabs {tabs} bind:active={activeTab} size="sm" />
 	</div>
 	<div class="mb-1.5 flex items-baseline gap-2.5">
-		<strong class="text-2xl font-medium tracking-[-0.03em] text-[var(--text-primary)]">
+		<strong class="text-xl md:text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
 			{currentMeta?.current ?? '—'}
 		</strong>
-		<small class="text-[11px] text-[var(--text-tertiary)]">last 24 hours</small>
+		<small class="text-xs text-[var(--text-tertiary)]">last 24 hours</small>
 	</div>
-	<div class="-mx-0.5 mt-auto">
+	<div class="-mx-1 mt-auto">
 		<AreaChart data={currentData} height={168} />
 	</div>
-</section>
+</LayerCard>

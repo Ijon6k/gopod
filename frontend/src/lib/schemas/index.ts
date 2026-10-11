@@ -82,3 +82,6 @@ export const domainSchema = z.object({
 });
 
 export type DomainInput = z.infer<typeof domainSchema>;
+
+// ── Auth Validation Schemas ──
+export { loginSchema, setupSchema, type LoginSchema, type SetupSchema } from '$lib/api/auth/schemas';

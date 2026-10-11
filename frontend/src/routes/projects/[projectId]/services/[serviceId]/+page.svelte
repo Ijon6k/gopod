@@ -161,7 +161,9 @@
 			} catch {}
 		};
 
-		const isTransitional = service?.status === 'deploying' || service?.status === 'building';
+		const isTransitional = untrack(
+			() => service?.status === 'deploying' || service?.status === 'building'
+		);
 		const interval = setInterval(poll, isTransitional ? 1500 : 4000);
 
 		return () => {
@@ -212,11 +214,11 @@
 		/>
 
 		<!-- Tabs Bar -->
-		<div class="flex items-center justify-between border-b border-[var(--border)] pb-0">
+		<div class="relative flex items-center justify-between">
 			<Tabs {tabs} bind:active={activeTab} />
 
 			{#if activeTab === 'terminal'}
-				<span class="pr-1 pb-2 text-xs font-[var(--font-mono)] font-medium text-[var(--accent)]">
+				<span class="absolute right-0 bottom-2.5 text-xs font-[var(--font-mono)] font-medium text-[var(--accent)]">
 					[Terminal Session]
 				</span>
 			{/if}

@@ -2,7 +2,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { PageHeader, StatusBadge, Tabs, ConfirmDialog } from '$lib/components/ui';
-	import { Button } from '$lib/components/primitives';
+	import { Button } from '$lib/components/ui';
 	import {
 		getProjectById,
 		getProjectServices,

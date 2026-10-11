@@ -1,5 +1,16 @@
 import type { TopologyNode, TopologyRegion } from '../types';
 
+// Create smooth horizontal cubic Bézier curve for modern network flow
+export function createCurvedBezierPath(
+	x1: number,
+	y1: number,
+	x2: number,
+	y2: number
+): string {
+	const dx = Math.max(30, Math.abs(x2 - x1) * 0.45);
+	return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+}
+
 // Create orthogonal 90-degree SVG path
 export function createOrthogonalPath(
 	x1: number,

@@ -225,13 +225,15 @@ export class ProjectsDomainStore {
 		}
 		try {
 			const res = await api.services.deploy(serviceId, trigger, commit, image);
-			if (res && (res as any).id) {
+			if (res) {
+				const targetProjId = (res as any).projectId || svc?.projectId || '';
+				const foundProj = this.projects.find((p) => p.id === targetProjId);
 				const dep: Deployment = {
 					id: (res as any).id,
-					projectId: (res as any).projectId || svc?.projectId || '',
-					projectName: (res as any).projectId || svc?.projectId || '',
+					projectId: targetProjId,
+					projectName: foundProj?.name || (res as any).projectName || (svc as any)?.projectName || targetProjId || 'Default',
 					serviceId: (res as any).serviceId || serviceId,
-					serviceName: svc?.name || serviceId,
+					serviceName: svc?.name || (res as any).serviceName || serviceId,
 					number: (res as any).number || this.deployments.length + 1,
 					version: (res as any).version || `#${this.deployments.length + 1}`,
 					commit: (res as any).commitHash || '',
@@ -324,17 +326,18 @@ export class ProjectsDomainStore {
 				api.domains.list().catch(() => null)
 			]);
 
-			if (projectsData && projectsData.length > 0) {
-				this.projects = projectsData.map((p: any) => ({
+			const pList = projectsData as any[] | null | undefined;
+			if (pList && Array.isArray(pList)) {
+				this.projects = pList.map((p: any) => ({
 					id: p.id,
 					name: p.name,
 					description: p.description || '',
 					status: (p.status || 'healthy') as any,
-					services: [],
-					domains: [],
+					services: p.services || [],
+					domains: p.domains || [],
 					cpu: p.cpu || 0,
 					memory: p.memory || 0,
-					memoryTotal: p.memoryTotal || 0,
+					memoryTotal: p.memoryTotal || 16384,
 					createdAt: p.createdAt || new Date().toISOString()
 				}));
 			}
@@ -344,9 +347,27 @@ export class ProjectsDomainStore {
 					servicesData.map((s: any) => api.services.deployments(s.id).catch(() => []))
 				);
 				const allDeps: Deployment[] = [];
-				for (const deps of depResults) {
+				for (let i = 0; i < servicesData.length; i++) {
+					const svc: any = servicesData[i];
+					const deps = depResults[i];
 					if (Array.isArray(deps)) {
-						allDeps.push(...deps);
+						for (const dep of deps) {
+							const targetProjId = dep.projectId || svc?.projectId || '';
+							const proj = this.projects.find((p: any) => p.id === targetProjId);
+							allDeps.push({
+								...dep,
+								commit: dep.commit || dep.commitHash || '',
+								branch: dep.branch || svc?.branch || 'main',
+								timeAgo: dep.startedAt ? 'Recently' : 'Just now',
+								projectName:
+									proj?.name ||
+									dep.projectName ||
+									svc?.projectName ||
+									targetProjId ||
+									'Default',
+								serviceName: svc?.name || dep.serviceName || dep.serviceId || 'Service'
+							});
+						}
 					}
 				}
 				this.deployments = allDeps;

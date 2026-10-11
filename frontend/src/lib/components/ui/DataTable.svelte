@@ -1,6 +1,15 @@
 <script lang="ts" generics="T">
 	import { cn } from '$lib/utils/cn';
 	import type { Snippet } from 'svelte';
+	import {
+		Table,
+		TableHeader,
+		TableHead,
+		TableBody,
+		TableRow,
+		TableCell,
+		LayerCard
+	} from 'kumo-svelte';
 
 	interface Column {
 		key: string;
@@ -26,89 +35,92 @@
 		rows,
 		keyExtractor,
 		onRowClick,
-		emptyMessage = 'No data',
+		emptyMessage = 'No data available',
 		actions,
 		class: className = ''
 	}: Props = $props();
 </script>
 
-<div
-	class={cn(
-		'overflow-x-auto rounded-[var(--radius-card)] border border-[var(--border)]',
-		className
-	)}
->
-	<table class="w-full min-w-[560px] border-collapse">
-		<thead>
-			<tr class="border-b border-[var(--border)]">
-				{#each columns as col}
-					<th
-						class={cn(
-							'bg-[var(--bg-panel)] px-3.5 py-2.5 text-[11px] font-medium tracking-[0.5px] whitespace-nowrap text-[var(--text-tertiary)] uppercase',
-							col.align === 'right'
-								? 'text-right'
-								: col.align === 'center'
-									? 'text-center'
-									: 'text-left'
-						)}
-						style={col.width ? `width: ${col.width}` : ''}
-					>
-						{col.label}
-					</th>
-				{/each}
-				{#if actions}
-					<th class="w-10 bg-[var(--bg-panel)] px-3.5 py-2.5"></th>
+<!-- Kumo Table Container: LayerCard wrapper with smooth rounded corners & sticky preservation -->
+<LayerCard class={cn('w-full overflow-hidden p-0', className)}>
+	<div class="w-full overflow-x-auto md:overflow-x-visible">
+		<Table class="w-full min-w-[560px] text-left">
+			<TableHeader>
+				<!-- Solid Opaque Header: Sticky Top-0 with Z-20, Natural Sentence Case (No All-Caps) -->
+				<TableRow class="border-b border-kumo-line bg-kumo-base">
+					{#each columns as col (col.key)}
+						<TableHead
+							class={cn(
+								'sticky top-0 z-20 bg-kumo-base px-4 py-3 text-[12px] font-semibold whitespace-nowrap text-kumo-subtle select-none normal-case',
+								col.align === 'right'
+									? 'text-right'
+									: col.align === 'center'
+										? 'text-center'
+										: 'text-left'
+							)}
+							style={col.width ? `width: ${col.width}` : ''}
+						>
+							{col.label}
+						</TableHead>
+					{/each}
+					{#if actions}
+						<TableHead class="sticky top-0 z-20 w-12 bg-kumo-base px-4 py-3"></TableHead>
+					{/if}
+				</TableRow>
+			</TableHeader>
+			<TableBody class="divide-y divide-kumo-hairline">
+				{#if rows.length === 0}
+					<TableRow>
+						<TableCell
+							colspan={columns.length + (actions ? 1 : 0)}
+							class="px-4 py-12 text-center text-sm text-kumo-subtle"
+						>
+							{emptyMessage}
+						</TableCell>
+					</TableRow>
+				{:else}
+					{#each rows as row, i (keyExtractor(row))}
+						<TableRow
+							class={cn(
+								'transition-colors hover:bg-kumo-fill',
+								onRowClick && 'cursor-pointer'
+							)}
+							onclick={() => onRowClick?.(row)}
+						>
+							{#each columns as col (col.key)}
+								{@const val = (row as Record<string, unknown>)[col.key]}
+								<TableCell
+									class={cn(
+										'px-4 py-3 align-middle text-[13px] whitespace-nowrap text-kumo-default',
+										col.align === 'right'
+											? 'text-right'
+											: col.align === 'center'
+												? 'text-center'
+												: 'text-left',
+										col.mono && 'font-mono text-xs text-kumo-subtle'
+									)}
+								>
+									{#if col.render}
+										{@render col.render(row)}
+									{:else}
+										{String(val ?? '—')}
+									{/if}
+								</TableCell>
+							{/each}
+							{#if actions}
+								<TableCell
+									class="px-4 py-3 text-right align-middle"
+									onclick={(e: MouseEvent) => e.stopPropagation()}
+								>
+									<div class="flex items-center justify-end gap-1">
+										{@render actions(row)}
+									</div>
+								</TableCell>
+							{/if}
+						</TableRow>
+					{/each}
 				{/if}
-			</tr>
-		</thead>
-		<tbody>
-			{#if rows.length === 0}
-				<tr>
-					<td
-						colspan={columns.length + (actions ? 1 : 0)}
-						class="px-3.5 py-8 text-center text-base text-[var(--text-tertiary)]"
-					>
-						{emptyMessage}
-					</td>
-				</tr>
-			{:else}
-				{#each rows as row, i (keyExtractor(row))}
-					<tr
-						class={cn(
-							'transition-colors duration-100',
-							i < rows.length - 1 && 'border-b border-[var(--border-subtle)]',
-							onRowClick && 'cursor-pointer hover:bg-[var(--bg-hover)]'
-						)}
-						onclick={() => onRowClick?.(row)}
-					>
-						{#each columns as col}
-							{@const val = (row as Record<string, unknown>)[col.key]}
-							<td
-								class={cn(
-									'px-3.5 py-2.5 align-middle text-base whitespace-nowrap text-[var(--text-primary)]',
-									col.align === 'right'
-										? 'text-right'
-										: col.align === 'center'
-											? 'text-center'
-											: 'text-left',
-									col.mono && 'font-[var(--font-mono)]'
-								)}
-							>
-								{#if col.render}
-									{@render col.render(row)}
-								{:else}
-									{String(val ?? '—')}
-								{/if}
-							</td>
-						{/each}
-						{#if actions}
-							<td class="px-3.5 py-2.5" onclick={(e) => e.stopPropagation()}>
-								{@render actions(row)}
-							</td>
-						{/if}
-					</tr>
-				{/each}
-			{/if}
-		</tbody>
-	</table>
-</div>
+			</TableBody>
+		</Table>
+	</div>
+</LayerCard>

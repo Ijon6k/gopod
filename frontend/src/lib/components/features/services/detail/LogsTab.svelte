@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Service, Container } from '$lib/types';
-	import { SearchInput } from '$lib/components/ui';
-	import { Button, Chip } from '$lib/components/primitives';
+	import { SearchInput, Select, Checkbox, Button } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { ArrowClockwise, Copy, Trash, Funnel, Terminal } from 'phosphor-svelte';
@@ -35,6 +34,19 @@
 						c.labels['io.podman.compose.project'] === service.name ||
 						c.labels['io.gopod.service'] === service.id))
 		);
+	});
+
+	let containerOptions = $derived.by(() => {
+		const opts = [
+			{ label: `All containers (${matchingContainers.length || 1})`, value: 'all' }
+		];
+		for (const c of matchingContainers) {
+			opts.push({
+				label: `${c.name}${c.serviceName && c.serviceName !== c.name ? ` (${c.serviceName})` : ''}`,
+				value: c.id || c.name
+			});
+		}
+		return opts;
 	});
 
 	interface LogEntry {
@@ -188,25 +200,18 @@
 			<!-- Container Selector Dropdown (Always visible for multi-container compose/pods, and single containers) -->
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
-				<div
-					class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1.5 shadow-xs"
-				>
-					<Terminal size={13} class="shrink-0 text-[var(--text-tertiary)]" />
-					<select
-						bind:value={selectedContainer}
-						onchange={() => fetchLogs()}
-						class="cursor-pointer border-0 bg-transparent text-xs font-[var(--font-mono)] text-[var(--text-primary)] outline-none"
-					>
-						<option value="all">
-							All containers ({matchingContainers.length || 1})
-						</option>
-						{#each matchingContainers as c}
-							<option value={c.id || c.name}>
-								{c.name}
-								{c.serviceName && c.serviceName !== c.name ? `(${c.serviceName})` : ''}
-							</option>
-						{/each}
-					</select>
+				<div class="min-w-[180px]">
+					<Select
+						value={selectedContainer}
+						onValueChange={(val: any) => {
+							if (typeof val === 'string') {
+								selectedContainer = val;
+								fetchLogs();
+							}
+						}}
+						options={containerOptions}
+						size="sm"
+					/>
 				</div>
 			</div>
 
@@ -236,34 +241,30 @@
 
 		<!-- Right: Action Buttons -->
 		<div class="flex shrink-0 items-center gap-2 self-end md:self-auto">
-			<label
-				class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs text-[var(--text-secondary)] transition-colors select-none hover:bg-[var(--bg-surface)]"
-			>
-				<input
-					type="checkbox"
-					bind:checked={follow}
-					class="cursor-pointer accent-[var(--accent)]"
-				/>
-				<span class="font-mono text-[11px]">Follow</span>
-			</label>
+			<div class="flex items-center gap-1.5 px-2 py-1">
+				<Checkbox bind:checked={follow} id="log-follow" />
+				<label for="log-follow" class="cursor-pointer font-mono text-[11px] text-[var(--text-secondary)] select-none">
+					Follow
+				</label>
+			</div>
 
 			<Button
 				variant="ghost"
 				size="sm"
 				onclick={fetchLogs}
 				disabled={isLoading}
-				title="Reload container logs"
+				aria-label="Reload container logs"
 			>
 				<ArrowClockwise class="mr-1.5 h-3.5 w-3.5 {isLoading ? 'animate-spin' : ''}" />
 				<span>Refresh</span>
 			</Button>
 
-			<Button variant="ghost" size="sm" onclick={handleCopy} title="Copy logs to clipboard">
+			<Button variant="ghost" size="sm" onclick={handleCopy} aria-label="Copy logs to clipboard">
 				<Copy class="mr-1 h-3.5 w-3.5" />
 				<span>{copyFeedback ? 'Copied!' : 'Copy'}</span>
 			</Button>
 
-			<Button variant="ghost" size="sm" onclick={handleClear} title="Clear terminal screen">
+			<Button variant="ghost" size="sm" onclick={handleClear} aria-label="Clear terminal screen">
 				<Trash class="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
 			</Button>
 		</div>

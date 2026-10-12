@@ -360,23 +360,33 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID string, l
 	}
 
 	// 5. Attempt systemd reload if systemctl is available
+	systemdSuccess := false
 	if _, err := exec.LookPath("systemctl"); err == nil {
 		logLine("⚙️ Executing: systemctl --user daemon-reload...")
-		if out, err := exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").CombinedOutput(); err != nil {
+		reloadCmd := exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload")
+		d.setupCmdEnv(reloadCmd)
+		if out, err := reloadCmd.CombinedOutput(); err != nil {
 			logLine(fmt.Sprintf("⚠️ daemon-reload notice: %v (%s)", err, strings.TrimSpace(string(out))))
 		}
 		logLine(fmt.Sprintf("🚀 Starting systemd service: %s.service...", cleanName))
-		if out, err := exec.CommandContext(ctx, "systemctl", "--user", "restart", fmt.Sprintf("%s.service", cleanName)).CombinedOutput(); err != nil {
-			logLine(fmt.Sprintf("❌ systemctl restart failed: %v (%s)", err, strings.TrimSpace(string(out))))
-			return nil, fmt.Errorf("systemctl restart failed: %w", err)
+		restartCmd := exec.CommandContext(ctx, "systemctl", "--user", "restart", fmt.Sprintf("%s.service", cleanName))
+		d.setupCmdEnv(restartCmd)
+		if out, err := restartCmd.CombinedOutput(); err != nil {
+			logLine(fmt.Sprintf("⚠️ systemctl restart notice: %v (%s). Falling back to direct Podman engine execution...", err, strings.TrimSpace(string(out))))
+		} else {
+			systemdSuccess = true
+			portInfo := "none"
+			if len(parsed.Ports) > 0 {
+				portInfo = strings.Join(parsed.Ports, ", ")
+			}
+			logLine(fmt.Sprintf("✅ Reloaded and activated systemd user daemon for %s.service (network: %s, ports: %s)", cleanName, parsed.Network, portInfo))
 		}
-		portInfo := "none"
-		if len(parsed.Ports) > 0 {
-			portInfo = strings.Join(parsed.Ports, ", ")
+	}
+
+	if !systemdSuccess {
+		if _, err := exec.LookPath("systemctl"); err != nil {
+			logLine("⚠️ Host systemctl not found (containerized runtime). Starting container directly via Podman...")
 		}
-		logLine(fmt.Sprintf("✅ Reloaded and activated systemd user daemon for %s.service (network: %s, ports: %s)", cleanName, parsed.Network, portInfo))
-	} else {
-		logLine("⚠️ Host systemctl not found (containerized runtime). Starting container directly via Podman...")
 		if d.podmanClient != nil {
 			_ = d.podmanClient.EnsureNetwork(ctx, parsed.Network)
 

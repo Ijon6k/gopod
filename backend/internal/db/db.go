@@ -25,7 +25,11 @@ func Open(customPath string) (*DB, error) {
 	if dbPath == "" {
 		if _, err := os.Stat("/app/data"); err == nil {
 			dbPath = "/app/data/gopod.db"
+		} else if _, err := os.Stat("../data"); err == nil {
+			// When running from backend/ subdirectory during local development
+			dbPath = "../data/gopod.db"
 		} else if _, err := os.Stat("data"); err == nil {
+			// When running from repository root
 			dbPath = "data/gopod.db"
 		} else {
 			home, err := os.UserHomeDir()

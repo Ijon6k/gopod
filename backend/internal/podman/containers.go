@@ -271,17 +271,15 @@ func (c *Client) getStatsCLI(ctx context.Context) ([]ContainerStat, error) {
 // RunContainer starts a new container with the specified options.
 func (c *Client) RunContainer(ctx context.Context, opts RunContainerOptions) (string, error) {
 	args := []string{"run", "-d", "--name", opts.Name}
-	for _, p := range opts.Ports {
-		args = append(args, "-p", p)
-	}
-	for k, v := range opts.Env {
-		args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
-	}
-	for k, v := range opts.Labels {
-		args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
-	}
-	if opts.Network != "" {
-		args = append(args, "--network", opts.Network)
+	if opts.Pod != "" {
+		args = append(args, "--pod", opts.Pod)
+	} else {
+		for _, p := range opts.Ports {
+			args = append(args, "-p", p)
+		}
+		if opts.Network != "" {
+			args = append(args, "--network", opts.Network)
+		}
 	}
 	if opts.RestartPolicy != "" {
 		args = append(args, "--restart", opts.RestartPolicy)
@@ -432,6 +430,30 @@ func (c *Client) postContainerAction(ctx context.Context, id, action string) err
 	}
 
 	cmd := exec.CommandContext(ctx, "podman", action, id)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
+}
+
+// PruneContainers removes stopped and exited containers.
+func (c *Client) PruneContainers(ctx context.Context) error {
+	if c.httpClient != nil {
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/v5.0.0/libpod/containers/prune", nil)
+		if err != nil {
+			return err
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("podman container prune failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+			return nil
+		}
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("podman container prune failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "container", "prune", "-f")
 	c.SetupCmdEnv(cmd)
 	return cmd.Run()
 }

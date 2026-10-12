@@ -30,6 +30,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/domains/{id}", h.middleware.RequireAuth(h.handleUpdateDomain))
 	mux.HandleFunc("DELETE /api/domains/{id}", h.middleware.RequireAuth(h.handleDeleteDomain))
 	mux.HandleFunc("GET /api/traffic/requests", h.middleware.RequireAuth(h.handleTrafficRequests))
+	mux.HandleFunc("GET /api/traffic/metrics", h.middleware.RequireAuth(h.handleTrafficMetrics))
+	mux.HandleFunc("GET /api/ingress/caddyfile", h.middleware.RequireAuth(h.handleGetCaddyfile))
+	mux.HandleFunc("POST /api/ingress/reload", h.middleware.RequireAuth(h.handleReloadCaddy))
 }
 
 func (h *Handler) handleListDomains(w http.ResponseWriter, r *http.Request) {
@@ -91,6 +94,73 @@ func (h *Handler) handleTrafficRequests(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	logs := h.service.GetTrafficRequests(limit)
+	excludeDashboard := true
+	if ex := r.URL.Query().Get("excludeDashboard"); ex == "false" || ex == "0" {
+		excludeDashboard = false
+	}
+
+	filter := TrafficFilter{
+		Limit:            limit,
+		ProjectID:        r.URL.Query().Get("projectId"),
+		ServiceID:        r.URL.Query().Get("serviceId"),
+		StatusGroup:      r.URL.Query().Get("status"),
+		TimeRange:        r.URL.Query().Get("timeRange"),
+		Search:           r.URL.Query().Get("search"),
+		ExcludeDashboard: excludeDashboard,
+	}
+	if filter.ProjectID == "" {
+		filter.ProjectID = r.URL.Query().Get("project_id")
+	}
+	if filter.ServiceID == "" {
+		filter.ServiceID = r.URL.Query().Get("service_id")
+	}
+
+	logs := h.service.GetTrafficRequests(filter)
 	httputil.WriteJSON(w, http.StatusOK, logs)
+}
+
+func (h *Handler) handleTrafficMetrics(w http.ResponseWriter, r *http.Request) {
+	excludeDashboard := true
+	if ex := r.URL.Query().Get("excludeDashboard"); ex == "false" || ex == "0" {
+		excludeDashboard = false
+	}
+
+	filter := TrafficFilter{
+		ProjectID:        r.URL.Query().Get("projectId"),
+		ServiceID:        r.URL.Query().Get("serviceId"),
+		StatusGroup:      r.URL.Query().Get("status"),
+		TimeRange:        r.URL.Query().Get("timeRange"),
+		Search:           r.URL.Query().Get("search"),
+		ExcludeDashboard: excludeDashboard,
+	}
+	if filter.ProjectID == "" {
+		filter.ProjectID = r.URL.Query().Get("project_id")
+	}
+	if filter.ServiceID == "" {
+		filter.ServiceID = r.URL.Query().Get("service_id")
+	}
+
+	metrics := h.service.GetTrafficMetrics(filter)
+	httputil.WriteJSON(w, http.StatusOK, metrics)
+}
+
+func (h *Handler) handleGetCaddyfile(w http.ResponseWriter, r *http.Request) {
+	caddyfile := h.service.GetCaddyfile()
+	adminURL := "http://127.0.0.1:2019"
+	if h.service.reconciler != nil {
+		adminURL = h.service.reconciler.GetAdminURL()
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"caddyfile": caddyfile,
+		"status":    "active",
+		"adminUrl":  adminURL,
+	})
+}
+
+func (h *Handler) handleReloadCaddy(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.ReloadCaddy(r.Context()); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Caddy ingress reloaded successfully"})
 }

@@ -228,7 +228,7 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 	return nil
 }
 
-// DeleteService removes a service, stopping and tearing down all running workloads (Dokploy parity).
+// DeleteService removes a service, stopping and tearing down all running workloads.
 func (s *WorkloadService) DeleteService(ctx context.Context, id string, deleteVolumes bool) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")

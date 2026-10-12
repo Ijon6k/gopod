@@ -133,9 +133,15 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 
 	logLine(fmt.Sprintf("🚀 Starting container '%s' (image: %s)...", containerName, imageToRun))
 	if d.podmanClient != nil {
+		targetPod := s.PodID
+		if targetPod == "" && s.InPod {
+			targetPod = fmt.Sprintf("pod-%s", s.ProjectID)
+		}
+
 		_, err := d.podmanClient.RunContainer(ctx, podman.RunContainerOptions{
 			Name:          containerName,
 			Image:         imageToRun,
+			Pod:           targetPod,
 			Ports:         ports,
 			Env:           envMap,
 			Network:       networkToUse,

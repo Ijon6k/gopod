@@ -102,9 +102,44 @@ func (s *Service) GetContainerLogs(ctx context.Context, id string, tail int) (st
 	return s.client.GetContainerLogs(ctx, id, tail)
 }
 
+// PruneContainers deletes stopped containers.
+func (s *Service) PruneContainers(ctx context.Context) error {
+	return s.client.PruneContainers(ctx)
+}
+
 // GetPods lists Podman pods.
 func (s *Service) GetPods(ctx context.Context) ([]podman.PodItem, error) {
 	return s.client.GetPods(ctx)
+}
+
+// CreatePod creates a new Podman pod.
+func (s *Service) CreatePod(ctx context.Context, name string, ports []string, network string, labels map[string]string) (string, error) {
+	return s.client.CreatePod(ctx, podman.CreatePodOptions{
+		Name:    name,
+		Ports:   ports,
+		Network: network,
+		Labels:  labels,
+	})
+}
+
+// StartPod starts a Podman pod.
+func (s *Service) StartPod(ctx context.Context, idOrName string) error {
+	return s.client.StartPod(ctx, idOrName)
+}
+
+// StopPod stops a Podman pod.
+func (s *Service) StopPod(ctx context.Context, idOrName string) error {
+	return s.client.StopPod(ctx, idOrName)
+}
+
+// RestartPod restarts a Podman pod.
+func (s *Service) RestartPod(ctx context.Context, idOrName string) error {
+	return s.client.RestartPod(ctx, idOrName)
+}
+
+// DeletePod deletes a Podman pod.
+func (s *Service) DeletePod(ctx context.Context, idOrName string, force bool) error {
+	return s.client.DeletePod(ctx, idOrName, force)
 }
 
 // GetImages lists local container images.

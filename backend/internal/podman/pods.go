@@ -139,5 +139,120 @@ func (c *Client) DeletePod(ctx context.Context, idOrName string, force bool) err
 		args = append(args, "-f")
 	}
 	args = append(args, idOrName)
-	return exec.CommandContext(ctx, "podman", args...).Run()
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
+}
+
+// CreatePod creates a new Podman pod with port mappings and network.
+func (c *Client) CreatePod(ctx context.Context, opts CreatePodOptions) (string, error) {
+	if c.httpClient != nil {
+		payload := map[string]interface{}{
+			"name": opts.Name,
+		}
+		if len(opts.Labels) > 0 {
+			payload["labels"] = opts.Labels
+		}
+		if opts.Network != "" {
+			payload["networks"] = map[string]interface{}{opts.Network: map[string]interface{}{}}
+		}
+		var portMappings []map[string]interface{}
+		for _, p := range opts.Ports {
+			parts := strings.Split(p, ":")
+			if len(parts) == 2 {
+				var hp, cp int
+				_, _ = fmt.Sscanf(parts[0], "%d", &hp)
+				_, _ = fmt.Sscanf(parts[1], "%d", &cp)
+				if hp > 0 && cp > 0 {
+					portMappings = append(portMappings, map[string]interface{}{
+						"host_port":      hp,
+						"container_port": cp,
+						"protocol":       "tcp",
+					})
+				}
+			}
+		}
+		if len(portMappings) > 0 {
+			payload["portmappings"] = portMappings
+		}
+		b, _ := json.Marshal(payload)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/v5.0.0/libpod/pods/create", bytes.NewReader(b))
+		if err == nil {
+			req.Header.Set("Content-Type", "application/json")
+			resp, err := c.httpClient.Do(req)
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
+					var res struct {
+						ID string `json:"Id"`
+					}
+					if err := json.NewDecoder(resp.Body).Decode(&res); err == nil && res.ID != "" {
+						return res.ID, nil
+					}
+				}
+			}
+		}
+	}
+
+	// CLI fallback
+	args := []string{"pod", "create", "--name", opts.Name}
+	for _, p := range opts.Ports {
+		args = append(args, "-p", p)
+	}
+	if opts.Network != "" {
+		args = append(args, "--network", opts.Network)
+	}
+	for k, v := range opts.Labels {
+		args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
+	}
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("podman pod create failed: %s (%w)", strings.TrimSpace(string(out)), err)
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+// StartPod starts a pod by ID or name.
+func (c *Client) StartPod(ctx context.Context, idOrName string) error {
+	return c.postPodAction(ctx, idOrName, "start")
+}
+
+// StopPod stops a running pod.
+func (c *Client) StopPod(ctx context.Context, idOrName string) error {
+	return c.postPodAction(ctx, idOrName, "stop")
+}
+
+// RestartPod restarts a pod.
+func (c *Client) RestartPod(ctx context.Context, idOrName string) error {
+	return c.postPodAction(ctx, idOrName, "restart")
+}
+
+func (c *Client) postPodAction(ctx context.Context, idOrName, action string) error {
+	if c.httpClient != nil {
+		url := fmt.Sprintf("http://d/v5.0.0/libpod/pods/%s/%s", idOrName, action)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return fmt.Errorf("podman pod %s failed: %w", action, err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+			return nil
+		}
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("podman pod %s returned %d: %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "pod", action, idOrName)
+	c.SetupCmdEnv(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("podman pod %s error: %s (%w)", action, strings.TrimSpace(string(out)), err)
+	}
+	return nil
 }

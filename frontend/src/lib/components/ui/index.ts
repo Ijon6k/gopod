@@ -46,6 +46,7 @@ export {
 // GOPOD specialized & composed UI components
 export { default as Tabs } from './Tabs.svelte';
 export { default as DataTable } from './DataTable.svelte';
+export { default as TablePagination } from './TablePagination.svelte';
 export { default as Modal } from './Modal.svelte';
 export { default as ConfirmDialog } from './ConfirmDialog.svelte';
 export { default as SearchInput } from './SearchInput.svelte';

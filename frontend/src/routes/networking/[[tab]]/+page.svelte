@@ -1,19 +1,21 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader, Tabs } from '$lib/components/ui';
-	import { Button } from '$lib/components/ui';
+	import { PageHeader, Tabs, Button, CodeEditor } from '$lib/components/ui';
 	import {
 		LayerCard,
+		Badge,
 		Table,
 		TableHeader,
 		TableHead,
 		TableBody,
 		TableRow,
-		TableCell
+		TableCell,
+		useKumoToastManager
 	} from 'kumo-svelte';
-	import { domains, server, ports, dataStore } from '$lib/data';
+	import { domains, server, dataStore } from '$lib/data';
 	import type { Domain } from '$lib/types';
+	import { api } from '$lib/api';
 	import { DomainSettingsModal, TrafficRequestsView } from '$lib/components/features/networking';
 	import {
 		Globe,
@@ -26,8 +28,12 @@
 		PencilSimple,
 		Trash,
 		Copy,
-		Check
+		Check,
+		ArrowsClockwise,
+		ShieldCheck
 	} from 'phosphor-svelte';
+
+	const toast = useKumoToastManager();
 
 	let activeTab = $derived(page.params.tab ?? 'domains');
 
@@ -36,10 +42,19 @@
 	let editingDomain = $state<Domain | null>(null);
 	let copiedIp = $state(false);
 
+	// Caddy Ingress states
+	let caddyfileContent = $state('');
+	let caddyStatus = $state('active');
+	let caddyAdminUrl = $state('http://localhost:2019');
+	let isLoadingCaddyfile = $state(false);
+	let isReloadingCaddy = $state(false);
+	let copiedCaddyfile = $state(false);
+
 	const tabs = [
 		{ id: 'domains', label: 'Domains & Ingress' },
 		{ id: 'requests', label: 'Traffic & Requests' },
-		{ id: 'ports', label: 'Host Port Bindings' }
+		{ id: 'ports', label: 'Host Port Bindings' },
+		{ id: 'caddy', label: 'Caddy Ingress' }
 	];
 
 	function onTabChange(id: string) {
@@ -56,7 +71,22 @@
 		isDomainModalOpen = true;
 	}
 
+	function getDomainUrl(d: Domain): string {
+		const host = d.hostname.trim().replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+		const path = d.pathPrefix && d.pathPrefix !== '/' ? d.pathPrefix : '';
+		const isLocal = host.endsWith('.localhost') || host.endsWith('.local') || host.includes('127.0.0.1');
+		if (isLocal) {
+			return `http://${host}:8080${path}`;
+		}
+		return `${d.tls ? 'https' : 'http'}://${host}${path}`;
+	}
+
 	function handleSaveDomain(savedDomain: Domain) {
+		let cleanHost = savedDomain.hostname.trim().toLowerCase();
+		cleanHost = cleanHost.replace(/^https?:\/\//, '');
+		cleanHost = cleanHost.replace(/:\d+$/, '');
+		savedDomain.hostname = cleanHost;
+
 		if (editingDomain) {
 			dataStore.updateDomain(savedDomain);
 		} else {
@@ -80,6 +110,58 @@
 			// Clipboard API fallback
 		}
 	}
+
+	async function loadCaddyfile() {
+		isLoadingCaddyfile = true;
+		try {
+			const res = await api.domains.getCaddyfile();
+			caddyfileContent = res.caddyfile || '';
+			caddyStatus = res.status || 'active';
+			caddyAdminUrl = res.adminUrl || 'http://localhost:2019';
+		} catch (err: any) {
+			console.error('Failed to load Caddyfile:', err);
+			caddyStatus = 'error';
+		} finally {
+			isLoadingCaddyfile = false;
+		}
+	}
+
+	async function handleReloadCaddy() {
+		isReloadingCaddy = true;
+		try {
+			const res = await api.domains.reload();
+			toast.add({
+				title: 'Ingress Reloaded',
+				description: res.message || 'Caddy configuration dynamically reloaded via Admin API.',
+				variant: 'success'
+			});
+			await loadCaddyfile();
+		} catch (err: any) {
+			toast.add({
+				title: 'Reload Failed',
+				description: err?.message || 'Failed to reload Caddy ingress daemon.',
+				variant: 'error'
+			});
+		} finally {
+			isReloadingCaddy = false;
+		}
+	}
+
+	async function handleCopyCaddyfile() {
+		try {
+			await navigator.clipboard.writeText(caddyfileContent);
+			copiedCaddyfile = true;
+			setTimeout(() => (copiedCaddyfile = false), 2000);
+		} catch {
+			// fallback
+		}
+	}
+
+	$effect(() => {
+		if (activeTab === 'caddy' && !caddyfileContent && !isLoadingCaddyfile) {
+			loadCaddyfile();
+		}
+	});
 </script>
 
 <svelte:head>
@@ -96,6 +178,17 @@
 			{#if activeTab === 'domains'}
 				<Button variant="primary" size="sm" onclick={handleAddDomain}>
 					<Plus size={13} /> Add Domain
+				</Button>
+			{:else if activeTab === 'caddy'}
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={handleReloadCaddy}
+					disabled={isReloadingCaddy}
+					class="gap-1.5"
+				>
+					<ArrowsClockwise size={13} class={isReloadingCaddy ? 'animate-spin' : ''} />
+					{isReloadingCaddy ? 'Reloading...' : 'Reload Ingress'}
 				</Button>
 			{/if}
 		{/snippet}
@@ -151,66 +244,66 @@
 		<LayerCard class="overflow-hidden p-0">
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
 				<Table class="w-full text-left text-xs">
-					<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+					<TableHeader class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]">
 						<TableRow>
-							<TableHead class="px-3.5 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3.5 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Domain
 							</TableHead>
-							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Upstream service
 							</TableHead>
-							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								DNS status
 							</TableHead>
-							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								TLS certificate
 							</TableHead>
-							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Features
 							</TableHead>
-							<TableHead class="px-3.5 py-2.5 text-right text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3.5 py-2.5 text-right text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Actions
 							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody class="divide-y divide-[var(--border-subtle)]">
 						{#if domains.length === 0}
-							<tr>
-								<td colspan="6" class="py-12 text-center text-xs text-[var(--text-tertiary)]">
+							<TableRow>
+								<TableCell colspan={6} class="py-12 text-center text-xs text-[var(--text-tertiary)]">
 									No domain routes configured yet. Click "Add Domain" to create your first Caddy
 									route.
-								</td>
-							</tr>
+								</TableCell>
+							</TableRow>
 						{:else}
-							{#each domains as domain (domain.id)}
-								<tr class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
+							{#each domains as domain, idx (domain.id)}
+								<TableRow class={idx % 2 === 1 ? 'bg-[var(--bg-table-row-alt)] hover:bg-[var(--bg-table-row-hover)]' : 'bg-[var(--bg-table-row)] hover:bg-[var(--bg-table-row-hover)]'}>
 									<!-- Domain Hostname -->
-									<td class="px-3.5 py-3 whitespace-nowrap">
+									<TableCell class="px-3.5 py-3 whitespace-nowrap">
 										<div class="flex items-center gap-2">
 											<span class="font-mono text-xs font-medium text-[var(--text-primary)]">
 												{domain.hostname}
 											</span>
 											{#if domain.pathPrefix && domain.pathPrefix !== '/'}
 												<span
-													class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10.5px] text-[var(--text-tertiary)]"
+													class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-tertiary)]"
 												>
 													{domain.pathPrefix}
 												</span>
 											{/if}
 											<a
-												href={`http${domain.tls ? 's' : ''}://${domain.hostname}${domain.pathPrefix || ''}`}
+												href={getDomainUrl(domain)}
 												target="_blank"
 												rel="noopener noreferrer"
-												class="text-[var(--text-tertiary)] transition-colors hover:text-[var(--accent)]"
+												class="text-[var(--text-tertiary)] hover:text-[var(--accent)]"
 												title="Open in new tab"
 											>
 												<ArrowSquareOut size={13} />
 											</a>
 										</div>
-									</td>
+									</TableCell>
 
 									<!-- Upstream Service & Container Port -->
-									<td class="px-3 py-3 whitespace-nowrap">
+									<TableCell class="px-3 py-3 whitespace-nowrap">
 										<div class="flex flex-col">
 											<span class="font-medium text-[var(--text-primary)]">
 												{domain.serviceName}
@@ -219,27 +312,23 @@
 												{domain.projectId} · port {domain.containerPort}
 											</span>
 										</div>
-									</td>
+									</TableCell>
 
 									<!-- DNS Status -->
-									<td class="px-3 py-3 whitespace-nowrap">
+									<TableCell class="px-3 py-3 whitespace-nowrap">
 										{#if domain.dnsStatus === 'pending'}
-											<span
-												class="inline-flex items-center gap-1 rounded border border-[var(--status-amber)]/30 bg-[var(--status-amber-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--status-amber)]"
-											>
+											<Badge variant="warning" class="gap-1 text-xs">
 												<Warning size={12} /> Pending DNS
-											</span>
+											</Badge>
 										{:else}
-											<span
-												class="inline-flex items-center gap-1 rounded border border-[var(--status-green)]/30 bg-[var(--status-green-muted)] px-2 py-0.5 text-[11px] font-medium text-[var(--status-green)]"
-											>
+											<Badge variant="success" class="gap-1 text-xs">
 												<CheckCircle size={12} /> Resolves ({server.ip})
-											</span>
+											</Badge>
 										{/if}
-									</td>
+									</TableCell>
 
 									<!-- TLS Certificate -->
-									<td class="px-3 py-3 whitespace-nowrap">
+									<TableCell class="px-3 py-3 whitespace-nowrap">
 										{#if domain.tls}
 											<span
 												class="inline-flex items-center gap-1.5 text-xs text-[var(--status-green)]"
@@ -253,52 +342,44 @@
 												<LockOpen size={13} /> Plain HTTP
 											</span>
 										{/if}
-									</td>
+									</TableCell>
 
 									<!-- Ingress Features Pills -->
-									<td class="px-3 py-3">
+									<TableCell class="px-3 py-3">
 										<div class="flex flex-wrap items-center gap-1">
 											{#if domain.websocket}
-												<span
-													class="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--accent)]"
-												>
+												<Badge variant="neutral" class="font-mono text-[10.5px]">
 													WS 101
-												</span>
+												</Badge>
 											{/if}
 											{#if domain.cors}
-												<span
-													class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
-												>
+												<Badge variant="neutral" class="font-mono text-[10.5px]">
 													CORS
-												</span>
+												</Badge>
 											{/if}
 											{#if domain.hsts}
-												<span
-													class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-secondary)]"
-												>
+												<Badge variant="neutral" class="font-mono text-[10.5px]">
 													HSTS
-												</span>
+												</Badge>
 											{/if}
 											{#if domain.basicAuth}
-												<span
-													class="rounded bg-[var(--status-amber-muted)] px-1.5 py-0.5 font-mono text-[10px] font-medium text-[var(--status-amber)]"
-												>
-													Basic Auth
-												</span>
+												<Badge variant="warning" class="font-mono text-[10.5px]">
+													Basic auth
+												</Badge>
 											{/if}
 											{#if !domain.websocket && !domain.cors && !domain.basicAuth && !domain.hsts}
 												<span class="text-[11px] text-[var(--text-tertiary)]">Standard</span>
 											{/if}
 										</div>
-									</td>
+									</TableCell>
 
 									<!-- Actions -->
-									<td class="px-3.5 py-3 text-right whitespace-nowrap">
+									<TableCell class="px-3.5 py-3 text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-1">
 											<button
 												type="button"
 												onclick={() => handleEditDomain(domain)}
-												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
 												title="Edit Domain Settings"
 											>
 												<PencilSimple size={14} />
@@ -306,14 +387,14 @@
 											<button
 												type="button"
 												onclick={() => handleDeleteDomain(domain.id)}
-												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--status-red-muted)] hover:text-[var(--status-red)]"
+												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--status-red-muted)] hover:text-[var(--status-red)]"
 												title="Remove Domain"
 											>
 												<Trash size={14} />
 											</button>
 										</div>
-									</td>
-								</tr>
+									</TableCell>
+								</TableRow>
 							{/each}
 						{/if}
 					</TableBody>
@@ -322,14 +403,14 @@
 
 			<!-- Footer -->
 			<div
-				class="flex items-center justify-between border-t border-kumo-line bg-kumo-base px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
+				class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
 			>
 				<span>{domains.length} active domain routing configurations</span>
-				<span class="font-mono text-[11px]">Engine: Caddy v{server.caddy} (Rootless Ingress)</span>
+				<span class="font-mono text-[11px]">Engine: Caddy v{server.caddy || '2.8'} (Rootless Ingress)</span>
 			</div>
 		</LayerCard>
 
-		<!-- TAB 2: TRAFFIC & REQUESTS TELEMETRY (DOKPLOY PARITY) -->
+		<!-- TAB 2: TRAFFIC & REQUESTS TELEMETRY -->
 	{:else if activeTab === 'requests'}
 		<TrafficRequestsView />
 
@@ -338,92 +419,223 @@
 		<LayerCard class="overflow-hidden p-0">
 			<div class="w-full overflow-x-auto md:overflow-x-visible">
 				<Table class="w-full text-left text-xs">
-					<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+					<TableHeader class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]">
 						<TableRow>
-							<TableHead class="px-3.5 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3.5 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Host port
 							</TableHead>
-							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Protocol
 							</TableHead>
-							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Target service / container
 							</TableHead>
-							<TableHead class="px-3 py-2.5 text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3 py-2.5 text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Bind address
 							</TableHead>
-							<TableHead class="px-3.5 py-2.5 text-right text-[12px] font-semibold text-[var(--text-tertiary)] normal-case">
+							<TableHead class="px-3.5 py-2.5 text-right text-[13px] font-semibold text-[var(--text-secondary)] normal-case">
 								Status
 							</TableHead>
 						</TableRow>
 					</TableHeader>
 					<TableBody class="divide-y divide-[var(--border-subtle)]">
-						{#each ports as p (p.id)}
-							<tr class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
-								<!-- Host Port -->
-								<td class="px-3.5 py-3 whitespace-nowrap">
-									<span class="font-mono text-xs font-semibold text-[var(--text-primary)]">
-										:{p.hostPort}
-									</span>
-								</td>
-
-								<!-- Protocol -->
-								<td class="px-3 py-3 whitespace-nowrap">
-									<span
-										class="rounded border border-[var(--border-subtle)] bg-[var(--bg-panel)] px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-[var(--text-secondary)] uppercase"
-									>
-										{p.protocol}
-									</span>
-								</td>
-
-								<!-- Target Service -->
-								<td class="px-3 py-3 whitespace-nowrap">
-									<div class="flex flex-col">
-										<span class="font-medium text-[var(--text-primary)]">{p.serviceName}</span>
-										<span class="font-mono text-[11px] text-[var(--text-tertiary)]"
-											>{p.containerName} ➔ :{p.containerPort}</span
-										>
-									</div>
-								</td>
-
-								<!-- Binding Scope -->
-								<td class="px-3 py-3 whitespace-nowrap">
-									{#if p.isPublic}
-										<span
-											class="inline-flex items-center gap-1 font-mono text-[11px] font-medium text-[var(--accent)]"
-										>
-											{p.bindAddress} (Public Ingress)
+						{#if dataStore.ports.length === 0}
+							<TableRow>
+								<TableCell colspan={5} class="py-12 text-center text-xs text-[var(--text-tertiary)]">
+									No host port bindings currently active. Host port bindings appear when services or Quadlet containers specify published ports (e.g., -p 8080:80 or PublishPort=...).
+								</TableCell>
+							</TableRow>
+						{:else}
+							{#each dataStore.ports as p, idx (p.id)}
+								<TableRow class={idx % 2 === 1 ? 'bg-[var(--bg-table-row-alt)] hover:bg-[var(--bg-table-row-hover)]' : 'bg-[var(--bg-table-row)] hover:bg-[var(--bg-table-row-hover)]'}>
+									<!-- Host Port -->
+									<TableCell class="px-3.5 py-3 whitespace-nowrap">
+										<span class="font-mono text-xs font-semibold text-[var(--text-primary)]">
+											{p.bindAddress === 'Internal network' ? `Internal (${p.containerPort})` : `:${p.hostPort}`}
 										</span>
-									{:else}
-										<span
-											class="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-tertiary)]"
-										>
-											{p.bindAddress} (Local Only)
-										</span>
-									{/if}
-								</td>
+									</TableCell>
 
-								<!-- Status -->
-								<td class="px-3.5 py-3 text-right whitespace-nowrap">
-									<span
-										class="inline-flex items-center gap-1.5 text-xs font-medium text-[var(--status-green)]"
-									>
-										<span class="h-1.5 w-1.5 rounded-full bg-[var(--status-green)]"></span>
-										Listening
-									</span>
-								</td>
-							</tr>
-						{/each}
+									<!-- Protocol -->
+									<TableCell class="px-3 py-3 whitespace-nowrap">
+										<Badge variant="neutral" class="font-mono text-[10.5px] uppercase">
+											{p.protocol}
+										</Badge>
+									</TableCell>
+
+									<!-- Target Service -->
+									<TableCell class="px-3 py-3 whitespace-nowrap">
+										<div class="flex flex-col">
+											<span class="font-medium text-[var(--text-primary)]">{p.serviceName}</span>
+											<span class="font-mono text-[11px] text-[var(--text-tertiary)]"
+												>{p.containerName} ➔ :{p.containerPort}</span
+											>
+										</div>
+									</TableCell>
+
+									<!-- Binding Scope -->
+									<TableCell class="px-3 py-3 whitespace-nowrap">
+										{#if p.isPublic}
+											<span
+												class="inline-flex items-center gap-1 font-mono text-[11px] font-medium text-[var(--accent)]"
+											>
+												{p.bindAddress} (Public ingress)
+											</span>
+										{:else}
+											<span
+												class="inline-flex items-center gap-1 font-mono text-[11px] text-[var(--text-tertiary)]"
+											>
+												{p.bindAddress} (Local / Bridge)
+											</span>
+										{/if}
+									</TableCell>
+
+									<!-- Status -->
+									<TableCell class="px-3.5 py-3 text-right whitespace-nowrap">
+										<Badge variant={p.status === 'listening' ? 'success' : 'neutral'} class="gap-1.5 text-xs capitalize">
+											{p.status || 'Listening'}
+										</Badge>
+									</TableCell>
+								</TableRow>
+							{/each}
+						{/if}
 					</TableBody>
 				</Table>
 			</div>
 
 			<!-- Footer -->
 			<div
-				class="flex items-center justify-between border-t border-kumo-line bg-kumo-base px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
+				class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
 			>
-				<span>{ports.length} ports mapped on host network</span>
+				<span>{dataStore.ports.length} ports mapped on host network</span>
 				<span class="font-mono text-[11px]">Kernel Netfilter / pasta rootless bridge</span>
+			</div>
+		</LayerCard>
+
+		<!-- TAB 4: CADDY INGRESS ENGINE & CADDYFILE -->
+	{:else if activeTab === 'caddy'}
+		<!-- Caddy Ingress Architecture & Control -->
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+			<!-- Ingress Status -->
+			<LayerCard class="flex flex-col gap-2 p-4">
+				<div class="flex items-center justify-between">
+					<span class="text-xs font-medium text-[var(--text-secondary)]">Ingress Daemon</span>
+					<Badge variant={caddyStatus === 'error' ? 'error' : 'success'} class="gap-1.5 text-xs">
+						<CheckCircle size={12} />
+						{caddyStatus === 'error' ? 'Degraded' : 'Active (Rootless)'}
+					</Badge>
+				</div>
+				<div class="mt-1 flex items-baseline gap-2">
+					<span class="text-lg font-semibold text-[var(--text-primary)]">Caddy v{server.caddy || '2.8'}</span>
+					<span class="font-mono text-xs text-[var(--text-tertiary)]">rootless socket</span>
+				</div>
+				<span class="text-xs text-[var(--text-tertiary)]">
+					Bound to host ports <span class="font-mono text-[11px] text-[var(--text-secondary)]">:8080</span> (HTTP) & <span class="font-mono text-[11px] text-[var(--text-secondary)]">:8443</span> (HTTPS)
+				</span>
+			</LayerCard>
+
+			<!-- Admin API -->
+			<LayerCard class="flex flex-col gap-2 p-4">
+				<div class="flex items-center justify-between">
+					<span class="text-xs font-medium text-[var(--text-secondary)]">Admin API Engine</span>
+					<Badge variant="neutral" class="font-mono text-[10.5px]">
+						Internal Bridge
+					</Badge>
+				</div>
+				<div class="mt-1 font-mono text-xs font-medium text-[var(--text-primary)]">
+					{caddyAdminUrl || 'http://localhost:2019'}
+				</div>
+				<span class="text-xs text-[var(--text-tertiary)]">
+					Isolated inside private bridge network <span class="font-mono text-[11px] text-[var(--text-secondary)]">gopod-net</span>
+				</span>
+			</LayerCard>
+
+			<!-- TLS & Security Policy -->
+			<LayerCard class="flex flex-col gap-2 p-4">
+				<div class="flex items-center justify-between">
+					<span class="text-xs font-medium text-[var(--text-secondary)]">TLS Automation</span>
+					<Badge variant="success" class="gap-1 text-xs">
+						<Lock size={12} /> ACME v2
+					</Badge>
+				</div>
+				<div class="mt-1 flex items-baseline gap-2">
+					<span class="text-sm font-semibold text-[var(--text-primary)]">Let's Encrypt + Internal</span>
+				</div>
+				<span class="text-xs text-[var(--text-tertiary)]">
+					Dual HTTP/HTTPS local development + automatic ACME on public FQDNs
+				</span>
+			</LayerCard>
+		</div>
+
+		<!-- Active Caddyfile Viewer Card -->
+		<LayerCard class="overflow-hidden p-0 shadow-xs">
+			<div class="flex flex-col justify-between gap-3 border-b border-[var(--border)] bg-[var(--bg-surface)] px-4 py-3 sm:flex-row sm:items-center">
+				<div class="flex flex-col gap-0.5">
+					<div class="flex items-center gap-2">
+						<span class="text-sm font-semibold text-[var(--text-primary)]">Active Caddyfile</span>
+						<Badge variant="neutral" class="font-mono text-[11px]">Auto-reconciled</Badge>
+					</div>
+					<span class="text-xs text-[var(--text-tertiary)]">
+						Declaratively generated by GOPOD Ingress Reconciler and synchronized via Caddy Admin API.
+					</span>
+				</div>
+
+				<div class="flex items-center gap-2 self-start sm:self-auto">
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={handleCopyCaddyfile}
+						disabled={!caddyfileContent}
+						class="gap-1.5"
+					>
+						{#if copiedCaddyfile}
+							<Check size={13} class="text-[var(--status-green)]" /> Copied
+						{:else}
+							<Copy size={13} /> Copy Caddyfile
+						{/if}
+					</Button>
+
+					<Button
+						variant="primary"
+						size="sm"
+						onclick={handleReloadCaddy}
+						disabled={isReloadingCaddy}
+						class="gap-1.5"
+					>
+						<ArrowsClockwise size={13} class={isReloadingCaddy ? 'animate-spin' : ''} />
+						{isReloadingCaddy ? 'Reloading...' : 'Reload Ingress'}
+					</Button>
+				</div>
+			</div>
+
+			<!-- Code Block / Editor -->
+			<div class="w-full bg-[var(--bg-panel)] p-2">
+				{#if isLoadingCaddyfile}
+					<div class="flex h-80 items-center justify-center text-xs text-[var(--text-tertiary)]">
+						<ArrowsClockwise size={18} class="mr-2 animate-spin text-[var(--accent)]" /> Loading current Caddyfile...
+					</div>
+				{:else if !caddyfileContent}
+					<div class="flex h-80 flex-col items-center justify-center gap-2 text-center text-xs text-[var(--text-tertiary)]">
+						<span>No active Caddyfile loaded or Caddy ingress container offline.</span>
+						<Button variant="secondary" size="xs" onclick={loadCaddyfile}>Retry</Button>
+					</div>
+				{:else}
+					<CodeEditor
+						value={caddyfileContent}
+						language="quadlet"
+						readOnly={true}
+						height="440px"
+						lineNumbers={true}
+					/>
+				{/if}
+			</div>
+
+			<!-- Footer -->
+			<div class="flex flex-col justify-between gap-2 border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)] sm:flex-row sm:items-center">
+				<div class="flex items-center gap-2">
+					<ShieldCheck size={14} class="text-[var(--status-green)]" />
+					<span>Zero-injection security: domain hostnames and directives are sanitized prior to compilation.</span>
+				</div>
+				<span class="font-mono text-[11px]">Path: /etc/caddy/Caddyfile</span>
 			</div>
 		</LayerCard>
 	{/if}

@@ -3,6 +3,7 @@
 	import DeploySettingsCard from './DeploySettingsCard.svelte';
 	import QuadletEditorCard from './QuadletEditorCard.svelte';
 	import ComposeEditorCard from './ComposeEditorCard.svelte';
+	import PodWorkspaceCard from './PodWorkspaceCard.svelte';
 	import SourceCard from './SourceCard.svelte';
 	import PortMappingCard from './PortMappingCard.svelte';
 	import RuntimeTargetCard from './RuntimeTargetCard.svelte';
@@ -28,15 +29,18 @@
 </script>
 
 <div class="flex w-full flex-col gap-4">
-	<!-- 1. Dokploy-style Operational Action Bar at top of General tab -->
+	<!-- 1. Operational Action Bar at top of General tab -->
 	<DeploySettingsCard {service} {onTerminalClick} {onRedeploy} />
 
 	<!-- 2. Main Workload Body depending on Type -->
-	{#if service.type === 'quadlet'}
-		<!-- First-Class Quadlet Systemd Editor with Dokploy layout -->
+	{#if service.type === 'pod'}
+		<!-- First-Class Pod Multi-Container Workspace -->
+		<PodWorkspaceCard {service} />
+	{:else if service.type === 'quadlet'}
+		<!-- First-Class Quadlet Systemd Editor -->
 		<QuadletEditorCard {service} />
 	{:else if service.type === 'compose' || service.type === 'kubernetes'}
-		<!-- First-Class Docker / Podman Compose Manifest with Dokploy layout -->
+		<!-- First-Class Docker / Podman Compose Manifest -->
 		<ComposeEditorCard {service} />
 	{:else}
 		<!-- Standard Application / Image / Container Workloads -->

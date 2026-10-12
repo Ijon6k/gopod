@@ -10,6 +10,7 @@
 		TableCell,
 		LayerCard
 	} from 'kumo-svelte';
+	import TablePagination from './TablePagination.svelte';
 
 	interface Column {
 		key: string;
@@ -28,6 +29,15 @@
 		emptyMessage?: string;
 		actions?: Snippet<[T]>;
 		class?: string;
+		striped?: boolean;
+		pageSize?: number;
+		page?: number;
+		pageSizeOptions?: number[];
+		itemName?: string;
+		showRowsPerPage?: boolean;
+		onPageChange?: (page: number) => void;
+		onPageSizeChange?: (pageSize: number) => void;
+		paginationControls?: 'full' | 'simple';
 	}
 
 	let {
@@ -37,8 +47,32 @@
 		onRowClick,
 		emptyMessage = 'No data available',
 		actions,
-		class: className = ''
+		class: className = '',
+		striped = true,
+		pageSize = $bindable(),
+		page = $bindable(1),
+		pageSizeOptions = [10, 25, 50, 100],
+		itemName = 'items',
+		showRowsPerPage = true,
+		onPageChange,
+		onPageSizeChange
 	}: Props = $props();
+
+	$effect(() => {
+		if (pageSize && rows.length > 0) {
+			const maxPage = Math.max(1, Math.ceil(rows.length / pageSize));
+			if (page > maxPage) {
+				page = 1;
+				onPageChange?.(1);
+			}
+		}
+	});
+
+	let displayedRows = $derived.by(() => {
+		if (!pageSize || pageSize <= 0) return rows;
+		const start = (page - 1) * pageSize;
+		return rows.slice(start, start + pageSize);
+	});
 </script>
 
 <!-- Kumo Table Container: LayerCard wrapper with smooth rounded corners & sticky preservation -->
@@ -69,7 +103,7 @@
 				</TableRow>
 			</TableHeader>
 			<TableBody class="divide-y divide-kumo-hairline">
-				{#if rows.length === 0}
+				{#if displayedRows.length === 0}
 					<TableRow>
 						<TableCell
 							colspan={columns.length + (actions ? 1 : 0)}
@@ -79,10 +113,15 @@
 						</TableCell>
 					</TableRow>
 				{:else}
-					{#each rows as row, i (keyExtractor(row))}
+					{#each displayedRows as row, i (keyExtractor(row))}
 						<TableRow
 							class={cn(
-								'transition-colors hover:bg-kumo-fill',
+								'transition-colors hover:bg-[var(--bg-table-row-hover)]',
+								striped
+									? i % 2 === 1
+										? 'bg-[var(--bg-table-row-alt)]'
+										: 'bg-[var(--bg-table-row)]'
+									: 'bg-[var(--bg-table-row)]',
 								onRowClick && 'cursor-pointer'
 							)}
 							onclick={() => onRowClick?.(row)}
@@ -123,4 +162,17 @@
 			</TableBody>
 		</Table>
 	</div>
+
+	{#if pageSize}
+		<TablePagination
+			bind:page
+			bind:pageSize
+			totalCount={rows.length}
+			{pageSizeOptions}
+			{itemName}
+			{showRowsPerPage}
+			onPageChange={(p) => onPageChange?.(p)}
+			onPageSizeChange={(s) => onPageSizeChange?.(s)}
+		/>
+	{/if}
 </LayerCard>

@@ -70,7 +70,7 @@
 		return cachedProjectGraph;
 	});
 
-	// ── Service Category Filtering (Dokploy & PaaS Standard) ──
+	// ── Service Category Filtering (PaaS Standard) ──
 	type ServiceCategory = 'all' | 'application' | 'quadlet' | 'compose' | 'database';
 	let selectedCategory = $state<ServiceCategory>('all');
 

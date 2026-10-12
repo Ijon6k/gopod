@@ -403,6 +403,7 @@ export class DataStore {
 						labels: rc.labels || {}
 					};
 				});
+				this.runtimeStore.ports = parseContainerPortMappings(this.runtimeStore.containers);
 			} else if (stats && Array.isArray(stats) && stats.length > 0) {
 				this.applyStatsUpdate(stats);
 			}
@@ -599,3 +600,52 @@ export class DataStore {
 }
 
 export const dataStore = new DataStore();
+
+export function parseContainerPortMappings(containers: Container[]): PortMapping[] {
+	const result: PortMapping[] = [];
+	for (const c of containers) {
+		if (!c.ports || c.ports === '—') continue;
+		const portItems = c.ports.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+		for (const item of portItems) {
+			const arrowMatch = item.match(/^(?:([0-9a-fA-F.:*]+):)?(\d+)\s*(?:->|:)\s*(\d+)(?:\/(\w+))?$/);
+			if (arrowMatch) {
+				const bindIp = arrowMatch[1] || '0.0.0.0';
+				const hostPort = parseInt(arrowMatch[2], 10);
+				const containerPort = parseInt(arrowMatch[3], 10);
+				const proto = (arrowMatch[4] || 'tcp').toLowerCase();
+				const isPublic = bindIp === '0.0.0.0' || bindIp === '::' || bindIp === '*' || bindIp === '[::]';
+				result.push({
+					id: `${c.id}-${hostPort}-${proto}`,
+					hostPort,
+					containerPort,
+					protocol: proto,
+					serviceId: c.serviceId || c.id,
+					serviceName: c.serviceName || c.projectName || c.name,
+					containerName: c.name,
+					bindAddress: bindIp,
+					isPublic,
+					status: c.status === 'running' ? 'listening' : 'idle'
+				});
+			} else {
+				const exposeMatch = item.match(/^(\d+)(?:\/(\w+))?$/);
+				if (exposeMatch) {
+					const containerPort = parseInt(exposeMatch[1], 10);
+					const proto = (exposeMatch[2] || 'tcp').toLowerCase();
+					result.push({
+						id: `${c.id}-${containerPort}-${proto}`,
+						hostPort: containerPort,
+						containerPort: containerPort,
+						protocol: proto,
+						serviceId: c.serviceId || c.id,
+						serviceName: c.serviceName || c.projectName || c.name,
+						containerName: c.name,
+						bindAddress: 'Internal network',
+						isPublic: false,
+						status: c.status === 'running' ? 'listening' : 'idle'
+					});
+				}
+			}
+		}
+	}
+	return result;
+}

@@ -32,6 +32,11 @@ export const runtimeApi = {
 			return res.data;
 		},
 
+		async prune(): Promise<{ message: string }> {
+			const res = await apiClient.post<{ message: string }>('/containers/prune');
+			return res.data;
+		},
+
 		async logs(id: string, tail = 100): Promise<ContainerLogsResponse> {
 			const res = await apiClient.get<ContainerLogsResponse>(`/containers/${id}/logs`, {
 				params: { tail }
@@ -52,6 +57,33 @@ export const runtimeApi = {
 	pods: {
 		async list(): Promise<Pod[]> {
 			const res = await apiClient.get<Pod[]>('/pods');
+			return res.data;
+		},
+
+		async create(pod: { name: string; ports?: string[]; network?: string; labels?: Record<string, string> }): Promise<{ id: string; name: string }> {
+			const res = await apiClient.post<{ id: string; name: string }>('/pods', pod);
+			return res.data;
+		},
+
+		async start(id: string): Promise<{ status: string; id: string }> {
+			const res = await apiClient.post<{ status: string; id: string }>(`/pods/${id}/start`);
+			return res.data;
+		},
+
+		async stop(id: string): Promise<{ status: string; id: string }> {
+			const res = await apiClient.post<{ status: string; id: string }>(`/pods/${id}/stop`);
+			return res.data;
+		},
+
+		async restart(id: string): Promise<{ status: string; id: string }> {
+			const res = await apiClient.post<{ status: string; id: string }>(`/pods/${id}/restart`);
+			return res.data;
+		},
+
+		async delete(id: string, force = false): Promise<{ status: string; id: string }> {
+			const res = await apiClient.delete<{ status: string; id: string }>(`/pods/${id}`, {
+				params: { force }
+			});
 			return res.data;
 		}
 	},

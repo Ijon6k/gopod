@@ -208,7 +208,7 @@
 		</div>
 	</section>
 
-	<!-- 2. Automated Backup Schedules (Dokploy Parity) -->
+	<!-- 2. Automated Backup Schedules -->
 	<section class="flex flex-col gap-3">
 		<div class="flex items-center gap-2">
 			<CalendarCheck size={16} class="text-[var(--accent)]" />

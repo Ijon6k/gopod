@@ -188,11 +188,6 @@
 						>
 							PIDs
 						</TableHead>
-						<TableHead
-							class="sticky top-0 z-20 w-24 bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
-						>
-							Uptime
-						</TableHead>
 					</TableRow>
 				</TableHeader>
 				<TableBody class="divide-y divide-kumo-hairline">
@@ -267,43 +262,22 @@
 							<StatusBadge status={c.status} size="sm" />
 						</TableCell>
 
-						<!-- CPU Metric + Linear Progress Bar -->
+						<!-- CPU Metric (numerical only) -->
 						<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
-							<div class="flex items-center justify-end gap-2.5">
-								<div
-									class="hidden h-1 w-16 overflow-hidden rounded-full bg-[var(--bg-surface)] sm:block"
-								>
-									<div
-										class="h-full rounded-full transition-all duration-300 {getCpuColor(c.cpu)}"
-										style="width: {Math.min((c.cpu || 0) * 10, 100)}%;"
-									></div>
-								</div>
-								<span
-									class="min-w-[42px] font-mono text-[12px] font-semibold text-[var(--text-primary)] tabular-nums"
-								>
-									{(c.cpu || 0).toFixed(1)}%
-								</span>
-							</div>
+							<span
+								class="font-mono text-[12px] font-medium text-[var(--text-primary)] tabular-nums"
+							>
+								{(c.cpu || 0).toFixed(1)}%
+							</span>
 						</TableCell>
 
-						<!-- Memory Metric + Limit Sparkbar -->
+						<!-- Memory Metric (usage only) -->
 						<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
-							<div class="flex items-center justify-end gap-2.5">
-								<div
-									class="hidden h-1 w-16 overflow-hidden rounded-full bg-[var(--bg-surface)] sm:block"
-								>
-									<div
-										class="h-full rounded-full transition-all duration-300 {getMemColor(memPct)}"
-										style="width: {memPct}%;"
-									></div>
-								</div>
-								<span
-									class="font-mono text-[12px] font-medium text-[var(--text-secondary)] tabular-nums"
-								>
-									<strong class="font-semibold text-[var(--text-primary)]">{c.memory || 0}</strong>
-									/ {limit} MB
-								</span>
-							</div>
+							<span
+								class="font-mono text-[12px] font-medium text-[var(--text-primary)] tabular-nums"
+							>
+								{c.memory || 0} MB
+							</span>
 						</TableCell>
 
 						<!-- PIDs -->
@@ -311,13 +285,6 @@
 							class="px-3 py-2.5 text-center align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
 						>
 							{c.pids ?? (c.status === 'running' ? 1 : 0)}
-						</TableCell>
-
-						<!-- Uptime -->
-						<TableCell
-							class="px-4 py-2.5 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-tertiary)]"
-						>
-							{c.uptime || c.startedAt || 'Active'}
 						</TableCell>
 					</TableRow>
 				{/each}

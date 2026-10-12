@@ -95,9 +95,13 @@
 		if (!hostname.trim() || !selectedServiceId) return;
 		const svc = services.find((s) => s.id === selectedServiceId);
 
+		let cleanHost = hostname.trim().toLowerCase();
+		cleanHost = cleanHost.replace(/^https?:\/\//, '');
+		cleanHost = cleanHost.replace(/:\d+$/, '');
+
 		const updated: Domain = {
 			id: domain?.id || `d-${Date.now()}`,
-			hostname: hostname.trim().toLowerCase(),
+			hostname: cleanHost,
 			projectId: svc?.projectId || 'aerochat',
 			serviceId: selectedServiceId,
 			serviceName: svc?.name || 'web',

@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { onMount } from 'svelte';
 	import { cn } from '$lib/utils/cn';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -7,7 +8,8 @@
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { DropdownMenu } from 'kumo-svelte';
-	import { Kbd, InputGroup, InputGroupAddon, InputGroupInput } from '$lib/components/ui';
+	import { Kbd } from '$lib/components/ui';
+	import CommandPaletteModal from './CommandPaletteModal.svelte';
 	import {
 		MagnifyingGlass,
 		Plus,
@@ -18,13 +20,17 @@
 		SignOut
 	} from 'phosphor-svelte';
 
-	let search = $state('');
-	let searchInputEl = $state<HTMLInputElement | null>(null);
+	let openCommandPalette = $state(false);
+	let isMac = $state(false);
+
+	onMount(() => {
+		isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent || navigator.platform || '');
+	});
 
 	function handleKeydown(e: KeyboardEvent) {
-		if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+		if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
 			e.preventDefault();
-			searchInputEl?.focus();
+			openCommandPalette = true;
 		}
 	}
 
@@ -187,22 +193,22 @@
 			<span class="text-[var(--text-muted)]">v{podmanVersion}</span>
 		</div>
 
-		<!-- Quick Search (Cmd+K) using Kumo InputGroup -->
-		<div class="w-[120px] sm:w-[160px] md:w-[200px]">
-			<InputGroup size="sm" class="h-7">
-				<InputGroupAddon>
-					<MagnifyingGlass size={13} class="text-kumo-subtle" />
-				</InputGroupAddon>
-				<InputGroupInput
-					bind:value={search}
-					placeholder="Search…"
-					class="text-xs"
-				/>
-				<InputGroupAddon class="hidden sm:inline-flex">
-					<Kbd class="text-[10px]">⌘K</Kbd>
-				</InputGroupAddon>
-			</InputGroup>
-		</div>
+		<!-- Unified Search Bar & Command Palette Trigger (Cmd+K / Ctrl+K) -->
+		<button
+			type="button"
+			onclick={() => (openCommandPalette = true)}
+			title="Search GOPOD ({isMac ? '⌘K' : 'Ctrl K'})"
+			aria-label="Search GOPOD"
+			class="group flex h-7.5 w-[130px] cursor-pointer items-center justify-between rounded-md border border-kumo-line bg-kumo-control px-2.5 text-xs text-kumo-subtle shadow-xs transition-colors hover:border-kumo-focus hover:bg-kumo-base hover:text-kumo-default sm:w-[170px] md:w-[210px]"
+		>
+			<div class="flex items-center gap-2 truncate">
+				<MagnifyingGlass size={13} class="shrink-0 text-kumo-muted transition-colors group-hover:text-kumo-default" />
+				<span class="truncate text-xs font-normal">Search…</span>
+			</div>
+			<Kbd class="shrink-0 border-kumo-hairline bg-kumo-recessed text-[10px] text-kumo-subtle transition-colors group-hover:border-kumo-line group-hover:text-kumo-default">
+				{isMac ? '⌘K' : 'Ctrl K'}
+			</Kbd>
+		</button>
 
 		<!-- Theme Toggle Button -->
 		<button
@@ -265,3 +271,5 @@
 		</DropdownMenu>
 	</div>
 </header>
+
+<CommandPaletteModal bind:open={openCommandPalette} />

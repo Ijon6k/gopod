@@ -299,12 +299,6 @@
 								{/if}
 							</div>
 						</TableHead>
-
-						<TableHead
-							class="sticky top-0 z-20 w-28 bg-kumo-base px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
-						>
-							Uptime
-						</TableHead>
 					</TableRow>
 				</TableHeader>
 
@@ -314,7 +308,7 @@
 					{#if projectTree.length === 0}
 						<tr>
 							<td
-								colspan="7"
+								colspan="6"
 								class="px-4 py-8 text-center font-mono text-xs text-[var(--text-tertiary)]"
 							>
 								No processes or workloads match the current filters.
@@ -386,12 +380,6 @@
 
 								<td
 									class="px-3.5 py-2 text-center align-middle font-mono text-xs whitespace-nowrap text-[var(--text-secondary)]"
-								>
-									—
-								</td>
-
-								<td
-									class="px-3.5 py-2 text-right align-middle font-mono text-xs whitespace-nowrap text-[var(--text-secondary)]"
 								>
 									—
 								</td>
@@ -468,12 +456,6 @@
 										>
 											{sNode.totalPids || '—'}
 										</td>
-
-										<td
-											class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
-										>
-											Active
-										</td>
 									</tr>
 
 									<!-- LEVEL 3: CONTAINER ROWS -->
@@ -497,7 +479,7 @@
 					{#if filteredContainers.length === 0}
 						<tr>
 							<td
-								colspan="7"
+								colspan="6"
 								class="px-4 py-8 text-center font-mono text-xs text-[var(--text-tertiary)]"
 							>
 								No containers found.

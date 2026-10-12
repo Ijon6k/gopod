@@ -308,7 +308,7 @@
 			: className
 	)}
 >
-	<!-- Top Controls Toolbar (Dokploy Parity & Theme Aware) -->
+	<!-- Top Controls Toolbar (Theme Aware) -->
 	<div
 		class="flex flex-col justify-between gap-3 border-b border-[var(--border-subtle)] pb-2 sm:flex-row sm:items-center"
 	>
@@ -347,7 +347,7 @@
 				</div>
 			{/if}
 
-			<!-- Shell Switcher (sh vs bash, exactly like Dokploy) -->
+			<!-- Shell Switcher (sh vs bash) -->
 			<div
 				class="flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
 			>

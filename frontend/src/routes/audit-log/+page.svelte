@@ -87,6 +87,8 @@
 			]}
 			rows={filteredLogs}
 			keyExtractor={(d) => d.id}
+			pageSize={10}
+			itemName="events"
 		/>
 	{/if}
 </div>

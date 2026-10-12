@@ -11,17 +11,20 @@
 
 ---
 
-## ✨ Why GOPOD?
+## 💡 Inspiration & Philosophy
 
-Most self-hosted PaaS solutions (such as Coolify or Dokploy) rely strictly on the rootful Docker daemon (`/var/run/docker.sock`), bringing along daemon SPOFs (single point of failure) and security concerns.
+GOPOD was born out of deep appreciation and inspiration from modern self-hosted platforms like **Dokploy**, combined with the aesthetic, high-density dashboard craftsmanship of **Cloudflare's design system (Kumo)**.
 
-**GOPOD** was built from the ground up to leverage the modern Linux container ecosystem:
+Existing self-hosted PaaS solutions rely strictly on the rootful Docker daemon (`/var/run/docker.sock`), which brings along daemon SPOFs (single point of failure), root privileges, and high idle memory footprints that quickly saturate budget VPS instances (1GB–2GB RAM). Furthermore, none provided first-class support for native Podman features.
+
+**GOPOD** was created to bridge this gap:
+- **Inspired by Proven Workloads**: Taking the best, most essential developer workflows from platforms we've used and loved, distilled down into a focused, high-performance core for this phase.
+- **Ultra-Low Memory Footprint**: Built with a single Go binary, embedded SQLite, Caddy 2, and SvelteKit 5—idling at **<100MB RAM total**, making it effortless to run on small, economical VPS servers.
 - **Rootless by Default**: Interacts directly with rootless Podman user sockets (`/run/user/$UID/podman/podman.sock`). No root daemon privileges required.
 - **First-Class Podman Pods**: Group related containers into real Podman pods sharing network namespaces and localhost loopbacks.
 - **Native Systemd Quadlet**: Deploy declarative `.container` and `.pod` units managed directly by `systemd --user` for rock-solid service supervision and auto-restart on host boot.
 - **Zero-Touch Ingress with Caddy**: Dynamic Let's Encrypt TLS certificates, automated reverse proxying on `gopod-net`, and WebSocket passthrough without manual Nginx reloads.
 - **Multi-Workload Parity**: Full support for Container Images, Git repositories (Dockerfile), Docker Compose, Kubernetes manifests (`podman kube play`), and Systemd Quadlets.
-- **Clean & Modular Architecture**: Lightweight Go backend with embedded SQLite (`modernc.org/sqlite`) and a high-performance SvelteKit 5 interface.
 
 ---
 
@@ -58,7 +61,7 @@ graph TD
 | **Systemd Quadlet Supervised** | Generates native systemd service units for containers with systemd reliability. |
 | **Podman Pods** | Co-locate microservices and databases inside shared network pods (`localhost:port`). |
 | **Caddy 2 Dynamic Ingress** | Automatic Let's Encrypt SSL/TLS, custom domain routing, and instant zero-downtime updates. |
-| **Dokploy & PaaS Parity** | Fresh volumes rollout, instant rebuild, stop/start container lifecycle, and branch autodeploy. |
+| **Modern PaaS Lifecycle** | Fresh volumes rollout, instant rebuild, stop/start container lifecycle, and branch autodeploy. |
 | **Live Telemetry & Logs** | Streaming container logs via WebSockets and real-time CPU/Memory charts. |
 | **Web Terminal Console** | Interactive exec terminal into any running container right in the browser. |
 | **Centralized Credentials** | Reusable Git SSH deploy keys and private container registry authentication. |
@@ -121,29 +124,91 @@ gopod/
 
 ---
 
-## 🛠️ Development
+## 🛠️ Local Development (Hot Reload, No Containers Needed)
 
-### Backend (Go)
+You do **not** need to rebuild containers or wait for `podman compose` during day-to-day development. You can run the Frontend (Vite HMR) and Backend (Go) directly on your host machine for instantaneous (<50ms) feedback.
+
+### 1. Prerequisites
+Ensure your local rootless Podman user socket is running:
+```bash
+# Enable rootless podman socket (one-time setup)
+systemctl --user enable --now podman.socket
+
+# Verify socket exists
+ls -l /run/user/$UID/podman/podman.sock
+```
+
+---
+
+### 2. Terminal 1: Backend (Go API)
+
+The backend connects directly to your host's rootless Podman socket (`/run/user/$UID/podman/podman.sock`) and automatically uses the shared `./data/gopod.db` database.
+
+#### Option A: Direct Go Run
 ```bash
 cd backend
-go run ./cmd/server
+PORT=8000 go run ./cmd/server
 ```
 
-### Frontend (Bun + SvelteKit)
+#### Option B: Hot Reload with [Air](https://github.com/air-verse/air) (Auto-restarts on code save)
 ```bash
-cd frontend
-bun install
-bun run dev
+# 1. Install Air tool (one-time)
+go install github.com/air-verse/air@latest
+
+# 2. Run with Air (uses backend/.air.toml)
+cd backend
+air
 ```
 
-### Build & Validate
-```bash
-# Frontend build
-cd frontend
-bun run build
+Backend will be available on **`http://localhost:8000`**.
 
-# Run ESLint
-bun x eslint .
+---
+
+### 3. Terminal 2: Frontend (SvelteKit + Vite HMR)
+
+Vite is preconfigured with an automatic reverse proxy in `frontend/vite.config.ts` that forwards all `/api/*` and WebSocket connections directly to `http://localhost:8000`.
+
+```bash
+cd frontend
+npm install # or bun install
+npm run dev # or bun run dev
+```
+
+* Open your browser at **`http://localhost:5173`**.
+* Every edit to `.svelte`, `.css`, or `.ts` files updates **instantly** (<50ms) via Hot Module Replacement without page reload and without touching any container!
+
+---
+
+### 4. Supporting Infrastructure: Caddy Reverse Proxy (Optional)
+
+If you are developing or testing ingress routing, domain SSL, and access log streaming, leave Caddy running in the background:
+```bash
+# Start only the Caddy reverse proxy in background
+podman compose -f compose.dev.yml up -d caddy
+```
+Caddy exposes its Admin API on `127.0.0.1:2019`, so your local Go backend running via `air` or `go run` can seamlessly sync Caddyfiles and read live access logs from `./caddy/logs/access.log`.
+
+---
+
+### 4. Full-Stack Container Testing (Optional)
+
+When you want to validate Caddy reverse proxy integration, production builds, or multi-container parity:
+```bash
+podman compose -f compose.dev.yml up -d --build
+```
+Access at `http://localhost:8085` or via Caddy at `http://localhost:8080`.
+
+---
+
+### 5. Type-Check & Production Build Validation
+```bash
+cd frontend
+
+# Run Svelte and TypeScript checks
+npm run check
+
+# Verify production static build
+npm run build
 ```
 
 ---

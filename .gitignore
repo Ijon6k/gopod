@@ -10,7 +10,8 @@ Thumbs.db
 logs/
 tmp/
 *.tmp
-/data/
+data/
+backend/data/
 caddy/data/
 caddy/config/
 caddy/logs/

@@ -17,6 +17,7 @@ services:
     volumes:
       - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:z"
       - "./data:/app/data:Z"
+      - "./caddy/logs:/var/log/caddy:Z"
       - "${HOME}/.config/containers/systemd:/root/.config/containers/systemd:z"
     networks:
       - gopod-net
@@ -30,6 +31,7 @@ services:
     ports:
       - "${HTTP_PORT:-8080}:80"
       - "${HTTPS_PORT:-8443}:443"
+      - "127.0.0.1:2019:2019"
     environment:
       - CADDY_INGRESS_NETWORK=gopod-net
     volumes:

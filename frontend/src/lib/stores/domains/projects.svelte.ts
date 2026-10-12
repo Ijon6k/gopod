@@ -298,6 +298,34 @@ export class ProjectsDomainStore {
 		}
 	}
 
+	async demoteQuadlet(serviceId: string): Promise<Service> {
+		const res = await api.services.demoteQuadlet(serviceId);
+		const idx = this.services.findIndex((s) => s.id === serviceId);
+		if (idx >= 0 && res) {
+			this.services[idx] = res;
+		}
+		return res;
+	}
+
+	async groupIntoPod(
+		serviceId: string,
+		podName: string,
+		createPod = true,
+		ports?: string[]
+	): Promise<Service> {
+		const res = await api.services.groupIntoPod(serviceId, {
+			podName,
+			createPod,
+			ports
+		});
+		const idx = this.services.findIndex((s) => s.id === serviceId);
+		if (idx >= 0 && res) {
+			this.services[idx] = res;
+		}
+		await this.fetchProjectsData();
+		return res;
+	}
+
 	addDomain(domain: Domain) {
 		this.domains.unshift(domain);
 		api.domains.create(domain).catch((err) => console.warn('Failed to sync domain:', err));

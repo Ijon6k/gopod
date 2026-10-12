@@ -479,6 +479,45 @@ button:focus-visible {
 	stroke-width: 2;
 }
 
+/* Svelte Flow Stacking Order: Edges strictly render underneath nodes & cards */
+.svelte-flow__edges {
+	z-index: 1 !important;
+}
+
+.svelte-flow__edge-wrapper {
+	z-index: 1 !important;
+}
+
+.svelte-flow__edge-labels {
+	z-index: 2 !important;
+}
+
+.svelte-flow__nodes {
+	z-index: 5 !important;
+}
+
+/* Parent group cards stay at z-index 2-3 so they never obscure children (z-index 10-20) */
+.svelte-flow__node.parent,
+.svelte-flow__node-gopodGroup {
+	z-index: 2 !important;
+}
+
+.svelte-flow__node.parent.selected,
+.svelte-flow__node-gopodGroup.selected {
+	z-index: 3 !important;
+}
+
+/* Child and leaf nodes stay on top of parent group card surfaces */
+.svelte-flow__node:not(.parent):not(.svelte-flow__node-gopodGroup),
+.svelte-flow__node-gopodNode {
+	z-index: 10 !important;
+}
+
+.svelte-flow__node:not(.parent):not(.svelte-flow__node-gopodGroup).selected,
+.svelte-flow__node-gopodNode.selected {
+	z-index: 20 !important;
+}
+
 .svelte-flow__controls {
 	border-radius: var(--radius-card);
 	border: 1px solid var(--border);

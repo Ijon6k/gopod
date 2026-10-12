@@ -229,6 +229,14 @@ export class DataStore {
 	restartService(serviceId: string) {
 		return this.projectsStore.restartService(serviceId);
 	}
+
+	demoteQuadlet(serviceId: string) {
+		return this.projectsStore.demoteQuadlet(serviceId);
+	}
+
+	groupIntoPod(serviceId: string, podName: string, createPod = true, ports?: string[]) {
+		return this.projectsStore.groupIntoPod(serviceId, podName, createPod, ports);
+	}
 	addDomain(domain: Domain) {
 		this.projectsStore.addDomain(domain);
 	}

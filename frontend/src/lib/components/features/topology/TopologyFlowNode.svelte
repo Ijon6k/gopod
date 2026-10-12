@@ -13,7 +13,9 @@
 		Cloud,
 		Database,
 		FileText,
-		Stack
+		Stack,
+		Plugs,
+		ArrowsLeftRight
 	} from 'phosphor-svelte';
 
 	let { data, selected }: NodeProps = $props();
@@ -80,9 +82,9 @@
 	});
 
 	// Flow connectivity rules:
-	// - Internet has NO target handle (traffic originates here)
+	// - Internet and Entrypoint Ports have NO target handle (traffic originates here)
 	// - Storage/Volume and Network leaf nodes have NO outgoing source handle
-	let hasTargetHandle = $derived(node.type !== 'internet');
+	let hasTargetHandle = $derived(node.type !== 'internet' && node.type !== 'port');
 	let hasSourceHandle = $derived(node.type !== 'volume' && node.type !== 'network');
 </script>
 
@@ -99,7 +101,7 @@
 <div
 	style="width: {node.width}px; height: {node.height}px;"
 	class={cn(
-		'cursor-pointer rounded-[var(--radius-sm)] px-3 py-2 transition-all duration-150 select-none',
+		'cursor-pointer rounded-[var(--radius-sm)] px-3.5 py-2.5 transition-all duration-150 select-none',
 		'flex flex-col justify-between border border-[var(--border-canvas-node)] bg-[var(--bg-canvas-node)] text-left shadow-xs',
 		'hover:translate-y-[-1px] hover:border-[var(--accent)] hover:bg-[var(--bg-canvas-node-hover)] hover:shadow-sm',
 		selected &&
@@ -126,8 +128,13 @@
 					<HardDrive size={14} class="text-[var(--text-tertiary)]" />
 				{:else if node.type === 'network'}
 					<ShareNetwork size={14} class="text-[var(--text-secondary)]" />
-				{:else if node.type === 'proxy'}
-					<ShieldCheck size={14} class="text-[var(--status-green)]" />
+				{:else if node.type === 'port'}
+					<Plugs
+						size={14}
+						class={node.title.startsWith('127.')
+							? 'text-[var(--status-blue)]'
+							: 'text-[var(--status-amber)]'}
+					/>
 				{:else}
 					<Cloud size={14} />
 				{/if}

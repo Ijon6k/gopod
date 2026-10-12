@@ -13,8 +13,8 @@
 	import { untrack } from 'svelte';
 	import type { TopologyGraph, TopologyNode, SelectedItem } from './types';
 	import TopologyFlowNode from './TopologyFlowNode.svelte';
+	import TopologyGroupNode from './TopologyGroupNode.svelte';
 	import TopologyFlowEdge from './TopologyFlowEdge.svelte';
-	import TopologyRegionComp from './TopologyRegion.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
 
 	interface Props {
@@ -46,14 +46,14 @@
 
 	// Registered Custom Node & Edge Types
 	const nodeTypes = {
-		gopodNode: TopologyFlowNode
+		gopodNode: TopologyFlowNode,
+		gopodGroup: TopologyGroupNode
 	};
 
 	const edgeTypes = {
 		gopodEdge: TopologyFlowEdge
 	};
 
-	let hoveredRegionId: string | null = $state(null);
 	let isProjectView = $derived(graph.nodes.some((n) => n.type === 'service'));
 
 	// Flow State
@@ -68,17 +68,29 @@
 		if (currentGraph !== lastGraphRef) {
 			lastGraphRef = currentGraph;
 			
-			// Compute nodes and edges on graph transition
-			flowNodes = currentGraph.nodes.map((n) => ({
-				id: n.id,
-				type: 'gopodNode',
-				position: { x: n.x, y: n.y },
-				data: { node: n },
-				selected: selectedItem?.kind === 'node' && selectedItem.item.id === n.id,
-				width: n.width,
-				height: n.height,
-				draggable: true
-			}));
+			// Compute nodes and edges on graph transition; parent groups MUST precede children
+			const sortedNodes = [...currentGraph.nodes].sort((a, b) => {
+				if (a.isGroup && !b.isGroup) return -1;
+				if (!a.isGroup && b.isGroup) return 1;
+				return 0;
+			});
+
+			flowNodes = sortedNodes.map((n) => {
+				const isGroup = n.isGroup || n.type === 'group';
+				return {
+					id: n.id,
+					type: isGroup ? 'gopodGroup' : 'gopodNode',
+					position: { x: n.x, y: n.y },
+					data: { node: n },
+					selected: selectedItem?.kind === 'node' && selectedItem.item.id === n.id,
+					width: n.width,
+					height: n.height,
+					draggable: true,
+					dragHandle: isGroup ? '.drag-handle' : undefined,
+					zIndex: isGroup ? (selectedItem?.kind === 'node' && selectedItem.item.id === n.id ? 3 : 2) : (selectedItem?.kind === 'node' && selectedItem.item.id === n.id ? 20 : 10),
+					...(n.parentId ? { parentId: n.parentId, extent: 'parent' as const } : {})
+				};
+			});
 
 			flowEdges = currentGraph.edges.map((e) => {
 				const targetNode = currentGraph.nodes.find((n) => n.id === e.targetId);
@@ -98,6 +110,7 @@
 					type: 'gopodEdge',
 					label: e.label,
 					animated: false,
+					zIndex: 0,
 					data: {
 						kind: e.kind || 'workload',
 						dashed: isStopped,
@@ -111,6 +124,11 @@
 					}
 				};
 			});
+
+			// Automatically fit and center graph in the middle of the viewport
+			setTimeout(() => {
+				flowFitView({ padding: 0.15, duration: 250 });
+			}, 60);
 		}
 	});
 
@@ -123,6 +141,8 @@
 				const shouldBeSelected = node.id === targetId;
 				if (node.selected !== shouldBeSelected) {
 					node.selected = shouldBeSelected;
+					const isGroup = node.type === 'gopodGroup';
+					node.zIndex = isGroup ? (shouldBeSelected ? 3 : 2) : (shouldBeSelected ? 20 : 10);
 					updated = true;
 				}
 			}
@@ -180,6 +200,12 @@
 		fitViewOptions={{ padding: 0.15 }}
 		minZoom={0.2}
 		maxZoom={2.5}
+		zIndexMode="manual"
+		elevateEdgesOnSelect={false}
+		elevateNodesOnSelect={false}
+		oninit={() => {
+			setTimeout(() => flowFitView({ padding: 0.15 }), 60);
+		}}
 		onnodeclick={handleNodeClick}
 		onpaneclick={handlePaneClick}
 		proOptions={{ hideAttribution: true }}
@@ -214,24 +240,24 @@
 					<span
 						class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)]/95 px-2.5 py-1 text-[var(--text-secondary)] shadow-sm backdrop-blur-xs"
 					>
-						<span class="h-2 w-2 rounded-full bg-[var(--text-tertiary)]"></span>
-						<span>1. Ingress & entrypoint</span>
+						<span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span>
+						<span>1. Public domains</span>
 					</span>
 				</div>
 				<div
 					class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-medium whitespace-nowrap select-none"
-					style="transform: translate3d(360px, 48px, 0);"
+					style="transform: translate3d(330px, 48px, 0);"
 				>
 					<span
 						class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)]/95 px-2.5 py-1 text-[var(--text-secondary)] shadow-sm backdrop-blur-xs"
 					>
-						<span class="h-2 w-2 rounded-full bg-[var(--accent)]"></span>
-						<span>2. Caddy ingress gateway</span>
+						<span class="h-2 w-2 rounded-full bg-[var(--status-green)]"></span>
+						<span>2. Gateway & direct ports</span>
 					</span>
 				</div>
 				<div
 					class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-medium whitespace-nowrap select-none"
-					style="transform: translate3d(660px, 48px, 0);"
+					style="transform: translate3d(590px, 48px, 0);"
 				>
 					<span
 						class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)]/95 px-2.5 py-1 text-[var(--text-secondary)] shadow-sm backdrop-blur-xs"
@@ -240,43 +266,22 @@
 						<span>3. Services & stacks</span>
 					</span>
 				</div>
-				<div
-					class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-medium whitespace-nowrap select-none"
-					style="transform: translate3d(980px, 48px, 0);"
-				>
-					<span
-						class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)]/95 px-2.5 py-1 text-[var(--text-secondary)] shadow-sm backdrop-blur-xs"
-					>
-						<span class="h-2 w-2 rounded-full bg-[var(--status-green)]"></span>
-						<span>4. Runtime workloads</span>
-					</span>
-				</div>
 				{#if graph.nodes.some((n) => n.type === 'volume' || n.type === 'network')}
 					<div
 						class="pointer-events-none absolute top-0 left-0 text-xs font-[var(--font-sans)] font-medium whitespace-nowrap select-none"
-						style="transform: translate3d(1300px, 48px, 0);"
+						style="transform: translate3d(990px, 48px, 0);"
 					>
 						<span
 							class="inline-flex items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-panel)]/95 px-2.5 py-1 text-[var(--text-secondary)] shadow-sm backdrop-blur-xs"
 						>
 							<span class="h-2 w-2 rounded-full bg-[var(--status-amber)]"></span>
-							<span>5. Storage & volumes</span>
+							<span>4. Storage & volumes</span>
 						</span>
 					</div>
 				{/if}
 			{/if}
 
-			<!-- Territory Regions (Pod runtime groupings) -->
-			{#each graph.regions as region (region.id)}
-				<TopologyRegionComp
-					{region}
-					isSelected={selectedItem?.kind === 'region' && selectedItem.item.id === region.id}
-					isHovered={hoveredRegionId === region.id}
-					onclick={() => onselect({ kind: 'region', item: region })}
-					onmouseenter={() => (hoveredRegionId = region.id)}
-					onmouseleave={() => (hoveredRegionId = null)}
-				/>
-			{/each}
+			<!-- Territory Groups are rendered as native Svelte Flow Group Nodes -->
 		</ViewportPortal>
 	</SvelteFlow>
 </div>

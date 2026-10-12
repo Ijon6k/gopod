@@ -147,3 +147,20 @@ export interface DeployResponse {
 	containerName: string;
 	deployedAt: string;
 }
+
+export interface JournalResponse {
+	serviceId: string;
+	journal: string;
+}
+
+export interface QuadletValidationResponse {
+	valid: boolean;
+	output: string;
+	error?: string;
+}
+
+export interface GroupPodRequest {
+	podName: string;
+	createPod?: boolean;
+	ports?: string[];
+}

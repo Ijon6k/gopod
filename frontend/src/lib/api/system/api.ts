@@ -1,5 +1,10 @@
 import apiClient from '../client';
-import type { SystemInfoResponse, ContainerStatResponse, SystemDiskUsage } from './types';
+import type {
+	SystemInfoResponse,
+	ContainerStatResponse,
+	SystemDiskUsage,
+	SystemLingerResponse
+} from './types';
 
 export const systemApi = {
 	async health(): Promise<{ status: string; timestamp: string; socket: string }> {
@@ -9,6 +14,16 @@ export const systemApi = {
 
 	async info(): Promise<SystemInfoResponse> {
 		const res = await apiClient.get<SystemInfoResponse>('/system');
+		return res.data;
+	},
+
+	async linger(): Promise<SystemLingerResponse> {
+		const res = await apiClient.get<SystemLingerResponse>('/system/linger');
+		return res.data;
+	},
+
+	async getLinger(): Promise<SystemLingerResponse> {
+		const res = await apiClient.get<SystemLingerResponse>('/system/linger');
 		return res.data;
 	},
 

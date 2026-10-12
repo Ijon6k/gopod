@@ -81,3 +81,8 @@ export interface SystemDiskUsage {
 	size: string;
 	reclaimable: string;
 }
+
+export interface SystemLingerResponse {
+	linger: boolean;
+	user: string;
+}

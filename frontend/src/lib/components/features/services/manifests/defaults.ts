@@ -3,14 +3,17 @@ export function getDefaultQuadletConfig(service: {
 	image?: string;
 	port?: number;
 }): string {
+	const portLine =
+		service.port && service.port > 0 ? `PublishPort=${service.port}:${service.port}\n` : '';
 	return `[Unit]
 Description=${service.name} Quadlet Service
 After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Container]
 Image=${service.image || 'docker.io/library/nginx:alpine'}
-PublishPort=${service.port || 8080}:80
-AutoUpdate=registry
+${portLine}AutoUpdate=registry
 
 [Service]
 Restart=always

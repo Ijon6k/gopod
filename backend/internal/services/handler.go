@@ -3,7 +3,9 @@ package services
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"gopod/internal/auth"
@@ -44,6 +46,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Public CI/CD webhook endpoint (authenticated via unguessable webhook token)
 	mux.HandleFunc("POST /api/deploy/webhook/{token}", h.handleWebhook)
+
+	// Observability & Quadlet promotion
+	mux.HandleFunc("GET /api/services/{id}/journal", h.middleware.RequireAuth(h.handleGetJournal))
+	mux.HandleFunc("POST /api/services/{id}/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadlet))
+	mux.HandleFunc("POST /api/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadletGlobal))
+	mux.HandleFunc("POST /api/services/{id}/quadlet/demote", h.middleware.RequireAuth(h.handleDemoteQuadlet))
+	mux.HandleFunc("POST /api/services/{id}/group-pod", h.middleware.RequireAuth(h.handleGroupIntoPod))
+	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAuth(h.handleGetLinger))
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
@@ -298,5 +308,111 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, svc)
+}
+
+func (h *Handler) handleGetJournal(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	lines := 100
+	if lStr := r.URL.Query().Get("lines"); lStr != "" {
+		if val, err := strconv.Atoi(lStr); err == nil && val > 0 {
+			lines = val
+		}
+	}
+	out, err := h.service.GetServiceJournal(r.Context(), id, lines)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"serviceId": id,
+		"journal":   out,
+	})
+}
+
+func (h *Handler) handleValidateQuadlet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Content string            `json:"content"`
+		Files   map[string]string `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+		return
+	}
+
+	content := req.Content
+	if content == "" && len(req.Files) == 0 {
+		svc, err := h.service.GetService(r.Context(), id)
+		if err == nil && svc != nil {
+			content = svc.QuadletConfig
+		}
+	}
+
+	valid, out, err := h.service.ValidateQuadlet(r.Context(), content, req.Files)
+	resp := map[string]interface{}{
+		"valid":  valid,
+		"output": out,
+	}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) handleValidateQuadletGlobal(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Content string            `json:"content"`
+		Files   map[string]string `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+		return
+	}
+	valid, out, err := h.service.ValidateQuadlet(r.Context(), req.Content, req.Files)
+	resp := map[string]interface{}{
+		"valid":  valid,
+		"output": out,
+	}
+	if err != nil {
+		resp["error"] = err.Error()
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) handleDemoteQuadlet(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	svc, err := h.service.DemoteQuadlet(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, svc)
+}
+
+func (h *Handler) handleGroupIntoPod(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		PodName   string   `json:"podName"`
+		CreatePod bool     `json:"createPod"`
+		Ports     []string `json:"ports"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+		return
+	}
+	svc, err := h.service.GroupIntoPod(r.Context(), id, req.PodName, req.CreatePod, req.Ports)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, svc)
+}
+
+func (h *Handler) handleGetLinger(w http.ResponseWriter, r *http.Request) {
+	enabled, user := CheckSystemdLinger()
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"linger": enabled,
+		"user":   user,
+	})
 }
 

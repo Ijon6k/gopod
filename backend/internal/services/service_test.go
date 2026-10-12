@@ -263,3 +263,121 @@ WantedBy=default.target`
 		t.Errorf("expected RestartPolicy always, got %s", parsed.RestartPolicy)
 	}
 }
+
+func TestValidateContainerImage(t *testing.T) {
+	validImages := []string{
+		"alpine:latest",
+		"docker.io/library/nginx:alpine",
+		"ghcr.io/org/app:v1.0",
+		"postgres:16-alpine",
+		"archlinux:latest",
+	}
+	for _, img := range validImages {
+		if err := ValidateContainerImage(img); err != nil {
+			t.Errorf("expected valid image %q, got error: %v", img, err)
+		}
+	}
+
+	invalidImages := []string{
+		"",
+		"   ",
+		"docker-compose.yaml",
+		"compose.yml",
+		"/tmp/something.yaml",
+		"./relative/path.yml",
+	}
+	for _, img := range invalidImages {
+		if err := ValidateContainerImage(img); err == nil {
+			t.Errorf("expected error for invalid image %q, got nil", img)
+		}
+	}
+}
+
+func TestSplitQuadletUnits(t *testing.T) {
+	single := `[Unit]
+Description=Single Unit
+[Container]
+Image=alpine:latest`
+	units := SplitQuadletUnits(single, "test")
+	if len(units) != 1 || units["test.container"] == "" {
+		t.Fatalf("expected single test.container, got %+v", units)
+	}
+
+	multi := `# File: my-pod.pod
+[Unit]
+Description=My Pod
+[Pod]
+PodName=my-pod
+---
+# File: my-app.container
+[Unit]
+Description=My App
+[Container]
+Image=nginx:alpine
+Pod=my-pod.pod`
+	units = SplitQuadletUnits(multi, "my-app")
+	if len(units) != 2 {
+		t.Fatalf("expected 2 units, got %d", len(units))
+	}
+	if units["my-pod.pod"] == "" {
+		t.Errorf("missing my-pod.pod in parsed units: %+v", units)
+	}
+	if units["my-app.container"] == "" {
+		t.Errorf("missing my-app.container in parsed units: %+v", units)
+	}
+}
+
+func TestAntiLoopGuardsInPrepareQuadlet(t *testing.T) {
+	d := &Deployer{dataDir: t.TempDir()}
+	s := Service{
+		ID:        "svc-guard-test",
+		ProjectID: "proj-1",
+		Name:      "guarded-app",
+		Image:     "docker.io/library/alpine:latest",
+	}
+	content := d.prepareQuadletContent(s, "guarded-app")
+	if !strings.Contains(content, "StartLimitIntervalSec=60s") {
+		t.Errorf("expected StartLimitIntervalSec=60s in quadlet unit:\n%s", content)
+	}
+	if !strings.Contains(content, "StartLimitBurst=5") {
+		t.Errorf("expected StartLimitBurst=5 in quadlet unit:\n%s", content)
+	}
+}
+
+func TestValidateQuadletDryRun(t *testing.T) {
+	validUnit := `[Unit]
+Description=DryRun Test Service
+After=network-online.target
+
+[Container]
+ContainerName=dryrun-test
+Image=docker.io/library/alpine:latest
+Exec=sleep 100
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target`
+
+	valid, out, err := ValidateQuadletFiles(map[string]string{
+		"dryrun-test.container": validUnit,
+	})
+	if !valid || err != nil {
+		t.Fatalf("expected valid dryrun, valid=%v, err=%v, out=%s", valid, err, out)
+	}
+
+	invalidUnit := `[Unit]
+Description=Invalid Restart Directive
+[Container]
+ContainerName=bad
+Image=alpine:latest
+Restart=always`
+
+	valid, _, _ = ValidateQuadletFiles(map[string]string{
+		"bad.container": invalidUnit,
+	})
+	if valid {
+		t.Errorf("expected invalid unit due to Restart= in [Container]")
+	}
+}

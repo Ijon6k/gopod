@@ -177,11 +177,8 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 	var b strings.Builder
 
-	// In containerized setup or multi-interface, listen on 0.0.0.0:2019 so GOPOD can reload it
+	// In containerized setup or dev port-forwarding, listen on 0.0.0.0:2019 so GOPOD can reload it
 	adminListen := "0.0.0.0:2019"
-	if strings.Contains(r.adminURL, "127.0.0.1") || strings.Contains(r.adminURL, "localhost") {
-		adminListen = "127.0.0.1:2019"
-	}
 
 	// Caddy's internal log file path
 	caddyLogFile := "/var/log/caddy/access.log"

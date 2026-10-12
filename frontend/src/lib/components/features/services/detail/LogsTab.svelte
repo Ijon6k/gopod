@@ -13,6 +13,7 @@
 	let { service }: Props = $props();
 
 	let selectedContainer = $state<string>('all');
+	let logSource = $state<'container' | 'journal'>('container');
 	let searchQuery = $state('');
 	let selectedLevel = $state<'ALL' | 'INFO' | 'WARN' | 'ERROR'>('ALL');
 	let follow = $state(true);
@@ -80,10 +81,24 @@
 			const isoMatch = cleanLine.match(
 				/^(\d{4}-\d{2}-\d{2}[T\s]\d{2}:\d{2}:\d{2}(\.\d+)?Z?)\s*(.*)/
 			);
-			const time = isoMatch
-				? isoMatch[1].substring(11, 23)
-				: new Date().toISOString().substring(11, 23);
-			const text = isoMatch ? isoMatch[3] || cleanLine : cleanLine;
+			// Extract syslog timestamp (e.g. Oct 12 18:32:00 host unit[pid]: msg)
+			const syslogMatch = cleanLine.match(
+				/^([A-Z][a-z]{2}\s+\d+\s+\d{2}:\d{2}:\d{2})\s+([^\s]+)\s+([^:]+):\s*(.*)/
+			);
+
+			let time = '';
+			let text = cleanLine;
+
+			if (isoMatch) {
+				time = isoMatch[1].substring(11, 23);
+				text = isoMatch[3] || cleanLine;
+			} else if (syslogMatch) {
+				time = syslogMatch[1];
+				targetContainer = syslogMatch[3];
+				text = syslogMatch[4] || cleanLine;
+			} else {
+				time = new Date().toISOString().substring(11, 23);
+			}
 
 			return {
 				time,
@@ -111,7 +126,14 @@
 	async function fetchLogs() {
 		isLoading = true;
 		try {
-			if (selectedContainer !== 'all') {
+			if (logSource === 'journal') {
+				const res = await api.services.getJournal(service.id, 250);
+				rawLogsText = res?.journal || '';
+				if (!rawLogsText.trim()) {
+					rawLogsText = `[systemd] No journal entries recorded yet for ${service.name}.service`;
+				}
+				parsedLogs = parseLogLines(rawLogsText, `${service.name}.service`);
+			} else if (selectedContainer !== 'all') {
 				// Query specific target container
 				const target = selectedContainer;
 				const res = await api.runtime.containers.logs(target, 250);
@@ -195,25 +217,59 @@
 	<div
 		class="flex flex-col justify-between gap-3 border-b border-[var(--border)] pb-3 md:flex-row md:items-center"
 	>
-		<!-- Left: Container Selector & Filter Controls -->
+		<!-- Left: Source Selector, Container Selector & Filter Controls -->
 		<div class="flex flex-wrap items-center gap-2.5">
-			<!-- Container Selector Dropdown (Always visible for multi-container compose/pods, and single containers) -->
-			<div class="flex items-center gap-2">
-				<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
-				<div class="min-w-[180px]">
-					<Select
-						value={selectedContainer}
-						onValueChange={(val: any) => {
-							if (typeof val === 'string') {
-								selectedContainer = val;
-								fetchLogs();
-							}
-						}}
-						options={containerOptions}
-						size="sm"
-					/>
-				</div>
+			<!-- Dual Log Source Switcher -->
+			<div
+				class="inline-flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
+			>
+				<button
+					type="button"
+					onclick={() => {
+						logSource = 'container';
+						fetchLogs();
+					}}
+					class="cursor-pointer rounded border-0 px-2.5 py-1 font-mono text-[11px] transition-colors {logSource ===
+					'container'
+						? 'bg-[var(--bg-surface)] font-semibold text-[var(--text-primary)] shadow-xs'
+						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+				>
+					Container Output
+				</button>
+				<button
+					type="button"
+					onclick={() => {
+						logSource = 'journal';
+						fetchLogs();
+					}}
+					class="cursor-pointer rounded border-0 px-2.5 py-1 font-mono text-[11px] transition-colors {logSource ===
+					'journal'
+						? 'bg-[var(--bg-surface)] font-semibold text-[var(--text-primary)] shadow-xs'
+						: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+				>
+					Systemd Journal
+				</button>
 			</div>
+
+			<!-- Container Selector Dropdown (visible for Container Output) -->
+			{#if logSource === 'container'}
+				<div class="flex items-center gap-2">
+					<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
+					<div class="min-w-[180px]">
+						<Select
+							value={selectedContainer}
+							onValueChange={(val: any) => {
+								if (typeof val === 'string') {
+									selectedContainer = val;
+									fetchLogs();
+								}
+							}}
+							options={containerOptions}
+							size="sm"
+						/>
+					</div>
+				</div>
+			{/if}
 
 			<!-- Log Level Filter Pills -->
 			<div

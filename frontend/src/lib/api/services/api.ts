@@ -1,5 +1,12 @@
 import apiClient from '../client';
-import type { Service, Deployment, DeployResponse } from './types';
+import type {
+	Service,
+	Deployment,
+	DeployResponse,
+	JournalResponse,
+	QuadletValidationResponse,
+	GroupPodRequest
+} from './types';
 
 export const servicesApi = {
 	async list(projectId?: string): Promise<Service[]> {
@@ -98,6 +105,45 @@ export const servicesApi = {
 			es.onerror = () => es.close();
 		}
 		return () => es.close();
+	},
+
+	async getJournal(id: string, lines = 100): Promise<JournalResponse> {
+		const res = await apiClient.get<JournalResponse>(`/services/${id}/journal`, {
+			params: { lines }
+		});
+		return res.data;
+	},
+
+	async validateQuadlet(
+		id: string,
+		payload?: { content?: string; files?: Record<string, string> }
+	): Promise<QuadletValidationResponse> {
+		const res = await apiClient.post<QuadletValidationResponse>(
+			`/services/${id}/quadlet/validate`,
+			payload || {}
+		);
+		return res.data;
+	},
+
+	async validateQuadletGlobal(payload: {
+		content?: string;
+		files?: Record<string, string>;
+	}): Promise<QuadletValidationResponse> {
+		const res = await apiClient.post<QuadletValidationResponse>(
+			'/quadlet/validate',
+			payload
+		);
+		return res.data;
+	},
+
+	async demoteQuadlet(id: string): Promise<Service> {
+		const res = await apiClient.post<Service>(`/services/${id}/quadlet/demote`);
+		return res.data;
+	},
+
+	async groupIntoPod(id: string, data: GroupPodRequest): Promise<Service> {
+		const res = await apiClient.post<Service>(`/services/${id}/group-pod`, data);
+		return res.data;
 	}
 };
 

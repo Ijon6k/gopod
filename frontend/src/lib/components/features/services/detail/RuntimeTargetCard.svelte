@@ -46,7 +46,8 @@
 		}
 	});
 
-	function handleSave() {
+	async function handleSave() {
+		const wasQuadlet = service.runtimeTarget === 'quadlet' || service.type === 'quadlet';
 		service.runtimeTarget = runtimeTarget;
 		service.inPod = runtimeTarget === 'pod';
 		service.port = parseInt(targetPort, 10) || 3000;
@@ -101,7 +102,28 @@
 			service.advanced.resources.memoryLimit = parsedMem > 0 ? `${parsedMem}MB` : '0';
 		}
 
-		dataStore.updateService(service);
+		if (wasQuadlet && runtimeTarget !== 'quadlet') {
+			try {
+				await dataStore.demoteQuadlet(service.id);
+			} catch (err) {
+				console.warn('Demote quadlet during runtime target change:', err);
+			}
+		}
+
+		if (runtimeTarget === 'pod' && podName) {
+			try {
+				await dataStore.groupIntoPod(
+					service.id,
+					podName,
+					true,
+					service.hostPort ? [`${service.hostPort}:${service.port || 80}`] : undefined
+				);
+			} catch (err) {
+				console.warn('Group into pod during runtime save:', err);
+			}
+		}
+
+		await dataStore.updateService(service);
 		saveStatus = 'saved';
 		toast.add({
 			title: 'Runtime Config Saved',

@@ -129,6 +129,7 @@
 		target.runtimeTarget = 'pod';
 
 		try {
+			await dataStore.groupIntoPod(target.id, service.name, false);
 			await dataStore.updateService(target);
 			toast.add({
 				title: 'Service Attached to Pod',

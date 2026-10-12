@@ -3,6 +3,8 @@
 	import { Button, Input, SectionCard, Switch, Select, Radio } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
+	import { api } from '$lib/api';
+	import { onMount } from 'svelte';
 	import { useKumoToastManager } from 'kumo-svelte';
 	import {
 		DownloadSimple,
@@ -23,6 +25,18 @@
 	}
 
 	let { service }: Props = $props();
+
+	// Linger status state
+	let lingerInfo = $state<{ linger: boolean; user: string } | null>(null);
+
+	onMount(async () => {
+		try {
+			const res = await api.system.getLinger();
+			lingerInfo = res;
+		} catch (err) {
+			console.warn('Failed to query system linger status:', err);
+		}
+	});
 
 	// Section collapse states
 	let openSections = $state<Record<string, boolean>>({
@@ -109,17 +123,49 @@
 	let podFiles = $state<Record<string, string>>({});
 	let promoCode = $state<string>('');
 
+	function getSanitizedImage(svc: Service): string {
+		const raw = (svc.image || '').trim();
+		if (
+			raw &&
+			!raw.endsWith('.yaml') &&
+			!raw.endsWith('.yml') &&
+			!raw.startsWith('.') &&
+			!raw.startsWith('/')
+		) {
+			if (!raw.includes(':') && !raw.includes('/')) {
+				return `${raw}:latest`;
+			}
+			return raw;
+		}
+		if (
+			svc.source &&
+			!svc.source.endsWith('.yaml') &&
+			!svc.source.endsWith('.yml') &&
+			!svc.source.startsWith('.') &&
+			!svc.source.startsWith('/')
+		) {
+			return svc.source;
+		}
+		return `docker.io/library/${svc.name}:latest`;
+	}
+
 	function startPromotionFlow() {
 		if (service.type === 'pod') {
+			const podPublishLine =
+				(service.hostPort && service.hostPort > 0) || (service.port && service.port > 0)
+					? `PublishPort=${service.hostPort || service.port}:${service.port || service.hostPort}\n`
+					: '';
+
 			const podUnit = `[Unit]
 Description=GoPod Pod ${service.name}
 After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Pod]
 PodName=pod_${service.name}
 Network=gopod-net
-PublishPort=${service.hostPort || service.port || 8080}:${service.port || 80}
-
+${podPublishLine}
 [Install]
 WantedBy=default.target`;
 
@@ -142,10 +188,12 @@ WantedBy=default.target`;
 				files[memberKey] = `[Unit]
 Description=GoPod Pod Member ${service.name}
 After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Container]
 ContainerName=${service.name}-app
-Image=${service.image || service.source || 'docker.io/library/nginx:alpine'}
+Image=${getSanitizedImage(service)}
 Pod=pod_${service.name}.pod
 Label=io.gopod.service=${service.id}
 Label=io.gopod.project=${service.projectId}
@@ -161,10 +209,12 @@ WantedBy=default.target`;
 					files[memberKey] = `[Unit]
 Description=GoPod Pod Member ${m.name}
 After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Container]
 ContainerName=${m.name}
-Image=${m.image || m.source || 'docker.io/library/nginx:alpine'}
+Image=${getSanitizedImage(m)}
 Pod=pod_${service.name}.pod
 Label=io.gopod.service=${m.id}
 Label=io.gopod.project=${m.projectId}
@@ -181,16 +231,22 @@ WantedBy=default.target`;
 			activePromoTab = podKey;
 			promoCode = files[podKey];
 		} else {
+			const standalonePublishLine =
+				(service.hostPort && service.hostPort > 0) || (service.port && service.port > 0)
+					? `PublishPort=${service.hostPort || service.port}:${service.port || service.hostPort}\n`
+					: '';
+
 			promoCode = `[Unit]
 Description=GoPod ${service.name} Service
 After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Container]
 ContainerName=${service.name}
-Image=${service.image || service.source || 'localhost/' + service.name + ':latest'}
+Image=${getSanitizedImage(service)}
 Network=gopod-net
-PublishPort=${service.hostPort || service.port || 3000}:${service.port || 3000}
-Label=io.gopod.service=${service.id}
+${standalonePublishLine}Label=io.gopod.service=${service.id}
 Label=io.gopod.project=${service.projectId}
 AutoUpdate=registry
 UserNS=${userNamespace}
@@ -205,6 +261,7 @@ WantedBy=default.target`;
 		}
 
 		validationMessage = null;
+		dryrunOutput = '';
 		isPromotionReviewOpen = true;
 	}
 
@@ -213,6 +270,79 @@ WantedBy=default.target`;
 			podFiles[activePromoTab] = promoCode;
 			activePromoTab = tabKey;
 			promoCode = podFiles[tabKey] || '';
+		}
+	}
+
+	let isValidatingDryRun = $state(false);
+	let dryrunOutput = $state('');
+
+	async function handleDryRunValidation() {
+		isValidatingDryRun = true;
+		validationMessage = null;
+		dryrunOutput = '';
+
+		if (service.type === 'pod') {
+			podFiles[activePromoTab] = promoCode;
+		}
+
+		try {
+			const payload =
+				service.type === 'pod'
+					? { files: podFiles }
+					: { content: promoCode };
+			const res = await api.services.validateQuadlet(service.id, payload);
+			if (res.valid) {
+				validationMessage = {
+					text: 'Pre-flight dry-run passed! Podman Quadlet generator (/usr/libexec/podman/quadlet) validated unit without errors.',
+					success: true
+				};
+				dryrunOutput = res.output;
+			} else {
+				validationMessage = {
+					text: `Pre-flight dry-run failed: ${res.error || 'Invalid Quadlet unit definition'}`,
+					success: false
+				};
+				dryrunOutput = res.output;
+			}
+		} catch (err: any) {
+			validationMessage = {
+				text: `Dry-run request error: ${err?.message || 'Failed to connect to backend validator'}`,
+				success: false
+			};
+		} finally {
+			isValidatingDryRun = false;
+		}
+	}
+
+	let isDemoting = $state(false);
+
+	async function handleDemoteQuadlet() {
+		if (
+			!confirm(
+				`Demote '${service.name}' from systemd Quadlet supervision? This will stop the systemd user service and run the workload directly via Podman.`
+			)
+		) {
+			return;
+		}
+		isDemoting = true;
+		try {
+			const updated = await dataStore.demoteQuadlet(service.id);
+			if (updated) {
+				service = updated;
+			}
+			toast.add({
+				title: 'Demoted to Standalone',
+				description: `Workload ${service.name} is now managed directly by Podman.`,
+				variant: 'success'
+			});
+		} catch (err: any) {
+			toast.add({
+				title: 'Demote Failed',
+				description: err?.message || 'Failed to demote quadlet workload',
+				variant: 'error'
+			});
+		} finally {
+			isDemoting = false;
 		}
 	}
 
@@ -249,7 +379,10 @@ WantedBy=default.target`;
 
 		if (service.type === 'pod') {
 			podFiles[activePromoTab] = promoCode;
-			service.quadletConfig = podFiles[`pod_${service.name}.pod`] || promoCode;
+			const units = Object.entries(podFiles).map(([fname, content]) => {
+				return `# File: ${fname}\n${content.trim()}`;
+			});
+			service.quadletConfig = units.join('\n---\n');
 		} else {
 			service.quadletConfig = promoCode;
 		}
@@ -290,12 +423,13 @@ WantedBy=default.target`;
 	let generatedQuadlet = $derived(`[Unit]
 Description=GoPod ${service.name} Service
 After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
 
 [Container]
-Image=${service.image || service.source || 'localhost/' + service.name + ':latest'}
+Image=${getSanitizedImage(service)}
 ContainerName=${service.projectId}-${service.name}
-PublishPort=${service.port || 3000}:${service.port || 3000}
-AutoUpdate=registry
+${(service.hostPort && service.hostPort > 0) || (service.port && service.port > 0) ? `PublishPort=${service.hostPort || service.port}:${service.port || service.hostPort}\n` : ''}AutoUpdate=registry
 UserNS=${userNamespace}
 ${volumes.map((v) => `Volume=${v.source}:${v.target}:${v.options}`).join('\n')}
 
@@ -538,7 +672,65 @@ spec:
 		collapsible={true}
 		bind:open={openSections.lifecycle}
 	>
-		{#if service.type !== 'quadlet'}
+		<!-- Systemd Linger Warning Banner -->
+		{#if lingerInfo && !lingerInfo.linger}
+			<div
+				class="mb-4 flex items-start gap-3 rounded-[var(--radius-sm)] border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200"
+			>
+				<WarningCircle size={18} weight="fill" class="mt-0.5 shrink-0 text-amber-400" />
+				<div class="flex flex-col gap-1">
+					<span class="font-semibold text-amber-300">
+						Systemd User Linger Disabled ({lingerInfo.user})
+					</span>
+					<span class="leading-relaxed text-amber-200/90">
+						Rootless systemd services will stop when the user session logs out. Run
+						<code class="rounded bg-black/40 px-1.5 py-0.5 font-mono text-amber-300"
+							>loginctl enable-linger {lingerInfo.user}</code
+						>
+						on the host to keep background Quadlet services running 24/7 across reboots and logouts.
+					</span>
+				</div>
+			</div>
+		{/if}
+
+		{#if service.type === 'quadlet' || service.runtimeTarget === 'quadlet'}
+			<!-- Quadlet Active Supervision Card with Demote / Detach Action -->
+			<div
+				class="mb-4 flex flex-col justify-between gap-3 rounded-[var(--radius-sm)] border border-[var(--color-kumo-line)] bg-[var(--color-kumo-elevated)] p-4 text-xs sm:flex-row sm:items-center"
+			>
+				<div class="flex flex-col gap-1">
+					<div class="flex items-center gap-2">
+						<ShieldCheck size={16} class="text-[var(--status-green)]" />
+						<span class="font-semibold text-sm text-[var(--color-kumo-default)]">
+							Supervised by Systemd Quadlet
+						</span>
+						<span
+							class="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-400"
+						>
+							{service.name}.service
+						</span>
+					</div>
+					<span class="text-[var(--color-kumo-subtle)]">
+						This workload is managed as a native systemd user unit with anti-loop guards and auto-restart.
+					</span>
+				</div>
+				<Button
+					variant="secondary"
+					size="sm"
+					disabled={isDemoting}
+					onclick={handleDemoteQuadlet}
+					class="shrink-0 gap-1.5 text-[var(--status-red)] hover:bg-[var(--status-red)]/10"
+				>
+					{#if isDemoting}
+						<SpinnerGap size={14} class="animate-spin" />
+						<span>Demoting…</span>
+					{:else}
+						<Trash size={14} />
+						<span>Demote / Detach to Standalone</span>
+					{/if}
+				</Button>
+			</div>
+		{:else}
 			<!-- Systemd Quadlet Promotion Flow -->
 			<div
 				class="mb-4 flex flex-col gap-3 rounded-[var(--radius-sm)] border border-[var(--color-kumo-line)] bg-[var(--color-kumo-elevated)] p-4 text-xs"
@@ -618,16 +810,40 @@ spec:
 							</div>
 						{/if}
 
-						<div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-							<Button
-								variant="secondary"
-								size="sm"
-								onclick={handleValidateSyntax}
-								class="gap-1.5"
+						{#if dryrunOutput}
+							<div
+								class="max-h-40 overflow-y-auto rounded border border-[var(--border)] bg-[var(--bg-table-header)] p-3 font-mono text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap select-text"
 							>
-								<ShieldCheck size={14} />
-								<span>Validate Syntax</span>
-							</Button>
+								{dryrunOutput}
+							</div>
+						{/if}
+
+						<div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+							<div class="flex items-center gap-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									disabled={isValidatingDryRun}
+									onclick={handleDryRunValidation}
+									class="gap-1.5"
+								>
+									{#if isValidatingDryRun}
+										<SpinnerGap size={14} class="animate-spin" />
+										<span>Validating…</span>
+									{:else}
+										<ShieldCheck size={14} />
+										<span>Pre-flight Dry-Run</span>
+									{/if}
+								</Button>
+								<Button
+									variant="ghost"
+									size="sm"
+									onclick={handleValidateSyntax}
+									class="gap-1 text-xs"
+								>
+									Syntax Check
+								</Button>
+							</div>
 
 							<div class="flex items-center gap-2">
 								<Button

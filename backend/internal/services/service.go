@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"gopod/internal/podman"
 	"gopkg.in/yaml.v3"
 )
 
@@ -202,9 +203,10 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 	if (svc.Type == "quadlet" || svc.RuntimeTarget == "quadlet" || strings.TrimSpace(svc.QuadletConfig) != "") && s.deployer != nil {
 		cleanName := QuadletUnitName(svc)
 		content := s.deployer.prepareQuadletContent(svc, cleanName)
+		files := SplitQuadletUnits(content, cleanName)
+
 		quadletDir := filepath.Join(s.deployer.dataDir, "quadlets")
 		_ = os.MkdirAll(quadletDir, 0755)
-		_ = os.WriteFile(filepath.Join(quadletDir, fmt.Sprintf("%s.container", cleanName)), []byte(content), 0644)
 
 		systemdDir := os.Getenv("QUADLET_DIR")
 		if systemdDir == "" {
@@ -214,15 +216,32 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 		}
 		if systemdDir != "" {
 			_ = os.MkdirAll(systemdDir, 0755)
-			_ = os.WriteFile(filepath.Join(systemdDir, fmt.Sprintf("%s.container", cleanName)), []byte(content), 0644)
+		}
+
+		for fname, uContent := range files {
+			_ = os.WriteFile(filepath.Join(quadletDir, fname), []byte(uContent), 0644)
+			if systemdDir != "" {
+				_ = os.WriteFile(filepath.Join(systemdDir, fname), []byte(uContent), 0644)
+			}
 		}
 
 		if _, err := exec.LookPath("systemctl"); err == nil {
 			_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
 			if svc.Status == "running" {
-				_ = exec.CommandContext(ctx, "systemctl", "--user", "restart", fmt.Sprintf("%s.service", cleanName)).Run()
+				targetSvc := fmt.Sprintf("%s.service", cleanName)
+				for fname := range files {
+					if strings.HasSuffix(fname, ".pod") {
+						targetSvc = fmt.Sprintf("%s-pod.service", strings.TrimSuffix(fname, ".pod"))
+						break
+					}
+				}
+				_ = exec.CommandContext(ctx, "systemctl", "--user", "restart", targetSvc).Run()
 			}
 		}
+	}
+
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.update", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
 
 	return nil
@@ -509,7 +528,11 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 	}
 
 	if s.audit != nil {
-		_ = s.audit.Record(ctx, "service.deploy", "operator", svc.Name, "deployment", "127.0.0.1", status)
+		action := "service.deploy"
+		if depRecord.Trigger == "promote-quadlet" || svc.Type == "quadlet" {
+			action = "service.promote_quadlet"
+		}
+		_ = s.audit.Record(ctx, action, "operator", svc.Name, "deployment", "127.0.0.1", status)
 	}
 }
 
@@ -586,4 +609,158 @@ func (s *WorkloadService) ListDeployments(ctx context.Context, serviceID string)
 		return []Deployment{}, nil
 	}
 	return s.repo.ListDeployments(ctx, serviceID)
+}
+
+// GetServiceJournal retrieves systemd journal logs for a service workload.
+func (s *WorkloadService) GetServiceJournal(ctx context.Context, id string, lines int) (string, error) {
+	svc, err := s.GetService(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if svc == nil {
+		return "", errors.New("service not found")
+	}
+	if s.deployer == nil {
+		return "", errors.New("deployer not initialized")
+	}
+	return s.deployer.GetServiceJournal(ctx, *svc, lines)
+}
+
+// ValidateQuadlet performs structural and official podman quadlet dryrun validation.
+func (s *WorkloadService) ValidateQuadlet(ctx context.Context, content string, files map[string]string) (bool, string, error) {
+	if files == nil || len(files) == 0 {
+		files = SplitQuadletUnits(content, "validation")
+	}
+	return ValidateQuadletFiles(files)
+}
+
+// DemoteQuadlet converts a Quadlet service back to a standalone container managed by Podman.
+func (s *WorkloadService) DemoteQuadlet(ctx context.Context, id string) (*Service, error) {
+	svc, err := s.GetService(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return nil, errors.New("service not found")
+	}
+
+	cleanName := QuadletUnitName(*svc)
+	systemdDir := os.Getenv("QUADLET_DIR")
+	if systemdDir == "" {
+		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+			systemdDir = filepath.Join(homeDir, ".config", "containers", "systemd")
+		}
+	}
+
+	// 1. Stop and disable systemd service
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s.service", cleanName)).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s-pod.service", cleanName)).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("pod_%s-pod.service", cleanName)).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "disable", fmt.Sprintf("%s.service", cleanName)).Run()
+	}
+
+	// 2. Remove quadlet files
+	if systemdDir != "" {
+		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.container", cleanName)))
+		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.pod", cleanName)))
+		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("pod_%s.pod", cleanName)))
+		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.container", svc.Name)))
+	}
+	if s.deployer != nil {
+		quadletDir := filepath.Join(s.deployer.dataDir, "quadlets")
+		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.container", cleanName)))
+		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.pod", cleanName)))
+	}
+
+	// 3. Reload daemon and reset failed
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", fmt.Sprintf("%s.service", cleanName)).Run()
+	}
+
+	// 4. Parse quadlet configuration to preserve image and ports
+	if svc.QuadletConfig != "" {
+		parsed := ParseQuadlet(svc.QuadletConfig)
+		if parsed.Image != "" && ValidateContainerImage(parsed.Image) == nil {
+			svc.Image = parsed.Image
+		}
+		if parsed.Port > 0 {
+			svc.Port = parsed.Port
+		}
+		if parsed.HostPort > 0 {
+			svc.HostPort = parsed.HostPort
+		}
+	}
+
+	svc.Type = "image"
+	svc.RuntimeTarget = "standalone"
+	svc.QuadletConfig = ""
+
+	if err := s.repo.Update(ctx, *svc); err != nil {
+		return nil, err
+	}
+
+	// 5. Deploy container directly via Podman
+	if s.deployer != nil {
+		_, _ = s.deployer.DeployService(ctx, *svc, fmt.Sprintf("demote-%d", time.Now().Unix()))
+		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
+		_ = s.repo.Update(ctx, *svc)
+	}
+
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.demote", "operator", svc.Name, "runtime", "127.0.0.1", "success")
+	}
+
+	return svc, nil
+}
+
+// GroupIntoPod groups a service into a Podman pod.
+func (s *WorkloadService) GroupIntoPod(ctx context.Context, id, podName string, createPod bool, podPorts []string) (*Service, error) {
+	svc, err := s.GetService(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return nil, errors.New("service not found")
+	}
+
+	cleanPodName := strings.TrimSpace(podName)
+	if cleanPodName == "" {
+		return nil, errors.New("pod name cannot be empty")
+	}
+
+	if createPod && s.deployer != nil && s.deployer.podmanClient != nil {
+		_, err := s.deployer.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
+			Name:    cleanPodName,
+			Ports:   podPorts,
+			Network: "gopod-net",
+			Labels: map[string]string{
+				"io.gopod.project": svc.ProjectID,
+			},
+		})
+		if err != nil && !strings.Contains(err.Error(), "already exists") {
+			return nil, fmt.Errorf("failed to create pod: %w", err)
+		}
+	}
+
+	svc.InPod = true
+	svc.PodID = cleanPodName
+	svc.RuntimeTarget = "pod"
+
+	if err := s.repo.Update(ctx, *svc); err != nil {
+		return nil, err
+	}
+
+	if s.deployer != nil {
+		_ = s.deployer.RestartService(ctx, *svc)
+		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
+		_ = s.repo.Update(ctx, *svc)
+	}
+
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.group_pod", "operator", svc.Name, "runtime", "127.0.0.1", "success")
+	}
+
+	return svc, nil
 }

@@ -31,6 +31,7 @@ export function computeBounds(nodes: TopologyNode[], regions: TopologyRegion[]) 
 	let maxY = -Infinity;
 
 	nodes.forEach((n) => {
+		if (n.parentId) return; // Child nodes are contained within parent group
 		minX = Math.min(minX, n.x);
 		minY = Math.min(minY, n.y);
 		maxX = Math.max(maxX, n.x + n.width);

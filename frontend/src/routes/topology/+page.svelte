@@ -300,8 +300,16 @@
 
 	<!-- Slide-Over Right Inspector Drawer -->
 	{#if selectedItem}
+		<!-- Mobile backdrop for easy dismissal -->
+		<button
+			type="button"
+			class="fixed inset-0 z-25 bg-[var(--bg-canvas)]/75 backdrop-blur-2xs transition-opacity sm:hidden cursor-pointer border-0 p-0"
+			onclick={() => (selectedItem = null)}
+			aria-label="Close drawer overlay"
+		></button>
+
 		<div
-			class="animate-in slide-in-from-right pointer-events-auto absolute top-0 right-0 bottom-0 z-30 flex h-full w-80 flex-col shadow-2xl duration-200 sm:w-96"
+			class="animate-in slide-in-from-right pointer-events-auto absolute top-0 right-0 bottom-0 z-30 flex h-full w-full max-w-[400px] flex-col shadow-2xl duration-200"
 		>
 			<TopologyInspector
 				selected={selectedItem}

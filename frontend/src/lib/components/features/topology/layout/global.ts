@@ -5,7 +5,7 @@ import { createCurvedBezierPath, computeBounds } from './path';
 
 // ──────────────────────────────────────────────
 // GLOBAL INFRASTRUCTURE TOPOLOGY
-// Internet → Caddy Reverse Proxy → Projects (Territories)
+// Internet → Caddy Reverse Proxy → Projects (Native Draggable Groups)
 // ──────────────────────────────────────────────
 export function computeGlobalLayout({
 	projects,
@@ -22,13 +22,22 @@ export function computeGlobalLayout({
 	const regions: TopologyRegion[] = [];
 	const edges: TopologyEdge[] = [];
 
+	const groupPaddingTop = 50;
+	const groupPaddingBottom = 16;
+	const itemSpacing = 10;
+	const regionWidth = 360;
+	const regionGap = 32;
+	const projectRegionX = 620;
+
 	// Pre-calculate project territory heights to vertically center WAN Entrypoint & Caddy Gateway
 	let calculatedTotalHeight = 0;
-	const regionGap = 32;
 	projects.forEach((proj, idx) => {
 		const projServices = services.filter((s) => s.projectId === proj.id);
 		const svcCount = Math.max(1, projServices.length);
-		const rHeight = Math.max(130, 44 + svcCount * (COMPACT_NODE_HEIGHT + 12) + 16);
+		const rHeight = Math.max(
+			120,
+			groupPaddingTop + svcCount * (COMPACT_NODE_HEIGHT + itemSpacing) - itemSpacing + groupPaddingBottom
+		);
 		calculatedTotalHeight += rHeight + (idx < projects.length - 1 ? regionGap : 0);
 	});
 
@@ -87,36 +96,40 @@ export function computeGlobalLayout({
 		kind: 'ingress'
 	});
 
-	// 3. Project Territories Layout
-	const projectRegionX = 560;
+	// 3. Project Territories Layout (Native Svelte Flow Parent Groups)
 	let currentY = 40;
 
 	projects.forEach((proj) => {
 		const projServices = services.filter((s) => s.projectId === proj.id);
 		const projDomains = domains.filter((d) => d.projectId === proj.id);
 
-		// Height based on services
+		// Height based on child service count
 		const svcCount = Math.max(1, projServices.length);
-		const regionHeight = Math.max(130, 44 + svcCount * (COMPACT_NODE_HEIGHT + 12) + 16);
-		const regionWidth = 480;
+		const regionHeight = Math.max(
+			120,
+			groupPaddingTop + svcCount * (COMPACT_NODE_HEIGHT + itemSpacing) - itemSpacing + groupPaddingBottom
+		);
 
-		const region: TopologyRegion = {
-			id: `region-project-${proj.id}`,
-			type: 'project',
-			label: proj.name,
-			sublabel: `${projServices.length} services · ${proj.cpu.toFixed(1)}% CPU`,
+		// 3A. Native Svelte Flow Parent Group Node
+		const projectGroupNode: TopologyNode = {
+			id: `group-project-${proj.id}`,
+			type: 'group',
+			isGroup: true,
+			groupType: 'project',
+			title: proj.name,
+			subtitle: `${projServices.length} service${projServices.length === 1 ? '' : 's'} · ${proj.cpu.toFixed(1)}% CPU`,
+			status: proj.status,
 			x: projectRegionX,
 			y: currentY,
 			width: regionWidth,
 			height: regionHeight,
+			badge: 'Project',
 			projectId: proj.id,
-			status: proj.status,
 			raw: proj
 		};
-		regions.push(region);
+		nodes.push(projectGroupNode);
 
-		// Place service nodes inside project region
-		let svcY = currentY + 44;
+		// 3B. Place child service nodes inside project group (Relative Coordinates)
 		projServices.forEach((svc, idx) => {
 			let svcSubtitle = 'Application';
 			if (svc.type === 'quadlet') svcSubtitle = 'Quadlet Service';
@@ -136,15 +149,20 @@ export function computeGlobalLayout({
 						: 'Container Image';
 			}
 
+			const childRelativeX = 16;
+			const childRelativeY = groupPaddingTop + idx * (COMPACT_NODE_HEIGHT + itemSpacing);
+			const childWidth = regionWidth - 32;
+
 			const svcNode: TopologyNode = {
 				id: `svc-${svc.id}`,
 				type: 'service',
+				parentId: projectGroupNode.id,
 				title: svc.name,
 				subtitle: svcSubtitle,
 				status: svc.status,
-				x: projectRegionX + 24,
-				y: svcY,
-				width: 240,
+				x: childRelativeX,
+				y: childRelativeY,
+				width: childWidth,
 				height: COMPACT_NODE_HEIGHT,
 				monoDetail: svc.port ? `:${svc.port}` : '',
 				badge: svc.type,
@@ -154,29 +172,49 @@ export function computeGlobalLayout({
 			};
 			nodes.push(svcNode);
 
-			// Edge from Caddy to public services or primary service
-			const hasDomain = projDomains.some((d) => d.serviceId === svc.id);
-			if (hasDomain || idx === 0) {
+			const matchingDomains = projDomains.filter((d) => d.serviceId === svc.id);
+
+			// Edge routing:
+			// 1. Domain-managed ingress routes through Caddy
+			if (matchingDomains.length > 0) {
 				edges.push({
 					id: `edge-caddy-svc-${svc.id}`,
 					sourceId: caddyNode.id,
 					targetId: svcNode.id,
 					sourceX: caddyNode.x + caddyNode.width,
 					sourceY: caddyNode.y + caddyNode.height / 2,
-					targetX: svcNode.x,
-					targetY: svcNode.y + svcNode.height / 2,
+					targetX: projectRegionX + childRelativeX,
+					targetY: currentY + childRelativeY + COMPACT_NODE_HEIGHT / 2,
 					path: createCurvedBezierPath(
 						caddyNode.x + caddyNode.width,
 						caddyNode.y + caddyNode.height / 2,
-						svcNode.x,
-						svcNode.y + svcNode.height / 2
+						projectRegionX + childRelativeX,
+						currentY + childRelativeY + COMPACT_NODE_HEIGHT / 2
 					),
-					label: svc.port ? `:${svc.port}` : undefined,
+					label: matchingDomains[0]?.hostname || (svc.port ? `:${svc.port}` : undefined),
 					kind: 'ingress'
 				});
+			} else if (svc.hostPort) {
+				// 2. Direct host port routes directly from Internet (bypassing Caddy)
+				edges.push({
+					id: `edge-wan-svc-${svc.id}`,
+					sourceId: internetNode.id,
+					targetId: svcNode.id,
+					sourceX: internetNode.x + internetNode.width,
+					sourceY: internetNode.y + internetNode.height / 2,
+					targetX: projectRegionX + childRelativeX,
+					targetY: currentY + childRelativeY + COMPACT_NODE_HEIGHT / 2,
+					path: createCurvedBezierPath(
+						internetNode.x + internetNode.width,
+						internetNode.y + internetNode.height / 2,
+						projectRegionX + childRelativeX,
+						currentY + childRelativeY + COMPACT_NODE_HEIGHT / 2
+					),
+					label: `:${svc.hostPort}`,
+					kind: 'direct-port'
+				});
 			}
-
-			svcY += COMPACT_NODE_HEIGHT + 12;
+			// 3. Otherwise, internal workload with no incoming external edge
 		});
 
 		currentY += regionHeight + regionGap;

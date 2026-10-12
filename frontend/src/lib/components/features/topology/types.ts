@@ -5,7 +5,17 @@
 import type { Status } from '$lib/types';
 
 export type NodeType =
-	'internet' | 'proxy' | 'domain' | 'service' | 'container' | 'volume' | 'network';
+	| 'internet'
+	| 'proxy'
+	| 'domain'
+	| 'port'
+	| 'group'
+	| 'service'
+	| 'container'
+	| 'volume'
+	| 'network';
+
+export type GroupType = 'compose' | 'pod' | 'quadlet' | 'project' | 'service';
 
 export type RegionType = 'project' | 'pod';
 
@@ -24,6 +34,9 @@ export interface TopologyNode {
 	projectId?: string;
 	serviceId?: string;
 	podId?: string;
+	parentId?: string;
+	isGroup?: boolean;
+	groupType?: GroupType;
 	icon?: string;
 	raw?: any;
 }
@@ -53,7 +66,7 @@ export interface TopologyEdge {
 	path: string; // SVG path
 	label?: string;
 	dashed?: boolean;
-	kind?: 'ingress' | 'database' | 'storage' | 'workload';
+	kind?: 'ingress' | 'direct-port' | 'localhost-port' | 'database' | 'storage' | 'workload';
 }
 
 export interface TopologyGraph {

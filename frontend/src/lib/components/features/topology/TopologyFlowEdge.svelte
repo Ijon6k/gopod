@@ -61,13 +61,21 @@
 	let labelY = $derived(pathData.labelY);
 
 	let kind = $derived((data as any)?.kind || 'workload');
-	let isDashed = $derived((data as any)?.dashed || false);
+	let isDashed = $derived(
+		(data as any)?.dashed || kind === 'localhost-port' || false
+	);
 	let isStopped = $derived((data as any)?.isStopped || false);
 
-	// Semantic stroke color: accent with clear disconnected status when stopped
+	// Semantic stroke color based on traffic kind:
+	// - Direct public host port: Amber
+	// - Localhost loopback host port: Blue
+	// - Caddy Domain Ingress: Lavender Accent
 	let strokeColor = $derived.by(() => {
 		if (selected) return 'var(--accent)';
 		if (isStopped) return 'var(--text-tertiary)';
+		if (kind === 'localhost-port') return 'var(--status-blue)';
+		if (kind === 'direct-port') return 'var(--status-amber)';
+		if (kind === 'ingress') return 'var(--accent)';
 		return 'var(--accent)';
 	});
 

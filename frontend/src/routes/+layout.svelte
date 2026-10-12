@@ -56,7 +56,7 @@
 				dataStore.fetchInitialData();
 			}
 
-			// Lightweight 60-second system status heartbeat (Dokploy & Coolify standard), paused when tab hidden
+			// Lightweight 60-second system status heartbeat, paused when tab hidden
 			heartbeatTimer = setInterval(() => {
 				if (
 					authStore.isAuthenticated &&

@@ -141,7 +141,7 @@
 		};
 	});
 
-	// Periodic status polling to guarantee zero desynchronization with Podman daemon (Dokploy parity)
+	// Periodic status polling to guarantee zero desynchronization with Podman daemon
 	$effect(() => {
 		const sId = serviceId;
 		if (!sId) return;

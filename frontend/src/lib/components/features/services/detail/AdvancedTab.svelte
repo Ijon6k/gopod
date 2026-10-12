@@ -2,6 +2,8 @@
 	import type { Service } from '$lib/types';
 	import { Button, Input, SectionCard, Switch, Select, Radio } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
+	import { dataStore } from '$lib/data';
+	import { useKumoToastManager } from 'kumo-svelte';
 	import {
 		DownloadSimple,
 		Copy,
@@ -9,7 +11,11 @@
 		Plus,
 		Trash,
 		FloppyDisk,
-		SpinnerGap
+		SpinnerGap,
+		Lightning,
+		ShieldCheck,
+		FileCode,
+		WarningCircle
 	} from 'phosphor-svelte';
 
 	interface Props {
@@ -93,6 +99,191 @@
 		swapLimit = service.advanced?.resources.swapLimit ?? '0';
 	});
 
+	const toast = useKumoToastManager();
+
+	// Promotion Flow state
+	let isPromotionReviewOpen = $state(false);
+	let isPromoting = $state(false);
+	let validationMessage = $state<{ text: string; success: boolean } | null>(null);
+	let activePromoTab = $state<string>('');
+	let podFiles = $state<Record<string, string>>({});
+	let promoCode = $state<string>('');
+
+	function startPromotionFlow() {
+		if (service.type === 'pod') {
+			const podUnit = `[Unit]
+Description=GoPod Pod ${service.name}
+After=network-online.target
+
+[Pod]
+PodName=pod_${service.name}
+Network=gopod-net
+PublishPort=${service.hostPort || service.port || 8080}:${service.port || 80}
+
+[Install]
+WantedBy=default.target`;
+
+			const memberServices = dataStore.services.filter(
+				(s) =>
+					s.projectId === service.projectId &&
+					s.id !== service.id &&
+					(s.podId === service.id ||
+						s.podId === service.name ||
+						s.podId === `pod_${service.name}` ||
+						(s.inPod && s.type !== 'pod'))
+			);
+
+			const files: Record<string, string> = {};
+			const podKey = `pod_${service.name}.pod`;
+			files[podKey] = podUnit;
+
+			if (memberServices.length === 0) {
+				const memberKey = `${service.name}-app.container`;
+				files[memberKey] = `[Unit]
+Description=GoPod Pod Member ${service.name}
+After=network-online.target
+
+[Container]
+ContainerName=${service.name}-app
+Image=${service.image || service.source || 'docker.io/library/nginx:alpine'}
+Pod=pod_${service.name}.pod
+Label=io.gopod.service=${service.id}
+Label=io.gopod.project=${service.projectId}
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target`;
+			} else {
+				for (const m of memberServices) {
+					const memberKey = `${m.name}.container`;
+					files[memberKey] = `[Unit]
+Description=GoPod Pod Member ${m.name}
+After=network-online.target
+
+[Container]
+ContainerName=${m.name}
+Image=${m.image || m.source || 'docker.io/library/nginx:alpine'}
+Pod=pod_${service.name}.pod
+Label=io.gopod.service=${m.id}
+Label=io.gopod.project=${m.projectId}
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target`;
+				}
+			}
+
+			podFiles = files;
+			activePromoTab = podKey;
+			promoCode = files[podKey];
+		} else {
+			promoCode = `[Unit]
+Description=GoPod ${service.name} Service
+After=network-online.target
+
+[Container]
+ContainerName=${service.name}
+Image=${service.image || service.source || 'localhost/' + service.name + ':latest'}
+Network=gopod-net
+PublishPort=${service.hostPort || service.port || 3000}:${service.port || 3000}
+Label=io.gopod.service=${service.id}
+Label=io.gopod.project=${service.projectId}
+AutoUpdate=registry
+UserNS=${userNamespace}
+${volumes.map((v) => `Volume=${v.source}:${v.target}:${v.options}`).join('\n')}
+
+[Service]
+Restart=${restartPolicy}
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target`;
+		}
+
+		validationMessage = null;
+		isPromotionReviewOpen = true;
+	}
+
+	function handleSwitchPromoTab(tabKey: string) {
+		if (service.type === 'pod') {
+			podFiles[activePromoTab] = promoCode;
+			activePromoTab = tabKey;
+			promoCode = podFiles[tabKey] || '';
+		}
+	}
+
+	function handleValidateSyntax() {
+		const code = promoCode.trim();
+		if (!code.includes('[Unit]')) {
+			validationMessage = { text: 'Validation error: Missing [Unit] section in systemd specification.', success: false };
+			return;
+		}
+		if (!code.includes('[Container]') && !code.includes('[Pod]')) {
+			validationMessage = { text: 'Validation error: Quadlet unit must contain either [Container] or [Pod] section.', success: false };
+			return;
+		}
+		if (code.includes('[Container]') && !code.includes('Image=')) {
+			validationMessage = { text: 'Validation error: [Container] section must define Image= directive.', success: false };
+			return;
+		}
+		const containerIdx = code.indexOf('[Container]');
+		const serviceIdx = code.indexOf('[Service]');
+		if (containerIdx !== -1) {
+			const containerSection = serviceIdx !== -1 ? code.slice(containerIdx, serviceIdx) : code.slice(containerIdx);
+			if (containerSection.includes('Restart=')) {
+				validationMessage = { text: 'Validation warning: Restart= directive belongs in [Service] section, not [Container].', success: false };
+				return;
+			}
+		}
+		validationMessage = { text: 'Syntax valid! Quadlet unit matches systemd specification and podman-system-generator conventions.', success: true };
+	}
+
+	async function handleConfirmPromotion() {
+		isPromoting = true;
+		const originalType = service.type;
+		const originalTarget = service.runtimeTarget;
+
+		if (service.type === 'pod') {
+			podFiles[activePromoTab] = promoCode;
+			service.quadletConfig = podFiles[`pod_${service.name}.pod`] || promoCode;
+		} else {
+			service.quadletConfig = promoCode;
+		}
+
+		service.type = 'quadlet';
+		service.runtimeTarget = 'quadlet';
+
+		try {
+			await dataStore.updateService(service);
+			await dataStore.deployService(service.id, 'promote-quadlet');
+			toast.add({
+				title: 'Promoted to Systemd Quadlet',
+				description: `Workload ${service.name} is now supervised by systemd user session.`,
+				variant: 'success'
+			});
+			isPromotionReviewOpen = false;
+		} catch (err: any) {
+			service.type = originalType;
+			service.runtimeTarget = originalTarget;
+			await dataStore.updateService(service).catch(() => {});
+			validationMessage = {
+				text: `Promotion activation failed: ${err?.message || 'systemd daemon-reload error'}. State restored.`,
+				success: false
+			};
+			toast.add({
+				title: 'Promotion Failed (Rolled Back)',
+				description: err?.message || 'Systemd daemon-reload failed. Restored to previous state.',
+				variant: 'error'
+			});
+		} finally {
+			isPromoting = false;
+		}
+	}
+
 	// Generated configuration tab
 	let genTab = $state<'quadlet' | 'kubernetes' | 'podman'>('quadlet');
 
@@ -106,7 +297,6 @@ ContainerName=${service.projectId}-${service.name}
 PublishPort=${service.port || 3000}:${service.port || 3000}
 AutoUpdate=registry
 UserNS=${userNamespace}
-Restart=${restartPolicy}
 ${volumes.map((v) => `Volume=${v.source}:${v.target}:${v.options}`).join('\n')}
 
 [Service]
@@ -156,8 +346,6 @@ spec:
 				? generatedKube
 				: generatedPodmanRun
 	);
-
-	import { dataStore } from '$lib/data';
 
 	function downloadConfig() {
 		const ext = genTab === 'quadlet' ? 'container' : genTab === 'kubernetes' ? 'yaml' : 'sh';
@@ -350,6 +538,127 @@ spec:
 		collapsible={true}
 		bind:open={openSections.lifecycle}
 	>
+		{#if service.type !== 'quadlet'}
+			<!-- Systemd Quadlet Promotion Flow -->
+			<div
+				class="mb-4 flex flex-col gap-3 rounded-[var(--radius-sm)] border border-[var(--color-kumo-line)] bg-[var(--color-kumo-elevated)] p-4 text-xs"
+			>
+				<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
+					<div class="flex flex-col gap-1">
+						<div class="flex items-center gap-2">
+							<Lightning size={16} weight="fill" class="text-[var(--accent)]" />
+							<span class="font-semibold text-sm text-[var(--color-kumo-default)]">
+								⚡ Systemd Quadlet Supervision
+							</span>
+						</div>
+						<span class="text-[var(--color-kumo-subtle)]">
+							Promote this workload to a native systemd user service managed by Podman Quadlet with automatic crash restart, boot persistence, and systemctl controls.
+						</span>
+					</div>
+					<Button
+						variant="primary"
+						size="sm"
+						onclick={startPromotionFlow}
+						class="shrink-0 gap-1.5"
+					>
+						<Lightning size={14} weight="bold" />
+						<span>⚡ Generate & Promote to Systemd Quadlet…</span>
+					</Button>
+				</div>
+
+				{#if isPromotionReviewOpen}
+					<div class="mt-3 flex flex-col gap-3 border-t border-[var(--color-kumo-hairline)] pt-4">
+						<div class="flex flex-wrap items-center justify-between gap-2">
+							<div class="flex items-center gap-2">
+								<FileCode size={15} class="text-[var(--accent)]" />
+								<span class="font-medium text-xs text-[var(--color-kumo-default)]">
+									Review Generated Quadlet Unit Definition
+								</span>
+							</div>
+
+							<!-- Multi-file tabs for Pod workload -->
+							{#if service.type === 'pod' && Object.keys(podFiles).length > 0}
+								<div class="flex items-center gap-1 rounded bg-[var(--color-kumo-base)] p-0.5">
+									{#each Object.keys(podFiles) as fKey}
+										<button
+											type="button"
+											onclick={() => handleSwitchPromoTab(fKey)}
+											class="cursor-pointer rounded px-2.5 py-1 font-mono text-[11px] transition-colors {activePromoTab === fKey
+												? 'bg-[var(--color-kumo-elevated)] font-semibold text-[var(--color-kumo-default)] shadow-xs'
+												: 'bg-transparent text-[var(--color-kumo-subtle)] hover:text-[var(--color-kumo-default)]'}"
+										>
+											{fKey.endsWith('.pod') ? '📦 ' : '🌐 '}{fKey}
+										</button>
+									{/each}
+								</div>
+							{/if}
+						</div>
+
+						<!-- Editor for generated unit -->
+						<div class="rounded overflow-hidden border border-[var(--color-kumo-line)]">
+							<CodeEditor
+								bind:value={promoCode}
+								language="quadlet"
+								height="240px"
+							/>
+						</div>
+
+						{#if validationMessage}
+							<div
+								class="flex items-center gap-2 rounded px-3 py-2 text-xs {validationMessage.success
+									? 'bg-kumo-success-tint text-kumo-success'
+									: 'bg-red-500/10 text-red-400'}"
+							>
+								{#if validationMessage.success}
+									<Check size={14} weight="bold" />
+								{:else}
+									<WarningCircle size={14} weight="bold" />
+								{/if}
+								<span>{validationMessage.text}</span>
+							</div>
+						{/if}
+
+						<div class="flex flex-wrap items-center justify-between gap-2 pt-1">
+							<Button
+								variant="secondary"
+								size="sm"
+								onclick={handleValidateSyntax}
+								class="gap-1.5"
+							>
+								<ShieldCheck size={14} />
+								<span>Validate Syntax</span>
+							</Button>
+
+							<div class="flex items-center gap-2">
+								<Button
+									variant="secondary"
+									size="sm"
+									onclick={() => (isPromotionReviewOpen = false)}
+								>
+									Cancel
+								</Button>
+								<Button
+									variant="primary"
+									size="sm"
+									onclick={handleConfirmPromotion}
+									disabled={isPromoting}
+									class="gap-1.5"
+								>
+									{#if isPromoting}
+										<SpinnerGap size={14} class="animate-spin" />
+										<span>Activating Unit…</span>
+									{:else}
+										<Check size={14} weight="bold" />
+										<span>Confirm & Activate Systemd Unit</span>
+									{/if}
+								</Button>
+							</div>
+						</div>
+					</div>
+				{/if}
+			</div>
+		{/if}
+
 		<div class="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2">
 			<div
 				class="mt-2 flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"

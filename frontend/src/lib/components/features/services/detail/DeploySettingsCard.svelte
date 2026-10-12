@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
+	import { api } from '$lib/api';
 	import { Button } from '$lib/components/ui';
 	import { LayerCard, Switch, Badge, useKumoToastManager } from 'kumo-svelte';
 	import {
@@ -12,7 +13,10 @@
 		Database,
 		CheckCircle,
 		Info,
-		Sparkle
+		Sparkle,
+		FileText,
+		Scroll,
+		Package
 	} from 'phosphor-svelte';
 
 	interface Props {
@@ -37,8 +41,34 @@
 	let isRebuilding = $state(false);
 	let isFreshingVolumes = $state(false);
 	let isTogglingPower = $state(false);
+	let isReloadingDaemon = $state(false);
 	let feedbackMessage = $state<{ text: string; type: 'success' | 'info' } | null>(null);
 	let feedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	async function handleReloadDaemon() {
+		isReloadingDaemon = true;
+		try {
+			await api.runtime.quadlets.reload();
+			showFeedback('Systemd user daemon reloaded successfully', 'success');
+		} catch (err: any) {
+			toast.add({
+				title: 'Reload Failed',
+				description: err?.message || 'Failed to reload systemd daemon',
+				variant: 'error'
+			});
+		} finally {
+			isReloadingDaemon = false;
+		}
+	}
+
+	function handleScrollToUnit() {
+		const el = document.getElementById('quadlet-editor-section');
+		if (el) {
+			el.scrollIntoView({ behavior: 'smooth' });
+		} else {
+			showFeedback(`Unit file located at ~/.config/containers/systemd/${service.name}.container`, 'info');
+		}
+	}
 
 	function showFeedback(text: string, type: 'success' | 'info' = 'info') {
 		if (feedbackTimeout) clearTimeout(feedbackTimeout);
@@ -220,101 +250,189 @@
 		</Badge>
 	</LayerCard.Secondary>
 
-	<!-- 2. Action Buttons Bar (Previous commit position: Actions on Left, Autodeploy on Right) -->
+	<!-- 2. Action Buttons Bar -->
 	<div class="flex flex-wrap items-center justify-between gap-4 p-5 bg-kumo-base">
 		<!-- Left: Cluster of Action Buttons -->
 		<div class="flex flex-wrap items-center gap-2.5">
-			<!-- 1. Deploy (High-contrast Primary Button) -->
-			<Button
-				variant="primary"
-				size="sm"
-				onclick={handleDeploy}
-				disabled={isDeploying || service.status === 'deploying'}
-				class="gap-2 px-4 py-2 font-medium shadow-xs"
-			>
-				{#if isDeploying || service.status === 'deploying'}
-					<ArrowClockwise size={14} class="animate-spin text-inherit" />
-					<span>Deploying…</span>
-				{:else}
-					<RocketLaunch size={14} weight="fill" class="text-inherit" />
-					<span>Deploy</span>
-				{/if}
-			</Button>
-
-			<!-- 2. Fresh Volumes (Dokploy signature action) -->
-			<Button
-				variant="secondary"
-				size="sm"
-				onclick={handleFreshVolumes}
-				disabled={isFreshingVolumes || isDeploying || service.status === 'deploying'}
-				class="gap-1.5 shadow-xs"
-			>
-				{#if isFreshingVolumes}
-					<ArrowClockwise size={13} class="animate-spin text-inherit" />
-					<span>Purging…</span>
-				{:else}
-					<Database size={13} />
-					<span>Fresh Volumes</span>
-				{/if}
-			</Button>
-
-			<!-- 3. Rebuild (Clean rebuild & image re-pull) -->
-			<Button
-				variant="secondary"
-				size="sm"
-				onclick={handleRebuild}
-				disabled={isRebuilding || isDeploying || service.status === 'deploying'}
-				class="gap-1.5 shadow-xs"
-			>
-				<ArrowClockwise size={13} class={isRebuilding ? 'animate-spin' : ''} />
-				<span>Rebuild</span>
-			</Button>
-
-			<!-- 4. Stop / Start Button -->
-			{#if isRunning}
+			{#if service.type === 'quadlet'}
+				<!-- 1. Deploy / Reload (Primary for Quadlet) -->
 				<Button
-					variant="secondary-destructive"
+					variant="primary"
 					size="sm"
-					onclick={handleTogglePower}
-					disabled={isTogglingPower}
-					class="gap-1.5 shadow-xs"
+					onclick={handleDeploy}
+					disabled={isDeploying || service.status === 'deploying'}
+					class="gap-2 px-4 py-2 font-medium shadow-xs"
 				>
-					{#if isTogglingPower}
-						<ArrowClockwise size={13} class="animate-spin" />
-						<span>Stopping…</span>
+					{#if isDeploying || service.status === 'deploying'}
+						<ArrowClockwise size={14} class="animate-spin text-inherit" />
+						<span>Reloading…</span>
 					{:else}
-						<Stop size={13} weight="fill" />
-						<span>Stop</span>
+						<RocketLaunch size={14} weight="fill" class="text-inherit" />
+						<span>Deploy / Reload</span>
 					{/if}
 				</Button>
-			{:else}
+
+				<!-- 2. Daemon Reload (Dedicated systemctl --user daemon-reload) -->
 				<Button
 					variant="secondary"
 					size="sm"
-					onclick={handleTogglePower}
-					disabled={isTogglingPower || service.status === 'deploying'}
-					class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
+					onclick={handleReloadDaemon}
+					disabled={isReloadingDaemon || isDeploying}
+					class="gap-1.5 shadow-xs"
 				>
-					{#if isTogglingPower}
-						<ArrowClockwise size={13} class="animate-spin" />
-						<span>Starting…</span>
+					<ArrowClockwise size={13} class={isReloadingDaemon ? 'animate-spin' : ''} />
+					<span>Daemon Reload</span>
+				</Button>
+
+				<!-- 3. View Unit File -->
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={handleScrollToUnit}
+					class="gap-1.5 shadow-xs"
+				>
+					<FileText size={13} />
+					<span>View Unit File</span>
+				</Button>
+
+				<!-- 4. Stop / Start -->
+				{#if isRunning}
+					<Button
+						variant="secondary-destructive"
+						size="sm"
+						onclick={handleTogglePower}
+						disabled={isTogglingPower}
+						class="gap-1.5 shadow-xs"
+					>
+						{#if isTogglingPower}
+							<ArrowClockwise size={13} class="animate-spin" />
+							<span>Stopping…</span>
+						{:else}
+							<Stop size={13} weight="fill" />
+							<span>Stop</span>
+						{/if}
+					</Button>
+				{:else}
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={handleTogglePower}
+						disabled={isTogglingPower || service.status === 'deploying'}
+						class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
+					>
+						{#if isTogglingPower}
+							<ArrowClockwise size={13} class="animate-spin" />
+							<span>Starting…</span>
+						{:else}
+							<Play size={13} weight="fill" />
+							<span>Start</span>
+						{/if}
+					</Button>
+				{/if}
+
+				<!-- 5. Journal Logs -->
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={onTerminalClick}
+					class="gap-1.5 font-mono text-xs shadow-xs"
+				>
+					<Scroll size={13} />
+					<span>Journal Logs</span>
+				</Button>
+			{:else}
+				<!-- 1. Deploy (High-contrast Primary Button) -->
+				<Button
+					variant="primary"
+					size="sm"
+					onclick={handleDeploy}
+					disabled={isDeploying || service.status === 'deploying'}
+					class="gap-2 px-4 py-2 font-medium shadow-xs"
+				>
+					{#if isDeploying || service.status === 'deploying'}
+						<ArrowClockwise size={14} class="animate-spin text-inherit" />
+						<span>Deploying…</span>
 					{:else}
-						<Play size={13} weight="fill" />
-						<span>Start</span>
+						<RocketLaunch size={14} weight="fill" class="text-inherit" />
+						<span>Deploy</span>
 					{/if}
 				</Button>
-			{/if}
 
-			<!-- 5. Open Terminal -->
-			<Button
-				variant="secondary"
-				size="sm"
-				onclick={onTerminalClick}
-				class="gap-1.5 font-mono text-xs shadow-xs"
-			>
-				<Terminal size={13} />
-				<span>&gt;_ Open Terminal</span>
-			</Button>
+				<!-- 2. Fresh Volumes -->
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={handleFreshVolumes}
+					disabled={isFreshingVolumes || isDeploying || service.status === 'deploying'}
+					class="gap-1.5 shadow-xs"
+				>
+					{#if isFreshingVolumes}
+						<ArrowClockwise size={13} class="animate-spin text-inherit" />
+						<span>Purging…</span>
+					{:else}
+						<Database size={13} />
+						<span>Fresh Volumes</span>
+					{/if}
+				</Button>
+
+				<!-- 3. Rebuild (Clean rebuild & image re-pull) -->
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={handleRebuild}
+					disabled={isRebuilding || isDeploying || service.status === 'deploying'}
+					class="gap-1.5 shadow-xs"
+				>
+					<ArrowClockwise size={13} class={isRebuilding ? 'animate-spin' : ''} />
+					<span>Rebuild</span>
+				</Button>
+
+				<!-- 4. Stop / Start Button -->
+				{#if isRunning}
+					<Button
+						variant="secondary-destructive"
+						size="sm"
+						onclick={handleTogglePower}
+						disabled={isTogglingPower}
+						class="gap-1.5 shadow-xs"
+					>
+						{#if isTogglingPower}
+							<ArrowClockwise size={13} class="animate-spin" />
+							<span>Stopping…</span>
+						{:else}
+							<Stop size={13} weight="fill" />
+							<span>Stop</span>
+						{/if}
+					</Button>
+				{:else}
+					<Button
+						variant="secondary"
+						size="sm"
+						onclick={handleTogglePower}
+						disabled={isTogglingPower || service.status === 'deploying'}
+						class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
+					>
+						{#if isTogglingPower}
+							<ArrowClockwise size={13} class="animate-spin" />
+							<span>Starting…</span>
+						{:else}
+							<Play size={13} weight="fill" />
+							<span>Start</span>
+						{/if}
+					</Button>
+				{/if}
+
+				<!-- 5. Open Terminal -->
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={onTerminalClick}
+					class="gap-1.5 font-mono text-xs shadow-xs"
+				>
+					<Terminal size={13} />
+					<span>&gt;_ Open Terminal</span>
+				</Button>
+			{/if}
 		</div>
 
 		<!-- Right: Autodeploy Toggle Switch (Kumo UI Switch) -->
@@ -329,39 +447,58 @@
 		</div>
 	</div>
 
-	<!-- 3. Podman Execution & Pod Strategy (Previous commit position, styled with Kumo UI) -->
-	<div
-		class="flex flex-wrap items-center justify-between gap-3 border-t border-kumo-hairline bg-kumo-elevated px-5 py-3 text-xs"
-	>
-		<div class="flex items-center gap-3">
-			<Switch
-				checked={inPod}
-				onCheckedChange={handleToggleInPod}
-				aria-label="Toggle encapsulation inside Podman Pod"
-			/>
-			<span class="font-medium text-kumo-default">
-				{service.type === 'compose'
-					? 'Encapsulate stack inside Podman Pod'
-					: 'Run inside Podman Pod'}
-			</span>
-			<span class="hidden text-[11px] text-kumo-subtle sm:inline">
-				{inPod
-					? `(Shared localhost network namespace · pod_${service.id})`
-					: '(Independent containers attached to gopod-net bridge)'}
-			</span>
+	<!-- 3. Podman Execution & Pod Strategy -->
+	{#if service.type === 'pod'}
+		<!-- Pod Infrastructure Summary (No redundant "Run inside Podman Pod" switch) -->
+		<div
+			class="flex flex-wrap items-center justify-between gap-3 border-t border-kumo-hairline bg-kumo-elevated px-5 py-3 text-xs"
+		>
+			<div class="flex items-center gap-2.5 text-kumo-default">
+				<Package size={15} class="text-[var(--accent)]" />
+				<span class="font-medium">Podman Pod Infrastructure</span>
+				<span class="text-[11px] text-kumo-subtle">
+					(All member containers share localhost namespace · pod_{service.name})
+				</span>
+			</div>
+			<div class="flex items-center gap-2">
+				<Badge variant="neutral" class="font-mono text-[11px]">network: gopod-net</Badge>
+				<Badge variant="neutral" class="font-mono text-[11px] text-[var(--accent)]">mode: podman-pod</Badge>
+			</div>
 		</div>
-		<div class="flex items-center gap-2">
-			<Badge variant="neutral" class="font-mono text-[11px]">
-				network: gopod-net
-			</Badge>
-			<Badge
-				variant="neutral"
-				class="font-mono text-[11px] {inPod ? 'text-[var(--accent)]' : 'text-kumo-subtle'}"
-			>
-				mode: {inPod ? 'podman-pod' : 'standalone'}
-			</Badge>
+	{:else}
+		<div
+			class="flex flex-wrap items-center justify-between gap-3 border-t border-kumo-hairline bg-kumo-elevated px-5 py-3 text-xs"
+		>
+			<div class="flex items-center gap-3">
+				<Switch
+					checked={inPod}
+					onCheckedChange={handleToggleInPod}
+					aria-label="Toggle encapsulation inside Podman Pod"
+				/>
+				<span class="font-medium text-kumo-default">
+					{service.type === 'compose'
+						? 'Encapsulate stack inside Podman Pod'
+						: 'Run inside Podman Pod'}
+				</span>
+				<span class="hidden text-[11px] text-kumo-subtle sm:inline">
+					{inPod
+						? `(Shared localhost network namespace · pod_${service.id})`
+						: '(Independent containers attached to gopod-net bridge)'}
+				</span>
+			</div>
+			<div class="flex items-center gap-2">
+				<Badge variant="neutral" class="font-mono text-[11px]">
+					network: gopod-net
+				</Badge>
+				<Badge
+					variant="neutral"
+					class="font-mono text-[11px] {inPod ? 'text-[var(--accent)]' : 'text-kumo-subtle'}"
+				>
+					mode: {inPod ? 'podman-pod' : 'standalone'}
+				</Badge>
+			</div>
 		</div>
-	</div>
+	{/if}
 
 	<!-- 4. Instant Feedback Banner (Nielsen #1: Visibility of System Status) -->
 	{#if feedbackMessage}

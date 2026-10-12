@@ -15,4 +15,5 @@ export interface CaddyAccessLog {
 	upstream?: string;
 	userAgent?: string;
 	serviceId?: string;
+	projectId?: string;
 }

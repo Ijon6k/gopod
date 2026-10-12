@@ -112,7 +112,7 @@
 		isLoading = true;
 		try {
 			if (selectedContainer !== 'all') {
-				// Query specific target container (Dokploy parity)
+				// Query specific target container
 				const target = selectedContainer;
 				const res = await api.runtime.containers.logs(target, 250);
 				const containerObj = matchingContainers.find((c) => c.id === target || c.name === target);
@@ -191,7 +191,7 @@
 </script>
 
 <div class="flex w-full flex-col gap-3">
-	<!-- Unified Compact Toolbar (Dokploy Parity) -->
+	<!-- Unified Compact Toolbar -->
 	<div
 		class="flex flex-col justify-between gap-3 border-b border-[var(--border)] pb-3 md:flex-row md:items-center"
 	>

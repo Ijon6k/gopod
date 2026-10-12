@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { PageHeader, StatusBadge, SearchInput } from '$lib/components/ui';
-	import { Button } from '$lib/components/ui';
+	import { PageHeader, StatusBadge, SearchInput, Button } from '$lib/components/ui';
 	import { LayerCard, Empty } from 'kumo-svelte';
 	import { projects, getProjectServices, getProjectDomains } from '$lib/data';
 	import { formatMemory, pluralize } from '$lib/utils/format';
@@ -29,11 +28,8 @@
 			<span class="ml-0.5 text-xs text-[var(--text-tertiary)]">{projects.length} active</span>
 		{/snippet}
 		{#snippet actions()}
-			<Button variant="secondary" size="sm" onclick={() => goto('/projects/new')}>
+			<Button variant="primary" size="sm" onclick={() => goto('/projects/new')}>
 				<Plus size={13} /> New project
-			</Button>
-			<Button variant="primary" size="sm" onclick={() => goto('/projects/new-service')}>
-				<Plus size={13} /> New service
 			</Button>
 		{/snippet}
 	</PageHeader>
@@ -44,9 +40,9 @@
 		<span>{filtered.length} {filtered.length === 1 ? 'project' : 'projects'}</span>
 	</div>
 
-	<!-- Project List using Kumo LayerCard -->
+	<!-- Project 2-Column Grid using Kumo LayerCard -->
 	{#if filtered.length > 0}
-		<div class="flex flex-col gap-3">
+		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			{#each filtered as project (project.id)}
 				{@const svcCount = project.serviceCount ?? (project.services?.length || getProjectServices(project.id).length)}
 				{@const domCount = project.domainCount ?? (project.domains?.length || getProjectDomains(project.id).length)}
@@ -55,48 +51,54 @@
 				{@const memory = formatMemory(memTotal)}
 
 				<LayerCard
-					class="group cursor-pointer p-4 transition-all hover:border-[var(--accent)] hover:shadow-xs"
+					class="group flex flex-col justify-between gap-4 cursor-pointer p-4.5 transition-all hover:border-[var(--accent)] hover:shadow-xs hover:bg-[var(--bg-hover)]"
 					onclick={() => goto(`/projects/${project.id}`)}
 				>
-					<div class="flex items-center justify-between gap-4">
-						<div class="flex min-w-0 flex-1 items-center gap-3.5">
+					<!-- Top Row: Icon, Name, Status, and Nav Arrow -->
+					<div class="flex items-start justify-between gap-3">
+						<div class="flex min-w-0 flex-1 items-center gap-3">
 							<div
 								class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-kumo-fill)] text-[var(--accent)]"
 							>
 								<FolderOpen size={18} />
 							</div>
 							<div class="flex min-w-0 flex-col gap-0.5">
-								<div class="flex items-center gap-2.5">
-									<strong class="text-sm font-semibold text-[var(--text-primary)]">
+								<div class="flex items-center gap-2">
+									<strong class="truncate text-sm font-semibold text-[var(--text-primary)]">
 										{project.name}
 									</strong>
 									<StatusBadge status={project.status || 'healthy'} size="sm" />
 								</div>
-								<p class="m-0 truncate text-xs text-[var(--text-tertiary)]">
-									{project.description || 'No description provided'}
-								</p>
 							</div>
 						</div>
 
-						<div class="flex shrink-0 items-center gap-4 text-xs text-[var(--text-secondary)]">
-							<div class="hidden sm:flex items-center gap-3 text-[var(--text-tertiary)]">
-								<span class="rounded bg-[var(--color-kumo-fill)] px-2 py-0.5 font-mono text-[11px]">
-									{svcCount} {pluralize(svcCount, 'service')}
-								</span>
-								<span class="rounded bg-[var(--color-kumo-fill)] px-2 py-0.5 font-mono text-[11px]">
-									{domCount} {pluralize(domCount, 'domain')}
-								</span>
-								<span class="font-mono text-[11px] tabular-nums">
-									{cpuTotal.toFixed(1)}% CPU · {memory}
-								</span>
-							</div>
+						<span
+							class="text-[var(--text-tertiary)] transition-transform duration-150 group-hover:translate-x-1 group-hover:text-[var(--text-primary)]"
+						>
+							<ArrowRight size={15} />
+						</span>
+					</div>
 
-							<span
-								class="text-[var(--text-tertiary)] transition-transform duration-150 group-hover:translate-x-1 group-hover:text-[var(--text-primary)]"
-							>
-								<ArrowRight size={15} />
+					<!-- Middle: Clamped Description -->
+					<p class="m-0 line-clamp-2 min-h-[34px] text-xs leading-relaxed text-[var(--text-secondary)]">
+						{project.description || 'No description provided'}
+					</p>
+
+					<!-- Bottom Row: Metrics & Subsystem Badges -->
+					<div
+						class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-3 text-[11px] font-mono text-[var(--text-tertiary)]"
+					>
+						<div class="flex items-center gap-2">
+							<span class="rounded bg-[var(--color-kumo-fill)] px-2 py-0.5">
+								{svcCount} {pluralize(svcCount, 'service')}
+							</span>
+							<span class="rounded bg-[var(--color-kumo-fill)] px-2 py-0.5">
+								{domCount} {pluralize(domCount, 'domain')}
 							</span>
 						</div>
+						<span class="tabular-nums text-[var(--text-secondary)]">
+							{cpuTotal.toFixed(1)}% CPU · {memory}
+						</span>
 					</div>
 				</LayerCard>
 			{/each}

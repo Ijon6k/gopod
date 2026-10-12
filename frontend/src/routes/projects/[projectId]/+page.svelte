@@ -174,7 +174,7 @@
 					<div>
 						<strong class="font-semibold">Active services detected ({services.length})</strong>
 						<p class="m-0 mt-1 text-[var(--text-secondary)]">
-							Dokploy safety policy: You have active services in this project. Please terminate and
+							GOPOD safety policy: You have active services in this project. Please terminate and
 							delete all services first before deleting the project.
 						</p>
 					</div>

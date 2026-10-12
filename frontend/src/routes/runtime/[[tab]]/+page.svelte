@@ -67,6 +67,8 @@
 			]}
 			rows={containers}
 			keyExtractor={(c) => c.id}
+			pageSize={10}
+			itemName="containers"
 		/>
 	{:else if activeTab === 'quadlets'}
 		<div class="flex flex-col gap-4">
@@ -105,6 +107,8 @@
 				rows={quadlets}
 				keyExtractor={(q) => q.name}
 				actions={quadletActionsSnippet}
+				pageSize={10}
+				itemName="quadlets"
 			/>
 		</div>
 	{:else if activeTab === 'pods'}
@@ -118,6 +122,8 @@
 			]}
 			rows={pods}
 			keyExtractor={(p) => p.id}
+			pageSize={10}
+			itemName="pods"
 		/>
 	{:else if activeTab === 'images'}
 		<DataTable
@@ -130,6 +136,8 @@
 			]}
 			rows={images}
 			keyExtractor={(img) => img.id}
+			pageSize={10}
+			itemName="images"
 		/>
 	{:else if activeTab === 'volumes'}
 		<DataTable
@@ -143,6 +151,8 @@
 			]}
 			rows={volumes}
 			keyExtractor={(v) => v.id}
+			pageSize={10}
+			itemName="volumes"
 		/>
 	{:else if activeTab === 'networks'}
 		<DataTable
@@ -155,6 +165,8 @@
 			]}
 			rows={networks}
 			keyExtractor={(n) => n.id}
+			pageSize={10}
+			itemName="networks"
 		/>
 	{/if}
 </div>

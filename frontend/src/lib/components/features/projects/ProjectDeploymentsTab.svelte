@@ -32,6 +32,8 @@
 		]}
 		rows={displayedDeployments}
 		keyExtractor={(d) => d.id}
+		pageSize={limit ? undefined : 10}
+		itemName="deployments"
 		onRowClick={(d) => goto(`/projects/${project.id}/services/${d.serviceId}`)}
 	/>
 </section>

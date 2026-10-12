@@ -3,7 +3,7 @@
 	import { StatusBadge, ConfirmDialog, Checkbox } from '$lib/components/ui';
 	import type { Service, Project } from '$lib/types';
 	import { dataStore } from '$lib/data';
-	import { Trash, HardDrives } from 'phosphor-svelte';
+	import { Trash, HardDrives, Package } from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
@@ -18,6 +18,20 @@
 	let deleteVolumes = $state(false);
 	let isDeleting = $state(false);
 
+	let podMemberCount = $derived.by(() => {
+		if (service.type !== 'pod' && service.runtimeTarget !== 'pod') return 0;
+		const count = dataStore.services.filter(
+			(s) =>
+				s.projectId === service.projectId &&
+				s.id !== service.id &&
+				(s.podId === service.id ||
+					s.podId === service.name ||
+					s.podId === `pod_${service.name}` ||
+					(s.inPod && s.type !== 'pod'))
+		).length;
+		return count || service.workloads?.length || 0;
+	});
+
 	let workloadSubtitle = $derived.by(() => {
 		if (service.type === 'application') {
 			return `Application · Port ${service.port || 3000}`;
@@ -27,8 +41,7 @@
 			return `Compose · ${count} workload${count > 1 ? 's' : ''}`;
 		}
 		if (service.type === 'pod') {
-			const count = service.workloads?.length ?? 1;
-			return `Pod · ${count} container${count > 1 ? 's' : ''}`;
+			return `Podman Pod · ${podMemberCount} container${podMemberCount === 1 ? '' : 's'}`;
 		}
 		if (service.type === 'kubernetes') {
 			return `Kubernetes YAML · Port ${service.port || 80}`;
@@ -76,6 +89,15 @@
 
 	<!-- Right Badges & Controls -->
 	<div class="flex items-center gap-2.5">
+		{#if service.type === 'pod' || service.runtimeTarget === 'pod'}
+			<div
+				class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)]"
+			>
+				<Package size={14} class="text-[var(--accent)]" />
+				<span>Podman Pod · {podMemberCount} {podMemberCount === 1 ? 'Container' : 'Containers'}</span>
+			</div>
+		{/if}
+
 		<!-- Host Engine Badge -->
 		<div
 			class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-secondary)]"
@@ -92,7 +114,6 @@
 				deleteConfirmOpen = true;
 			}}
 			class="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-2 text-[var(--text-tertiary)] transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400"
-			title="Delete service"
 			aria-label="Delete service"
 		>
 			<Trash size={15} />
@@ -112,7 +133,7 @@
 	oncancel={() => (deleteConfirmOpen = false)}
 	onconfirm={handleDeleteService}
 >
-	<!-- Dokploy-style Persistent Volumes Option Checkbox -->
+	<!-- Persistent Volumes Option Checkbox -->
 	<div
 		class="flex cursor-pointer items-start gap-2.5 rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-3 select-none"
 	>

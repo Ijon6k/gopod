@@ -2,7 +2,6 @@
 	import type { Container } from '$lib/types';
 	import { StatusBadge } from '$lib/components/ui';
 	import { Cube, Terminal, FileText } from 'phosphor-svelte';
-	import { getCpuColor, getMemPercent, getMemColor } from './processManagerHelpers';
 
 	interface Props {
 		container: Container;
@@ -13,9 +12,6 @@
 	}
 
 	let { container: c, isTree = false, rowIndex = 0, onOpenTerminal, onOpenLogs }: Props = $props();
-
-	let limit = $derived(c.memoryLimit || 512);
-	let memPct = $derived(getMemPercent(c.memory, limit));
 </script>
 
 <tr
@@ -93,38 +89,18 @@
 		<StatusBadge status={c.status} size="sm" />
 	</td>
 
-	<!-- CPU Sparkbar -->
+	<!-- CPU utilization (numeric only) -->
 	<td class="px-3.5 py-2 text-right align-middle font-mono whitespace-nowrap">
-		<div class="flex items-center justify-end gap-2">
-			<div
-				class="hidden h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--bg-surface)] sm:block"
-			>
-				<div
-					class="h-full rounded-full transition-all duration-300 {getCpuColor(c.cpu)}"
-					style="width: {Math.min(c.cpu * 12, 100)}%;"
-				></div>
-			</div>
-			<span class="text-[13px] font-semibold text-[var(--text-primary)] tabular-nums">
-				{c.cpu.toFixed(1)}%
-			</span>
-		</div>
+		<span class="text-[13px] font-medium text-[var(--text-primary)] tabular-nums">
+			{c.cpu.toFixed(1)}%
+		</span>
 	</td>
 
-	<!-- Memory -->
+	<!-- Memory (usage only, no total limit or bar) -->
 	<td class="px-3.5 py-2 text-right align-middle font-mono whitespace-nowrap">
-		<div class="flex items-center justify-end gap-2">
-			<div
-				class="hidden h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-[var(--bg-surface)] sm:block"
-			>
-				<div
-					class="h-full rounded-full transition-all duration-300 {getMemColor(memPct)}"
-					style="width: {memPct}%;"
-				></div>
-			</div>
-			<span class="text-[13px] text-[var(--text-primary)] tabular-nums">
-				{c.memory} <span class="text-[10px] text-[var(--text-tertiary)]">/ {limit} MB</span>
-			</span>
-		</div>
+		<span class="text-[13px] font-medium text-[var(--text-primary)] tabular-nums">
+			{c.memory} MB
+		</span>
 	</td>
 
 	<td
@@ -137,11 +113,5 @@
 		class="px-3.5 py-2 text-center align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)] tabular-nums"
 	>
 		{c.pids || 1}
-	</td>
-
-	<td
-		class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)] tabular-nums"
-	>
-		{c.uptime || 'Active'}
 	</td>
 </tr>

@@ -164,7 +164,7 @@
 	>
 		<LayerDialog.Content
 			size="xl"
-			class="h-[88vh] max-h-[860px] sm:max-w-4xl p-0 overflow-hidden flex flex-col"
+			class="h-[85vh] min-h-[560px] max-h-[860px] sm:max-w-4xl p-0 overflow-hidden flex flex-col [&>div]:h-full [&>div]:flex-1 [&>div>div]:h-full [&>div>div]:flex-1"
 		>
 		{#if deployment}
 			<!-- Top Modal Header (Padding-right reserved for Kumo's close X button) -->

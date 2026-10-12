@@ -76,9 +76,13 @@
 		const reclaimedGB = parseFloat((totalReclaimableBytes / (1024 * 1024 * 1024)).toFixed(2));
 
 		try {
-			if (pruneContainers || pruneBuildCache) {
-				currentStep = 'Pruning stopped containers & cache (podman system prune)...';
+			if (pruneBuildCache) {
+				currentStep = 'Pruning build cache & system artifacts (podman system prune)...';
 				await api.system.prune();
+			}
+			if (pruneContainers && !pruneBuildCache) {
+				currentStep = 'Pruning stopped containers (podman container prune)...';
+				await api.runtime.containers.prune();
 			}
 			if (pruneImages) {
 				currentStep = 'Pruning unused container images (podman image prune -a)...';

@@ -11,12 +11,12 @@
 	let { label, value, detail, class: className = '' }: Props = $props();
 </script>
 
-<div class={cn('flex flex-col gap-1.5', className)}>
-	<span class="text-[11px] font-medium tracking-[0.08em] text-kumo-subtle uppercase">
+<div class={cn('flex flex-col gap-1', className)}>
+	<span class="text-xs font-medium text-kumo-subtle">
 		{label}
 	</span>
 	<strong
-		class="text-2xl leading-none font-semibold tracking-tight whitespace-nowrap text-kumo-default"
+		class="text-2xl leading-tight font-semibold whitespace-nowrap text-kumo-default"
 	>
 		{value}
 	</strong>

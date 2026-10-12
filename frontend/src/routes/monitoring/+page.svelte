@@ -3,6 +3,7 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { PageHeader, AreaChart, Select } from '$lib/components/ui';
+	import { LayerCard } from 'kumo-svelte';
 	import { monitoringData, dataStore } from '$lib/data';
 	import {
 		ServerOverviewBar,
@@ -210,14 +211,12 @@
 		<!-- Historical Time Series Area Charts with Scannable Summary Markers -->
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<!-- 1. CPU Utilization -->
-			<div
-				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
-			>
+			<LayerCard class="flex flex-col gap-3 p-5">
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-semibold text-[var(--text-primary)]">CPU Utilization</span>
+						<span class="text-xs font-medium text-[var(--text-tertiary)]">CPU utilization</span>
 						<strong
-							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 						>
 							{server.cpuUsage.toFixed(1)}%
 							<span class="text-xs font-normal text-[var(--text-tertiary)]"
@@ -227,7 +226,7 @@
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span
-							>Peak: <strong class="text-[var(--text-secondary)]"
+							>Peak: <strong class="font-medium text-[var(--text-secondary)]"
 								>{(server.cpuUsage * 1.5).toFixed(1)}%</strong
 							></span
 						>
@@ -238,22 +237,20 @@
 				<AreaChart
 					data={monitoringData.cpu ?? []}
 					height={210}
-					strokeColor="#6973A8"
-					fillColor="#6973A8"
+					strokeColor="var(--accent)"
+					fillColor="var(--accent)"
 				/>
-			</div>
+			</LayerCard>
 
 			<!-- 2. Memory (RAM) -->
-			<div
-				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
-			>
+			<LayerCard class="flex flex-col gap-3 p-5">
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-semibold text-[var(--text-primary)]"
-							>Memory Allocation (RAM)</span
+						<span class="text-xs font-medium text-[var(--text-tertiary)]"
+							>Memory allocation (RAM)</span
 						>
 						<strong
-							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 						>
 							{server.memoryUsed.toFixed(1)} / {server.memory} GB
 							<span class="text-xs font-normal text-[var(--text-tertiary)]"
@@ -263,7 +260,7 @@
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span
-							>Peak: <strong class="text-[var(--text-secondary)]"
+							>Peak: <strong class="font-medium text-[var(--text-secondary)]"
 								>{(server.memoryUsed * 1.15).toFixed(1)} GB</strong
 							></span
 						>
@@ -274,22 +271,20 @@
 				<AreaChart
 					data={monitoringData.memory ?? []}
 					height={210}
-					strokeColor="#4C9A72"
-					fillColor="#4C9A72"
+					strokeColor="var(--status-green)"
+					fillColor="var(--status-green)"
 				/>
-			</div>
+			</LayerCard>
 
 			<!-- 3. Storage I/O -->
-			<div
-				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
-			>
+			<LayerCard class="flex flex-col gap-3 p-5">
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-semibold text-[var(--text-primary)]"
-							>Storage I/O Operations</span
+						<span class="text-xs font-medium text-[var(--text-tertiary)]"
+							>Storage I/O operations</span
 						>
 						<strong
-							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 						>
 							{server.storageUsed.toFixed(1)} / {server.storage} GB
 							<span class="text-xs font-normal text-[var(--text-tertiary)]"
@@ -306,20 +301,18 @@
 				<AreaChart
 					data={monitoringData.storage ?? []}
 					height={210}
-					strokeColor="#B8893B"
-					fillColor="#B8893B"
+					strokeColor="var(--status-amber)"
+					fillColor="var(--status-amber)"
 				/>
-			</div>
+			</LayerCard>
 
 			<!-- 4. Network Traffic -->
-			<div
-				class="flex flex-col gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5 shadow-xs"
-			>
+			<LayerCard class="flex flex-col gap-3 p-5">
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-semibold text-[var(--text-primary)]">Network Traffic</span>
+						<span class="text-xs font-medium text-[var(--text-tertiary)]">Network traffic</span>
 						<strong
-							class="mt-0.5 text-lg font-[var(--font-mono)] font-bold tracking-tight text-[var(--text-primary)] tabular-nums"
+							class="mt-0.5 text-lg font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 						>
 							Inbound / Outbound <span class="text-xs font-normal text-[var(--text-tertiary)]"
 								>(Aggregate)</span
@@ -335,10 +328,10 @@
 				<AreaChart
 					data={monitoringData.network ?? []}
 					height={210}
-					strokeColor="#7680B5"
-					fillColor="#7680B5"
+					strokeColor="var(--status-blue)"
+					fillColor="var(--status-blue)"
 				/>
-			</div>
+			</LayerCard>
 		</div>
 	{/if}
 

@@ -20,6 +20,16 @@ export const domainsApi = {
 	async delete(id: string): Promise<{ message: string }> {
 		const res = await apiClient.delete<{ message: string }>(`/domains/${id}`);
 		return res.data;
+	},
+
+	async getCaddyfile(): Promise<{ caddyfile: string; status: string; adminUrl: string }> {
+		const res = await apiClient.get<{ caddyfile: string; status: string; adminUrl: string }>('/ingress/caddyfile');
+		return res.data;
+	},
+
+	async reload(): Promise<{ message: string }> {
+		const res = await apiClient.post<{ message: string }>('/ingress/reload');
+		return res.data;
 	}
 };
 

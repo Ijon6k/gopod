@@ -89,8 +89,8 @@
 	}
 </script>
 
-<div class="flex flex-col gap-6">
-	<!-- 1. Provider Card (Dokploy Style) -->
+<div id="quadlet-editor-section" class="flex flex-col gap-6">
+	<!-- 1. Provider Card -->
 	<LayerCard class="overflow-hidden p-0">
 		<div
 			class="flex flex-wrap items-center justify-between gap-3 border-b border-[var(--border-subtle)] px-5 py-4"

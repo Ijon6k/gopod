@@ -18,7 +18,7 @@
 
 	let { service, onNavigateTab }: Props = $props();
 
-	// Match actual containers from Podman runtime store (Dokploy multi-container parity)
+	// Match actual containers from Podman runtime store
 	let matchingContainers = $derived.by<Container[]>(() => {
 		return dataStore.containers.filter(
 			(c) =>
@@ -153,7 +153,7 @@
 			currentStatus === 'stopped'
 	);
 
-	// Dynamic Rolling Telemetry Buffers for Live Container Charts (Dokploy Parity)
+	// Dynamic Rolling Telemetry Buffers for Live Container Charts
 	function initSeries(baseVal: number, count = 20): TimeSeriesPoint[] {
 		const now = Date.now();
 		return Array.from({ length: count }, (_, i) => {
@@ -247,12 +247,12 @@
 </script>
 
 <div class="flex w-full flex-col gap-6">
-	<!-- Top Bar: Filter Bar + Dokploy Container Selector + Polling Controls -->
+	<!-- Top Bar: Filter Bar + Container Selector + Polling Controls -->
 	<div
 		class="flex flex-col justify-between gap-3 border-b border-[var(--border-subtle)] pb-3 sm:flex-row sm:items-center"
 	>
 		<div class="flex flex-wrap items-center gap-3">
-			<!-- Dokploy Parity Container Selector -->
+			<!-- Container Selector -->
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
 				<div class="min-w-[200px]">
@@ -267,7 +267,7 @@
 				</div>
 			</div>
 
-			<!-- Quick Restart Action (Dokploy Parity) -->
+			<!-- Quick Restart Action -->
 			{#if matchingContainers.length > 0}
 				<Button
 					variant="secondary"
@@ -428,7 +428,7 @@
 		hasContainers={matchingContainers.length > 0}
 	/>
 
-	<!-- 2x2 Metric Charts Grid with Live Per-Container Time Series (Dokploy Parity) -->
+	<!-- 2x2 Metric Charts Grid with Live Per-Container Time Series -->
 	<TelemetryChartsGrid
 		{timeRange}
 		{cpuHistory}

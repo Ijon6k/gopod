@@ -54,11 +54,22 @@
 		isAdding = true;
 	}
 
+	function getDomainUrl(d: Domain): string {
+		const host = d.hostname.trim().replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+		const isLocal = host.endsWith('.localhost') || host.endsWith('.local') || host.includes('127.0.0.1');
+		if (isLocal) {
+			return `http://${host}:8080`;
+		}
+		return `${d.tls ? 'https' : 'http'}://${host}`;
+	}
+
 	function handleSaveDomain() {
 		if (!domainName.trim()) return;
 
 		const portNum = parseInt(targetPort, 10) || service.port || 3000;
-		const cleanHost = domainName.trim().toLowerCase();
+		let cleanHost = domainName.trim().toLowerCase();
+		cleanHost = cleanHost.replace(/^https?:\/\//, '');
+		cleanHost = cleanHost.replace(/:\d+$/, '');
 
 		if (editingDomainId) {
 			const existing = dataStore.domains.find((d) => d.id === editingDomainId);
@@ -67,6 +78,7 @@
 				existing.containerPort = portNum;
 				existing.publishedPort = portNum;
 				existing.tls = autoHttps;
+				dataStore.updateDomain(existing);
 			}
 		} else {
 			const domain: Domain = {
@@ -108,7 +120,7 @@
 <div class="flex w-full flex-col gap-5">
 	<!-- DNS Guidance Helper Banner -->
 	<div
-		class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-surface)]/60 p-3.5 text-xs sm:flex-row sm:items-center"
+		class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] p-3.5 text-xs sm:flex-row sm:items-center"
 	>
 		<div class="flex items-center gap-2 text-[var(--text-secondary)]">
 			<Globe size={16} class="shrink-0 text-[var(--accent)]" />
@@ -162,11 +174,15 @@
 
 			<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
 				<div class="sm:col-span-2">
-					<Field label="Domain Name" required>
+					<Field
+						label="Domain Name"
+						required
+						description="Hostname only (e.g. app.localhost or api.example.com), without http:// or port."
+					>
 						<Input
 							id="new-domain-host"
 							bind:value={domainName}
-							placeholder="e.g. app.example.com or api.example.com"
+							placeholder="e.g. app.localhost or api.example.com"
 							class="text-xs font-[var(--font-mono)]"
 						/>
 					</Field>
@@ -277,14 +293,14 @@
 	>
 		{#each serviceDomains as d (d.id)}
 			<div
-				class="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-[var(--bg-hover)]/30"
+				class="flex items-center justify-between gap-4 p-4 hover:bg-[var(--bg-hover)]"
 			>
 				<div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
 					<!-- Domain Hostname + External Link -->
 					<div class="flex min-w-[220px] items-center gap-2">
 						<Globe size={15} class="shrink-0 text-[var(--accent)]" />
 						<a
-							href="http://{d.hostname}"
+							href={getDomainUrl(d)}
 							target="_blank"
 							rel="noreferrer"
 							class="flex items-center gap-1 truncate text-sm font-[var(--font-mono)] font-medium text-[var(--text-primary)] hover:underline"

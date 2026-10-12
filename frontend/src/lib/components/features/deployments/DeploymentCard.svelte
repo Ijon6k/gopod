@@ -245,13 +245,13 @@
 	</div>
 
 	<!-- Right: Actions -->
-	<div class="flex shrink-0 items-center gap-1.5">
+	<div class="flex shrink-0 items-center gap-2">
 		<!-- View Logs Button -->
 		<Button
 			variant="secondary"
 			size="sm"
 			onclick={() => onViewLogs(deployment)}
-			class="gap-1.5"
+			class="gap-1.5 whitespace-nowrap border border-kumo-line bg-kumo-elevated text-kumo-default shadow-xs hover:bg-kumo-fill"
 		>
 			<Terminal size={13} />
 			<span>View logs</span>
@@ -260,10 +260,10 @@
 		<!-- Rollback / Redeploy Button -->
 		{#if !isBuilding}
 			<Button
-				variant="ghost"
+				variant="secondary"
 				size="sm"
 				onclick={() => onRedeploy(deployment)}
-				class="gap-1.5"
+				class="gap-1.5 whitespace-nowrap border border-kumo-line bg-kumo-elevated text-kumo-default shadow-xs hover:bg-kumo-fill"
 				title={isCurrent ? 'Redeploy this version' : 'Rollback to this deployment'}
 			>
 				<ArrowCounterClockwise size={13} />
@@ -274,7 +274,7 @@
 				variant="destructive"
 				size="sm"
 				onclick={() => onCancel(deployment)}
-				class="gap-1.5"
+				class="gap-1.5 whitespace-nowrap shadow-xs"
 				title="Cancel active deployment"
 			>
 				<StopCircle size={13} />
@@ -284,14 +284,15 @@
 
 		<!-- Delete Button -->
 		<Button
-			variant="ghost"
+			variant="secondary"
 			size="sm"
 			shape="square"
 			onclick={() => onDelete(deployment)}
+			class="border border-kumo-line bg-kumo-elevated shadow-xs hover:bg-kumo-fill hover:text-kumo-danger"
 			title="Delete deployment record"
 			aria-label="Delete deployment"
 		>
-			<Trash size={14} class="text-kumo-subtle hover:text-kumo-danger" />
+			<Trash size={14} class="text-kumo-subtle transition-colors group-hover:text-kumo-danger hover:text-kumo-danger" />
 		</Button>
 	</div>
 </div>

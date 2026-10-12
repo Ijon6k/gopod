@@ -100,6 +100,7 @@ type NetworkItem struct {
 type RunContainerOptions struct {
 	Name          string            `json:"name"`
 	Image         string            `json:"image"`
+	Pod           string            `json:"pod,omitempty"`
 	Ports         []string          `json:"ports,omitempty"`
 	Env           map[string]string `json:"env,omitempty"`
 	Network       string            `json:"network,omitempty"`
@@ -115,6 +116,14 @@ type RunContainerOptions struct {
 	Devices       []string          `json:"devices,omitempty"`
 	PidsLimit     int               `json:"pidsLimit,omitempty"`
 	SecurityOpt   []string          `json:"securityOpt,omitempty"`
+}
+
+// CreatePodOptions specifies parameters for creating a new Podman pod.
+type CreatePodOptions struct {
+	Name    string            `json:"name"`
+	Ports   []string          `json:"ports,omitempty"`
+	Network string            `json:"network,omitempty"`
+	Labels  map[string]string `json:"labels,omitempty"`
 }
 
 // SystemDiskUsage represents disk space usage of images, containers, and volumes.

@@ -96,6 +96,16 @@ func NewServer(cfg Config) http.Handler {
 	ingressService := ingress.NewService(ingressRepo, caddyReconciler)
 	ingressHandler := ingress.NewHandler(ingressService, authMiddleware)
 
+	// Reconcile Caddy on startup to establish reverse proxy and access logging
+	go func() {
+		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		domains, err := ingressRepo.List(bgCtx, "")
+		if err == nil {
+			_ = caddyReconciler.Reconcile(bgCtx, domains)
+		}
+	}()
+
 	storageRepo := storage.NewSQLiteRepository(sqlDB)
 	storageService := storage.NewService(storageRepo)
 	storageService.StartScheduler(context.Background())

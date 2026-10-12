@@ -1,8 +1,10 @@
 package runtime
 
 import (
+	"encoding/json"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopod/internal/auth"
@@ -39,11 +41,17 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/containers/{id}/stop", h.middleware.RequireAuth(h.handleContainerStop))
 	mux.HandleFunc("POST /api/containers/{id}/restart", h.middleware.RequireAuth(h.handleContainerRestart))
 	mux.HandleFunc("DELETE /api/containers/{id}", h.middleware.RequireAuth(h.handleContainerDelete))
+	mux.HandleFunc("POST /api/containers/prune", h.middleware.RequireAuth(h.handlePruneContainers))
 	mux.HandleFunc("GET /api/containers/{id}/logs", h.middleware.RequireAuth(h.handleContainerLogs))
 	mux.HandleFunc("GET /api/containers/{id}/exec", h.handleContainerExec) // auth handled inside WebSocket upgrade
 
 	// Protected Podman resources
 	mux.HandleFunc("GET /api/pods", h.middleware.RequireAuth(h.handleListPods))
+	mux.HandleFunc("POST /api/pods", h.middleware.RequireAuth(h.handleCreatePod))
+	mux.HandleFunc("POST /api/pods/{id}/start", h.middleware.RequireAuth(h.handlePodStart))
+	mux.HandleFunc("POST /api/pods/{id}/stop", h.middleware.RequireAuth(h.handlePodStop))
+	mux.HandleFunc("POST /api/pods/{id}/restart", h.middleware.RequireAuth(h.handlePodRestart))
+	mux.HandleFunc("DELETE /api/pods/{id}", h.middleware.RequireAuth(h.handlePodDelete))
 	mux.HandleFunc("GET /api/images", h.middleware.RequireAuth(h.handleListImages))
 	mux.HandleFunc("POST /api/images/prune", h.middleware.RequireAuth(h.handlePruneImages))
 	mux.HandleFunc("GET /api/volumes", h.middleware.RequireAuth(h.handleListVolumes))
@@ -133,6 +141,14 @@ func (h *Handler) handleContainerDelete(w http.ResponseWriter, r *http.Request) 
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Container removed"})
 }
 
+func (h *Handler) handlePruneContainers(w http.ResponseWriter, r *http.Request) {
+	if err := h.service.PruneContainers(r.Context()); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Containers pruned successfully"})
+}
+
 func (h *Handler) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	tail := 100
@@ -156,6 +172,68 @@ func (h *Handler) handleListPods(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, pods)
+}
+
+type createPodRequest struct {
+	Name    string            `json:"name"`
+	Ports   []string          `json:"ports"`
+	Network string            `json:"network"`
+	Labels  map[string]string `json:"labels"`
+}
+
+func (h *Handler) handleCreatePod(w http.ResponseWriter, r *http.Request) {
+	var req createPodRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+	if strings.TrimSpace(req.Name) == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "Pod name is required")
+		return
+	}
+	id, err := h.service.CreatePod(r.Context(), req.Name, req.Ports, req.Network, req.Labels)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, map[string]string{"id": id, "name": req.Name})
+}
+
+func (h *Handler) handlePodStart(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.service.StartPod(r.Context(), id); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "started", "id": id})
+}
+
+func (h *Handler) handlePodStop(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.service.StopPod(r.Context(), id); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "stopped", "id": id})
+}
+
+func (h *Handler) handlePodRestart(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.service.RestartPod(r.Context(), id); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "restarted", "id": id})
+}
+
+func (h *Handler) handlePodDelete(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	force := r.URL.Query().Get("force") == "true"
+	if err := h.service.DeletePod(r.Context(), id, force); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"status": "deleted", "id": id})
 }
 
 func (h *Handler) handleListImages(w http.ResponseWriter, r *http.Request) {

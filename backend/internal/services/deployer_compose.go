@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// deployCompose manages Docker/Podman Compose deployment via CLI with -p project name flag (Dokploy parity).
+// deployCompose manages Docker/Podman Compose deployment via CLI with -p project name flag.
 func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger string, logLine func(string)) (*DeployResult, error) {
 	projectName := s.ID
 	if projectName == "" {

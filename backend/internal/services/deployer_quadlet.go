@@ -739,7 +739,7 @@ func (d *Deployer) generateDefaultQuadletContent(s Service, cleanName string) st
 		extraDirectives.WriteString(fmt.Sprintf("Environment=%s\n", env))
 	}
 	for _, env := range s.EnvVars {
-		if env.Key != "" {
+		if env.Key != "" && !strings.HasPrefix(env.Key, "#") {
 			extraDirectives.WriteString(fmt.Sprintf("Environment=\"%s=%s\"\n", env.Key, env.Value))
 		}
 	}

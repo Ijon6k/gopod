@@ -40,7 +40,8 @@
 	let isDeploying = $state(false);
 	let isRebuilding = $state(false);
 	let isFreshingVolumes = $state(false);
-	let isTogglingPower = $state(false);
+	let isStopping = $state(false);
+	let isStarting = $state(false);
 	let isReloadingDaemon = $state(false);
 	let feedbackMessage = $state<{ text: string; type: 'success' | 'info' } | null>(null);
 	let feedbackTimeout: ReturnType<typeof setTimeout> | null = null;
@@ -70,18 +71,20 @@
 		}
 	}
 
-	function showFeedback(text: string, type: 'success' | 'info' = 'info') {
+	function showFeedback(text: string, type: 'success' | 'info' = 'info', notifyToast = true) {
 		if (feedbackTimeout) clearTimeout(feedbackTimeout);
 		feedbackMessage = { text, type };
 		feedbackTimeout = setTimeout(() => {
 			feedbackMessage = null;
 		}, 3500);
 
-		toast.add({
-			title: type === 'success' ? 'Success' : 'Notice',
-			description: text,
-			variant: type === 'success' ? 'success' : 'info'
-		});
+		if (notifyToast) {
+			toast.add({
+				title: type === 'success' ? 'Success' : 'Notice',
+				description: text,
+				variant: type === 'success' ? 'success' : 'info'
+			});
+		}
 	}
 
 	function handleToggleInPod() {
@@ -194,25 +197,46 @@
 	}
 
 	async function handleTogglePower() {
-		if (isTogglingPower) return;
-		isTogglingPower = true;
+		if (isStopping || isStarting) return;
 
-		try {
-			if (isRunning) {
-				showFeedback('Stopping service workload...', 'info');
+		if (isRunning) {
+			isStopping = true;
+			service.status = 'stopping';
+			showFeedback('Stopping service workload... Please wait.', 'info', false);
+
+			try {
 				const updated = await dataStore.stopService(service.id);
 				service.status = updated?.status || 'stopped';
-				showFeedback('Workload stopped successfully.', 'info');
-			} else {
-				showFeedback('Starting service workload...', 'info');
+				if (service.status === 'stopped') {
+					showFeedback('Workload stopped successfully.', 'success', true);
+				} else {
+					showFeedback(`Workload state is '${service.status}'. Containers may still be active.`, 'info', true);
+				}
+			} catch (err: any) {
+				service.status = 'running';
+				showFeedback(err?.message || 'Failed to stop service workload', 'info', true);
+			} finally {
+				isStopping = false;
+			}
+		} else {
+			isStarting = true;
+			service.status = 'starting';
+			showFeedback('Starting service workload... Please wait.', 'info', false);
+
+			try {
 				const updated = await dataStore.startService(service.id);
 				service.status = updated?.status || 'running';
-				showFeedback('Workload started successfully.', 'success');
+				if (service.status === 'running' || service.status === 'healthy') {
+					showFeedback('Workload started successfully.', 'success', true);
+				} else {
+					showFeedback(`Workload state is '${service.status}'.`, 'info', true);
+				}
+			} catch (err: any) {
+				service.status = 'stopped';
+				showFeedback(err?.message || 'Failed to start service workload', 'info', true);
+			} finally {
+				isStarting = false;
 			}
-		} catch (err: any) {
-			showFeedback(err?.message || 'Failed to update service state', 'info');
-		} finally {
-			isTogglingPower = false;
 		}
 	}
 
@@ -332,15 +356,15 @@
 				</Button>
 
 				<!-- 4. Stop / Start -->
-				{#if isRunning}
+				{#if isRunning || isStopping || service.status === 'stopping'}
 					<Button
 						variant="secondary-destructive"
 						size="sm"
 						onclick={handleTogglePower}
-						disabled={isTogglingPower}
+						disabled={isStopping || isStarting || service.status === 'stopping'}
 						class="gap-1.5 shadow-xs"
 					>
-						{#if isTogglingPower}
+						{#if isStopping || service.status === 'stopping'}
 							<ArrowClockwise size={13} class="animate-spin" />
 							<span>Stopping…</span>
 						{:else}
@@ -353,10 +377,10 @@
 						variant="secondary"
 						size="sm"
 						onclick={handleTogglePower}
-						disabled={isTogglingPower || service.status === 'deploying'}
+						disabled={isStopping || isStarting || service.status === 'deploying' || service.status === 'starting'}
 						class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
 					>
-						{#if isTogglingPower}
+						{#if isStarting || service.status === 'starting'}
 							<ArrowClockwise size={13} class="animate-spin" />
 							<span>Starting…</span>
 						{:else}
@@ -442,15 +466,15 @@
 				</Button>
 
 				<!-- 4. Stop / Start Button -->
-				{#if isRunning}
+				{#if isRunning || isStopping || service.status === 'stopping'}
 					<Button
 						variant="secondary-destructive"
 						size="sm"
 						onclick={handleTogglePower}
-						disabled={isTogglingPower}
+						disabled={isStopping || isStarting || service.status === 'stopping'}
 						class="gap-1.5 shadow-xs"
 					>
-						{#if isTogglingPower}
+						{#if isStopping || service.status === 'stopping'}
 							<ArrowClockwise size={13} class="animate-spin" />
 							<span>Stopping…</span>
 						{:else}
@@ -463,10 +487,10 @@
 						variant="secondary"
 						size="sm"
 						onclick={handleTogglePower}
-						disabled={isTogglingPower || service.status === 'deploying'}
+						disabled={isStopping || isStarting || service.status === 'deploying' || service.status === 'starting'}
 						class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
 					>
-						{#if isTogglingPower}
+						{#if isStarting || service.status === 'starting'}
 							<ArrowClockwise size={13} class="animate-spin" />
 							<span>Starting…</span>
 						{:else}

@@ -27,7 +27,17 @@
 		if (!envVars || envVars.length === 0) {
 			return '';
 		}
-		return envVars.map((v) => `${v.key}=${v.value}`).join('\n');
+		return envVars
+			.map((v) => {
+				if (v.key?.startsWith('#')) {
+					return v.key;
+				}
+				if (!v.key && !v.value) {
+					return '';
+				}
+				return `${v.key}=${v.value}`;
+			})
+			.join('\n');
 	}
 
 	let envText = $state('');
@@ -58,13 +68,20 @@
 	async function saveEnv() {
 		const lines = envText.split('\n');
 		const parsed: EnvVar[] = [];
-		for (const line of lines) {
-			const trimmed = line.trim();
-			if (!trimmed || trimmed.startsWith('#')) continue;
-			const eq = trimmed.indexOf('=');
+		for (const rawLine of lines) {
+			const trimmed = rawLine.trim();
+			if (!trimmed) {
+				parsed.push({ key: '', value: '', secret: false });
+				continue;
+			}
+			if (trimmed.startsWith('#')) {
+				parsed.push({ key: rawLine, value: '', secret: false });
+				continue;
+			}
+			const eq = rawLine.indexOf('=');
 			if (eq !== -1) {
-				const key = trimmed.slice(0, eq).trim();
-				const value = trimmed.slice(eq + 1).trim();
+				const key = rawLine.slice(0, eq).trim();
+				const value = rawLine.slice(eq + 1);
 				if (key) {
 					parsed.push({
 						key,
@@ -72,6 +89,8 @@
 						secret: true
 					});
 				}
+			} else {
+				parsed.push({ key: rawLine, value: '', secret: false });
 			}
 		}
 
@@ -94,10 +113,10 @@
 			.split('\n')
 			.map((l) => {
 				const t = l.trim();
-				if (!t || t.startsWith('#')) return t;
-				const eq = t.indexOf('=');
-				if (eq === -1) return t;
-				return `${t.slice(0, eq).trim().toUpperCase()}=${t.slice(eq + 1).trim()}`;
+				if (!t || t.startsWith('#')) return l;
+				const eq = l.indexOf('=');
+				if (eq === -1) return l;
+				return `${l.slice(0, eq).trim().toUpperCase()}=${l.slice(eq + 1)}`;
 			})
 			.join('\n');
 	}
@@ -311,7 +330,7 @@
 				<CodeEditor
 					bind:value={envText}
 					language="env"
-					height="380px"
+					height="80dvh"
 					placeholder={`# Environment variables (KEY=value)\n# Lines starting with # are comments\nPORT=3000\nDATABASE_URL=postgres://user:pass@localhost:5432/db`}
 				/>
 			</div>

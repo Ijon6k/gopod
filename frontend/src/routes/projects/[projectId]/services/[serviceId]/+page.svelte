@@ -149,17 +149,29 @@
 				const freshSvc = await api.services.get(sId);
 				if (!active || !freshSvc) return;
 				if (directService && directService.status !== freshSvc.status) {
-					directService.status = freshSvc.status;
+					if (directService.status === 'stopping' && freshSvc.status === 'running') {
+						// Keep local transitional state until stopped
+					} else {
+						directService.status = freshSvc.status;
+					}
 				}
 				const idx = dataStore.services.findIndex((s) => s.id === freshSvc.id);
 				if (idx >= 0 && dataStore.services[idx].status !== freshSvc.status) {
-					dataStore.services[idx].status = freshSvc.status;
+					if (dataStore.services[idx].status === 'stopping' && freshSvc.status === 'running') {
+						// Keep local transitional state until stopped
+					} else {
+						dataStore.services[idx].status = freshSvc.status;
+					}
 				}
 			} catch {}
 		};
 
 		const isTransitional = untrack(
-			() => service?.status === 'deploying' || service?.status === 'building'
+			() =>
+				service?.status === 'deploying' ||
+				service?.status === 'building' ||
+				service?.status === 'stopping' ||
+				service?.status === 'starting'
 		);
 		const interval = setInterval(poll, isTransitional ? 1500 : 4000);
 

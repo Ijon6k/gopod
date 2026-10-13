@@ -26,7 +26,9 @@
 
 		building: { variant: 'info', label: 'Building' },
 		deploying: { variant: 'info', label: 'Deploying' },
+		starting: { variant: 'info', label: 'Starting' },
 
+		stopping: { variant: 'warning', label: 'Stopping' },
 		degraded: { variant: 'warning', label: 'Degraded' },
 		pending: { variant: 'warning', label: 'Pending' },
 		queued: { variant: 'warning', label: 'Queued' },

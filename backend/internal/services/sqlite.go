@@ -98,9 +98,9 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 		}
 	}
 	if s.SourceType == "" {
-		if s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "" {
+		if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
 			s.SourceType = "compose"
-		} else if s.Type == "kubernetes" || strings.TrimSpace(s.K8sYaml) != "" {
+		} else if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
 			s.SourceType = "kubernetes"
 		} else if s.Type == "pod" {
 			s.SourceType = "pod"
@@ -148,9 +148,9 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 		}
 	}
 	if s.SourceType == "" {
-		if s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "" {
+		if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
 			s.SourceType = "compose"
-		} else if s.Type == "kubernetes" || strings.TrimSpace(s.K8sYaml) != "" {
+		} else if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
 			s.SourceType = "kubernetes"
 		} else if s.Type == "pod" {
 			s.SourceType = "pod"

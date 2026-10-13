@@ -83,7 +83,7 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 
 	envMap := make(map[string]string)
 	for _, env := range s.EnvVars {
-		if env.Key != "" {
+		if env.Key != "" && !strings.HasPrefix(env.Key, "#") {
 			envMap[env.Key] = env.Value
 		}
 	}

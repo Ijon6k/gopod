@@ -43,13 +43,19 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 	envFile := filepath.Join(composeDir, ".env")
 	if len(s.EnvVars) > 0 {
 		var envBuf strings.Builder
+		countVars := 0
 		for _, env := range s.EnvVars {
-			if env.Key != "" {
+			if strings.HasPrefix(env.Key, "#") {
+				envBuf.WriteString(env.Key + "\n")
+			} else if env.Key == "" && env.Value == "" {
+				envBuf.WriteString("\n")
+			} else if env.Key != "" {
 				envBuf.WriteString(fmt.Sprintf("%s=%s\n", env.Key, env.Value))
+				countVars++
 			}
 		}
 		if err := os.WriteFile(envFile, []byte(envBuf.String()), 0600); err == nil {
-			logLine(fmt.Sprintf("🔑 Environment file written to %s (%d variables)", envFile, len(s.EnvVars)))
+			logLine(fmt.Sprintf("🔑 Environment file written to %s (%d variables)", envFile, countVars))
 		}
 	} else {
 		_ = os.Remove(envFile)
@@ -96,7 +102,7 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 	cmd.Dir = composeDir
 	d.setupCmdEnv(cmd)
 	for _, env := range s.EnvVars {
-		if env.Key != "" {
+		if env.Key != "" && !strings.HasPrefix(env.Key, "#") {
 			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", env.Key, env.Value))
 		}
 	}
@@ -116,7 +122,7 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 		cmd.Dir = composeDir
 		d.setupCmdEnv(cmd)
 		for _, env := range s.EnvVars {
-			if env.Key != "" {
+			if env.Key != "" && !strings.HasPrefix(env.Key, "#") {
 				cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", env.Key, env.Value))
 			}
 		}

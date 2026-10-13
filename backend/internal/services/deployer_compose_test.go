@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -499,6 +500,60 @@ networks:
 	}
 	if _, ok := networks["default"]; !ok {
 		t.Errorf("expected default in networks")
+	}
+}
+
+func TestComposeLifecycle_PrecedenceOverK8sTemplate(t *testing.T) {
+	d := NewDeployer(nil, nil, nil, t.TempDir())
+	ctx := context.Background()
+
+	s := Service{
+		ID:          "svc-compose-test",
+		Name:        "my-stack",
+		ProjectID:   "proj-test",
+		Type:        "compose",
+		ComposeYaml: "services:\n  app:\n    image: alpine\n",
+		K8sYaml:     "apiVersion: v1\nkind: Pod\nmetadata:\n  name: my-stack\n",
+	}
+
+	// Make sure StopService doesn't error and correctly treats it as compose workload
+	err := d.StopService(ctx, s)
+	if err != nil {
+		t.Fatalf("unexpected error stopping compose service: %v", err)
+	}
+}
+
+func TestComposeEnv_PreservesCommentsAndFormatting(t *testing.T) {
+	tempDir := t.TempDir()
+	d := NewDeployer(nil, nil, nil, tempDir)
+
+	s := Service{
+		ID:          "svc-env-test",
+		Name:        "my-stack",
+		ProjectID:   "proj-env",
+		Type:        "compose",
+		ComposeYaml: "services:\n  app:\n    image: alpine\n",
+		EnvVars: []EnvVar{
+			{Key: "# Master Environment", Value: ""},
+			{Key: "", Value: ""},
+			{Key: "APP_ENV", Value: "production"},
+			{Key: "# Ports", Value: ""},
+			{Key: "PORT", Value: "8080"},
+		},
+	}
+
+	ctx := context.Background()
+	_, _ = d.deployCompose(ctx, s, "dep-1", "manual", func(string) {})
+
+	envPath := filepath.Join(tempDir, "compose", s.ProjectID, s.ID, ".env")
+	content, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatalf("failed to read .env file: %v", err)
+	}
+
+	expected := "# Master Environment\n\nAPP_ENV=production\n# Ports\nPORT=8080\n"
+	if string(content) != expected {
+		t.Errorf("expected .env content:\n%q\ngot:\n%q", expected, string(content))
 	}
 }
 

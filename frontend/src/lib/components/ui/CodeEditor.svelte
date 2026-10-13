@@ -12,7 +12,12 @@
 	import { EditorState } from '@codemirror/state';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
 	import { yaml } from '@codemirror/lang-yaml';
-	import { syntaxHighlighting, HighlightStyle, defaultHighlightStyle } from '@codemirror/language';
+	import {
+		syntaxHighlighting,
+		HighlightStyle,
+		defaultHighlightStyle,
+		StreamLanguage
+	} from '@codemirror/language';
 	import { tags } from '@lezer/highlight';
 	import { cn } from '$lib/utils/cn';
 
@@ -47,18 +52,64 @@
 	let editorView: EditorView | null = null;
 	let isInternalUpdate = false;
 
+	const envLanguage = StreamLanguage.define({
+		token(stream) {
+			if (stream.eatSpace()) return null;
+
+			// Comment: starting with #
+			if (stream.match(/^#.*/)) {
+				return 'comment';
+			}
+
+			// Variable key: before '='
+			const lineBefore = stream.string.slice(0, stream.pos);
+			if (!lineBefore.includes('=')) {
+				if (stream.match(/^[A-Za-z0-9_.-]+/)) {
+					return 'propertyName';
+				}
+			}
+
+			// Assignment operator '='
+			if (stream.eat('=')) {
+				return 'operator';
+			}
+
+			// Quoted string values: "..." or '...'
+			if (stream.match(/^"([^"\\]|\\.)*"/)) {
+				return 'string';
+			}
+			if (stream.match(/^'([^'\\]|\\.)*'/)) {
+				return 'string';
+			}
+
+			// Booleans: true / false
+			if (stream.match(/^(true|false)\b/i)) {
+				return 'bool';
+			}
+
+			// Numbers
+			if (stream.match(/^[0-9]+(\.[0-9]+)?\b/)) {
+				return 'number';
+			}
+
+			// Plain unquoted value characters
+			stream.next();
+			return 'string';
+		}
+	});
+
 	const gopodTheme = EditorView.theme(
 		{
 			'&': {
-				height: height === 'auto' ? 'auto' : '100%',
-				minHeight: height === 'auto' ? '80px' : 'auto',
+				height: '100%',
+				minHeight: '80px',
 				backgroundColor: 'transparent',
 				color: 'var(--text-primary)',
 				fontFamily: 'var(--font-mono, monospace)',
 				fontSize: '12px'
 			},
 			'.cm-scroller': {
-				overflow: height === 'auto' ? 'visible' : 'auto',
+				overflow: 'auto',
 				fontFamily: 'inherit'
 			},
 			'.cm-content': {
@@ -91,14 +142,14 @@
 
 	const gopodHighlightStyle = HighlightStyle.define([
 		{ tag: tags.keyword, color: 'var(--accent, #7c5ce6)', fontWeight: '600' },
-		{ tag: [tags.propertyName, tags.definition(tags.propertyName)], color: '#c084fc', fontWeight: '500' },
+		{ tag: [tags.propertyName, tags.definition(tags.propertyName)], color: '#c084fc', fontWeight: '600' },
 		{ tag: [tags.string, tags.special(tags.string)], color: '#34d399' },
 		{ tag: [tags.number, tags.integer], color: '#fbbf24' },
 		{ tag: [tags.bool, tags.null], color: '#f472b6' },
-		{ tag: [tags.comment, tags.lineComment, tags.blockComment], color: '#71717a', fontStyle: 'italic' },
+		{ tag: [tags.comment, tags.lineComment, tags.blockComment], color: '#94a3b8', fontStyle: 'italic' },
 		{ tag: tags.punctuation, color: '#94a3b8' },
 		{ tag: tags.operator, color: '#e2e8f0' },
-		{ tag: tags.variableName, color: '#38bdf8' },
+		{ tag: tags.variableName, color: '#c084fc', fontWeight: '600' },
 		{ tag: tags.heading, color: 'var(--accent, #7c5ce6)', fontWeight: 'bold' },
 		{ tag: tags.atom, color: '#f472b6' }
 	]);
@@ -131,6 +182,8 @@
 
 		if (language === 'yaml') {
 			extensions.push(yaml());
+		} else if (language === 'env') {
+			extensions.push(envLanguage);
 		}
 
 		if (placeholder) {

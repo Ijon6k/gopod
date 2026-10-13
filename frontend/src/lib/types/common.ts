@@ -8,6 +8,8 @@ export type Status =
 	| 'healthy'
 	| 'unhealthy'
 	| 'building'
+	| 'starting'
+	| 'stopping'
 	| 'cancelled'
 	| 'queued';
 

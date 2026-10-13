@@ -14,7 +14,7 @@ import (
 // StartService powers on workload containers or units according to service workload type.
 func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	// 0. Kubernetes Manifest
-	if s.Type == "kubernetes" || s.Type == "k8s" || strings.TrimSpace(s.K8sYaml) != "" {
+	if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
 		manifestName := s.ID
 		if manifestName == "" {
 			manifestName = s.Name
@@ -31,7 +31,7 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	}
 
 	// 1. Quadlet Service (Takes precedence if active runtime is quadlet)
-	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (strings.TrimSpace(s.QuadletConfig) != "" && strings.TrimSpace(s.ComposeYaml) == "") {
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (s.Type != "compose" && strings.TrimSpace(s.QuadletConfig) != "" && strings.TrimSpace(s.ComposeYaml) == "") {
 		unitName := QuadletUnitName(s)
 		cands := getQuadletCandidateUnitNames(s, unitName)
 		if _, err := exec.LookPath("systemctl"); err == nil {
@@ -72,7 +72,7 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	}
 
 	// 2. Compose Stack
-	if s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "" {
+	if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
 		projectName := s.ID
 		if projectName == "" {
 			projectName = s.Name
@@ -160,7 +160,7 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 // StopService gracefully halts containers or units for the service workload.
 func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	// 0. Kubernetes Manifest
-	if s.Type == "kubernetes" || s.Type == "k8s" || strings.TrimSpace(s.K8sYaml) != "" {
+	if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
 		manifestName := s.ID
 		if manifestName == "" {
 			manifestName = s.Name
@@ -175,7 +175,7 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	}
 
 	// 1. Quadlet Service (Takes precedence if active runtime is quadlet)
-	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (strings.TrimSpace(s.QuadletConfig) != "" && strings.TrimSpace(s.ComposeYaml) == "") {
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (s.Type != "compose" && strings.TrimSpace(s.QuadletConfig) != "" && strings.TrimSpace(s.ComposeYaml) == "") {
 		unitName := QuadletUnitName(s)
 		parsed := ParseQuadlet(s.QuadletConfig)
 		cands := getQuadletCandidateUnitNames(s, unitName)
@@ -207,7 +207,7 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	}
 
 	// 2. Compose Stack
-	if s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "" {
+	if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
 		projectName := s.ID
 		if projectName == "" {
 			projectName = s.Name
@@ -229,6 +229,7 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 				args = []string{"compose", "-p", projectName, "-f", composeFile, "stop"}
 			}
 			cmd := exec.CommandContext(ctx, runner, args...)
+			cmd.Dir = filepath.Dir(composeFile)
 			d.setupCmdEnv(cmd)
 			_ = cmd.Run()
 		}
@@ -236,7 +237,28 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 		if d.podmanClient != nil {
 			containers, _ := d.podmanClient.GetContainers(ctx)
 			for _, c := range containers {
-				if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID || c.Labels["io.podman.compose.project"] == s.ID) {
+				isMatch := false
+				if c.Labels != nil {
+					if c.Labels["io.gopod.service"] == s.ID ||
+						c.Labels["com.docker.compose.project"] == s.ID ||
+						c.Labels["io.podman.compose.project"] == s.ID ||
+						c.Labels["com.docker.compose.project"] == projectName ||
+						c.Labels["io.podman.compose.project"] == projectName ||
+						c.Labels["com.docker.compose.project"] == s.Name ||
+						c.Labels["io.podman.compose.project"] == s.Name {
+						isMatch = true
+					}
+				}
+				if !isMatch && len(c.Names) > 0 {
+					firstName := strings.TrimPrefix(c.Names[0], "/")
+					if strings.HasPrefix(firstName, projectName+"_") ||
+						strings.HasPrefix(firstName, s.ID+"_") ||
+						strings.HasPrefix(firstName, s.Name+"_") ||
+						strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) {
+						isMatch = true
+					}
+				}
+				if isMatch {
 					_ = d.podmanClient.StopContainer(ctx, c.ID)
 				}
 			}
@@ -305,7 +327,7 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 
 // RestartService restarts running containers or units for the service workload.
 func (d *Deployer) RestartService(ctx context.Context, s Service) error {
-	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (s.Type != "compose" && strings.TrimSpace(s.QuadletConfig) != "") {
 		unitName := QuadletUnitName(s)
 		cands := getQuadletCandidateUnitNames(s, unitName)
 		if _, err := exec.LookPath("systemctl"); err == nil {
@@ -484,7 +506,7 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	}
 
 	// Phase 5: Kubernetes Manifest Teardown
-	if s.Type == "kubernetes" || s.Type == "k8s" || strings.TrimSpace(s.K8sYaml) != "" {
+	if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
 		manifestName := s.ID
 		if manifestName == "" {
 			manifestName = s.Name
@@ -505,7 +527,7 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	}
 
 	// Phase 6: Compose Workload Teardown
-	if s.Type == "compose" || s.ComposeYaml != "" {
+	if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
 		projectName := s.ID
 		if projectName == "" {
 			projectName = s.Name

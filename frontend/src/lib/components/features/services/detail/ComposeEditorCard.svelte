@@ -11,7 +11,11 @@
 		FileCode,
 		GitBranch,
 		GithubLogo,
-		GitlabLogo
+		GitlabLogo,
+		ShareNetwork,
+		HardDrives,
+		Info,
+		ArrowsSplit
 	} from 'phosphor-svelte';
 
 	import { getDefaultComposeYaml } from '../manifests/defaults';
@@ -39,12 +43,15 @@
 	$effect(() => {
 		if (service.id !== lastLoadedServiceId) {
 			lastLoadedServiceId = service.id;
-			gitRepoUrl = service.source || '';
+			const isGit =
+				service.sourceType === 'git' ||
+				Boolean(service.source && /^(https?:\/\/|git@|ssh:\/\/|.*\.git$)/.test(service.source.trim()));
+			gitRepoUrl = isGit ? service.source || '' : '';
 			gitBranch = service.branch || 'main';
 			gitComposePath = 'docker-compose.yml';
 			composeYaml = service.composeYaml || service.k8sYaml || getDefaultComposeYaml(service);
 			inPod = service.inPod || service.runtimeTarget === 'pod';
-			providerMode = service.source && service.source.trim() !== '' ? 'git' : 'raw';
+			providerMode = isGit ? 'git' : 'raw';
 		}
 	});
 
@@ -54,59 +61,180 @@
 		service.runtimeTarget = inPod ? 'pod' : 'standalone';
 		dataStore.updateService(service);
 		toast.add({
-			title: inPod ? 'Podman Pod Mode Enabled' : 'Standalone Mode Enabled',
+			title: inPod ? 'Podman pod mode enabled' : 'Standalone bridge mode enabled',
 			description: inPod
 				? 'Services will share localhost network namespace in an isolated Pod.'
-				: 'Services will run as independent containers with bridge DNS.',
+				: 'Services will run as independent containers with bridge DNS and custom network isolation.',
 			variant: 'info'
 		});
 	}
 
-	// Simple parser for previewing services defined in Compose
-	let parsedServices = $derived.by(() => {
+	interface ParsedServiceItem {
+		name: string;
+		image?: string;
+		ports: string[];
+		networks: string[];
+		dependsOn: string[];
+	}
+
+	interface ParsedNetworkItem {
+		name: string;
+		driver?: string;
+		external?: boolean;
+	}
+
+	interface ParsedComposeStack {
+		services: ParsedServiceItem[];
+		networks: ParsedNetworkItem[];
+		volumes: string[];
+	}
+
+	// Declarative parser for inspecting Compose architecture (workloads, networks, volumes)
+	let parsedStack = $derived.by<ParsedComposeStack>(() => {
 		try {
 			const lines = composeYaml.split('\n');
-			const servicesFound: { name: string; image?: string; ports?: string }[] = [];
-			let inServices = false;
-			let currentSvc: { name: string; image?: string; ports?: string } | null = null;
+			const services: ParsedServiceItem[] = [];
+			const networks: ParsedNetworkItem[] = [];
+			const volumes: string[] = [];
 
-			for (const line of lines) {
-				const trimmed = line.trim();
-				if (trimmed.startsWith('services:')) {
-					inServices = true;
+			let currentSection: 'services' | 'networks' | 'volumes' | null = null;
+			let currentSvc: ParsedServiceItem | null = null;
+			let currentNet: ParsedNetworkItem | null = null;
+			let subArrayField: 'ports' | 'networks' | 'depends_on' | null = null;
+
+			for (const rawLine of lines) {
+				const trimmed = rawLine.trim();
+				if (!trimmed || trimmed.startsWith('#')) continue;
+
+				// Root keys (no leading indentation)
+				if (!rawLine.startsWith(' ') && !rawLine.startsWith('\t')) {
+					if (currentSvc) {
+						services.push(currentSvc);
+						currentSvc = null;
+					}
+					if (currentNet) {
+						networks.push(currentNet);
+						currentNet = null;
+					}
+					subArrayField = null;
+
+					if (trimmed.startsWith('services:')) {
+						currentSection = 'services';
+					} else if (trimmed.startsWith('networks:')) {
+						currentSection = 'networks';
+					} else if (trimmed.startsWith('volumes:')) {
+						currentSection = 'volumes';
+					} else {
+						currentSection = null;
+					}
 					continue;
 				}
-				if (inServices) {
-					const matchSvc = line.match(/^ {2}([a-zA-Z0-9_-]+):/);
-					if (matchSvc) {
-						if (currentSvc) servicesFound.push(currentSvc);
-						currentSvc = { name: matchSvc[1] };
-					} else if (currentSvc) {
-						const imgMatch = line.match(/image:\s*([^\s]+)/);
-						if (imgMatch) currentSvc.image = imgMatch[1];
-						const portMatch = line.match(/- ["']?([0-9:]+)["']?/);
-						if (portMatch && !currentSvc.ports) currentSvc.ports = portMatch[1];
+
+				if (currentSection === 'services') {
+					const svcMatch = rawLine.match(/^ {2}([a-zA-Z0-9_.-]+):/);
+					if (svcMatch) {
+						if (currentSvc) services.push(currentSvc);
+						currentSvc = {
+							name: svcMatch[1],
+							ports: [],
+							networks: [],
+							dependsOn: []
+						};
+						subArrayField = null;
+						continue;
+					}
+
+					if (currentSvc) {
+						const imgMatch = trimmed.match(/^image:\s*([^\s#]+)/);
+						if (imgMatch) {
+							currentSvc.image = imgMatch[1];
+							subArrayField = null;
+							continue;
+						}
+
+						if (trimmed.startsWith('ports:')) {
+							subArrayField = 'ports';
+							continue;
+						}
+						if (trimmed.startsWith('networks:')) {
+							subArrayField = 'networks';
+							continue;
+						}
+						if (trimmed.startsWith('depends_on:')) {
+							subArrayField = 'depends_on';
+							continue;
+						}
+
+						const itemMatch = trimmed.match(/^-\s+["']?([^"'#]+)["']?/);
+						if (itemMatch && subArrayField) {
+							const val = itemMatch[1].trim();
+							if (subArrayField === 'ports') currentSvc.ports.push(val);
+							else if (subArrayField === 'networks') currentSvc.networks.push(val);
+							else if (subArrayField === 'depends_on') currentSvc.dependsOn.push(val);
+							continue;
+						}
+
+						if (!trimmed.startsWith('-')) {
+							subArrayField = null;
+						}
+					}
+				} else if (currentSection === 'networks') {
+					const netMatch = rawLine.match(/^ {2}([a-zA-Z0-9_.-]+):/);
+					if (netMatch) {
+						if (currentNet) networks.push(currentNet);
+						currentNet = { name: netMatch[1] };
+						continue;
+					}
+					if (currentNet) {
+						const driverMatch = trimmed.match(/^driver:\s*([^\s#]+)/);
+						if (driverMatch) currentNet.driver = driverMatch[1];
+						const extMatch = trimmed.match(/^external:\s*(true|false)/);
+						if (extMatch) currentNet.external = extMatch[1] === 'true';
+					}
+				} else if (currentSection === 'volumes') {
+					const volMatch = rawLine.match(/^ {2}([a-zA-Z0-9_.-]+):?/);
+					if (volMatch && volMatch[1]) {
+						const volName = volMatch[1];
+						if (!volumes.includes(volName)) {
+							volumes.push(volName);
+						}
 					}
 				}
 			}
-			if (currentSvc) servicesFound.push(currentSvc);
-			return servicesFound.length > 0
-				? servicesFound
-				: [
-						{
-							name: service.name,
-							image: service.image || 'nginx:alpine',
-							ports: `${service.port || 8080}:80`
-						}
-					];
+
+			if (currentSvc) services.push(currentSvc);
+			if (currentNet) networks.push(currentNet);
+
+			return {
+				services:
+					services.length > 0
+						? services
+						: [
+								{
+									name: service.name,
+									image: service.image || 'nginx:alpine',
+									ports: [`${service.port || 8080}:80`],
+									networks: [],
+									dependsOn: []
+								}
+							],
+				networks,
+				volumes
+			};
 		} catch {
-			return [
-				{
-					name: service.name,
-					image: service.image || 'nginx:alpine',
-					ports: `${service.port || 8080}:80`
-				}
-			];
+			return {
+				services: [
+					{
+						name: service.name,
+						image: service.image || 'nginx:alpine',
+						ports: [`${service.port || 8080}:80`],
+						networks: [],
+						dependsOn: []
+					}
+				],
+				networks: [],
+				volumes: []
+			};
 		}
 	});
 
@@ -122,16 +250,18 @@
 		if (providerMode === 'git') {
 			service.source = gitRepoUrl.trim();
 			service.branch = gitBranch.trim();
+			service.sourceType = 'git';
 		} else {
 			service.source = '';
+			service.sourceType = 'compose';
 		}
 
 		try {
 			await dataStore.updateService(service);
 			saveStatus = 'saved';
 			toast.add({
-				title: 'Compose Manifest Saved',
-				description: `Configuration and Pod strategy for ${service.name} have been updated.`,
+				title: 'Compose manifest saved',
+				description: `Configuration and network strategy for ${service.name} have been updated.`,
 				variant: 'success'
 			});
 			setTimeout(() => (saveStatus = 'idle'), 2500);
@@ -139,7 +269,7 @@
 			console.error('Failed to save compose config:', err);
 			saveStatus = 'idle';
 			toast.add({
-				title: 'Save Failed',
+				title: 'Save failed',
 				description: err?.message || 'Failed to save compose configuration',
 				variant: 'error'
 			});
@@ -157,8 +287,8 @@
 				<FileCode size={15} weight="duotone" />
 			</div>
 			<div class="flex flex-col">
-				<h3 class="m-0 text-xs font-semibold text-kumo-default">Compose Specification</h3>
-				<span class="text-[11px] text-kumo-subtle">
+				<h3 class="m-0 text-sm font-semibold text-kumo-default">Compose specification</h3>
+				<span class="text-[13px] text-kumo-subtle">
 					Multi-container orchestration definition for Podman & Docker Compose
 				</span>
 			</div>
@@ -189,19 +319,24 @@
 						? 'bg-kumo-elevated text-kumo-default shadow-xs ring ring-kumo-line'
 						: 'text-kumo-subtle hover:text-kumo-default'}"
 				>
-					Git Repo
+					Git repository
 				</button>
 			</div>
 
-			<!-- Preview Button -->
+			<!-- Inspect Stack Button -->
 			<Button
 				variant="secondary"
 				size="sm"
 				onclick={() => (previewOpen = !previewOpen)}
 				class="gap-1.5"
 			>
-				<Eye size={13} />
-				<span>{previewOpen ? 'Hide' : 'Preview Stack'}</span>
+				<Eye size={14} />
+				<span>{previewOpen ? 'Hide inspection' : 'Inspect stack'}</span>
+				<span
+					class="ml-1 inline-flex items-center rounded bg-kumo-recessed px-1.5 py-0.2 font-mono text-[11px] text-kumo-subtle"
+				>
+					{parsedStack.services.length}
+				</span>
 			</Button>
 		</div>
 	</LayerCard.Secondary>
@@ -218,32 +353,32 @@
 					<button
 						type="button"
 						onclick={() => (gitProvider = 'github')}
-						class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {gitProvider ===
+						class="flex cursor-pointer items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors {gitProvider ===
 						'github'
 							? 'bg-kumo-elevated text-kumo-default ring ring-kumo-line font-medium'
 							: 'text-kumo-subtle hover:text-kumo-default'}"
 					>
-						<GithubLogo size={13} /> GitHub
+						<GithubLogo size={14} /> GitHub
 					</button>
 					<button
 						type="button"
 						onclick={() => (gitProvider = 'gitlab')}
-						class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {gitProvider ===
+						class="flex cursor-pointer items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors {gitProvider ===
 						'gitlab'
 							? 'bg-kumo-elevated text-kumo-default ring ring-kumo-line font-medium'
 							: 'text-kumo-subtle hover:text-kumo-default'}"
 					>
-						<GitlabLogo size={13} /> GitLab
+						<GitlabLogo size={14} /> GitLab
 					</button>
 					<button
 						type="button"
 						onclick={() => (gitProvider = 'custom')}
-						class="flex cursor-pointer items-center gap-1.5 rounded px-2 py-1 text-xs transition-colors {gitProvider ===
+						class="flex cursor-pointer items-center gap-1.5 rounded px-2.5 py-1 text-xs transition-colors {gitProvider ===
 						'custom'
 							? 'bg-kumo-elevated text-kumo-default ring ring-kumo-line font-medium'
 							: 'text-kumo-subtle hover:text-kumo-default'}"
 					>
-						<GitBranch size={13} /> Custom Git / SSH
+						<GitBranch size={14} /> Custom Git / SSH
 					</button>
 				</div>
 
@@ -275,7 +410,7 @@
 
 				<div class="flex flex-col gap-1">
 					<label for="compose-path" class="text-xs font-medium text-kumo-subtle">
-						Compose File Path in Repo
+						Compose file path in repository
 					</label>
 					<Input
 						id="compose-path"
@@ -287,32 +422,32 @@
 			</div>
 		{/if}
 
-		<!-- Podman Pod Encapsulation Banner -->
+		<!-- Podman Pod Encapsulation Strategy Banner -->
 		<div
-			class="flex flex-col justify-between gap-2.5 rounded-md bg-kumo-base p-3 ring ring-kumo-line sm:flex-row sm:items-center"
+			class="flex flex-col justify-between gap-3 rounded-md bg-kumo-base p-3.5 ring ring-kumo-line sm:flex-row sm:items-center"
 		>
-			<div class="flex items-start gap-2.5">
+			<div class="flex items-start gap-3">
 				<Switch
 					size="sm"
 					id="compose-in-pod"
 					bind:checked={inPod}
 					onCheckedChange={toggleInPod}
-					aria-label="Encapsulate stack inside Podman Pod"
+					aria-label="Encapsulate stack inside Podman pod"
 					class="mt-0.5"
 				/>
 				<label for="compose-in-pod" class="flex cursor-pointer flex-col select-none">
-					<span class="text-xs font-semibold text-kumo-default">
-						Encapsulate stack inside Podman Pod
+					<span class="text-sm font-semibold text-kumo-default">
+						Encapsulate stack inside Podman pod
 					</span>
-					<span class="text-[11px] text-kumo-subtle leading-normal">
-						Creates an isolated Pod with shared localhost. Uncheck to run services as independent containers with bridge network DNS.
+					<span class="text-[13px] text-kumo-subtle leading-normal">
+						Creates an isolated Pod with shared localhost. Uncheck to run services as independent containers with bridge DNS and custom network isolation.
 					</span>
 				</label>
 			</div>
 
 			<span
-				class="shrink-0 rounded border px-2 py-0.5 font-mono text-[10px] {inPod
-					? 'border-[var(--accent)]/40 bg-[var(--accent)]/10 text-[var(--accent-text)]'
+				class="shrink-0 rounded border px-2.5 py-1 font-mono text-xs {inPod
+					? 'border-[var(--accent)] bg-[var(--accent-muted)] text-[var(--accent-text)]'
 					: 'border-kumo-line bg-kumo-recessed text-kumo-subtle'}"
 			>
 				{inPod ? '--in-pod=true' : '--in-pod=false'}
@@ -324,35 +459,143 @@
 			<CodeEditor bind:value={composeYaml} language="yaml" height="auto" />
 		</div>
 
-		<!-- Workload Preview Drawer -->
+		<!-- Workload & Architecture Inspection Drawer -->
 		{#if previewOpen}
 			<div
-				class="flex flex-col gap-2.5 rounded-md bg-kumo-base p-3.5 ring ring-kumo-line"
+				class="flex flex-col gap-4 rounded-md bg-kumo-base p-4 ring ring-kumo-line"
 			>
-				<span class="flex items-center gap-1.5 text-xs font-semibold text-kumo-default">
-					<Stack size={14} class="text-[var(--accent)]" /> Detected Workloads in Stack ({parsedServices.length})
-				</span>
-				<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3">
-					{#each parsedServices as svc}
-						<div
-							class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring ring-kumo-hairline"
-						>
-							<span class="font-mono text-xs font-bold text-kumo-default truncate">
-								{svc.name}
-							</span>
-							{#if svc.image}
-								<span class="truncate font-mono text-[11px] text-kumo-subtle">
-									{svc.image}
-								</span>
-							{/if}
-							{#if svc.ports}
-								<span class="font-mono text-[10px] text-[var(--accent-text)]">
-									{svc.ports}
-								</span>
-							{/if}
-						</div>
-					{/each}
+				<!-- Section 1: Detected Workload Containers -->
+				<div class="flex flex-col gap-2">
+					<div class="flex items-center justify-between">
+						<span class="flex items-center gap-1.5 text-xs font-semibold text-kumo-default">
+							<Stack size={14} class="text-[var(--accent)]" /> Detected workloads ({parsedStack.services.length})
+						</span>
+						<span class="text-[11px] text-kumo-subtle">
+							Auto-assigned service alias and Caddy proxy endpoints
+						</span>
+					</div>
+
+					<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2 md:grid-cols-3">
+						{#each parsedStack.services as svc}
+							<div
+								class="flex flex-col gap-1.5 rounded bg-kumo-elevated p-3 ring ring-kumo-hairline"
+							>
+								<div class="flex items-center justify-between gap-1">
+									<span class="font-mono text-xs font-bold text-kumo-default truncate">
+										{svc.name}
+									</span>
+									{#if svc.networks.length > 0}
+										<span
+											class="inline-flex items-center gap-1 rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-[10px] text-kumo-subtle"
+										>
+											<ShareNetwork size={10} /> {svc.networks[0]}
+										</span>
+									{/if}
+								</div>
+
+								{#if svc.image}
+									<span class="truncate font-mono text-[11px] text-kumo-subtle">
+										{svc.image}
+									</span>
+								{/if}
+
+								{#if svc.ports.length > 0}
+									<div class="flex flex-wrap gap-1 pt-0.5">
+										{#each svc.ports as port}
+											<span class="rounded bg-[var(--accent-muted)] px-1.5 py-0.2 font-mono text-[10px] text-[var(--accent-text)]">
+												{port}
+											</span>
+										{/each}
+									</div>
+								{/if}
+
+								{#if svc.dependsOn.length > 0}
+									<div class="flex items-center gap-1 pt-0.5 text-[10px] text-kumo-subtle">
+										<ArrowsSplit size={11} class="shrink-0" />
+										<span class="truncate">depends: {svc.dependsOn.join(', ')}</span>
+									</div>
+								{/if}
+							</div>
+						{/each}
+					</div>
 				</div>
+
+				<!-- Section 2: Stack Networking Architecture -->
+				<div class="flex flex-col gap-2 border-t border-kumo-hairline pt-3">
+					<div class="flex items-center justify-between">
+						<span class="flex items-center gap-1.5 text-xs font-semibold text-kumo-default">
+							<ShareNetwork size={14} class="text-[var(--status-blue)]" /> Stack networking architecture
+						</span>
+						<span class="text-[11px] text-kumo-subtle">
+							{parsedStack.networks.length} declared + 1 ingress bridge
+						</span>
+					</div>
+
+					<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+						<!-- User Declared Networks -->
+						{#if parsedStack.networks.length > 0}
+							{#each parsedStack.networks as net}
+								<div class="flex items-center justify-between rounded bg-kumo-elevated px-3 py-2 ring ring-kumo-hairline">
+									<div class="flex items-center gap-2">
+										<ShareNetwork size={13} class="text-[var(--text-secondary)]" />
+										<span class="font-mono text-xs font-medium text-kumo-default">{net.name}</span>
+									</div>
+									<span class="rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-[10px] text-kumo-subtle">
+										{net.driver || 'bridge'}
+									</span>
+								</div>
+							{/each}
+						{:else}
+							<div class="flex items-center justify-between rounded bg-kumo-elevated px-3 py-2 ring ring-kumo-hairline">
+								<div class="flex items-center gap-2">
+									<ShareNetwork size={13} class="text-[var(--text-secondary)]" />
+									<span class="font-mono text-xs font-medium text-kumo-default">default</span>
+								</div>
+								<span class="rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-[10px] text-kumo-subtle">
+									bridge (project isolated)
+								</span>
+							</div>
+						{/if}
+
+						<!-- Ingress Reverse Proxy Bridge -->
+						<div class="flex items-center justify-between rounded bg-kumo-elevated px-3 py-2 ring ring-kumo-hairline border-l-2 border-l-[var(--accent)]">
+							<div class="flex items-center gap-2">
+								<ShareNetwork size={13} class="text-[var(--accent)]" />
+								<span class="font-mono text-xs font-medium text-kumo-default">gopod-net</span>
+							</div>
+							<span class="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--accent-text)]">
+								Caddy ingress bridge
+							</span>
+						</div>
+					</div>
+
+					<!-- Informational note for peace of mind -->
+					<div class="flex items-center gap-2 rounded bg-kumo-recessed px-3 py-2 text-[12px] text-kumo-subtle">
+						<Info size={14} class="shrink-0 text-kumo-default" />
+						<span>
+							GoPod merges <code class="font-mono text-kumo-default">gopod-net</code> into the stack so Caddy reverse proxy can resolve containers via internal DNS while preserving custom network isolation.
+						</span>
+					</div>
+				</div>
+
+				<!-- Section 3: Storage Volumes (if any declared) -->
+				{#if parsedStack.volumes.length > 0}
+					<div class="flex flex-col gap-2 border-t border-kumo-hairline pt-3">
+						<div class="flex items-center justify-between">
+							<span class="flex items-center gap-1.5 text-xs font-semibold text-kumo-default">
+								<HardDrives size={14} class="text-[var(--status-purple)]" /> Persistent storage volumes ({parsedStack.volumes.length})
+							</span>
+						</div>
+
+						<div class="flex flex-wrap gap-2">
+							{#each parsedStack.volumes as vol}
+								<span class="inline-flex items-center gap-1.5 rounded bg-kumo-elevated px-2.5 py-1 font-mono text-xs text-kumo-default ring ring-kumo-hairline">
+									<HardDrives size={12} class="text-kumo-subtle" /> {vol}
+								</span>
+							{/each}
+						</div>
+					</div>
+				{/if}
 			</div>
 		{/if}
 
@@ -376,7 +619,7 @@
 					onclick={handleSave}
 					disabled={saveStatus === 'saving'}
 				>
-					{saveStatus === 'saving' ? 'Saving…' : 'Save Compose'}
+					{saveStatus === 'saving' ? 'Saving…' : 'Save compose specification'}
 				</Button>
 			</div>
 		</div>

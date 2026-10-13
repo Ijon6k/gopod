@@ -194,7 +194,10 @@ export class DataStore {
 		this.projectsStore.clearServiceDeployments(serviceId, keepActive);
 	}
 	cancelDeployment(id: string) {
-		this.projectsStore.cancelDeployment(id);
+		return this.projectsStore.cancelDeployment(id);
+	}
+	cancelServiceDeployment(serviceId: string) {
+		return this.projectsStore.cancelServiceDeployment(serviceId);
 	}
 	getProjectById(id: string) {
 		return this.projectsStore.getProjectById(id);
@@ -219,6 +222,9 @@ export class DataStore {
 	}
 	deployService(serviceId: string, trigger = 'manual', commit?: string, image?: string) {
 		return this.projectsStore.deployService(serviceId, trigger, commit, image);
+	}
+	upsertDeployment(dep: Partial<Deployment> & { id: string }) {
+		this.projectsStore.upsertDeployment(dep);
 	}
 	startService(serviceId: string) {
 		return this.projectsStore.startService(serviceId);
@@ -245,6 +251,9 @@ export class DataStore {
 	}
 	deleteDomain(id: string) {
 		this.projectsStore.deleteDomain(id);
+	}
+	revalidateDomain(id: string) {
+		return this.projectsStore.revalidateDomain(id);
 	}
 
 	// ── Runtime Domain Actions ──
@@ -277,6 +286,9 @@ export class DataStore {
 	}
 	reloadQuadlets() {
 		return this.runtimeStore.reloadQuadlets();
+	}
+	deleteQuadlet(name: string) {
+		return this.runtimeStore.deleteQuadlet(name);
 	}
 	fetchQuadlets() {
 		return this.runtimeStore.fetchQuadlets();
@@ -465,7 +477,7 @@ export class DataStore {
 			});
 			if (matched) {
 				servId = matched.id;
-				servName = composeServ || matched.name;
+				servName = composeServ ? `${matched.name} (${composeServ})` : matched.name;
 				projId = matched.projectId;
 				projName = this.projectsStore.getProjectById(projId)?.name || projId;
 				return { projId, projName, servId, servName };
@@ -495,7 +507,7 @@ export class DataStore {
 									composeProj === `${s.projectId}-${s.name}`))
 						) {
 							servId = s.id;
-							servName = composeServ || s.name;
+							servName = composeServ ? `${s.name} (${composeServ})` : s.name;
 							return { projId, projName, servId, servName };
 						}
 					}

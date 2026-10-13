@@ -22,8 +22,13 @@ export const domainsApi = {
 		return res.data;
 	},
 
-	async getCaddyfile(): Promise<{ caddyfile: string; status: string; adminUrl: string }> {
-		const res = await apiClient.get<{ caddyfile: string; status: string; adminUrl: string }>('/ingress/caddyfile');
+	async revalidate(id: string): Promise<Domain> {
+		const res = await apiClient.post<Domain>(`/domains/${id}/revalidate`);
+		return res.data;
+	},
+
+	async getCaddyfile(): Promise<{ caddyfile: string; status: string; adminUrl: string; httpPort?: number; httpsPort?: number }> {
+		const res = await apiClient.get<{ caddyfile: string; status: string; adminUrl: string; httpPort?: number; httpsPort?: number }>('/ingress/caddyfile');
 		return res.data;
 	},
 

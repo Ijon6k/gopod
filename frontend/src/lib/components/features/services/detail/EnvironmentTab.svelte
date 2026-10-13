@@ -1,8 +1,9 @@
 <script lang="ts">
 	import type { Service, ServiceSecretMount, EnvVar } from '$lib/types';
-	import { Button, Input, Select, Radio } from '$lib/components/ui';
+	import { Input, Select, Radio } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
+	import { Button } from 'kumo-svelte';
 	import {
 		Lock,
 		Plus,
@@ -10,7 +11,10 @@
 		DownloadSimple,
 		UploadSimple,
 		Check,
-		MagicWand
+		MagicWand,
+		Eye,
+		EyeSlash,
+		Copy
 	} from 'phosphor-svelte';
 
 	interface Props {
@@ -19,9 +23,9 @@
 
 	let { service }: Props = $props();
 
-	function buildEnvText(envVars: EnvVar[]): string {
+	function buildEnvTextFromService(envVars?: EnvVar[]): string {
 		if (!envVars || envVars.length === 0) {
-			return '# Environment variables (KEY=value)\nNODE_ENV=production\nPORT=3000\nLOG_LEVEL=info';
+			return '';
 		}
 		return envVars.map((v) => `${v.key}=${v.value}`).join('\n');
 	}
@@ -29,13 +33,19 @@
 	let envText = $state('');
 	let initialText = $state('');
 	let isDirty = $derived(envText !== initialText);
+	let isMasked = $state(false);
 	let saveFeedback = $state(false);
+	let copyFeedback = $state(false);
+	let fileInputRef = $state<HTMLInputElement | null>(null);
+	let activeServiceId = $state<string | null>(null);
 
 	$effect(() => {
-		const txt = buildEnvText(service.envVars);
-		if (!initialText) {
+		if (service.id !== activeServiceId) {
+			activeServiceId = service.id;
+			const txt = buildEnvTextFromService(service.envVars);
 			envText = txt;
 			initialText = txt;
+			isMasked = txt.trim().length > 0;
 		}
 	});
 
@@ -59,13 +69,15 @@
 					parsed.push({
 						key,
 						value,
-						secret: /secret|password|token|key/i.test(key)
+						secret: true
 					});
 				}
 			}
 		}
+
 		service.envVars = parsed;
 		initialText = envText;
+
 		try {
 			await dataStore.updateService(service);
 		} catch (err) {
@@ -85,7 +97,7 @@
 				if (!t || t.startsWith('#')) return t;
 				const eq = t.indexOf('=');
 				if (eq === -1) return t;
-				return `${t.slice(0, eq).trim()}=${t.slice(eq + 1).trim()}`;
+				return `${t.slice(0, eq).trim().toUpperCase()}=${t.slice(eq + 1).trim()}`;
 			})
 			.join('\n');
 	}
@@ -102,6 +114,7 @@
 			}
 		};
 		reader.readAsText(file);
+		target.value = '';
 	}
 
 	function handleExportFile() {
@@ -112,6 +125,18 @@
 		a.download = `${service.name}.env`;
 		a.click();
 		URL.revokeObjectURL(url);
+	}
+
+	async function handleCopyAll() {
+		try {
+			await navigator.clipboard.writeText(envText);
+			copyFeedback = true;
+			setTimeout(() => {
+				copyFeedback = false;
+			}, 1800);
+		} catch (err) {
+			console.error('Failed to copy to clipboard:', err);
+		}
 	}
 
 	// ── Podman Secrets Management ──
@@ -171,7 +196,7 @@
 
 <div class="flex w-full flex-col gap-8">
 	<!-- ══════════════════════════════════════════════════════════════
-	     1. TEXT-FIRST .ENV EDITOR
+	     1. ENVIRONMENT VARIABLES (Dokploy-Style Text Editor with Mask)
 	     ══════════════════════════════════════════════════════════════ -->
 	<section class="flex flex-col gap-3">
 		<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
@@ -183,46 +208,133 @@
 				</span>
 			</div>
 
-			<!-- Actions Toolbar -->
-			<div class="flex items-center gap-2">
-				<label
-					class="inline-flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
-					title="Import .env file"
+			<!-- Actions Toolbar (Native Kumo Button Primitives - No Tooltip Interference) -->
+			<div class="flex flex-wrap items-center gap-2">
+				<!-- Mask Toggle Button -->
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={() => (isMasked = !isMasked)}
+					class="gap-1.5"
 				>
-					<UploadSimple size={13} />
+					{#if isMasked}
+						<Eye size={14} />
+						<span>Show Values</span>
+					{:else}
+						<EyeSlash size={14} />
+						<span>Hide Values</span>
+					{/if}
+				</Button>
+
+				<!-- Copy All Button -->
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={handleCopyAll}
+					class="gap-1.5"
+				>
+					{#if copyFeedback}
+						<Check size={14} class="text-[var(--accent)]" />
+						<span>Copied!</span>
+					{:else}
+						<Copy size={14} />
+						<span>Copy</span>
+					{/if}
+				</Button>
+
+				<!-- Hidden File Input for Native Import Button -->
+				<input
+					bind:this={fileInputRef}
+					type="file"
+					accept=".env,.txt"
+					onchange={handleImportFile}
+					class="sr-only"
+				/>
+
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={() => fileInputRef?.click()}
+					class="gap-1.5"
+				>
+					<UploadSimple size={14} />
 					<span>Import</span>
-					<input type="file" accept=".env,.txt" onchange={handleImportFile} class="sr-only" />
-				</label>
+				</Button>
 
 				<Button
 					variant="secondary"
 					size="sm"
 					onclick={handleExportFile}
-					title="Export as .env file"
+					class="gap-1.5"
 				>
-					<DownloadSimple size={13} /> Export
+					<DownloadSimple size={14} />
+					<span>Export</span>
 				</Button>
 
-				<Button variant="secondary" size="sm" onclick={formatEnv}>
-					<MagicWand size={13} /> Format
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={formatEnv}
+					class="gap-1.5"
+				>
+					<MagicWand size={14} />
+					<span>Format</span>
 				</Button>
 
-				<Button variant="primary" size="sm" disabled={!isDirty && !saveFeedback} onclick={saveEnv}>
+				<Button
+					variant="primary"
+					size="sm"
+					disabled={!isDirty && !saveFeedback}
+					onclick={saveEnv}
+					class="gap-1.5"
+				>
 					{#if saveFeedback}
-						<Check size={13} class="text-white" /> Saved
+						<Check size={14} class="text-white" />
+						<span>Saved</span>
 					{:else}
-						Save .env
+						<span>Save .env</span>
 					{/if}
 				</Button>
 			</div>
 		</div>
 
-		<!-- Shared CodeEditor with .env syntax highlighting -->
-		<CodeEditor bind:value={envText} language="env" height="340px" />
+		<!-- ── Text Editor Container with Dokploy Masking ── -->
+		<div
+			class="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)]"
+		>
+			<!-- Blurred Editor View when Masked -->
+			<div
+				class={isMasked && envText.trim().length > 0
+					? 'filter blur-[5px] select-none transition-all duration-200 pointer-events-none'
+					: 'transition-all duration-200'}
+			>
+				<CodeEditor
+					bind:value={envText}
+					language="env"
+					height="380px"
+					placeholder={`# Environment variables (KEY=value)\n# Lines starting with # are comments\nPORT=3000\nDATABASE_URL=postgres://user:pass@localhost:5432/db`}
+				/>
+			</div>
+
+			<!-- Dokploy-style Overlay Badge when Masked -->
+			{#if isMasked && envText.trim().length > 0}
+				<div
+					class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/25 backdrop-blur-[1px] transition-all"
+				>
+					<button
+						type="button"
+						onclick={() => (isMasked = false)}
+						class="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-4 py-2.5 text-xs font-medium text-[var(--text-primary)] shadow-md transition-all hover:border-[var(--accent)] hover:bg-[var(--bg-surface)]"
+					>
+						<Eye size={15} class="text-[var(--accent)]" />
+						<span>Values are hidden · Click to reveal and edit</span>
+					</button>
+				</div>
+			{/if}
+		</div>
 
 		<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-			Paste or edit your complete configuration file directly. One <code>KEY=value</code> pair per
-			line. Lines starting with <code>#</code> are treated as comments.
+			Environment variables are loaded into runtime containers as <code>KEY=value</code> pairs. Direct copy-paste supported. Toggle "Show Values" to inspect or edit hidden tokens.
 		</p>
 	</section>
 
@@ -245,8 +357,8 @@
 			</div>
 
 			{#if !isAddingSecret}
-				<Button variant="secondary" size="sm" onclick={() => (isAddingSecret = true)}>
-					<Plus size={13} /> Mount Secret
+				<Button variant="secondary" size="sm" onclick={() => (isAddingSecret = true)} class="gap-1.5">
+					<Plus size={14} /> <span>Mount Secret</span>
 				</Button>
 			{/if}
 		</div>
@@ -322,7 +434,7 @@
 				{/if}
 
 				<div
-					class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2"
+					class="flex items-center justify-end gap-2 border-t border-[var(--border)] pt-2"
 				>
 					<Button variant="ghost" size="sm" onclick={() => (isAddingSecret = false)}>Cancel</Button>
 					<Button variant="primary" size="sm" onclick={addSecretMount}>Attach Secret</Button>
@@ -332,7 +444,7 @@
 
 		<!-- Active Secret Mounts List -->
 		<div
-			class="flex flex-col divide-y divide-[var(--border-subtle)] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)]"
+			class="flex flex-col divide-y divide-[var(--border)] overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)]"
 		>
 			{#each secretMounts as sm, idx}
 				<div class="flex items-center justify-between gap-4 p-3.5">
@@ -359,7 +471,7 @@
 					<button
 						type="button"
 						onclick={() => removeSecretMount(idx)}
-						class="cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] hover:text-[var(--status-red)]"
+						class="cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] hover:text-red-400"
 						title="Detach secret"
 					>
 						<Trash size={14} />

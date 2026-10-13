@@ -22,6 +22,9 @@ type QuadletUnit struct {
 // quadletSearchDirs returns directories scanned for Quadlet files.
 func quadletSearchDirs() []string {
 	var dirs []string
+	if envDir := os.Getenv("QUADLET_DIR"); envDir != "" {
+		dirs = append(dirs, envDir)
+	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		dirs = append(dirs, filepath.Join(home, ".config", "containers", "systemd"))
 	}
@@ -217,3 +220,49 @@ func (s *Service) ReloadQuadlets(ctx context.Context) error {
 	}
 	return fmt.Errorf("systemctl not available")
 }
+
+// DeleteQuadlet thoroughly stops systemd supervision, removes unit files, reloads daemon, and forces Podman container/pod removal.
+func (s *Service) DeleteQuadlet(ctx context.Context, name string) error {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	serviceUnit := fmt.Sprintf("%s.service", base)
+	podUnit := fmt.Sprintf("%s-pod.service", base)
+
+	// 1. Force Stop, SIGKILL, and Reset Systemd units while files are still on disk
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", serviceUnit).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", podUnit).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", serviceUnit).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", podUnit).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", serviceUnit).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", podUnit).Run()
+	}
+
+	// 2. Remove all matching unit files across search dirs
+	for _, dir := range quadletSearchDirs() {
+		_ = os.Remove(filepath.Join(dir, name))
+		_ = os.Remove(filepath.Join(dir, fmt.Sprintf("%s.container", base)))
+		_ = os.Remove(filepath.Join(dir, fmt.Sprintf("%s.pod", base)))
+		_ = os.Remove(filepath.Join(dir, fmt.Sprintf("%s.volume", base)))
+		_ = os.Remove(filepath.Join(dir, fmt.Sprintf("%s.network", base)))
+	}
+
+	// 3. Daemon reload and clean reset
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", serviceUnit).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", podUnit).Run()
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed").Run()
+	}
+
+	// 4. Force remove container and pod in Podman
+	if s.client != nil {
+		_ = s.client.StopContainer(ctx, base)
+		_ = s.client.DeleteContainer(ctx, base, true)
+		_ = s.client.DeletePod(ctx, base, true)
+	}
+	_ = exec.CommandContext(ctx, "podman", "rm", "-f", base).Run()
+	_ = exec.CommandContext(ctx, "podman", "pod", "rm", "-f", base).Run()
+
+	return nil
+}
+

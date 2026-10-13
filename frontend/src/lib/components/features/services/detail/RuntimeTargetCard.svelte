@@ -75,7 +75,7 @@
 
 		if (!service.advanced) {
 			service.advanced = {
-				runtime: { mode: 'rootless', userNamespace: 'keep-id', devices: [] },
+				runtime: { mode: 'rootless', userNamespace: '', devices: [] },
 				lifecycle: {
 					quadletEnabled: runtimeTarget === 'quadlet',
 					systemdUnitName: `${service.name}.container`,

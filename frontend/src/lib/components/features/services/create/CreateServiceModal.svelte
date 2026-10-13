@@ -5,8 +5,7 @@
 	import { dataStore, projects } from '$lib/data';
 	import type { Service, ServiceType } from '$lib/types';
 	import WorkloadTypeSelector, { type WorkloadChoice } from './WorkloadTypeSelector.svelte';
-	import QuadletForm from './QuadletForm.svelte';
-	import { ArrowRight, FileText } from 'phosphor-svelte';
+	import { ArrowRight } from 'phosphor-svelte';
 
 	interface Props {
 		projectId?: string;
@@ -38,25 +37,10 @@
 
 	// Sub-options
 	let stackSubtype = $state<'compose' | 'kubernetes' | 'pod'>('compose');
-	let dbEngine = $state<'postgres' | 'redis' | 'mysql' | 'mongodb'>('postgres');
 
 	let serviceName = $state('');
 	let serviceDescription = $state('');
 	let servicePort = $state('');
-	let quadletConfig = $state(`[Unit]
-Description=Managed Quadlet Container
-After=network-online.target
-
-[Container]
-Image=docker.io/library/nginx:alpine
-PublishPort=8080:80
-AutoUpdate=registry
-
-[Service]
-Restart=always
-
-[Install]
-WantedBy=default.target`);
 	let isCreating = $state(false);
 	let createError = $state<string | null>(null);
 
@@ -101,7 +85,7 @@ WantedBy=default.target`);
 				branch: 'main',
 				buildType: 'dockerfile',
 				runtimeTarget: 'standalone',
-				port: parseInt(servicePort.trim(), 10) || 3000,
+				port: servicePort.trim() ? parseInt(servicePort.trim(), 10) || 0 : 0,
 				cpu: 0,
 				memory: 0,
 				restartPolicy: 'always',
@@ -113,41 +97,32 @@ WantedBy=default.target`);
 				createdAt: new Date().toISOString()
 			};
 		} else if (selectedType === 'quadlet') {
-			let defaultUnit = quadletConfig.trim() || `[Unit]\nDescription=${sName} Service\nAfter=network-online.target\n\n[Container]\nImage=docker.io/library/nginx:alpine\nPublishPort=8080:80\nAutoUpdate=registry\n\n[Service]\nRestart=always\n\n[Install]\nWantedBy=default.target`;
+			const defaultUnit = `[Unit]
+Description=${sName} Quadlet Service
+After=network-online.target
 
-			let img = 'docker.io/library/nginx:alpine';
-			let portNum = 8080;
-			let hostPortNum = 0;
-			for (const line of defaultUnit.split('\n')) {
-				const trimmed = line.trim();
-				if (trimmed.startsWith('Image=')) {
-					img = trimmed.substring(6).trim();
-				}
-				if (trimmed.startsWith('PublishPort=')) {
-					const val = trimmed.substring(12).trim();
-					const parts = val.split(':');
-					if (parts.length === 2) {
-						hostPortNum = parseInt(parts[0], 10) || 0;
-						portNum = parseInt(parts[1], 10) || 8080;
-					} else if (parts.length === 3) {
-						hostPortNum = parseInt(parts[1], 10) || 0;
-						portNum = parseInt(parts[2], 10) || 8080;
-					} else if (parts.length === 1 && parseInt(parts[0], 10)) {
-						portNum = parseInt(parts[0], 10);
-					}
-				}
-			}
+[Container]
+Image=docker.io/library/nginx:alpine
+PublishPort=8080:80
+AutoUpdate=registry
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=default.target`;
 
 			newService = {
 				id: internalId,
 				projectId: targetProj,
 				name: sName,
 				type: 'quadlet',
+				sourceType: 'quadlet',
 				status: 'stopped',
 				source: `${sSlug}.container`,
-				image: img,
-				port: portNum,
-				hostPort: hostPortNum,
+				image: 'docker.io/library/nginx:alpine',
+				port: 8080,
+				hostPort: 8080,
 				cpu: 0,
 				memory: 0,
 				restartPolicy: 'always',
@@ -161,40 +136,42 @@ WantedBy=default.target`);
 				createdAt: new Date().toISOString()
 			};
 		} else if (selectedType === 'database') {
-			const dbMap: Record<string, { image: string; port: number }> = {
-				postgres: { image: 'docker.io/library/postgres:17-alpine', port: 5432 },
-				redis: { image: 'docker.io/library/redis:7-alpine', port: 6379 },
-				mysql: { image: 'docker.io/library/mysql:8.4', port: 3306 },
-				mongodb: { image: 'docker.io/library/mongo:7.0', port: 27017 }
-			};
-			const selectedDb = dbMap[dbEngine] ?? dbMap.postgres;
-
 			newService = {
 				id: internalId,
 				projectId: targetProj,
 				name: sName,
-				type: 'image',
+				type: 'database',
 				status: 'stopped',
 				source: '',
 				sourceType: 'image',
-				image: selectedDb.image,
-				port: selectedDb.port,
+				image: '',
+				port: 0,
 				cpu: 0,
 				memory: 0,
 				restartPolicy: 'always',
 				health: 'healthy',
 				replicas: 1,
-				description: desc || `${dbEngine.toUpperCase()} database preset`,
-				envVars: [
-					{
-						key: `${dbEngine.toUpperCase()}_PASSWORD`,
-						value:
-							typeof crypto !== 'undefined' && crypto.randomUUID
-								? crypto.randomUUID().replace(/-/g, '').slice(0, 20)
-								: Math.random().toString(36).slice(2, 12),
-						secret: true
-					}
-				],
+				description: desc || 'Dedicated database instance',
+				envVars: [],
+				advanced: {
+					runtime: { mode: 'rootless', userNamespace: '', devices: [] },
+					lifecycle: {
+						quadletEnabled: false,
+						systemdUnitName: `${sSlug}.service`,
+						restartPolicy: 'always'
+					},
+					security: {
+						privileged: false,
+						selinuxLabel: 'container_file_t',
+						capAdd: [],
+						capDrop: [],
+						noNewPrivileges: true
+					},
+					storage: {
+						volumes: [{ source: `${sSlug}-data`, target: '/data', options: 'Z' }]
+					},
+					resources: { cpuLimit: '0', memoryLimit: '0', pidsLimit: 2048, swapLimit: '0' }
+				},
 				deployments: [],
 				createdAt: new Date().toISOString()
 			};
@@ -207,7 +184,9 @@ WantedBy=default.target`);
 				projectId: targetProj,
 				name: sName,
 				type: realType,
+				sourceType: realType,
 				status: 'stopped',
+				runtimeTarget: realType === 'pod' ? 'pod' : 'standalone',
 				source:
 					stackSubtype === 'compose'
 						? 'compose.yaml'
@@ -258,8 +237,7 @@ WantedBy=default.target`);
 			<div>
 				<h1 class="m-0 mb-1 text-xl font-medium text-[var(--text-primary)]">Create Service</h1>
 				<p class="m-0 text-xs text-[var(--text-tertiary)]">
-					Select the service category and specify its name. Runtime, domains, and git source details
-					are configured inside Service Detail.
+					Select a service type and choose a name.
 				</p>
 			</div>
 
@@ -284,144 +262,7 @@ WantedBy=default.target`);
 			<div
 				class="flex flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5"
 			>
-				{#if selectedType === 'quadlet'}
-					<QuadletForm
-						bind:name={serviceName}
-						bind:description={serviceDescription}
-						bind:config={quadletConfig}
-					/>
-				{:else}
-					{#if selectedType === 'database'}
-						<div class="flex flex-col gap-1.5">
-							<span class="text-xs font-medium text-[var(--text-secondary)]">Database Engine</span>
-							<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-								{#each [{ id: 'postgres', label: 'PostgreSQL' }, { id: 'redis', label: 'Redis' }, { id: 'mysql', label: 'MySQL' }, { id: 'mongodb', label: 'MongoDB' }] as db}
-									<button
-										type="button"
-										onclick={() => (dbEngine = db.id as any)}
-										class="cursor-pointer rounded-[var(--radius-sm)] border p-2.5 text-center text-xs transition-colors {dbEngine ===
-										db.id
-											? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
-											: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-									>
-										{db.label}
-									</button>
-								{/each}
-							</div>
-						</div>
-					{:else if selectedType === 'compose'}
-						<div
-							class="flex flex-col gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 p-3.5"
-						>
-							<span class="text-xs font-medium text-[var(--text-secondary)]"
-								>Workload Architecture & Manifest</span
-							>
-							<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-								{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' }, { id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' }, { id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }] as s}
-									<button
-										type="button"
-										onclick={() => (stackSubtype = s.id as any)}
-										class="cursor-pointer rounded-[var(--radius-sm)] border p-2.5 text-left transition-colors {stackSubtype ===
-										s.id
-											? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
-											: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-									>
-										<div class="text-xs font-semibold text-[var(--text-primary)]">{s.label}</div>
-										<div class="mt-0.5 text-[10px] leading-tight text-[var(--text-tertiary)]">
-											{s.desc}
-										</div>
-									</button>
-								{/each}
-							</div>
-							{#if stackSubtype === 'pod'}
-								<p class="m-0 mt-1 text-[11px] text-[var(--text-tertiary)]">
-									💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar).
-									You can add additional containers to this Pod inside the Service Detail Studio.
-								</p>
-							{/if}
-						</div>
-					{/if}
-
-					<div class="flex flex-col gap-1.5">
-						<label for="inline-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
-							Service Name <span class="text-[var(--status-red)]">*</span>
-						</label>
-						<Input
-							id="inline-svc-name"
-							bind:value={serviceName}
-							placeholder="e.g. metube, api-gateway, or cache"
-							class="text-xs"
-						/>
-					</div>
-
-					{#if selectedType === 'application'}
-						<div class="flex flex-col gap-1.5">
-							<label for="inline-svc-port" class="text-xs font-medium text-[var(--text-secondary)]">
-								Container Port (Optional)
-							</label>
-							<Input
-								id="inline-svc-port"
-								bind:value={servicePort}
-								placeholder="3000 (e.g. 80, 8080)"
-								class="text-xs font-[var(--font-mono)]"
-							/>
-							<span class="text-[11px] text-[var(--text-tertiary)]">
-								Port where your app listens inside the container.
-							</span>
-						</div>
-					{/if}
-				{/if}
-
-				<div
-					class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2"
-				>
-					<Button variant="ghost" size="sm" onclick={handleCancel}>Cancel</Button>
-					<Button variant="primary" size="sm" disabled={!isFormValid} onclick={handleCreate}>
-						Create & Configure <ArrowRight size={13} />
-					</Button>
-				</div>
-			</div>
-		</div>
-	{:else}
-		<!-- Clean, Modular Modal Dialog View -->
-		<Modal
-			open={true}
-			onclose={handleCancel}
-			title="Create Service"
-			subtitle="Deploy an application, native systemd Quadlet, multi-container compose stack, or database."
-			size="xl"
-		>
-			<!-- Vertical Workload Type Selector -->
-			<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
-
-			{#if selectedType === 'quadlet'}
-				<QuadletForm
-					bind:name={serviceName}
-					bind:description={serviceDescription}
-					bind:config={quadletConfig}
-				/>
-			{:else}
-				{#if selectedType === 'database'}
-					<div
-						class="flex flex-col gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 p-3.5"
-					>
-						<span class="text-xs font-medium text-[var(--text-secondary)]">Database Engine</span>
-						<div class="grid grid-cols-2 gap-2 sm:grid-cols-4">
-							{#each [{ id: 'postgres', label: 'PostgreSQL' }, { id: 'redis', label: 'Redis' }, { id: 'mysql', label: 'MySQL' }, { id: 'mongodb', label: 'MongoDB' }] as db (db.id)}
-								<button
-									type="button"
-									onclick={() => (dbEngine = db.id as any)}
-									class="cursor-pointer rounded-md border p-2 text-center text-xs transition-colors {dbEngine ===
-									db.id
-										? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)]'
-										: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
-								>
-									{db.label}
-								</button>
-							{/each}
-						</div>
-					</div>
-				{:else if selectedType === 'compose'}
+				{#if selectedType === 'compose'}
 					<div
 						class="flex flex-col gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 p-3.5"
 					>
@@ -429,11 +270,11 @@ WantedBy=default.target`);
 							>Workload Architecture & Manifest</span
 						>
 						<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-							{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' }, { id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' }, { id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }] as s (s.id)}
+							{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' }, { id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' }, { id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }] as s}
 								<button
 									type="button"
 									onclick={() => (stackSubtype = s.id as any)}
-									class="cursor-pointer rounded-md border p-2.5 text-left transition-colors {stackSubtype ===
+									class="cursor-pointer rounded-[var(--radius-sm)] border p-2.5 text-left transition-colors {stackSubtype ===
 									s.id
 										? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
 										: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
@@ -454,7 +295,115 @@ WantedBy=default.target`);
 					</div>
 				{/if}
 
-				<!-- Service Name Field -->
+				<!-- Universal Service Name & Description Fields -->
+				<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+					<div class="flex flex-col gap-1.5">
+						<label for="inline-svc-name" class="text-xs font-medium text-[var(--text-secondary)]">
+							Service Name <span class="text-[var(--status-red)]">*</span>
+						</label>
+						<Input
+							id="inline-svc-name"
+							bind:value={serviceName}
+							placeholder={selectedType === 'database' ? 'e.g. production-db or cache' : 'e.g. system-daemon, api-gateway, or cache'}
+							class="text-xs"
+						/>
+					</div>
+
+					<div class="flex flex-col gap-1.5">
+						<label for="inline-svc-desc" class="text-xs font-medium text-[var(--text-secondary)]">
+							Description (Optional)
+						</label>
+						<Input
+							id="inline-svc-desc"
+							bind:value={serviceDescription}
+							placeholder={selectedType === 'quadlet'
+								? 'Declarative systemd Quadlet service unit'
+								: selectedType === 'database'
+									? 'Dedicated database instance'
+									: 'Service description'}
+							class="text-xs"
+						/>
+					</div>
+				</div>
+
+				{#if selectedType === 'application'}
+					<div class="flex flex-col gap-1.5">
+						<label for="inline-svc-port" class="text-xs font-medium text-[var(--text-secondary)]">
+							Container Port (Optional)
+						</label>
+						<Input
+							id="inline-svc-port"
+							bind:value={servicePort}
+							placeholder="3000 (e.g. 80, 8080)"
+							class="text-xs font-[var(--font-mono)]"
+						/>
+						<span class="text-[11px] text-[var(--text-tertiary)]">
+							Port where your app listens inside the container.
+						</span>
+					</div>
+				{:else if selectedType === 'quadlet'}
+					<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
+						💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume mounts, and environment variables are configured in Service Detail.
+					</p>
+				{/if}
+
+				<div
+					class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2"
+				>
+					<Button variant="ghost" size="sm" onclick={handleCancel}>Cancel</Button>
+					<Button variant="primary" size="sm" disabled={!isFormValid || isCreating} onclick={handleCreate}>
+						Create & Configure <ArrowRight size={13} />
+					</Button>
+				</div>
+			</div>
+		</div>
+	{:else}
+		<!-- Clean, Modular Modal Dialog View -->
+		<Modal
+			open={true}
+			onclose={handleCancel}
+			title="Create Service"
+			subtitle="Select a service type and choose a name."
+			size="lg"
+		>
+			<!-- Vertical Workload Type Selector -->
+			<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
+
+			{#if selectedType === 'compose'}
+				<div
+					class="flex flex-col gap-2 rounded-lg border border-[var(--border-subtle)] bg-[var(--bg-surface)]/50 p-3.5"
+				>
+					<span class="text-xs font-medium text-[var(--text-secondary)]"
+						>Workload Architecture & Manifest</span
+					>
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+						{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' }, { id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' }, { id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }] as s (s.id)}
+							<button
+								type="button"
+								onclick={() => (stackSubtype = s.id as any)}
+								class="cursor-pointer rounded-md border p-2.5 text-left transition-colors {stackSubtype ===
+								s.id
+									? 'border-[var(--accent)] bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
+									: 'border-[var(--border)] bg-[var(--bg-panel)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]'}"
+							>
+								<div class="text-xs font-semibold text-[var(--text-primary)]">{s.label}</div>
+								<div class="mt-0.5 text-[10px] leading-tight text-[var(--text-tertiary)]">
+									{s.desc}
+								</div>
+							</button>
+						{/each}
+					</div>
+					{#if stackSubtype === 'pod'}
+						<p class="m-0 mt-1 text-[11px] text-[var(--text-tertiary)]">
+							💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar).
+							You can add additional containers to this Pod inside the Service Detail Studio.
+						</p>
+					{/if}
+				</div>
+			{/if}
+
+			<!-- Universal Service Name & Description Fields in Modal -->
+			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 				<Field
 					label="Service Name"
 					required
@@ -463,24 +412,39 @@ WantedBy=default.target`);
 					<Input
 						id="modal-svc-name"
 						bind:value={serviceName}
-						placeholder="e.g. metube, web-app, or cache"
+						placeholder="e.g. system-daemon, api-gateway, or cache"
 						class="text-xs"
 					/>
 				</Field>
 
-				{#if selectedType === 'application'}
-					<Field
-						label="Container Port (Optional)"
-						description="Internal listening port inside container (default: 3000, e.g. 80 for Whoami/Nginx)."
-					>
-						<Input
-							id="modal-svc-port"
-							bind:value={servicePort}
-							placeholder="3000 (e.g. 80, 8080)"
-							class="text-xs font-[var(--font-mono)]"
-						/>
-					</Field>
-				{/if}
+				<Field label="Description (Optional)">
+					<Input
+						id="modal-svc-desc"
+						bind:value={serviceDescription}
+						placeholder={selectedType === 'quadlet'
+							? 'Declarative systemd Quadlet service unit'
+							: 'Service description'}
+						class="text-xs"
+					/>
+				</Field>
+			</div>
+
+			{#if selectedType === 'application'}
+				<Field
+					label="Container Port (Optional)"
+					description="Internal listening port inside container (e.g. 80, 8080). Leave blank if this is a background worker or non-HTTP service."
+				>
+					<Input
+						id="modal-svc-port"
+						bind:value={servicePort}
+						placeholder="e.g. 80, 8080 (optional)"
+						class="text-xs font-[var(--font-mono)]"
+					/>
+				</Field>
+			{:else if selectedType === 'quadlet'}
+				<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
+					💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume mounts, and environment variables are configured in Service Detail.
+				</p>
 			{/if}
 
 			{#snippet footer()}

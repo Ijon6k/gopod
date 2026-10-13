@@ -102,9 +102,13 @@ func (s *Service) GetContainerLogs(ctx context.Context, id string, tail int) (st
 	return s.client.GetContainerLogs(ctx, id, tail)
 }
 
-// PruneContainers deletes stopped containers.
+// PruneContainers deletes stopped containers and resets failed systemd units.
 func (s *Service) PruneContainers(ctx context.Context) error {
-	return s.client.PruneContainers(ctx)
+	err := s.client.PruneContainers(ctx)
+	if _, lookErr := exec.LookPath("systemctl"); lookErr == nil {
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed").Run()
+	}
+	return err
 }
 
 // GetPods lists Podman pods.
@@ -167,9 +171,13 @@ func (s *Service) GetNetworks(ctx context.Context) ([]podman.NetworkItem, error)
 	return s.client.GetNetworks(ctx)
 }
 
-// PruneSystem cleans up stopped containers, dangling images, and networks.
+// PruneSystem cleans up stopped containers, dangling images, and networks, and resets failed systemd units.
 func (s *Service) PruneSystem(ctx context.Context) error {
-	return s.client.PruneSystem(ctx)
+	err := s.client.PruneSystem(ctx)
+	if _, lookErr := exec.LookPath("systemctl"); lookErr == nil {
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed").Run()
+	}
+	return err
 }
 
 // GetDiskUsage queries disk space metrics from Podman.

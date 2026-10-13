@@ -4,10 +4,9 @@
 	import QuadletEditorCard from './QuadletEditorCard.svelte';
 	import ComposeEditorCard from './ComposeEditorCard.svelte';
 	import PodWorkspaceCard from './PodWorkspaceCard.svelte';
-	import SourceCard from './SourceCard.svelte';
-	import PortMappingCard from './PortMappingCard.svelte';
-	import RuntimeTargetCard from './RuntimeTargetCard.svelte';
-	import DeployTriggerCard from './DeployTriggerCard.svelte';
+	import ApplicationConfigCard from './ApplicationConfigCard.svelte';
+	import DatabaseCredentialsCard from './DatabaseCredentialsCard.svelte';
+	import DatabaseSetupCatalog from './DatabaseSetupCatalog.svelte';
 	import AddCredentialModal from './AddCredentialModal.svelte';
 
 	interface Props {
@@ -21,6 +20,7 @@
 
 	let credentialModalOpen = $state(false);
 	let credentialInitialTab = $state<'ssh' | 'registry'>('ssh');
+	let isChangingEngine = $state(false);
 
 	function handleOpenCredentialModal(type: 'ssh' | 'registry') {
 		credentialInitialTab = type;
@@ -29,8 +29,10 @@
 </script>
 
 <div class="flex w-full flex-col gap-4">
-	<!-- 1. Operational Action Bar at top of General tab -->
-	<DeploySettingsCard {service} {onTerminalClick} {onRedeploy} />
+	<!-- 1. Operational Action Bar at top of General tab (hidden if engine setup is active) -->
+	{#if service.type !== 'database' || (service.image && !isChangingEngine)}
+		<DeploySettingsCard {service} {onTerminalClick} {onRedeploy} />
+	{/if}
 
 	<!-- 2. Main Workload Body depending on Type -->
 	{#if service.type === 'pod'}
@@ -42,19 +44,25 @@
 	{:else if service.type === 'compose' || service.type === 'kubernetes'}
 		<!-- First-Class Docker / Podman Compose Manifest -->
 		<ComposeEditorCard {service} />
+	{:else if service.type === 'database'}
+		<!-- First-Class Dedicated Database Instance (Dokploy Parity) -->
+		{#if !service.image || isChangingEngine}
+			<DatabaseSetupCatalog
+				{service}
+				onConfigured={() => (isChangingEngine = false)}
+				onCancel={service.image ? () => (isChangingEngine = false) : undefined}
+			/>
+		{:else}
+			<DatabaseCredentialsCard
+				{service}
+				{onRedeploy}
+				onChangeEngine={() => (isChangingEngine = true)}
+			/>
+			<ApplicationConfigCard {service} onOpenCredentialModal={handleOpenCredentialModal} />
+		{/if}
 	{:else}
-		<!-- Standard Application / Image / Container Workloads -->
-		<!-- Unified Source & Build Configuration -->
-		<SourceCard {service} onOpenCredentialModal={handleOpenCredentialModal} />
-
-		<!-- Dedicated Port Configuration Card -->
-		<PortMappingCard {service} />
-
-		<!-- Runtime Target & Resource Limits -->
-		<RuntimeTargetCard {service} />
-
-		<!-- Automated Triggers & Webhooks -->
-		<DeployTriggerCard {service} />
+		<!-- Standard Application / Image / Container Workloads (Unified Kumo UI) -->
+		<ApplicationConfigCard {service} onOpenCredentialModal={handleOpenCredentialModal} />
 	{/if}
 </div>
 

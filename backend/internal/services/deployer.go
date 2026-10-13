@@ -10,6 +10,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -85,6 +86,12 @@ func (d *Deployer) setupCmdEnv(cmd *exec.Cmd) {
 	existingEnv := os.Environ()
 	var newEnv []string
 	for _, e := range existingEnv {
+		// Prevent internal control-plane environment variables from polluting workload subprocesses
+		if strings.HasPrefix(e, "PORT=") ||
+			strings.HasPrefix(e, "CADDY_ADMIN_URL=") ||
+			strings.HasPrefix(e, "GOPOD_DB_PATH=") {
+			continue
+		}
 		if !strings.HasPrefix(e, "CONTAINER_HOST=") &&
 			!strings.HasPrefix(e, "DOCKER_HOST=") &&
 			!strings.HasPrefix(e, "PODMAN_SOCKET=") {
@@ -96,6 +103,37 @@ func (d *Deployer) setupCmdEnv(cmd *exec.Cmd) {
 		fmt.Sprintf("DOCKER_HOST=%s", socketURL),
 		fmt.Sprintf("PODMAN_SOCKET=%s", socketClean),
 	)
+
+	// Guarantee rootless systemd user session environment (XDG_RUNTIME_DIR and DBUS)
+	uid := os.Getuid()
+	userRunDir := fmt.Sprintf("/run/user/%d", uid)
+	hasXDG := false
+	for _, e := range newEnv {
+		if strings.HasPrefix(e, "XDG_RUNTIME_DIR=") {
+			hasXDG = true
+			break
+		}
+	}
+	if !hasXDG {
+		if _, err := os.Stat(userRunDir); err == nil {
+			newEnv = append(newEnv, fmt.Sprintf("XDG_RUNTIME_DIR=%s", userRunDir))
+		}
+	}
+
+	hasDBUS := false
+	for _, e := range newEnv {
+		if strings.HasPrefix(e, "DBUS_SESSION_BUS_ADDRESS=") {
+			hasDBUS = true
+			break
+		}
+	}
+	if !hasDBUS {
+		busPath := filepath.Join(userRunDir, "bus")
+		if _, err := os.Stat(busPath); err == nil {
+			newEnv = append(newEnv, fmt.Sprintf("DBUS_SESSION_BUS_ADDRESS=unix:path=%s", busPath))
+		}
+	}
+
 	cmd.Env = newEnv
 }
 
@@ -145,10 +183,20 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 
 	// ── 3. QUADLET WORKLOAD ──
 	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
-		return d.deployQuadlet(ctx, s, depID, logLine)
+		return d.deployQuadlet(ctx, s, depID, trig, logLine)
 	}
 
-	// ── 4. GIT WORKLOAD ──
+	// ── 4. POD WORKLOAD ──
+	if s.Type == "pod" || (s.RuntimeTarget == "pod" && s.Image == "" && s.GitRepo == "") {
+		return d.deployPod(ctx, s, depID, logLine)
+	}
+
+	// ── 5. STATIC DROP WORKLOAD ──
+	if s.SourceType == "drop" || s.Type == "static" {
+		return d.deployDrop(ctx, s, depID, trig, logLine)
+	}
+
+	// ── 6. GIT WORKLOAD ──
 	isGit := s.GitRepo != "" || s.Source == "git" ||
 		strings.HasPrefix(s.Source, "http://") || strings.HasPrefix(s.Source, "https://") ||
 		strings.HasPrefix(s.Source, "git@") || strings.HasSuffix(s.Source, ".git")
@@ -157,8 +205,59 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 		return d.deployGit(ctx, s, depID, logLine)
 	}
 
-	// ── 5. DIRECT IMAGE WORKLOAD ──
-	return d.deployImage(ctx, s, depID, logLine)
+	// ── 7. DIRECT IMAGE WORKLOAD ──
+	return d.deployImage(ctx, s, depID, trig, logLine)
+}
+
+func (d *Deployer) deployPod(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
+	cleanName := QuadletUnitName(s)
+	podName := fmt.Sprintf("pod_%s", cleanName)
+	if s.PodID != "" {
+		podName = s.PodID
+	}
+	logLine(fmt.Sprintf("📦 Reconciling Podman Pod '%s' (service: %s)...", podName, s.Name))
+
+	var ports []string
+	if s.Port > 0 {
+		hPort := s.HostPort
+		if hPort <= 0 {
+			hPort = s.Port
+		}
+		ports = append(ports, fmt.Sprintf("%d:%d", hPort, s.Port))
+	}
+
+	if d.podmanClient != nil {
+		_ = d.podmanClient.EnsureNetwork(ctx, "gopod-net")
+
+		existing, err := d.podmanClient.InspectPod(ctx, podName)
+		if err != nil || existing == nil {
+			logLine(fmt.Sprintf("🚀 Creating Podman Pod '%s' on network 'gopod-net'...", podName))
+			_, err = d.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
+				Name:    podName,
+				Ports:   ports,
+				Network: "gopod-net",
+				Labels: map[string]string{
+					"io.gopod.service": s.ID,
+					"io.gopod.project": s.ProjectID,
+				},
+			})
+			if err != nil && !strings.Contains(err.Error(), "already exists") {
+				logLine(fmt.Sprintf("❌ Failed to create pod '%s': %v", podName, err))
+				return nil, err
+			}
+		} else {
+			logLine(fmt.Sprintf("⚙️ Starting existing Podman Pod '%s'...", podName))
+			_ = d.podmanClient.StartPod(ctx, podName)
+		}
+	}
+
+	logLine(fmt.Sprintf("✅ Podman Pod '%s' is active and running on network 'gopod-net'.", podName))
+
+	return &DeployResult{
+		ContainerName: podName,
+		CommitMessage: fmt.Sprintf("Pod active: %s", podName),
+		Version:       "pod",
+	}, nil
 }
 
 func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) []string {

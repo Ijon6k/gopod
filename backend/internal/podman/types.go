@@ -2,6 +2,7 @@ package podman
 
 // SystemInfo represents host & engine metrics.
 type SystemInfo struct {
+	IP              string  `json:"ip"`
 	Hostname        string  `json:"hostname"`
 	OS              string  `json:"os"`
 	Kernel          string  `json:"kernel"`
@@ -100,6 +101,7 @@ type NetworkItem struct {
 type RunContainerOptions struct {
 	Name          string            `json:"name"`
 	Image         string            `json:"image"`
+	Command       []string          `json:"command,omitempty"`
 	Pod           string            `json:"pod,omitempty"`
 	Ports         []string          `json:"ports,omitempty"`
 	Env           map[string]string `json:"env,omitempty"`

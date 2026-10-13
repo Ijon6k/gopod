@@ -43,6 +43,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/deployments/{id}", h.middleware.RequireAuth(h.handleGetDeployment))
 	mux.HandleFunc("GET /api/deployments/{id}/logs", h.middleware.RequireAuth(h.handleGetDeploymentLogs))
 	mux.HandleFunc("GET /api/deployments/{id}/logs/stream", h.middleware.RequireAuth(h.handleStreamDeploymentLogs))
+	mux.HandleFunc("POST /api/deployments/{id}/cancel", h.middleware.RequireAuth(h.handleCancelDeployment))
+	mux.HandleFunc("POST /api/services/{id}/cancel", h.middleware.RequireAuth(h.handleCancelServiceDeployment))
 
 	// Public CI/CD webhook endpoint (authenticated via unguessable webhook token)
 	mux.HandleFunc("POST /api/deploy/webhook/{token}", h.handleWebhook)
@@ -53,6 +55,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadletGlobal))
 	mux.HandleFunc("POST /api/services/{id}/quadlet/demote", h.middleware.RequireAuth(h.handleDemoteQuadlet))
 	mux.HandleFunc("POST /api/services/{id}/group-pod", h.middleware.RequireAuth(h.handleGroupIntoPod))
+	mux.HandleFunc("POST /api/services/{id}/drop-upload", h.middleware.RequireAuth(h.handleDropUpload))
 	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAuth(h.handleGetLinger))
 }
 
@@ -140,6 +143,26 @@ func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusAccepted, dep)
+}
+
+func (h *Handler) handleCancelDeployment(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	dep, err := h.service.CancelDeployment(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, dep)
+}
+
+func (h *Handler) handleCancelServiceDeployment(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	svc, err := h.service.CancelServiceDeployment(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, svc)
 }
 
 func (h *Handler) handleGetDeployment(w http.ResponseWriter, r *http.Request) {

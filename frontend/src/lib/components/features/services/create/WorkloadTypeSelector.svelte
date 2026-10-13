@@ -16,29 +16,28 @@
 			id: 'application' as const,
 			title: 'Application',
 			description:
-				'Deploy web apps, APIs, or static sites from Git repository, Docker Image, or Drag & Drop.',
+				'Deploy web applications, APIs, or static sites from Git, container image, or static files.',
 			icon: GitBranch
 		},
 		{
 			id: 'quadlet' as const,
 			title: 'Quadlet (Systemd)',
 			description:
-				'Declarative systemd .container unit with auto-restart on host boot & native systemd supervision.',
+				'Native systemd-supervised container service with host boot persistence.',
 			icon: FileText
 		},
 		{
 			id: 'compose' as const,
 			title: 'Stack / Compose',
 			description:
-				'Multi-container workloads defined via Compose YAML or Kubernetes Pod manifests.',
+				'Multi-container service defined using Compose YAML or Kubernetes manifests.',
 			icon: Stack
 		},
 		{
 			id: 'database' as const,
 			title: 'Database',
 			description:
-				'1-click deployment for PostgreSQL, Redis, MySQL, or MongoDB with persistent volume storage.',
-			badge: 'Preset',
+				'Managed database instance with persistent volume storage.',
 			icon: Database
 		}
 	];
@@ -73,15 +72,6 @@
 					<div class="flex min-w-0 flex-col gap-1">
 						<div class="flex flex-wrap items-center gap-2">
 							<span class="text-sm font-semibold text-[var(--text-primary)]">{opt.title}</span>
-							{#if opt.badge}
-								<span
-									class="rounded-full px-2 py-0.5 text-[10px] font-semibold {isSelected
-										? 'border border-[var(--accent)]/30 bg-[var(--accent)]/15 text-[var(--accent)]'
-										: 'border border-[var(--border-subtle)] bg-[rgba(255,255,255,0.06)] text-[var(--text-tertiary)]'}"
-								>
-									{opt.badge}
-								</span>
-							{/if}
 						</div>
 						<p class="m-0 text-xs leading-relaxed text-[var(--text-tertiary)]">
 							{opt.description}

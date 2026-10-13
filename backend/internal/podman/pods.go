@@ -256,3 +256,17 @@ func (c *Client) postPodAction(ctx context.Context, idOrName, action string) err
 	}
 	return nil
 }
+
+// InspectPod checks whether a pod exists by ID or name and returns its item.
+func (c *Client) InspectPod(ctx context.Context, idOrName string) (*PodItem, error) {
+	pods, err := c.GetPods(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range pods {
+		if p.ID == idOrName || p.Name == idOrName {
+			return &p, nil
+		}
+	}
+	return nil, fmt.Errorf("pod %s not found", idOrName)
+}

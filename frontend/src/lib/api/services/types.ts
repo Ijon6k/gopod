@@ -101,7 +101,7 @@ export interface Service {
 	type: ServiceType;
 	status: Status;
 	source?: string;
-	sourceType?: 'git' | 'image' | 'drop';
+	sourceType?: ServiceType | 'git' | 'image' | 'drop';
 	branch?: string;
 	sshKeyId?: string;
 	image?: string;

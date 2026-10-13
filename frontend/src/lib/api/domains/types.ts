@@ -6,6 +6,7 @@ export interface Domain {
 	projectId: string;
 	serviceId: string;
 	serviceName?: string;
+	targetContainer?: string;
 	tls: boolean;
 	status: DomainStatus;
 	proxyPort?: number;
@@ -26,6 +27,7 @@ export interface Domain {
 	hsts?: boolean;
 	basicAuth?: boolean;
 	basicAuthUser?: string;
+	basicAuthPass?: string;
 	basicAuthUsers?: { username: string; hash: string }[];
 	customHeaders?: Record<string, string>;
 	rateLimitRps?: number;

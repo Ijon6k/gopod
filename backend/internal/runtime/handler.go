@@ -67,6 +67,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/quadlets/{name}/restart", h.middleware.RequireAuth(h.handleQuadletRestart))
 	mux.HandleFunc("POST /api/quadlets/reload", h.middleware.RequireAuth(h.handleQuadletReload))
 	mux.HandleFunc("GET /api/quadlets/{name}/content", h.middleware.RequireAuth(h.handleQuadletContent))
+	mux.HandleFunc("DELETE /api/quadlets/{name}", h.middleware.RequireAuth(h.handleQuadletDelete))
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -351,5 +352,18 @@ func (h *Handler) handleQuadletContent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"name": name, "content": content})
+}
+
+func (h *Handler) handleQuadletDelete(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "quadlet unit name is required")
+		return
+	}
+	if err := h.service.DeleteQuadlet(r.Context(), name); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Quadlet unit removed successfully"})
 }
 

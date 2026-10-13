@@ -34,7 +34,9 @@
 
 	let workloadSubtitle = $derived.by(() => {
 		if (service.type === 'application') {
-			return `Application · Port ${service.port || 3000}`;
+			return service.port && service.port > 0
+				? `Application · Port ${service.port}`
+				: `Application · Background worker`;
 		}
 		if (service.type === 'compose') {
 			const count = service.workloads?.length ?? 1;
@@ -48,6 +50,11 @@
 		}
 		if (service.type === 'quadlet') {
 			return `Quadlet (systemd) · Port ${service.port || 8080}`;
+		}
+		if (service.type === 'database') {
+			return service.image
+				? `Database · ${service.image.split('/').pop()} · Port ${service.port || 5432}`
+				: `Database · Engine not yet selected`;
 		}
 		return `Container · ${service.image || 'image'} :${service.port || 8080}`;
 	});

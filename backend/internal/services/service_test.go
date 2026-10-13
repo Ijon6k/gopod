@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -381,3 +382,358 @@ Restart=always`
 		t.Errorf("expected invalid unit due to Restart= in [Container]")
 	}
 }
+
+func TestGetQuadletCandidateUnitNames(t *testing.T) {
+	s := Service{
+		ID:   "svc-arch-99",
+		Name: "Arch App",
+		Type: "quadlet",
+		QuadletConfig: `[Unit]
+Description=Arch Linux Web
+[Container]
+Image=docker.io/library/archlinux:latest
+ContainerName=archlinux
+PublishPort=8080:80`,
+	}
+
+	cands := getQuadletCandidateUnitNames(s, "arch-app")
+	foundArchlinux := false
+	for _, c := range cands {
+		if c == "archlinux.service" {
+			foundArchlinux = true
+			break
+		}
+	}
+	if !foundArchlinux {
+		t.Fatalf("expected archlinux.service in candidate units, got %+v", cands)
+	}
+}
+
+func TestFindServiceUnitFilesAndCandidates(t *testing.T) {
+	tempDir := t.TempDir()
+	quadDir := filepath.Join(tempDir, "quadlets")
+	_ = os.MkdirAll(quadDir, 0755)
+
+	// Create an orphaned quadlet file on disk from a previous iteration of the service
+	orphanFile := filepath.Join(quadDir, "arch-sandbox.container")
+	orphanContent := `[Unit]
+Description=GoPod archlinux Service
+[Container]
+ContainerName=arch-sandbox
+Image=docker.io/library/archlinux:latest
+Label=io.gopod.service=self-hosted-archlinux-dbd3a5
+Label=io.gopod.project=self-hosted`
+	if err := os.WriteFile(orphanFile, []byte(orphanContent), 0644); err != nil {
+		t.Fatalf("failed to write test quadlet file: %v", err)
+	}
+
+	d := NewDeployer(nil, nil, nil, tempDir)
+
+	// Service has been recreated with a new ID (self-hosted-archlinux-709f64) and is in Compose format
+	s := Service{
+		ID:        "self-hosted-archlinux-709f64",
+		ProjectID: "self-hosted",
+		Name:      "archlinux",
+		Type:      "compose",
+		ComposeYaml: `services:
+  archlinux:
+    image: docker.io/library/archlinux:latest
+    container_name: arch-sandbox`,
+	}
+
+	units, containers, files := d.findServiceUnitFilesAndCandidates(s)
+
+	hasUnit := false
+	for _, u := range units {
+		if u == "arch-sandbox.service" {
+			hasUnit = true
+			break
+		}
+	}
+	if !hasUnit {
+		t.Errorf("expected arch-sandbox.service in units, got %+v", units)
+	}
+
+	hasCont := false
+	for _, c := range containers {
+		if c == "arch-sandbox" {
+			hasCont = true
+			break
+		}
+	}
+	if !hasCont {
+		t.Errorf("expected arch-sandbox in containers, got %+v", containers)
+	}
+
+	hasFile := false
+	for _, f := range files {
+		if f == orphanFile {
+			hasFile = true
+			break
+		}
+	}
+	if !hasFile {
+		t.Errorf("expected orphanFile %s in files to delete, got %+v", orphanFile, files)
+	}
+
+	// Now execute TeardownService and verify the file is completely removed
+	if err := d.TeardownService(context.Background(), s, false); err != nil {
+		t.Fatalf("TeardownService failed: %v", err)
+	}
+
+	if _, err := os.Stat(orphanFile); !os.IsNotExist(err) {
+		t.Errorf("expected orphanFile to be removed by TeardownService, but it still exists")
+	}
+}
+
+func TestDatabaseServiceLifecycle(t *testing.T) {
+	tempDB := filepath.Join(t.TempDir(), "test_db_svc.db")
+	database, err := db.Open(tempDB)
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	repo := NewSQLiteRepository(database.DB)
+	ws := NewWorkloadService(repo, nil, nil)
+	ctx := context.Background()
+
+	// 1. Setup project
+	_, err = database.DB.Exec("INSERT INTO projects (id, name) VALUES ('proj-db-test', 'DB Test Project')")
+	if err != nil {
+		t.Fatalf("failed to insert project: %v", err)
+	}
+
+	// 2. Create PostgreSQL Database Service with customizable attributes
+	initialSvc := Service{
+		ProjectID: "proj-db-test",
+		Name:      "postgres-primary",
+		Type:      "database",
+		Image:     "docker.io/library/postgres:16-alpine",
+		Port:      5432,
+		HostPort:  15432,
+		Command:   "",
+		EnvVars: []EnvVar{
+			{Key: "POSTGRES_DB", Value: "custom_app_db", Secret: false},
+			{Key: "POSTGRES_USER", Value: "db_admin_user", Secret: false},
+			{Key: "POSTGRES_PASSWORD", Value: "InitialSecretPass123!", Secret: true},
+			{Key: "PGDATA", Value: "/var/lib/postgresql/data/pgdata", Secret: false},
+		},
+		Description: "Primary PostgreSQL cluster database",
+	}
+
+	created, err := ws.CreateService(ctx, initialSvc)
+	if err != nil {
+		t.Fatalf("failed to create database service: %v", err)
+	}
+	if created.ID == "" {
+		t.Fatal("expected generated service ID, got empty")
+	}
+	if created.Type != "database" {
+		t.Fatalf("expected type database, got %s", created.Type)
+	}
+
+	// 3. Retrieve service and verify credentials
+	fetched, err := ws.GetService(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("failed to get database service: %v", err)
+	}
+	if fetched.Port != 5432 || fetched.HostPort != 15432 {
+		t.Fatalf("unexpected ports: port=%d, hostPort=%d", fetched.Port, fetched.HostPort)
+	}
+	if fetched.Image != "docker.io/library/postgres:16-alpine" {
+		t.Fatalf("unexpected image: %s", fetched.Image)
+	}
+
+	foundDB, foundUser, foundPass := false, false, false
+	for _, env := range fetched.EnvVars {
+		if env.Key == "POSTGRES_DB" && env.Value == "custom_app_db" {
+			foundDB = true
+		}
+		if env.Key == "POSTGRES_USER" && env.Value == "db_admin_user" {
+			foundUser = true
+		}
+		if env.Key == "POSTGRES_PASSWORD" && env.Value == "InitialSecretPass123!" {
+			foundPass = true
+		}
+	}
+	if !foundDB || !foundUser || !foundPass {
+		t.Fatalf("expected env vars to be preserved: db=%v, user=%v, pass=%v", foundDB, foundUser, foundPass)
+	}
+
+	// 4. Update Database Service (Upgrade image to 17-alpine, edit user, db name, password, and port)
+	fetched.Image = "docker.io/library/postgres:17-alpine"
+	fetched.Port = 5433
+	fetched.HostPort = 25432
+	fetched.Description = "Upgraded to PostgreSQL 17-alpine with updated credentials"
+	fetched.EnvVars = []EnvVar{
+		{Key: "POSTGRES_DB", Value: "new_production_db", Secret: false},
+		{Key: "POSTGRES_USER", Value: "new_app_user", Secret: false},
+		{Key: "POSTGRES_PASSWORD", Value: "RotatedSecurePass456!", Secret: true},
+		{Key: "PGDATA", Value: "/var/lib/postgresql/data/pgdata", Secret: false},
+		{Key: "CUSTOM_EXTRA_VAR", Value: "preserved_val", Secret: false},
+	}
+
+	err = repo.Update(ctx, *fetched)
+	if err != nil {
+		t.Fatalf("failed to update database service: %v", err)
+	}
+
+	// 5. Re-fetch and verify all updated fields are persisted without state loss
+	updated, err := ws.GetService(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("failed to re-fetch updated service: %v", err)
+	}
+	if updated.Image != "docker.io/library/postgres:17-alpine" {
+		t.Fatalf("expected upgraded image postgres:17-alpine, got %s", updated.Image)
+	}
+	if updated.Port != 5433 || updated.HostPort != 25432 {
+		t.Fatalf("expected updated ports 5433:25432, got %d:%d", updated.Port, updated.HostPort)
+	}
+
+	foundNewDB, foundNewUser, foundNewPass, foundCustom := false, false, false, false
+	for _, env := range updated.EnvVars {
+		if env.Key == "POSTGRES_DB" && env.Value == "new_production_db" {
+			foundNewDB = true
+		}
+		if env.Key == "POSTGRES_USER" && env.Value == "new_app_user" {
+			foundNewUser = true
+		}
+		if env.Key == "POSTGRES_PASSWORD" && env.Value == "RotatedSecurePass456!" {
+			foundNewPass = true
+		}
+		if env.Key == "CUSTOM_EXTRA_VAR" && env.Value == "preserved_val" {
+			foundCustom = true
+		}
+	}
+	if !foundNewDB || !foundNewUser || !foundNewPass || !foundCustom {
+		t.Fatalf("updated env vars verification failed: db=%v, user=%v, pass=%v, custom=%v",
+			foundNewDB, foundNewUser, foundNewPass, foundCustom)
+	}
+}
+
+func TestCancelDeploymentAndReconcile(t *testing.T) {
+	tempDB := filepath.Join(t.TempDir(), "test_cancel.db")
+	database, err := db.Open(tempDB)
+	if err != nil {
+		t.Fatalf("failed to open sqlite: %v", err)
+	}
+	defer database.Close()
+
+	repo := NewSQLiteRepository(database.DB)
+	lm := NewLogManager(t.TempDir())
+	ws := NewWorkloadService(repo, nil, lm)
+	ctx := context.Background()
+
+	// 1. Create parent project to satisfy foreign keys
+	if _, err := database.DB.Exec("INSERT INTO projects (id, name) VALUES ('proj-1', 'Test Project')"); err != nil {
+		t.Fatalf("failed to insert project: %v", err)
+	}
+
+	// 2. Create test service
+	svc := Service{
+		ID:        "svc-cancel-1",
+		ProjectID: "proj-1",
+		Name:      "cancellable-app",
+		Type:      "compose",
+		Status:    "deploying",
+	}
+	if err := repo.Create(ctx, svc); err != nil {
+		t.Fatalf("failed to create service: %v", err)
+	}
+
+	// 2. Create test deployment in "building" status
+	dep := Deployment{
+		ID:        "dep-cancel-1",
+		ProjectID: "proj-1",
+		ServiceID: svc.ID,
+		Status:    "building",
+		StartedAt: time.Now(),
+	}
+	if err := repo.CreateDeployment(ctx, dep); err != nil {
+		t.Fatalf("failed to create deployment: %v", err)
+	}
+
+	// 3. Register mock cancel func
+	cancelledTriggered := false
+	mockCancel := func() {
+		cancelledTriggered = true
+	}
+	ws.activeCancels.Store(dep.ID, context.CancelFunc(mockCancel))
+	ws.activeServiceDeps.Store(svc.ID, dep.ID)
+
+	// 4. Execute CancelServiceDeployment
+	if _, err := ws.CancelServiceDeployment(ctx, svc.ID); err != nil {
+		t.Fatalf("CancelServiceDeployment failed: %v", err)
+	}
+
+	if !cancelledTriggered {
+		t.Fatal("expected active deployment context cancel func to be triggered")
+	}
+
+	// Verify deployment status is cancelled
+	persistedDep, err := repo.GetDeployment(ctx, dep.ID)
+	if err != nil {
+		t.Fatalf("failed to get deployment: %v", err)
+	}
+	if persistedDep.Status != "cancelled" {
+		t.Fatalf("expected deployment status to be cancelled, got %s", persistedDep.Status)
+	}
+
+	// Verify service status reset to stopped
+	persistedSvc, err := ws.GetService(ctx, svc.ID)
+	if err != nil {
+		t.Fatalf("failed to get service: %v", err)
+	}
+	if persistedSvc.Status != "stopped" {
+		t.Fatalf("expected service status to be stopped, got %s", persistedSvc.Status)
+	}
+
+	// 5. Test startup reconciliation of orphaned stuck deployments
+	stuckSvc := Service{
+		ID:        "svc-stuck-orphan",
+		ProjectID: "proj-1",
+		Name:      "stuck-orphan-svc",
+		Type:      "compose",
+		Status:    "deploying",
+	}
+	if err := repo.Create(ctx, stuckSvc); err != nil {
+		t.Fatalf("failed to create stuck service: %v", err)
+	}
+
+	stuckDep := Deployment{
+		ID:        "dep-stuck-orphan",
+		ProjectID: "proj-1",
+		ServiceID: stuckSvc.ID,
+		Status:    "building",
+		StartedAt: time.Now(),
+	}
+	if err := repo.CreateDeployment(ctx, stuckDep); err != nil {
+		t.Fatalf("failed to create stuck deployment: %v", err)
+	}
+
+	// Run startup reconciliation
+	if err := ws.ReconcileOrphanedDeployments(ctx); err != nil {
+		t.Fatalf("ReconcileOrphanedDeployments failed: %v", err)
+	}
+
+	// Check reconciled status
+	reconciledDep, err := repo.GetDeployment(ctx, stuckDep.ID)
+	if err != nil {
+		t.Fatalf("failed to get reconciled deployment: %v", err)
+	}
+	if reconciledDep.Status != "interrupted" {
+		t.Fatalf("expected reconciled deployment status to be interrupted, got %s", reconciledDep.Status)
+	}
+
+	reconciledSvc, err := ws.GetService(ctx, stuckSvc.ID)
+	if err != nil {
+		t.Fatalf("failed to get reconciled service: %v", err)
+	}
+	if reconciledSvc.Status != "stopped" {
+		t.Fatalf("expected reconciled service status to be stopped, got %s", reconciledSvc.Status)
+	}
+}
+
+
+

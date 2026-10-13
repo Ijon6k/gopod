@@ -29,8 +29,7 @@
 		Trash,
 		Copy,
 		Check,
-		ArrowsClockwise,
-		ShieldCheck
+		ArrowsClockwise
 	} from 'phosphor-svelte';
 
 	const toast = useKumoToastManager();
@@ -46,9 +45,12 @@
 	let caddyfileContent = $state('');
 	let caddyStatus = $state('active');
 	let caddyAdminUrl = $state('http://localhost:2019');
+	let caddyHttpPort = $state(80);
+	let caddyHttpsPort = $state(443);
 	let isLoadingCaddyfile = $state(false);
 	let isReloadingCaddy = $state(false);
 	let copiedCaddyfile = $state(false);
+	let revalidatingIds = $state<Set<string>>(new Set());
 
 	const tabs = [
 		{ id: 'domains', label: 'Domains & Ingress' },
@@ -74,11 +76,42 @@
 	function getDomainUrl(d: Domain): string {
 		const host = d.hostname.trim().replace(/^https?:\/\//, '').replace(/:\d+$/, '');
 		const path = d.pathPrefix && d.pathPrefix !== '/' ? d.pathPrefix : '';
-		const isLocal = host.endsWith('.localhost') || host.endsWith('.local') || host.includes('127.0.0.1');
+		const isLocal = host.endsWith('.localhost') || host.endsWith('.local') || host.includes('127.0.0.1') || host === 'localhost';
 		if (isLocal) {
-			return `http://${host}:8080${path}`;
+			const port = d.tls ? (caddyHttpsPort !== 443 ? `:${caddyHttpsPort}` : '') : (caddyHttpPort !== 80 ? `:${caddyHttpPort}` : '');
+			const proto = d.tls ? 'https' : 'http';
+			return `${proto}://${host}${port}${path}`;
 		}
 		return `${d.tls ? 'https' : 'http'}://${host}${path}`;
+	}
+
+	async function handleRevalidate(domainId: string) {
+		const next = new Set(revalidatingIds);
+		next.add(domainId);
+		revalidatingIds = next;
+		try {
+			const updated = await dataStore.revalidateDomain(domainId);
+			const isLoopback = updated.hostname.endsWith('.localhost') || updated.hostname.endsWith('.local') || updated.hostname.includes('127.0.0.1') || updated.hostname === 'localhost';
+			toast.add({
+				title: 'DNS Verified',
+				description: isLoopback
+					? `${updated.hostname} verified as Local Loopback.`
+					: updated.dnsStatus === 'valid'
+						? `${updated.hostname} DNS record verified (${server.ip}).`
+						: `${updated.hostname} DNS record pending propagation.`,
+				variant: updated.dnsStatus === 'valid' || isLoopback ? 'success' : 'warning'
+			});
+		} catch (err: any) {
+			toast.add({
+				title: 'Verification Failed',
+				description: err?.message || 'Failed to revalidate DNS record.',
+				variant: 'error'
+			});
+		} finally {
+			const done = new Set(revalidatingIds);
+			done.delete(domainId);
+			revalidatingIds = done;
+		}
 	}
 
 	function handleSaveDomain(savedDomain: Domain) {
@@ -118,6 +151,8 @@
 			caddyfileContent = res.caddyfile || '';
 			caddyStatus = res.status || 'active';
 			caddyAdminUrl = res.adminUrl || 'http://localhost:2019';
+			if (res.httpPort) caddyHttpPort = res.httpPort;
+			if (res.httpsPort) caddyHttpsPort = res.httpsPort;
 		} catch (err: any) {
 			console.error('Failed to load Caddyfile:', err);
 			caddyStatus = 'error';
@@ -158,8 +193,12 @@
 	}
 
 	$effect(() => {
-		if (activeTab === 'caddy' && !caddyfileContent && !isLoadingCaddyfile) {
+		// Initial fetch of ingress ports & metadata
+		if (!caddyfileContent && !isLoadingCaddyfile) {
 			loadCaddyfile();
+		}
+		if (activeTab === 'ports' && dataStore.ports.length === 0) {
+			dataStore.fetchLiveStats();
 		}
 	});
 </script>
@@ -316,13 +355,17 @@
 
 									<!-- DNS Status -->
 									<TableCell class="px-3 py-3 whitespace-nowrap">
-										{#if domain.dnsStatus === 'pending'}
-											<Badge variant="warning" class="gap-1 text-xs">
-												<Warning size={12} /> Pending DNS
+										{#if domain.hostname.endsWith('.localhost') || domain.hostname.endsWith('.local') || domain.hostname.includes('127.0.0.1') || domain.hostname === 'localhost'}
+											<Badge variant="success" class="gap-1 text-xs">
+												<CheckCircle size={12} /> Local Loopback
 											</Badge>
-										{:else}
+										{:else if domain.dnsStatus === 'valid'}
 											<Badge variant="success" class="gap-1 text-xs">
 												<CheckCircle size={12} /> Resolves ({server.ip})
+											</Badge>
+										{:else}
+											<Badge variant="warning" class="gap-1 text-xs">
+												<Warning size={12} /> Pending DNS
 											</Badge>
 										{/if}
 									</TableCell>
@@ -378,17 +421,29 @@
 										<div class="inline-flex items-center gap-1">
 											<button
 												type="button"
+												onclick={() => handleRevalidate(domain.id)}
+												disabled={revalidatingIds.has(domain.id)}
+												class="flex h-7 w-7 min-h-[28px] min-w-[28px] cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] disabled:opacity-50"
+												title="Revalidate DNS Record"
+												aria-label="Revalidate DNS Record"
+											>
+												<ArrowsClockwise size={14} class={revalidatingIds.has(domain.id) ? 'animate-spin' : ''} />
+											</button>
+											<button
+												type="button"
 												onclick={() => handleEditDomain(domain)}
-												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--bg-surface)] hover:text-[var(--text-primary)]"
+												class="flex h-7 w-7 min-h-[28px] min-w-[28px] cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
 												title="Edit Domain Settings"
+												aria-label="Edit Domain Settings"
 											>
 												<PencilSimple size={14} />
 											</button>
 											<button
 												type="button"
 												onclick={() => handleDeleteDomain(domain.id)}
-												class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] hover:bg-[var(--status-red-muted)] hover:text-[var(--status-red)]"
+												class="flex h-7 w-7 min-h-[28px] min-w-[28px] cursor-pointer items-center justify-center rounded border-0 bg-transparent p-1.5 text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--status-red)]"
 												title="Remove Domain"
+												aria-label="Remove Domain"
 											>
 												<Trash size={14} />
 											</button>
@@ -529,7 +584,7 @@
 					<span class="font-mono text-xs text-[var(--text-tertiary)]">rootless socket</span>
 				</div>
 				<span class="text-xs text-[var(--text-tertiary)]">
-					Bound to host ports <span class="font-mono text-[11px] text-[var(--text-secondary)]">:8080</span> (HTTP) & <span class="font-mono text-[11px] text-[var(--text-secondary)]">:8443</span> (HTTPS)
+					Bound to host ports <span class="font-mono text-[11px] text-[var(--text-secondary)]">:{caddyHttpPort}</span> (HTTP) & <span class="font-mono text-[11px] text-[var(--text-secondary)]">:{caddyHttpsPort}</span> (HTTPS)
 				</span>
 			</LayerCard>
 
@@ -621,21 +676,19 @@
 				{:else}
 					<CodeEditor
 						value={caddyfileContent}
-						language="quadlet"
+						language="caddyfile"
+						title="Caddyfile"
 						readOnly={true}
-						height="440px"
+						height="auto"
 						lineNumbers={true}
 					/>
 				{/if}
 			</div>
 
 			<!-- Footer -->
-			<div class="flex flex-col justify-between gap-2 border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)] sm:flex-row sm:items-center">
-				<div class="flex items-center gap-2">
-					<ShieldCheck size={14} class="text-[var(--status-green)]" />
-					<span>Zero-injection security: domain hostnames and directives are sanitized prior to compilation.</span>
-				</div>
-				<span class="font-mono text-[11px]">Path: /etc/caddy/Caddyfile</span>
+			<div class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2 text-xs text-[var(--text-tertiary)]">
+				<span class="text-[11px]">Caddy reverse proxy and automatic HTTPS configuration</span>
+				<span class="font-mono text-[11px]">/etc/caddy/Caddyfile</span>
 			</div>
 		</LayerCard>
 	{/if}

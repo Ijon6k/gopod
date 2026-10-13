@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Deployment } from '$lib/types';
-	import { Button } from '$lib/components/ui';
-	import { Badge } from 'kumo-svelte';
+	import { Button, Badge } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
 	import {
 		Terminal,
@@ -16,7 +15,8 @@
 		StopCircle,
 		Copy,
 		Check,
-		FolderSimple
+		FolderSimple,
+		CircleNotch
 	} from 'phosphor-svelte';
 
 	interface Props {
@@ -103,15 +103,22 @@
 </script>
 
 <div
-	class="group relative flex w-full flex-col justify-between gap-3.5 rounded-lg bg-kumo-base p-4 ring ring-kumo-line transition-colors hover:bg-kumo-tint md:flex-row md:items-center"
+	class="group relative flex w-full flex-col justify-between gap-3.5 rounded-lg bg-kumo-base p-4 ring {isBuilding ? 'ring-kumo-brand/40 shadow-xs' : 'ring-kumo-line'} transition-colors hover:bg-kumo-tint md:flex-row md:items-center"
 >
 	<!-- Left / Primary: Status, Number, Commit Message, Metadata -->
 	<div class="flex min-w-0 flex-1 items-start gap-3">
 		<!-- Status Dot Badge -->
 		<div class="mt-0.5 flex shrink-0 items-center justify-center">
-			<Badge variant={badgeVariant} appearance="dot">
-				{statusLabel}
-			</Badge>
+			{#if isBuilding}
+				<Badge variant="warning" class="gap-1.5 font-medium">
+					<CircleNotch size={12} class="animate-spin text-amber-500" />
+					<span>Building</span>
+				</Badge>
+			{:else}
+				<Badge variant={badgeVariant} appearance="dot">
+					{statusLabel}
+				</Badge>
+			{/if}
 		</div>
 
 		<div class="flex min-w-0 flex-1 flex-col gap-1.5">
@@ -264,18 +271,16 @@
 				size="sm"
 				onclick={() => onRedeploy(deployment)}
 				class="gap-1.5 whitespace-nowrap border border-kumo-line bg-kumo-elevated text-kumo-default shadow-xs hover:bg-kumo-fill"
-				title={isCurrent ? 'Redeploy this version' : 'Rollback to this deployment'}
 			>
 				<ArrowCounterClockwise size={13} />
 				<span>{isCurrent ? 'Redeploy' : 'Rollback'}</span>
 			</Button>
 		{:else if onCancel}
 			<Button
-				variant="destructive"
+				variant="secondary-destructive"
 				size="sm"
 				onclick={() => onCancel(deployment)}
 				class="gap-1.5 whitespace-nowrap shadow-xs"
-				title="Cancel active deployment"
 			>
 				<StopCircle size={13} />
 				<span>Cancel</span>
@@ -289,7 +294,6 @@
 			shape="square"
 			onclick={() => onDelete(deployment)}
 			class="border border-kumo-line bg-kumo-elevated shadow-xs hover:bg-kumo-fill hover:text-kumo-danger"
-			title="Delete deployment record"
 			aria-label="Delete deployment"
 		>
 			<Trash size={14} class="text-kumo-subtle transition-colors group-hover:text-kumo-danger hover:text-kumo-danger" />

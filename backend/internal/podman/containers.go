@@ -293,7 +293,7 @@ func (c *Client) RunContainer(ctx context.Context, opts RunContainerOptions) (st
 	if opts.PidsLimit > 0 {
 		args = append(args, fmt.Sprintf("--pids-limit=%d", opts.PidsLimit))
 	}
-	if opts.UserNS != "" {
+	if opts.UserNS != "" && opts.UserNS != "default" && opts.UserNS != "none" {
 		args = append(args, "--userns", opts.UserNS)
 	}
 	if opts.Privileged {
@@ -324,7 +324,20 @@ func (c *Client) RunContainer(ctx context.Context, opts RunContainerOptions) (st
 			args = append(args, "--security-opt", sec)
 		}
 	}
+	for k, v := range opts.Labels {
+		if k != "" {
+			args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
+		}
+	}
+	for k, v := range opts.Env {
+		if k != "" {
+			args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
+		}
+	}
 	args = append(args, opts.Image)
+	if len(opts.Command) > 0 {
+		args = append(args, opts.Command...)
+	}
 
 	cmd := exec.CommandContext(ctx, "podman", args...)
 	c.SetupCmdEnv(cmd)

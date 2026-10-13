@@ -46,6 +46,8 @@ type Service struct {
 	RegistryID     string    `json:"registryId,omitempty"`
 	AutoDeploy     bool      `json:"autoDeploy"`
 	WatchPaths     string    `json:"watchPaths,omitempty"`
+	Command        string    `json:"command,omitempty"`
+	Entrypoint     string    `json:"entrypoint,omitempty"`
 	EnvVars        []EnvVar               `json:"envVars"`
 	Advanced       *ServiceAdvancedConfig `json:"advanced,omitempty"`
 	CreatedAt      time.Time              `json:"createdAt"`

@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"time"
 )
@@ -30,7 +31,20 @@ func (s *Service) ListDomains(ctx context.Context, projectID string) ([]Domain, 
 	if s.repo == nil {
 		return []Domain{}, nil
 	}
-	return s.repo.List(ctx, projectID)
+	domains, err := s.repo.List(ctx, projectID)
+	if err != nil {
+		return nil, err
+	}
+	for i := range domains {
+		cleanHost := strings.ToLower(strings.TrimSpace(domains[i].Hostname))
+		if strings.HasSuffix(cleanHost, ".localhost") || strings.HasSuffix(cleanHost, ".local") || strings.Contains(cleanHost, "127.0.0.1") || cleanHost == "localhost" {
+			if domains[i].DNSStatus == "pending" || domains[i].DNSStatus == "" {
+				domains[i].DNSStatus = "valid"
+				_ = s.repo.Update(ctx, domains[i])
+			}
+		}
+	}
+	return domains, nil
 }
 
 // GetDomain retrieves a single domain rule by ID.
@@ -39,6 +53,50 @@ func (s *Service) GetDomain(ctx context.Context, id string) (*Domain, error) {
 		return nil, errors.New("repository not initialized")
 	}
 	return s.repo.Get(ctx, id)
+}
+
+// RevalidateDomain re-checks DNS for a domain rule and updates the database.
+func (s *Service) RevalidateDomain(ctx context.Context, id string) (*Domain, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	d, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if d == nil {
+		return nil, errors.New("domain not found")
+	}
+
+	cleanHost := strings.ToLower(strings.TrimSpace(d.Hostname))
+	cleanHost = strings.TrimPrefix(cleanHost, "https://")
+	cleanHost = strings.TrimPrefix(cleanHost, "http://")
+	if idx := strings.Index(cleanHost, ":"); idx != -1 {
+		cleanHost = cleanHost[:idx]
+	}
+
+	isLoopback := strings.HasSuffix(cleanHost, ".localhost") || strings.HasSuffix(cleanHost, ".local") || strings.Contains(cleanHost, "127.0.0.1") || cleanHost == "localhost"
+
+	if isLoopback {
+		d.DNSStatus = "valid"
+	} else {
+		// Real DNS resolution check using net.Resolver
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		defer cancel()
+		var resolver net.Resolver
+		ips, err := resolver.LookupIP(lookupCtx, "ip", cleanHost)
+		if err == nil && len(ips) > 0 {
+			d.DNSStatus = "valid"
+		} else {
+			d.DNSStatus = "pending"
+		}
+	}
+
+	if err := s.repo.Update(ctx, *d); err != nil {
+		return nil, err
+	}
+
+	return d, nil
 }
 
 // CreateDomain validates and stores a new domain rule, then triggers Caddy reload.
@@ -50,14 +108,26 @@ func (s *Service) CreateDomain(ctx context.Context, d Domain) (*Domain, error) {
 		return nil, errors.New("hostname is required")
 	}
 
+	cleanHost := strings.TrimSpace(d.Hostname)
+	cleanHost = strings.TrimPrefix(cleanHost, "https://")
+	cleanHost = strings.TrimPrefix(cleanHost, "http://")
+	if idx := strings.Index(cleanHost, ":"); idx != -1 {
+		cleanHost = cleanHost[:idx]
+	}
+	d.Hostname = cleanHost
+
+	isLoopback := strings.HasSuffix(cleanHost, ".localhost") || strings.HasSuffix(cleanHost, ".local") || strings.Contains(cleanHost, "127.0.0.1") || cleanHost == "localhost"
+
 	if d.ID == "" {
 		b := make([]byte, 4)
 		_, _ = rand.Read(b)
 		d.ID = fmt.Sprintf("dom-%s", hex.EncodeToString(b))
 	}
 	d.CreatedAt = time.Now()
-	if d.DNSStatus == "" {
-		d.DNSStatus = "active"
+	if isLoopback {
+		d.DNSStatus = "valid"
+	} else if d.DNSStatus == "" {
+		d.DNSStatus = "pending"
 	}
 
 	if err := s.repo.Create(ctx, d); err != nil {

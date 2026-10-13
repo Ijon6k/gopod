@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { PageHeader, Tabs, DataTable, StatusBadge, Modal, CodeEditor } from '$lib/components/ui';
 	import { Button, Badge } from 'kumo-svelte';
-	import { Play, Stop, ArrowClockwise, FileCode } from 'phosphor-svelte';
+	import { Play, Stop, ArrowClockwise, FileCode, Trash } from 'phosphor-svelte';
 	import { dataStore } from '$lib/stores/data.svelte';
 	import type { QuadletUnit } from '$lib/types';
 
@@ -60,6 +60,7 @@
 			columns={[
 				{ key: 'name', label: 'Name' },
 				{ key: 'projectName', label: 'Project' },
+				{ key: 'serviceName', label: 'Service' },
 				{ key: 'image', label: 'Image', mono: true },
 				{ key: 'status', label: 'Status', render: containerStatusSnippet },
 				{ key: 'ports', label: 'Ports', render: containerPortsSnippet },
@@ -247,6 +248,22 @@
 			onclick={() => (viewingQuadlet = row)}
 		>
 			<FileCode size={14} />
+		</button>
+		<button
+			type="button"
+			title="Delete Quadlet Unit"
+			class="cursor-pointer rounded p-1.5 text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--status-red)]"
+			onclick={async () => {
+				if (
+					confirm(
+						`Are you sure you want to delete Quadlet unit '${row.name}'? This will stop the systemd service, purge the unit file, and remove the container.`
+					)
+				) {
+					await dataStore.deleteQuadlet(row.name);
+				}
+			}}
+		>
+			<Trash size={14} />
 		</button>
 	</div>
 {/snippet}

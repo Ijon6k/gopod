@@ -9,7 +9,9 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +25,8 @@ type Reconciler struct {
 	caddyfilePath string
 	logFilePath   string
 	controlPort   string
+	httpPort      int
+	httpsPort     int
 	httpClient    *http.Client
 	mu            sync.RWMutex
 	hostDomainMap map[string]Domain
@@ -110,6 +114,73 @@ func (r *Reconciler) SetControlPort(port string) {
 	}
 }
 
+// SetIngressPorts manually sets the public/dev HTTP and HTTPS ports.
+func (r *Reconciler) SetIngressPorts(httpPort, httpsPort int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if httpPort > 0 {
+		r.httpPort = httpPort
+	}
+	if httpsPort > 0 {
+		r.httpsPort = httpsPort
+	}
+}
+
+// GetIngressPorts returns the active HTTP and HTTPS host ports.
+func (r *Reconciler) GetIngressPorts() (int, int) {
+	r.mu.RLock()
+	hp, hsp := r.httpPort, r.httpsPort
+	r.mu.RUnlock()
+	if hp > 0 && hsp > 0 {
+		return hp, hsp
+	}
+	return detectCaddyPorts()
+}
+
+func detectCaddyPorts() (int, int) {
+	httpPort := 80
+	httpsPort := 443
+	if env := os.Getenv("HTTP_PORT"); env != "" {
+		if p, err := strconv.Atoi(env); err == nil && p > 0 {
+			httpPort = p
+		}
+	}
+	if env := os.Getenv("HTTPS_PORT"); env != "" {
+		if p, err := strconv.Atoi(env); err == nil && p > 0 {
+			httpsPort = p
+		}
+	}
+
+	// In dev or rootless, inspect active caddy container ports via Podman CLI
+	cmd := exec.Command("podman", "ps", "--filter", "name=caddy", "--format", "{{.Ports}}")
+	if out, err := cmd.Output(); err == nil && len(out) > 0 {
+		portsStr := string(out)
+		for _, part := range strings.Split(portsStr, ",") {
+			part = strings.TrimSpace(part)
+			if strings.Contains(part, "->80/tcp") {
+				if idx := strings.Index(part, "->"); idx != -1 {
+					hostPart := part[:idx]
+					if colon := strings.LastIndex(hostPart, ":"); colon != -1 {
+						if p, err := strconv.Atoi(hostPart[colon+1:]); err == nil && p > 0 {
+							httpPort = p
+						}
+					}
+				}
+			} else if strings.Contains(part, "->443/tcp") {
+				if idx := strings.Index(part, "->"); idx != -1 {
+					hostPart := part[:idx]
+					if colon := strings.LastIndex(hostPart, ":"); colon != -1 {
+						if p, err := strconv.Atoi(hostPart[colon+1:]); err == nil && p > 0 {
+							httpsPort = p
+						}
+					}
+				}
+			}
+		}
+	}
+	return httpPort, httpsPort
+}
+
 // Reconcile generates the Caddyfile and hot-reloads Caddy via Admin API.
 func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 	r.mu.Lock()
@@ -180,13 +251,10 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 	// In containerized setup or dev port-forwarding, listen on 0.0.0.0:2019 so GOPOD can reload it
 	adminListen := "0.0.0.0:2019"
 
-	// Caddy's internal log file path
+	// Caddy's internal log file path inside container / daemon
 	caddyLogFile := "/var/log/caddy/access.log"
 	if envLog := os.Getenv("CADDY_CONTAINER_LOG_PATH"); envLog != "" {
 		caddyLogFile = envLog
-	} else if r.logFilePath != "" && !strings.Contains(r.adminURL, "caddy:") {
-		// When running host native
-		caddyLogFile = r.logFilePath
 	}
 
 	ctrlUpstream := fmt.Sprintf("127.0.0.1:%s", r.controlPort)
@@ -275,10 +343,13 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 			}
 		}
 
-		targetUpstream := fmt.Sprintf("127.0.0.1:%d", d.ContainerPort)
-		if d.ServiceID != "" {
-			targetUpstream = fmt.Sprintf("%s:%d", d.ServiceID, d.ContainerPort)
+		upstreamHost := "127.0.0.1"
+		if d.TargetContainer != "" {
+			upstreamHost = strings.TrimSpace(d.TargetContainer)
+		} else if d.ServiceID != "" {
+			upstreamHost = strings.TrimSpace(d.ServiceID)
 		}
+		targetUpstream := fmt.Sprintf("%s:%d", upstreamHost, d.ContainerPort)
 
 		if d.PathPrefix != "" && d.PathPrefix != "/" {
 			cleanPath := strings.TrimSpace(d.PathPrefix)
@@ -315,7 +386,12 @@ func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 		limit = 50
 	}
 
-	candidates := []string{r.logFilePath, "/var/log/caddy/access.log", "./caddy/logs/access.log"}
+	candidates := []string{
+		r.logFilePath,
+		"./caddy/logs/access.log",
+		"../caddy/logs/access.log",
+		"/var/log/caddy/access.log",
+	}
 	if home, errHome := os.UserHomeDir(); errHome == nil {
 		candidates = append(candidates, filepath.Join(home, ".local", "share", "gopod", "logs", "access.log"))
 	}
@@ -411,26 +487,37 @@ func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 		hdMap := r.hostDomainMap
 		r.mu.RUnlock()
 
-		var serviceID, projectID string
-		if d, ok := hdMap[strings.ToLower(host)]; ok {
+		cleanHostKey := strings.ToLower(host)
+		if idx := strings.Index(cleanHostKey, ":"); idx != -1 {
+			cleanHostKey = cleanHostKey[:idx]
+		}
+
+		var serviceID, projectID, serviceName string
+		if d, ok := hdMap[cleanHostKey]; ok {
 			serviceID = d.ServiceID
 			projectID = d.ProjectID
+			if d.TargetContainer != "" {
+				serviceName = d.TargetContainer
+			} else if d.ServiceID != "" {
+				serviceName = d.ServiceID
+			}
 		}
 
 		logs = append(logs, AccessLogItem{
-			ID:         fmt.Sprintf("log-%d", len(logs)+1),
-			Timestamp:  logTime.Format(time.RFC3339),
-			TimeAgo:    timeAgo(logTime),
-			ClientIP:   remoteIP,
-			Method:     method,
-			Host:       host,
-			URI:        uri,
-			Status:     int(status),
-			DurationMs: duration * 1000,
-			BytesSent:  bytesSent,
-			Upstream:   upstream,
-			ServiceID:  serviceID,
-			ProjectID:  projectID,
+			ID:          fmt.Sprintf("log-%d", len(logs)+1),
+			Timestamp:   logTime.Format(time.RFC3339),
+			TimeAgo:     timeAgo(logTime),
+			ClientIP:    remoteIP,
+			Method:      method,
+			Host:        host,
+			URI:         uri,
+			Status:      int(status),
+			DurationMs:  duration * 1000,
+			BytesSent:   bytesSent,
+			Upstream:    upstream,
+			ServiceID:   serviceID,
+			ProjectID:   projectID,
+			ServiceName: serviceName,
 		})
 	}
 

@@ -83,6 +83,7 @@ func NewServer(cfg Config) http.Handler {
 	deployer := services.NewDeployer(podmanClient, credentialsService, logMgr, dataDir)
 	deployer.SetRegistryProvider(credentialsService)
 	workloadService := services.NewWorkloadService(serviceRepo, deployer, logMgr)
+	_ = workloadService.ReconcileOrphanedDeployments(context.Background())
 	serviceHandler := services.NewHandler(workloadService, authMiddleware)
 
 	runtimeService := runtime.NewService(podmanClient)

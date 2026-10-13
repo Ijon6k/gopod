@@ -249,7 +249,7 @@
 							title="Click to sort by CPU usage"
 						>
 							<div class="inline-flex w-full items-center justify-end gap-1.5">
-								<span>CPU utilization</span>
+								<span>CPU</span>
 								{#if sortBy === 'cpu'}
 									{#if sortDesc}
 										<CaretDown size={12} class="text-[var(--accent)]" />
@@ -303,200 +303,204 @@
 				</TableHeader>
 
 				<TableBody class="divide-y divide-kumo-hairline">
-				{#if viewMode === 'tree'}
-					<!-- HIERARCHICAL TREE VIEW -->
-					{#if projectTree.length === 0}
-						<tr>
-							<td
-								colspan="6"
-								class="px-4 py-8 text-center font-mono text-xs text-[var(--text-tertiary)]"
-							>
-								No processes or workloads match the current filters.
-							</td>
-						</tr>
-					{:else}
-						{#each projectTree as pNode (pNode.project.id)}
-							{@const isProjOpen = openProjects[pNode.project.id] ?? true}
-
-							<!-- LEVEL 1: PROJECT ROW -->
-							<tr
-								class="border-b border-[var(--border-subtle)] bg-[var(--bg-table-group)] transition-colors hover:bg-[var(--bg-table-row-hover)]"
-							>
+					{#if viewMode === 'tree'}
+						<!-- HIERARCHICAL TREE VIEW -->
+						{#if projectTree.length === 0}
+							<tr>
 								<td
-									class="px-3.5 py-2 align-middle text-[13px] whitespace-nowrap text-[var(--text-primary)]"
+									colspan="6"
+									class="px-4 py-8 text-center font-mono text-xs text-[var(--text-tertiary)]"
 								>
-									<div class="flex min-w-0 items-center gap-2">
-										<button
-											type="button"
-											onclick={() => toggleProject(pNode.project.id)}
-											class="-ml-1 cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
-											title={isProjOpen ? 'Collapse project' : 'Expand project'}
-										>
-											{#if isProjOpen}
-												<CaretDown size={14} />
-											{:else}
-												<CaretRight size={14} />
-											{/if}
-										</button>
-
-										<Folder size={16} class="shrink-0 text-[var(--accent)]" />
-
-										<span class="text-[13.5px] font-bold tracking-tight text-[var(--text-primary)]">
-											{pNode.project.name}
-										</span>
-
-										<span
-											class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-tertiary)]"
-										>
-											{pNode.totalContainers}
-											{pNode.totalContainers > 1 ? 'containers' : 'container'}
-										</span>
-									</div>
-								</td>
-
-								<td
-									class="px-3.5 py-2 align-middle text-xs whitespace-nowrap text-[var(--text-secondary)]"
-								>
-									<StatusBadge status="running" label="Active" size="sm" />
-								</td>
-
-								<td
-									class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-bold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
-								>
-									{pNode.totalCpu.toFixed(1)}%
-								</td>
-
-								<td
-									class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-bold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
-								>
-									{pNode.totalMem} MB
-								</td>
-
-								<td
-									class="px-3.5 py-2 text-right align-middle font-mono text-xs whitespace-nowrap text-[var(--text-tertiary)]"
-								>
-									Aggregate
-								</td>
-
-								<td
-									class="px-3.5 py-2 text-center align-middle font-mono text-xs whitespace-nowrap text-[var(--text-secondary)]"
-								>
-									—
+									No processes or workloads match the current filters.
 								</td>
 							</tr>
+						{:else}
+							{#each projectTree as pNode (pNode.project.id)}
+								{@const isProjOpen = openProjects[pNode.project.id] ?? true}
 
-							<!-- LEVEL 2: SERVICE ROWS -->
-							{#if isProjOpen}
-								{#each pNode.serviceNodes as sNode (sNode.service.id)}
-									{@const isSvcOpen = openServices[sNode.service.id] ?? true}
-									{@const hasMultiple = sNode.containers.length > 1}
-
-									<tr
-										class="border-b border-[var(--border-subtle)] bg-[var(--bg-table-subgroup)] transition-colors hover:bg-[var(--bg-table-row-hover)]"
+								<!-- LEVEL 1: PROJECT ROW -->
+								<tr
+									class="border-b border-[var(--border-subtle)] bg-[var(--bg-table-group)] transition-colors hover:bg-[var(--bg-table-row-hover)]"
+								>
+									<td
+										class="px-3.5 py-2 align-middle text-[13px] whitespace-nowrap text-[var(--text-primary)]"
 									>
-										<td
-											class="px-3.5 py-2 align-middle text-[13px] whitespace-nowrap text-[var(--text-primary)]"
-										>
-											<div class="flex min-w-0 items-center gap-2 pl-7">
-												{#if hasMultiple}
-													<button
-														type="button"
-														onclick={() => toggleService(sNode.service.id)}
-														class="-ml-1 cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
-														title={isSvcOpen ? 'Collapse service' : 'Expand service'}
-													>
-														{#if isSvcOpen}
-															<CaretDown size={14} />
-														{:else}
-															<CaretRight size={14} />
-														{/if}
-													</button>
+										<div class="flex min-w-0 items-center gap-2">
+											<button
+												type="button"
+												onclick={() => toggleProject(pNode.project.id)}
+												class="-ml-1 cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+												title={isProjOpen ? 'Collapse project' : 'Expand project'}
+											>
+												{#if isProjOpen}
+													<CaretDown size={14} />
 												{:else}
-													<span class="inline-block w-4"></span>
+													<CaretRight size={14} />
 												{/if}
+											</button>
 
-												<Gear size={15} class="shrink-0 text-[var(--text-tertiary)]" />
+											<Folder size={16} class="shrink-0 text-[var(--accent)]" />
 
-												<span class="truncate text-[13px] font-semibold text-[var(--text-primary)]">
-													{sNode.service.name}
-												</span>
+											<span
+												class="text-[13.5px] font-bold tracking-tight text-[var(--text-primary)]"
+											>
+												{pNode.project.name}
+											</span>
 
-												<span
-													class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-tertiary)]"
-												>
-													{sNode.service.type}
-												</span>
-											</div>
-										</td>
+											<span
+												class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-tertiary)]"
+											>
+												{pNode.totalContainers}
+												{pNode.totalContainers > 1 ? 'containers' : 'container'}
+											</span>
+										</div>
+									</td>
 
-										<td class="px-3.5 py-2 align-middle whitespace-nowrap">
-											<StatusBadge status={sNode.service.status} size="sm" />
-										</td>
+									<td
+										class="px-3.5 py-2 align-middle text-xs whitespace-nowrap text-[var(--text-secondary)]"
+									>
+										<StatusBadge status="running" label="Active" size="sm" />
+									</td>
 
-										<td
-											class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-primary)] tabular-nums"
+									<td
+										class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-bold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
+									>
+										{pNode.totalCpu.toFixed(1)}%
+									</td>
+
+									<td
+										class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-bold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
+									>
+										{pNode.totalMem} MB
+									</td>
+
+									<td
+										class="px-3.5 py-2 text-right align-middle font-mono text-xs whitespace-nowrap text-[var(--text-tertiary)]"
+									>
+										Aggregate
+									</td>
+
+									<td
+										class="px-3.5 py-2 text-center align-middle font-mono text-xs whitespace-nowrap text-[var(--text-secondary)]"
+									>
+										—
+									</td>
+								</tr>
+
+								<!-- LEVEL 2: SERVICE ROWS -->
+								{#if isProjOpen}
+									{#each pNode.serviceNodes as sNode (sNode.service.id)}
+										{@const isSvcOpen = openServices[sNode.service.id] ?? true}
+										{@const hasMultiple = sNode.containers.length > 1}
+
+										<tr
+											class="border-b border-[var(--border-subtle)] bg-[var(--bg-table-subgroup)] transition-colors hover:bg-[var(--bg-table-row-hover)]"
 										>
-											{sNode.totalCpu.toFixed(1)}%
-										</td>
+											<td
+												class="px-3.5 py-2 align-middle text-[13px] whitespace-nowrap text-[var(--text-primary)]"
+											>
+												<div class="flex min-w-0 items-center gap-2 pl-7">
+													{#if hasMultiple}
+														<button
+															type="button"
+															onclick={() => toggleService(sNode.service.id)}
+															class="-ml-1 cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] transition-colors hover:text-[var(--text-primary)]"
+															title={isSvcOpen ? 'Collapse service' : 'Expand service'}
+														>
+															{#if isSvcOpen}
+																<CaretDown size={14} />
+															{:else}
+																<CaretRight size={14} />
+															{/if}
+														</button>
+													{:else}
+														<span class="inline-block w-4"></span>
+													{/if}
 
-										<td
-											class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-primary)] tabular-nums"
-										>
-											{sNode.totalMem} MB
-										</td>
+													<Gear size={15} class="shrink-0 text-[var(--text-tertiary)]" />
 
-										<td
-											class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
-										>
-											{sNode.service.port ? `:${sNode.service.port}` : '—'}
-										</td>
+													<span
+														class="truncate text-[13px] font-semibold text-[var(--text-primary)]"
+													>
+														{sNode.service.name}
+													</span>
 
-										<td
-											class="px-3.5 py-2 text-center align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
-										>
-											{sNode.totalPids || '—'}
-										</td>
-									</tr>
+													<span
+														class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--text-tertiary)]"
+													>
+														{sNode.service.type}
+													</span>
+												</div>
+											</td>
 
-									<!-- LEVEL 3: CONTAINER ROWS -->
-									{#if isSvcOpen}
-										{#each sNode.containers as c, cIdx (c.id)}
-											<ProcessContainerRow
-												container={c}
-												isTree={true}
-												rowIndex={cIdx}
-												{onOpenTerminal}
-												{onOpenLogs}
-											/>
-										{/each}
-									{/if}
-								{/each}
-							{/if}
-						{/each}
-					{/if}
-				{:else}
-					<!-- FLAT PROCESS LIST -->
-					{#if filteredContainers.length === 0}
-						<tr>
-							<td
-								colspan="6"
-								class="px-4 py-8 text-center font-mono text-xs text-[var(--text-tertiary)]"
-							>
-								No containers found.
-							</td>
-						</tr>
+											<td class="px-3.5 py-2 align-middle whitespace-nowrap">
+												<StatusBadge status={sNode.service.status} size="sm" />
+											</td>
+
+											<td
+												class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-primary)] tabular-nums"
+											>
+												{sNode.totalCpu.toFixed(1)}%
+											</td>
+
+											<td
+												class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-primary)] tabular-nums"
+											>
+												{sNode.totalMem} MB
+											</td>
+
+											<td
+												class="px-3.5 py-2 text-right align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
+											>
+												{sNode.service.port ? `:${sNode.service.port}` : '—'}
+											</td>
+
+											<td
+												class="px-3.5 py-2 text-center align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
+											>
+												{sNode.totalPids || '—'}
+											</td>
+										</tr>
+
+										<!-- LEVEL 3: CONTAINER ROWS -->
+										{#if isSvcOpen}
+											{#each sNode.containers as c, cIdx (c.id)}
+												<ProcessContainerRow
+													container={c}
+													isTree={true}
+													rowIndex={cIdx}
+													{onOpenTerminal}
+													{onOpenLogs}
+												/>
+											{/each}
+										{/if}
+									{/each}
+								{/if}
+							{/each}
+						{/if}
 					{:else}
-						{#each filteredContainers as c, cIdx (c.id)}
-							<ProcessContainerRow
-								container={c}
-								isTree={false}
-								rowIndex={cIdx}
-								{onOpenTerminal}
-								{onOpenLogs}
-							/>
-						{/each}
+						<!-- FLAT PROCESS LIST -->
+						{#if filteredContainers.length === 0}
+							<tr>
+								<td
+									colspan="6"
+									class="px-4 py-8 text-center font-mono text-xs text-[var(--text-tertiary)]"
+								>
+									No containers found.
+								</td>
+							</tr>
+						{:else}
+							{#each filteredContainers as c, cIdx (c.id)}
+								<ProcessContainerRow
+									container={c}
+									isTree={false}
+									rowIndex={cIdx}
+									{onOpenTerminal}
+									{onOpenLogs}
+								/>
+							{/each}
+						{/if}
 					{/if}
-				{/if}
 				</TableBody>
 			</Table>
 		</div>

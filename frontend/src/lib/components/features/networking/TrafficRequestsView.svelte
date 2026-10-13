@@ -204,10 +204,11 @@
 		for (const log of filteredLogs) {
 			const t = log.timestamp ? new Date(log.timestamp).getTime() : now;
 			const bucketIdx = Math.floor((t - startTime) / bucketDuration);
-			if (bucketIdx >= 0 && bucketIdx < numBuckets) {
-				const b = buckets[bucketIdx];
+			const clampedIdx = Math.min(Math.max(0, bucketIdx), numBuckets - 1);
+			if (t >= startTime && t <= now + bucketDuration) {
+				const b = buckets[clampedIdx];
 				b.total++;
-				if (log.status >= 200 && log.status < 300) b.s2xx++;
+				if ((log.status >= 200 && log.status < 300) || log.status === 101) b.s2xx++;
 				else if (log.status >= 300 && log.status < 400) b.s3xx++;
 				else if (log.status >= 400 && log.status < 500) b.s4xx++;
 				else if (log.status >= 500) b.s5xx++;
@@ -264,7 +265,8 @@
 
 		return {
 			animation: true,
-			animationDuration: 500,
+			animationDuration: 300,
+			animationDurationUpdate: 300,
 			tooltip: {
 				trigger: 'axis' as const,
 				backgroundColor: chartTheme.tooltipBg,
@@ -330,7 +332,7 @@
 				itemWidth: 10,
 				itemHeight: 10,
 				top: 4,
-				right: 12
+				left: 'center'
 			},
 			grid: {
 				top: 48,
@@ -407,7 +409,7 @@
 					itemStyle: {
 						color: '#10b981'
 					},
-					barMaxWidth: 26,
+					barMaxWidth: 30,
 					data: data2xx
 				},
 				{
@@ -418,7 +420,7 @@
 					itemStyle: {
 						color: '#3b82f6'
 					},
-					barMaxWidth: 26,
+					barMaxWidth: 30,
 					data: data3xx
 				},
 				{
@@ -429,7 +431,7 @@
 					itemStyle: {
 						color: '#f59e0b'
 					},
-					barMaxWidth: 26,
+					barMaxWidth: 30,
 					data: data4xx
 				},
 				{
@@ -440,7 +442,7 @@
 					itemStyle: {
 						color: '#ef4444'
 					},
-					barMaxWidth: 26,
+					barMaxWidth: 30,
 					data: data5xx
 				},
 				{
@@ -594,8 +596,8 @@
 		</LayerCard>
 	</div>
 
-	<!-- 2. Request Volume and Distribution Chart (Generous 1/2 Page Height View) -->
-	<LayerCard class="flex flex-col gap-4 p-5 min-h-[360px]">
+	<!-- 2. Request Volume and Distribution Chart (Generous 460px Height View) -->
+	<LayerCard class="flex flex-col gap-4 p-5 min-h-[460px]">
 		<!-- Chart Header -->
 		<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
 			<div class="flex flex-col gap-0.5">
@@ -665,13 +667,14 @@
 			</div>
 		</div>
 
-		<!-- Native ECharts Container (Generous 360px Height) -->
-		<div class="relative w-full h-[360px] min-h-[360px]">
+		<!-- Native ECharts Container (Generous 460px Height) -->
+		<div class="relative w-full h-[460px] min-h-[460px]">
 			<Chart
 				{echarts}
 				options={echartOptions}
 				isDarkMode={isDark}
-				height={360}
+				height={460}
+				optionUpdateBehavior={{ notMerge: true }}
 				class="w-full h-full"
 			/>
 		</div>

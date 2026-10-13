@@ -124,12 +124,12 @@
 		const target = dataStore.services.find((s) => s.id === selectedServiceId);
 		if (!target) return;
 
-		target.podId = service.name;
+		target.podId = podName;
 		target.inPod = true;
 		target.runtimeTarget = 'pod';
 
 		try {
-			await dataStore.groupIntoPod(target.id, service.name, false);
+			await dataStore.groupIntoPod(target.id, podName, false);
 			await dataStore.updateService(target);
 			toast.add({
 				title: 'Service Attached to Pod',
@@ -164,7 +164,7 @@
 			image: newContainerImage.trim(),
 			port: portNum,
 			inPod: true,
-			podId: service.name,
+			podId: podName,
 			runtimeTarget: 'pod',
 			envVars: []
 		};

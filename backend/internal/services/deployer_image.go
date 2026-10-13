@@ -10,35 +10,50 @@ import (
 )
 
 // deployImage pulls container image and starts container.
-func (d *Deployer) deployImage(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
+func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger string, logLine func(string)) (*DeployResult, error) {
 	imageToRun := s.Image
 	if imageToRun == "" {
 		imageToRun = "docker.io/library/nginx:alpine"
 	}
 
-	logLine(fmt.Sprintf("📦 Pulling container image '%s'...", imageToRun))
-	var pullArgs []string
-	if s.RegistryID != "" && d.registryProvider != nil {
-		if reg, err := d.registryProvider.GetRegistry(ctx, s.RegistryID); err == nil && reg != nil && reg.Username != "" {
-			logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
-			pullArgs = append(pullArgs, "--creds", fmt.Sprintf("%s:%s", reg.Username, reg.Token))
+	// Smart Image Cache Check: avoid redundant remote pulls when image exists locally
+	hasImage := false
+	if d.podmanClient != nil {
+		chkCmd := exec.CommandContext(ctx, "podman", "image", "exists", imageToRun)
+		d.setupCmdEnv(chkCmd)
+		if err := chkCmd.Run(); err == nil {
+			hasImage = true
 		}
 	}
-	pullArgs = append(pullArgs, "pull", imageToRun)
-	pullCmd := exec.CommandContext(ctx, "podman", pullArgs...)
-	d.setupCmdEnv(pullCmd)
-	pStdout, _ := pullCmd.StdoutPipe()
-	pStderr, _ := pullCmd.StderrPipe()
-	if err := pullCmd.Start(); err == nil {
-		d.streamPipes(pStdout, pStderr, logLine)
-		_ = pullCmd.Wait()
+
+	shouldPull := !hasImage || trigger == "pull" || trigger == "force-pull" || trigger == "update"
+	if shouldPull {
+		logLine(fmt.Sprintf("📦 Pulling container image '%s'...", imageToRun))
+		var pullArgs []string
+		if s.RegistryID != "" && d.registryProvider != nil {
+			if reg, err := d.registryProvider.GetRegistry(ctx, s.RegistryID); err == nil && reg != nil && reg.Username != "" {
+				logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
+				pullArgs = append(pullArgs, "--creds", fmt.Sprintf("%s:%s", reg.Username, reg.Token))
+			}
+		}
+		pullArgs = append(pullArgs, "pull", imageToRun)
+		pullCmd := exec.CommandContext(ctx, "podman", pullArgs...)
+		d.setupCmdEnv(pullCmd)
+		pStdout, _ := pullCmd.StdoutPipe()
+		pStderr, _ := pullCmd.StderrPipe()
+		if err := pullCmd.Start(); err == nil {
+			d.streamPipes(pStdout, pStderr, logLine)
+			_ = pullCmd.Wait()
+		}
+	} else {
+		logLine(fmt.Sprintf("⚡ Container image '%s' is cached locally. Reusing existing image.", imageToRun))
 	}
 
 	containerName := s.ID
 	if containerName == "" {
 		containerName = GenerateContainerName(s.ProjectID, s.Name)
 	}
-	d.stopPreviousContainer(ctx, s, logLine)
+	d.cleanPreflightConflicts(ctx, s, logLine)
 
 	if err := d.runContainer(ctx, s, containerName, imageToRun, logLine); err != nil {
 		return nil, err
@@ -91,7 +106,9 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 	pidsLimit := 0
 
 	if s.Advanced != nil {
-		userNS = s.Advanced.Runtime.UserNamespace
+		if s.Advanced.Runtime.UserNamespace != "" && s.Advanced.Runtime.UserNamespace != "default" && s.Advanced.Runtime.UserNamespace != "none" {
+			userNS = s.Advanced.Runtime.UserNamespace
+		}
 		privileged = s.Advanced.Security.Privileged
 		capAdd = s.Advanced.Security.CapAdd
 		capDrop = s.Advanced.Security.CapDrop
@@ -134,13 +151,36 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 	logLine(fmt.Sprintf("🚀 Starting container '%s' (image: %s)...", containerName, imageToRun))
 	if d.podmanClient != nil {
 		targetPod := s.PodID
-		if targetPod == "" && s.InPod {
-			targetPod = fmt.Sprintf("pod-%s", s.ProjectID)
+		if targetPod == "" && (s.InPod || s.RuntimeTarget == "pod") {
+			targetPod = fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name))
+		}
+		if targetPod != "" {
+			// Check if pod exists as-is, or with pod_ prefix
+			if _, err := d.podmanClient.InspectPod(ctx, targetPod); err != nil {
+				if _, err2 := d.podmanClient.InspectPod(ctx, fmt.Sprintf("pod_%s", targetPod)); err2 == nil {
+					targetPod = fmt.Sprintf("pod_%s", targetPod)
+				} else {
+					logLine(fmt.Sprintf("📦 Auto-creating pod '%s' on network gopod-net...", targetPod))
+					_, _ = d.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
+						Name:    targetPod,
+						Network: "gopod-net",
+						Labels: map[string]string{
+							"io.gopod.project": s.ProjectID,
+						},
+					})
+				}
+			}
+		}
+
+		var cmdArgs []string
+		if strings.TrimSpace(s.Command) != "" {
+			cmdArgs = strings.Fields(s.Command)
 		}
 
 		_, err := d.podmanClient.RunContainer(ctx, podman.RunContainerOptions{
 			Name:          containerName,
 			Image:         imageToRun,
+			Command:       cmdArgs,
 			Pod:           targetPod,
 			Ports:         ports,
 			Env:           envMap,

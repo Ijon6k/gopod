@@ -2,9 +2,12 @@ export function getDefaultQuadletConfig(service: {
 	name: string;
 	image?: string;
 	port?: number;
+	hostPort?: number;
 }): string {
 	const portLine =
-		service.port && service.port > 0 ? `PublishPort=${service.port}:${service.port}\n` : '';
+		service.hostPort && service.hostPort > 0
+			? `PublishPort=${service.hostPort}:${service.port || service.hostPort}\n`
+			: '';
 	return `[Unit]
 Description=${service.name} Quadlet Service
 After=network-online.target
@@ -13,6 +16,7 @@ StartLimitBurst=5
 
 [Container]
 Image=${service.image || 'docker.io/library/nginx:alpine'}
+Network=gopod-net
 ${portLine}AutoUpdate=registry
 
 [Service]

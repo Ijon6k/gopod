@@ -100,8 +100,8 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 	}
 	logLine(fmt.Sprintf("✅ Built image %s successfully", imageTag))
 
-	// Stop previous container right before starting new one
-	d.stopPreviousContainer(ctx, s, logLine)
+	// Stop previous container and conflicting systemd units right before starting new one
+	d.cleanPreflightConflicts(ctx, s, logLine)
 
 	if err := d.runContainer(ctx, s, containerName, imageTag, logLine); err != nil {
 		return nil, err

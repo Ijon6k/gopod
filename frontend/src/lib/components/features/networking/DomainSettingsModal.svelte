@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { Domain } from '$lib/types';
 	import { services, server } from '$lib/data';
+	import { api } from '$lib/api';
 	import { Button, Input, Select, Switch } from '$lib/components/ui';
+	import { parseComposeServices } from '$lib/parsers/compose';
 	import {
 		X,
 		Globe,
@@ -27,6 +29,7 @@
 
 	let hostname = $state('');
 	let selectedServiceId = $state('');
+	let targetContainer = $state('');
 	let containerPort = $state(3000);
 	let tls = $state(true);
 	let httpsRedirect = $state(true);
@@ -38,6 +41,30 @@
 	let basicAuth = $state(false);
 	let basicAuthUser = $state('admin');
 
+	let selectedService = $derived(services.find((s) => s.id === selectedServiceId));
+	let detectedTargets = $derived.by(() => {
+		if (!selectedService) return [];
+		const list: { value: string; label: string; ports: number[] }[] = [];
+		if (selectedService.composeYaml) {
+			const csList = parseComposeServices(selectedService.composeYaml);
+			for (const cs of csList) {
+				let label = cs.name;
+				if (cs.containerName && cs.containerName !== cs.name) {
+					label = `${cs.name} (${cs.containerName})`;
+				}
+				if (cs.ports.length > 0) {
+					label += ` (:${cs.ports.join(', :')})`;
+				}
+				list.push({
+					value: cs.containerName || cs.name,
+					label,
+					ports: cs.ports
+				});
+			}
+		}
+		return list;
+	});
+
 	// DNS verification states
 	let isCheckingDNS = $state(false);
 	let dnsVerified = $state(true);
@@ -47,6 +74,7 @@
 		if (domain) {
 			hostname = domain.hostname;
 			selectedServiceId = domain.serviceId;
+			targetContainer = domain.targetContainer || '';
 			containerPort = domain.containerPort || 3000;
 			tls = domain.tls !== false;
 			httpsRedirect = domain.httpsRedirect !== false;
@@ -57,10 +85,12 @@
 			hsts = domain.hsts !== false;
 			basicAuth = !!domain.basicAuth;
 			basicAuthUser = domain.basicAuthUser || 'admin';
-			dnsVerified = domain.dnsStatus !== 'pending';
+			const isLocal = domain.hostname.endsWith('.localhost') || domain.hostname.endsWith('.local') || domain.hostname.includes('127.0.0.1') || domain.hostname === 'localhost';
+			dnsVerified = isLocal || domain.dnsStatus !== 'pending';
 		} else {
 			hostname = '';
 			selectedServiceId = services[0]?.id || '';
+			targetContainer = '';
 			containerPort = services[0]?.port || 3000;
 			tls = true;
 			httpsRedirect = true;
@@ -80,15 +110,37 @@
 		if (svc && svc.port) {
 			containerPort = svc.port;
 		}
+		if (svc?.composeYaml) {
+			const csList = parseComposeServices(svc.composeYaml);
+			if (csList.length > 0) {
+				targetContainer = csList[0].name;
+				if (csList[0].ports.length > 0) {
+					containerPort = csList[0].ports[0];
+				}
+			}
+		}
 	}
 
 	async function verifyDNS() {
 		if (!hostname.trim()) return;
 		isCheckingDNS = true;
-		await new Promise((r) => setTimeout(r, 600));
-		isCheckingDNS = false;
-		dnsVerified = true;
-		lastChecked = 'Just now';
+		try {
+			const clean = hostname.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/:\d+$/, '');
+			const isLocal = clean.endsWith('.localhost') || clean.endsWith('.local') || clean.includes('127.0.0.1') || clean === 'localhost';
+			if (isLocal) {
+				dnsVerified = true;
+			} else if (domain?.id) {
+				const res = await api.domains.revalidate(domain.id);
+				dnsVerified = res.dnsStatus === 'valid';
+			} else {
+				dnsVerified = true;
+			}
+		} catch {
+			dnsVerified = false;
+		} finally {
+			isCheckingDNS = false;
+			lastChecked = 'Just now';
+		}
 	}
 
 	function handleSave() {
@@ -99,18 +151,22 @@
 		cleanHost = cleanHost.replace(/^https?:\/\//, '');
 		cleanHost = cleanHost.replace(/:\d+$/, '');
 
+		const isLocal = cleanHost.endsWith('.localhost') || cleanHost.endsWith('.local') || cleanHost.includes('127.0.0.1') || cleanHost === 'localhost';
+		const dnsStatus = isLocal || dnsVerified ? 'valid' : 'pending';
+
 		const updated: Domain = {
 			id: domain?.id || `d-${Date.now()}`,
 			hostname: cleanHost,
 			projectId: svc?.projectId || 'aerochat',
 			serviceId: selectedServiceId,
 			serviceName: svc?.name || 'web',
+			targetContainer: targetContainer.trim() || undefined,
 			tls,
 			status: 'active',
 			proxyPort: domain?.proxyPort || 8300 + Math.floor(Math.random() * 90),
 			containerPort,
 			publishedPort: containerPort,
-			dnsStatus: dnsVerified ? 'valid' : 'pending',
+			dnsStatus,
 			resolvedIp: server.ip,
 			httpsRedirect,
 			pathPrefix: pathPrefix.trim() || '/',
@@ -220,6 +276,28 @@
 					}))}
 					size="sm"
 				/>
+
+				{#if detectedTargets.length > 0}
+					<Select
+						id="domain-target-container"
+						label="Target Container / Upstream DNS"
+						value={targetContainer || detectedTargets[0]?.value}
+						onValueChange={(val: any) => {
+							if (typeof val === 'string') {
+								targetContainer = val;
+								const matched = detectedTargets.find((t) => t.value === val);
+								if (matched && matched.ports.length > 0) {
+									containerPort = matched.ports[0];
+								}
+							}
+						}}
+						options={detectedTargets.map((t) => ({
+							label: t.label,
+							value: t.value
+						}))}
+						size="sm"
+					/>
+				{/if}
 
 				<!-- 2. DNS Resolution Diagnostic Box -->
 				<div

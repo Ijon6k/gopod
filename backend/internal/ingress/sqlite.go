@@ -15,7 +15,7 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 	return &SQLiteRepository{db: db}
 }
 
-const domainSelectCols = "id, project_id, service_id, hostname, container_port, tls, https_redirect, path_prefix, strip_path_prefix, websocket, cors, hsts, basic_auth, basic_auth_user, basic_auth_pass, dns_status, created_at"
+const domainSelectCols = "id, project_id, service_id, target_container, hostname, container_port, tls, https_redirect, path_prefix, strip_path_prefix, websocket, cors, hsts, basic_auth, basic_auth_user, basic_auth_pass, dns_status, created_at"
 
 func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Domain, error) {
 	var query string
@@ -36,7 +36,7 @@ func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Domain
 	var list []Domain
 	for rows.Next() {
 		var d Domain
-		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Hostname, &d.ContainerPort, &d.TLS, &d.HTTPSRedirect, &d.PathPrefix, &d.StripPathPrefix, &d.WebSocket, &d.CORS, &d.HSTS, &d.BasicAuth, &d.BasicAuthUser, &d.BasicAuthPass, &d.DNSStatus, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.TargetContainer, &d.Hostname, &d.ContainerPort, &d.TLS, &d.HTTPSRedirect, &d.PathPrefix, &d.StripPathPrefix, &d.WebSocket, &d.CORS, &d.HSTS, &d.BasicAuth, &d.BasicAuthUser, &d.BasicAuthPass, &d.DNSStatus, &d.CreatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, d)
@@ -51,7 +51,7 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Domain, error) 
 	var d Domain
 	err := r.db.QueryRowContext(ctx,
 		"SELECT "+domainSelectCols+" FROM domains WHERE id = ?", id).
-		Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Hostname, &d.ContainerPort, &d.TLS, &d.HTTPSRedirect, &d.PathPrefix, &d.StripPathPrefix, &d.WebSocket, &d.CORS, &d.HSTS, &d.BasicAuth, &d.BasicAuthUser, &d.BasicAuthPass, &d.DNSStatus, &d.CreatedAt)
+		Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.TargetContainer, &d.Hostname, &d.ContainerPort, &d.TLS, &d.HTTPSRedirect, &d.PathPrefix, &d.StripPathPrefix, &d.WebSocket, &d.CORS, &d.HSTS, &d.BasicAuth, &d.BasicAuthUser, &d.BasicAuthPass, &d.DNSStatus, &d.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -63,9 +63,9 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Domain, error) 
 
 func (r *SQLiteRepository) Create(ctx context.Context, d Domain) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO domains (id, project_id, service_id, hostname, container_port, tls, https_redirect, path_prefix, strip_path_prefix, websocket, cors, hsts, basic_auth, basic_auth_user, basic_auth_pass, dns_status)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		d.ID, d.ProjectID, d.ServiceID, d.Hostname, d.ContainerPort, d.TLS, d.HTTPSRedirect, d.PathPrefix, d.StripPathPrefix, d.WebSocket, d.CORS, d.HSTS, d.BasicAuth, d.BasicAuthUser, d.BasicAuthPass, d.DNSStatus,
+		`INSERT INTO domains (id, project_id, service_id, target_container, hostname, container_port, tls, https_redirect, path_prefix, strip_path_prefix, websocket, cors, hsts, basic_auth, basic_auth_user, basic_auth_pass, dns_status)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ID, d.ProjectID, d.ServiceID, d.TargetContainer, d.Hostname, d.ContainerPort, d.TLS, d.HTTPSRedirect, d.PathPrefix, d.StripPathPrefix, d.WebSocket, d.CORS, d.HSTS, d.BasicAuth, d.BasicAuthUser, d.BasicAuthPass, d.DNSStatus,
 	)
 	return err
 }
@@ -73,12 +73,12 @@ func (r *SQLiteRepository) Create(ctx context.Context, d Domain) error {
 func (r *SQLiteRepository) Update(ctx context.Context, d Domain) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE domains SET
-			project_id = ?, service_id = ?, hostname = ?, container_port = ?,
+			project_id = ?, service_id = ?, target_container = ?, hostname = ?, container_port = ?,
 			tls = ?, https_redirect = ?, path_prefix = ?, strip_path_prefix = ?,
 			websocket = ?, cors = ?, hsts = ?, basic_auth = ?, basic_auth_user = ?,
 			basic_auth_pass = ?, dns_status = ?
 		 WHERE id = ?`,
-		d.ProjectID, d.ServiceID, d.Hostname, d.ContainerPort,
+		d.ProjectID, d.ServiceID, d.TargetContainer, d.Hostname, d.ContainerPort,
 		d.TLS, d.HTTPSRedirect, d.PathPrefix, d.StripPathPrefix,
 		d.WebSocket, d.CORS, d.HSTS, d.BasicAuth, d.BasicAuthUser,
 		d.BasicAuthPass, d.DNSStatus, d.ID,

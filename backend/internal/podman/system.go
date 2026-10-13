@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -150,6 +151,7 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 					}
 
 					return &SystemInfo{
+						IP:              detectHostIP(),
 						Hostname:        raw.Host.Hostname,
 						OS:              osName,
 						Kernel:          raw.Host.Kernel,
@@ -250,6 +252,7 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 	cstore, _ := store["containerStore"].(map[string]interface{})
 
 	return &SystemInfo{
+		IP:              detectHostIP(),
 		Hostname:        getString(host, "hostname"),
 		OS:              osName,
 		Kernel:          getString(host, "kernel"),
@@ -277,6 +280,30 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 		SELinuxEnabled:  getBool(sec, "selinuxEnabled"),
 		AppArmorEnabled: getBool(sec, "apparmorEnabled"),
 	}, nil
+}
+
+func detectHostIP() string {
+	if ip := os.Getenv("HOST_IP"); ip != "" {
+		return ip
+	}
+	if ip := os.Getenv("SERVER_IP"); ip != "" {
+		return ip
+	}
+	if ip := os.Getenv("PUBLIC_IP"); ip != "" {
+		return ip
+	}
+	// Detect outbound interface IP without sending actual packets
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err == nil {
+		defer conn.Close()
+		if udpAddr, ok := conn.LocalAddr().(*net.UDPAddr); ok {
+			ip := udpAddr.IP
+			if !ip.IsLoopback() && !ip.IsUnspecified() {
+				return ip.String()
+			}
+		}
+	}
+	return "127.0.0.1"
 }
 
 // PruneSystem cleans up stopped containers, unused networks, and dangling images.

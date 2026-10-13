@@ -6,7 +6,8 @@
 		lineNumbers,
 		highlightActiveLineGutter,
 		highlightActiveLine,
-		keymap
+		keymap,
+		placeholder as cmPlaceholder
 	} from '@codemirror/view';
 	import { EditorState } from '@codemirror/state';
 	import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands';
@@ -17,7 +18,8 @@
 
 	interface Props {
 		value: string;
-		language?: 'yaml' | 'env' | 'quadlet' | 'text';
+		language?: 'yaml' | 'env' | 'quadlet' | 'caddyfile' | 'text';
+		title?: string;
 		readOnly?: boolean;
 		height?: string;
 		lineNumbers?: boolean;
@@ -30,6 +32,7 @@
 	let {
 		value = $bindable(''),
 		language = 'yaml',
+		title = '',
 		readOnly = false,
 		height = '340px',
 		lineNumbers: showLineNumbers = true,
@@ -47,14 +50,15 @@
 	const gopodTheme = EditorView.theme(
 		{
 			'&': {
-				height: '100%',
+				height: height === 'auto' ? 'auto' : '100%',
+				minHeight: height === 'auto' ? '80px' : 'auto',
 				backgroundColor: 'transparent',
 				color: 'var(--text-primary)',
 				fontFamily: 'var(--font-mono, monospace)',
 				fontSize: '12px'
 			},
 			'.cm-scroller': {
-				overflow: 'auto',
+				overflow: height === 'auto' ? 'visible' : 'auto',
 				fontFamily: 'inherit'
 			},
 			'.cm-content': {
@@ -129,6 +133,10 @@
 			extensions.push(yaml());
 		}
 
+		if (placeholder) {
+			extensions.push(cmPlaceholder(placeholder));
+		}
+
 		return extensions;
 	}
 
@@ -183,14 +191,14 @@
 		'relative flex w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] font-mono text-xs',
 		className
 	)}
-	style="height: {height};"
+	style={height === 'auto' ? 'min-height: 120px;' : `height: ${height};`}
 >
 	<!-- Header Bar with Language Badge and Copy Button -->
 	<div
 		class="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 select-none"
 	>
 		<span class="text-[10px] font-bold tracking-wider text-[var(--text-tertiary)] uppercase">
-			{language}
+			{title || language}
 		</span>
 		<button
 			type="button"
@@ -209,5 +217,8 @@
 	</div>
 
 	<!-- CodeMirror DOM Container -->
-	<div bind:this={editorContainer} class="h-full w-full flex-1 overflow-hidden"></div>
+	<div
+		bind:this={editorContainer}
+		class={height === 'auto' ? 'w-full' : 'h-full w-full flex-1 overflow-hidden'}
+	></div>
 </div>

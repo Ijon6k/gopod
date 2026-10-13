@@ -34,11 +34,14 @@ type ParsedQuadlet struct {
 }
 
 // ValidateContainerImage validates that the image identifier is an OCI image reference
-// and explicitly rejects compose files, file paths, and empty strings.
+// and explicitly rejects compose files, file paths, empty strings, and whitespace.
 func ValidateContainerImage(image string) error {
 	trimmed := strings.TrimSpace(image)
 	if trimmed == "" {
 		return fmt.Errorf("container image cannot be empty")
+	}
+	if strings.ContainsAny(trimmed, " \t\r\n") {
+		return fmt.Errorf("invalid container image %q: OCI image references must not contain whitespace", trimmed)
 	}
 	lower := strings.ToLower(trimmed)
 	if strings.HasSuffix(lower, ".yaml") || strings.HasSuffix(lower, ".yml") ||
@@ -50,6 +53,252 @@ func ValidateContainerImage(image string) error {
 		return fmt.Errorf("Invalid container image identifier: must not be a compose file or path")
 	}
 	return nil
+}
+
+// ExtractedCompose holds runtime parameters extracted dynamically from Compose YAML.
+type ExtractedCompose struct {
+	Image         string
+	ContainerName string
+	Ports         []string
+	Volumes       []string
+	Environment   []string
+	Exec          string
+	Restart       string
+}
+
+// MapDockerRestartToSystemd translates container restart policies into valid systemd Restart= directives.
+func MapDockerRestartToSystemd(restart string) string {
+	clean := strings.ToLower(strings.TrimSpace(restart))
+	switch clean {
+	case "unless-stopped", "always":
+		return "always"
+	case "on-failure":
+		return "on-failure"
+	case "no", "never":
+		return "no"
+	default:
+		if clean == "" {
+			return "always"
+		}
+		return clean
+	}
+}
+
+// ExtractComposeWorkload extracts parameters from the primary service in Compose YAML.
+func ExtractComposeWorkload(composeYaml string) ExtractedCompose {
+	var result ExtractedCompose
+	trimmed := strings.TrimSpace(composeYaml)
+	if trimmed == "" {
+		return result
+	}
+
+	var raw struct {
+		Services map[string]struct {
+			Image         string      `yaml:"image"`
+			ContainerName string      `yaml:"container_name"`
+			Ports         []string    `yaml:"ports"`
+			Volumes       []string    `yaml:"volumes"`
+			Environment   interface{} `yaml:"environment"`
+			Command       interface{} `yaml:"command"`
+			Restart       string      `yaml:"restart"`
+		} `yaml:"services"`
+	}
+
+	if err := yaml.Unmarshal([]byte(trimmed), &raw); err != nil || raw.Services == nil {
+		return result
+	}
+
+	for _, svc := range raw.Services {
+		if img := strings.TrimSpace(svc.Image); img != "" && ValidateContainerImage(img) == nil {
+			result.Image = img
+		}
+		if svc.ContainerName != "" {
+			result.ContainerName = SanitizeQuadletSlug(svc.ContainerName)
+		}
+		for _, p := range svc.Ports {
+			p = strings.TrimSpace(p)
+			if p != "" {
+				result.Ports = append(result.Ports, p)
+			}
+		}
+		for _, v := range svc.Volumes {
+			v = strings.TrimSpace(v)
+			if v != "" {
+				result.Volumes = append(result.Volumes, v)
+			}
+		}
+		if svc.Restart != "" {
+			result.Restart = MapDockerRestartToSystemd(svc.Restart)
+		}
+
+		// Environment
+		switch env := svc.Environment.(type) {
+		case []interface{}:
+			for _, item := range env {
+				if s, ok := item.(string); ok && strings.TrimSpace(s) != "" {
+					result.Environment = append(result.Environment, strings.TrimSpace(s))
+				}
+			}
+		case map[string]interface{}:
+			for k, v := range env {
+				if k != "" {
+					result.Environment = append(result.Environment, fmt.Sprintf("%s=%v", k, v))
+				}
+			}
+		}
+
+		// Command / Exec
+		switch cmd := svc.Command.(type) {
+		case string:
+			result.Exec = strings.TrimSpace(cmd)
+		case []interface{}:
+			var parts []string
+			for _, item := range cmd {
+				if s, ok := item.(string); ok {
+					parts = append(parts, s)
+				}
+			}
+			if len(parts) > 0 {
+				result.Exec = strings.Join(parts, " ")
+			}
+		}
+
+		// Process first primary service
+		break
+	}
+
+	return result
+}
+
+// ExtractedComposeService holds runtime parameters extracted for a specific service in Compose YAML.
+type ExtractedComposeService struct {
+	Name          string
+	Image         string
+	ContainerName string
+	Ports         []string
+	Volumes       []string
+	Environment   []string
+	Exec          string
+	Restart       string
+}
+
+// ExtractAllComposeServices extracts all services defined in Compose YAML.
+func ExtractAllComposeServices(composeYaml string) []ExtractedComposeService {
+	var results []ExtractedComposeService
+	trimmed := strings.TrimSpace(composeYaml)
+	if trimmed == "" {
+		return results
+	}
+
+	var raw struct {
+		Services map[string]struct {
+			Image         string      `yaml:"image"`
+			ContainerName string      `yaml:"container_name"`
+			Ports         []string    `yaml:"ports"`
+			Volumes       []string    `yaml:"volumes"`
+			Environment   interface{} `yaml:"environment"`
+			Command       interface{} `yaml:"command"`
+			Restart       string      `yaml:"restart"`
+		} `yaml:"services"`
+	}
+
+	if err := yaml.Unmarshal([]byte(trimmed), &raw); err != nil || raw.Services == nil {
+		return results
+	}
+
+	for name, svc := range raw.Services {
+		var item ExtractedComposeService
+		item.Name = strings.TrimSpace(name)
+		if img := strings.TrimSpace(svc.Image); img != "" && ValidateContainerImage(img) == nil {
+			item.Image = img
+		}
+		if svc.ContainerName != "" {
+			item.ContainerName = SanitizeQuadletSlug(svc.ContainerName)
+		} else {
+			item.ContainerName = SanitizeQuadletSlug(name)
+		}
+		for _, p := range svc.Ports {
+			if p = strings.TrimSpace(p); p != "" {
+				item.Ports = append(item.Ports, p)
+			}
+		}
+		for _, v := range svc.Volumes {
+			if v = strings.TrimSpace(v); v != "" {
+				item.Volumes = append(item.Volumes, v)
+			}
+		}
+		if svc.Restart != "" {
+			item.Restart = MapDockerRestartToSystemd(svc.Restart)
+		}
+
+		switch env := svc.Environment.(type) {
+		case []interface{}:
+			for _, e := range env {
+				if s, ok := e.(string); ok && strings.TrimSpace(s) != "" {
+					item.Environment = append(item.Environment, strings.TrimSpace(s))
+				}
+			}
+		case map[string]interface{}:
+			for k, v := range env {
+				if k != "" {
+					item.Environment = append(item.Environment, fmt.Sprintf("%s=%v", k, v))
+				}
+			}
+		}
+
+		switch cmd := svc.Command.(type) {
+		case string:
+			item.Exec = strings.TrimSpace(cmd)
+		case []interface{}:
+			var parts []string
+			for _, part := range cmd {
+				if s, ok := part.(string); ok {
+					parts = append(parts, s)
+				}
+			}
+			if len(parts) > 0 {
+				item.Exec = strings.Join(parts, " ")
+			}
+		}
+
+		results = append(results, item)
+	}
+
+	return results
+}
+
+// ExtractAllComposeWorkloadNames extracts all service keys and explicit container_name definitions from Compose YAML.
+func ExtractAllComposeWorkloadNames(composeYaml string) []string {
+	var names []string
+	trimmed := strings.TrimSpace(composeYaml)
+	if trimmed == "" {
+		return names
+	}
+	var raw struct {
+		Services map[string]struct {
+			ContainerName string `yaml:"container_name"`
+		} `yaml:"services"`
+	}
+	if err := yaml.Unmarshal([]byte(trimmed), &raw); err != nil || raw.Services == nil {
+		return names
+	}
+	for key, svc := range raw.Services {
+		if k := strings.TrimSpace(key); k != "" {
+			names = append(names, k)
+			cleanKey := SanitizeQuadletSlug(k)
+			if cleanKey != "" && cleanKey != k {
+				names = append(names, cleanKey)
+			}
+		}
+		if cName := strings.TrimSpace(svc.ContainerName); cName != "" {
+			names = append(names, cName)
+			cleanCName := SanitizeQuadletSlug(cName)
+			if cleanCName != "" && cleanCName != cName {
+				names = append(names, cleanCName)
+			}
+		}
+	}
+	return names
 }
 
 // ExtractFirstImageFromCompose attempts to extract the first valid container image defined in Compose YAML.
@@ -172,10 +421,31 @@ func ParseQuadlet(content string) ParsedQuadlet {
 	return p
 }
 
+// SanitizeQuadletSlug ensures systemd unit names, container names, and pod names contain no spaces or invalid characters.
+func SanitizeQuadletSlug(name string) string {
+	name = strings.TrimSpace(name)
+	name = filepath.Base(name)
+	name = strings.ReplaceAll(name, " ", "-")
+	name = strings.ReplaceAll(name, "..", "")
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	clean := strings.Trim(b.String(), "-")
+	for strings.Contains(clean, "--") {
+		clean = strings.ReplaceAll(clean, "--", "-")
+	}
+	return clean
+}
+
 // SplitQuadletUnits splits single or multi-unit YAML/INI Quadlet configurations into named units.
 func SplitQuadletUnits(content string, defaultName string) map[string]string {
 	units := make(map[string]string)
-	cleanDefault := defaultName
+	cleanDefault := SanitizeQuadletSlug(defaultName)
 	if cleanDefault == "" {
 		cleanDefault = "workload"
 	}
@@ -196,7 +466,10 @@ func SplitQuadletUnits(content string, defaultName string) map[string]string {
 			}
 		}
 		if fileName != "" {
-			units[fileName] = trimmed
+			ext := filepath.Ext(fileName)
+			base := strings.TrimSuffix(fileName, ext)
+			safeFileName := fmt.Sprintf("%s%s", SanitizeQuadletSlug(base), ext)
+			units[safeFileName] = trimmed
 			continue
 		}
 
@@ -205,6 +478,7 @@ func SplitQuadletUnits(content string, defaultName string) map[string]string {
 			if podName == "" {
 				podName = fmt.Sprintf("pod_%s", cleanDefault)
 			}
+			podName = SanitizeQuadletSlug(podName)
 			units[fmt.Sprintf("%s.pod", podName)] = trimmed
 		} else if strings.Contains(trimmed, "[Container]") {
 			contName := extractDirective(trimmed, "ContainerName")
@@ -215,6 +489,7 @@ func SplitQuadletUnits(content string, defaultName string) map[string]string {
 					contName = cleanDefault
 				}
 			}
+			contName = SanitizeQuadletSlug(contName)
 			units[fmt.Sprintf("%s.container", contName)] = trimmed
 		}
 	}
@@ -328,21 +603,7 @@ func QuadletUnitName(s Service) string {
 	if name == "" {
 		name = s.ID
 	}
-	name = filepath.Base(name)
-	name = strings.ReplaceAll(name, " ", "-")
-	name = strings.ReplaceAll(name, "..", "")
-	var b strings.Builder
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
-			b.WriteRune(r)
-		} else {
-			b.WriteRune('-')
-		}
-	}
-	clean := strings.Trim(b.String(), "-")
-	for strings.Contains(clean, "--") {
-		clean = strings.ReplaceAll(clean, "--", "-")
-	}
+	clean := SanitizeQuadletSlug(name)
 	if clean == "" {
 		clean = fmt.Sprintf("service-%s", s.ID)
 	}
@@ -373,18 +634,82 @@ func (d *Deployer) prepareQuadletContent(s Service, cleanName string) string {
 }
 
 func (d *Deployer) generateDefaultQuadletContent(s Service, cleanName string) string {
-	targetContainerName := s.ID
+	targetContainerName := SanitizeQuadletSlug(s.ID)
 	if targetContainerName == "" {
 		targetContainerName = cleanName
 	}
 
+	if s.ComposeYaml != "" {
+		allSvcs := ExtractAllComposeServices(s.ComposeYaml)
+		if len(allSvcs) > 1 {
+			var chunks []string
+			podName := fmt.Sprintf("pod_%s", cleanName)
+			var podPublishes strings.Builder
+			for _, svc := range allSvcs {
+				for _, p := range svc.Ports {
+					podPublishes.WriteString(fmt.Sprintf("PublishPort=%s\n", p))
+				}
+			}
+
+			// 1. Pod unit
+			podUnit := fmt.Sprintf("# File: %s.pod\n[Unit]\nDescription=GoPod %s Pod\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Pod]\nPodName=%s\nNetwork=gopod-net\n%s[Install]\nWantedBy=default.target\n",
+				podName, cleanName, podName, podPublishes.String())
+			chunks = append(chunks, podUnit)
+
+			// 2. Member containers
+			for _, svc := range allSvcs {
+				cImg := svc.Image
+				if cImg == "" {
+					cImg = "docker.io/library/nginx:alpine"
+				}
+				var cExtras strings.Builder
+				if svc.Exec != "" {
+					cExtras.WriteString(fmt.Sprintf("Exec=%s\n", svc.Exec))
+				}
+				for _, env := range svc.Environment {
+					cExtras.WriteString(fmt.Sprintf("Environment=%s\n", env))
+				}
+				for _, vol := range svc.Volumes {
+					if !strings.Contains(vol, ":") {
+						cExtras.WriteString(fmt.Sprintf("Volume=%s:%s:Z\n", SanitizeQuadletSlug(vol), vol))
+					} else {
+						if !strings.HasSuffix(vol, ":Z") && !strings.HasSuffix(vol, ":z") {
+							cExtras.WriteString(fmt.Sprintf("Volume=%s:Z\n", vol))
+						} else {
+							cExtras.WriteString(fmt.Sprintf("Volume=%s\n", vol))
+						}
+					}
+				}
+				rPolicy := svc.Restart
+				if rPolicy == "" {
+					rPolicy = "always"
+				}
+
+				mUnit := fmt.Sprintf("# File: %s.container\n[Unit]\nDescription=GoPod Pod Member %s\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Container]\nContainerName=%s\nImage=%s\nPod=%s.pod\nLabel=io.gopod.service=%s\nLabel=io.gopod.project=%s\n%s[Service]\nRestart=%s\nTimeoutStartSec=300\n\n[Install]\nWantedBy=default.target\n",
+					svc.ContainerName, svc.ContainerName, svc.ContainerName, cImg, podName, s.ID, s.ProjectID, cExtras.String(), rPolicy)
+				chunks = append(chunks, mUnit)
+			}
+			return strings.Join(chunks, "\n---\n")
+		}
+	}
+
+	var extracted ExtractedCompose
+	if s.ComposeYaml != "" {
+		extracted = ExtractComposeWorkload(s.ComposeYaml)
+		if extracted.ContainerName != "" {
+			targetContainerName = extracted.ContainerName
+		}
+	}
+
 	// Resolve image safely
 	image := s.Image
-	if err := ValidateContainerImage(image); err != nil {
+	if extracted.Image != "" {
+		image = extracted.Image
+	} else if err := ValidateContainerImage(image); err != nil {
 		if s.ComposeYaml != "" {
-			extracted := ExtractFirstImageFromCompose(s.ComposeYaml)
-			if extracted != "" && ValidateContainerImage(extracted) == nil {
-				image = extracted
+			extImg := ExtractFirstImageFromCompose(s.ComposeYaml)
+			if extImg != "" && ValidateContainerImage(extImg) == nil {
+				image = extImg
 			}
 		}
 		if image == "" || ValidateContainerImage(image) != nil {
@@ -392,24 +717,55 @@ func (d *Deployer) generateDefaultQuadletContent(s Service, cleanName string) st
 		}
 	}
 
-	publishDirective := ""
-	if s.HostPort > 0 && s.Port > 0 {
-		publishDirective = fmt.Sprintf("PublishPort=%d:%d\n", s.HostPort, s.Port)
-	} else if s.HostPort > 0 {
-		publishDirective = fmt.Sprintf("PublishPort=%d:80\n", s.HostPort)
+	var publishDirectives strings.Builder
+	if len(extracted.Ports) > 0 {
+		for _, p := range extracted.Ports {
+			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%s\n", p))
+		}
+	} else if s.Type != "compose" && s.ComposeYaml == "" {
+		// Only non-compose services fall back to service.hostPort/port
+		if s.HostPort > 0 && s.Port > 0 {
+			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%d:%d\n", s.HostPort, s.Port))
+		} else if s.HostPort > 0 {
+			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%d:80\n", s.HostPort))
+		}
 	}
 
 	var extraDirectives strings.Builder
+	if extracted.Exec != "" {
+		extraDirectives.WriteString(fmt.Sprintf("Exec=%s\n", extracted.Exec))
+	}
+	for _, env := range extracted.Environment {
+		extraDirectives.WriteString(fmt.Sprintf("Environment=%s\n", env))
+	}
+	for _, env := range s.EnvVars {
+		if env.Key != "" {
+			extraDirectives.WriteString(fmt.Sprintf("Environment=\"%s=%s\"\n", env.Key, env.Value))
+		}
+	}
+	for _, vol := range extracted.Volumes {
+		if !strings.Contains(vol, ":") {
+			extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:Z\n", SanitizeQuadletSlug(vol), vol))
+		} else {
+			if !strings.HasSuffix(vol, ":Z") && !strings.HasSuffix(vol, ":z") {
+				extraDirectives.WriteString(fmt.Sprintf("Volume=%s:Z\n", vol))
+			} else {
+				extraDirectives.WriteString(fmt.Sprintf("Volume=%s\n", vol))
+			}
+		}
+	}
+
 	if s.Advanced != nil {
-		if s.Advanced.Runtime.UserNamespace != "" {
+		if s.Advanced.Runtime.UserNamespace != "" && s.Advanced.Runtime.UserNamespace != "default" && s.Advanced.Runtime.UserNamespace != "none" {
 			extraDirectives.WriteString(fmt.Sprintf("UserNS=%s\n", s.Advanced.Runtime.UserNamespace))
 		}
 		for _, v := range s.Advanced.Storage.Volumes {
 			if v.Source != "" && v.Target != "" {
+				volSource := SanitizeQuadletSlug(v.Source)
 				if v.Options != "" {
-					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:%s\n", v.Source, v.Target, v.Options))
+					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:%s\n", volSource, v.Target, v.Options))
 				} else {
-					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s\n", v.Source, v.Target))
+					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:Z\n", volSource, v.Target))
 				}
 			}
 		}
@@ -438,17 +794,20 @@ func (d *Deployer) generateDefaultQuadletContent(s Service, cleanName string) st
 		}
 	}
 
-	restartPolicy := s.RestartPolicy
+	restartPolicy := MapDockerRestartToSystemd(s.RestartPolicy)
+	if extracted.Restart != "" {
+		restartPolicy = MapDockerRestartToSystemd(extracted.Restart)
+	}
 	if restartPolicy == "" {
 		restartPolicy = "always"
 	}
 
 	return fmt.Sprintf("[Unit]\nDescription=%s Quadlet Service\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Container]\nContainerName=%s\nImage=%s\nNetwork=gopod-net\nLabel=io.gopod.service=%s\nLabel=io.gopod.project=%s\n%s%s\n[Service]\nRestart=%s\nTimeoutStartSec=300\n\n[Install]\nWantedBy=default.target\n",
-		cleanName, targetContainerName, image, s.ID, s.ProjectID, publishDirective, extraDirectives.String(), restartPolicy)
+		cleanName, targetContainerName, image, s.ID, s.ProjectID, publishDirectives.String(), extraDirectives.String(), restartPolicy)
 }
 
 func (d *Deployer) prepareSingleQuadletContent(s Service, cleanName string, rawContent string) string {
-	targetContainerName := s.ID
+	targetContainerName := SanitizeQuadletSlug(s.ID)
 	if targetContainerName == "" {
 		targetContainerName = cleanName
 	}
@@ -476,9 +835,50 @@ func (d *Deployer) prepareSingleQuadletContent(s Service, cleanName string, rawC
 			inContainer = strings.EqualFold(trimmed, "[Container]")
 		}
 
+		// Sanitize ContainerName if already present to guarantee valid systemd/Podman identifier
+		if inContainer && strings.HasPrefix(trimmed, "ContainerName=") {
+			currName := strings.TrimSpace(strings.TrimPrefix(trimmed, "ContainerName="))
+			cleanCurrName := SanitizeQuadletSlug(currName)
+			if cleanCurrName != "" {
+				newLines = append(newLines, fmt.Sprintf("ContainerName=%s", cleanCurrName))
+			} else {
+				newLines = append(newLines, fmt.Sprintf("ContainerName=%s", targetContainerName))
+			}
+			continue
+		}
+
+		// Validate and heal Image reference if it contains spaces or corrupt values
+		if inContainer && strings.HasPrefix(trimmed, "Image=") {
+			rawImg := strings.TrimSpace(strings.TrimPrefix(trimmed, "Image="))
+			if err := ValidateContainerImage(rawImg); err != nil {
+				// Fallback: recover image from Compose YAML if available
+				if s.ComposeYaml != "" {
+					extImg := ExtractComposeWorkload(s.ComposeYaml).Image
+					if extImg != "" && ValidateContainerImage(extImg) == nil {
+						rawImg = extImg
+					}
+				}
+				// If still has whitespace, replace spaces with dashes or fallback to valid OCI image
+				if strings.ContainsAny(rawImg, " \t\r\n") {
+					rawImg = strings.ReplaceAll(rawImg, " ", "-")
+				}
+				if err := ValidateContainerImage(rawImg); err != nil {
+					rawImg = "docker.io/library/nginx:alpine"
+				}
+			}
+			newLines = append(newLines, fmt.Sprintf("Image=%s", rawImg))
+			continue
+		}
+
 		// Podman Quadlet: Restart= is invalid in [Container], belongs in [Service]
 		if inContainer && strings.HasPrefix(trimmed, "Restart=") {
 			containerRestart = strings.TrimPrefix(trimmed, "Restart=")
+			continue
+		}
+
+		// Sanitize invalid systemd Restart= directives (e.g. unless-stopped -> always)
+		if rVal, ok := strings.CutPrefix(trimmed, "Restart="); ok {
+			newLines = append(newLines, fmt.Sprintf("Restart=%s", MapDockerRestartToSystemd(rVal)))
 			continue
 		}
 
@@ -497,6 +897,12 @@ func (d *Deployer) prepareSingleQuadletContent(s Service, cleanName string, rawC
 			if !hasContainerName {
 				newLines = append(newLines, fmt.Sprintf("ContainerName=%s", targetContainerName))
 			}
+			if !strings.Contains(rawContent, "Exec=") && s.ComposeYaml != "" {
+				extracted := ExtractComposeWorkload(s.ComposeYaml)
+				if extracted.Exec != "" {
+					newLines = append(newLines, fmt.Sprintf("Exec=%s", extracted.Exec))
+				}
+			}
 			// In Podman Quadlet, child member of Pod must NOT declare Network=
 			if !hasNetwork && !hasPodDirective {
 				newLines = append(newLines, "Network=gopod-net")
@@ -511,14 +917,14 @@ func (d *Deployer) prepareSingleQuadletContent(s Service, cleanName string, rawC
 	}
 
 	if containerRestart != "" && !hasServiceSection {
-		newLines = append(newLines, "", "[Service]", fmt.Sprintf("Restart=%s", containerRestart))
+		newLines = append(newLines, "", "[Service]", fmt.Sprintf("Restart=%s", MapDockerRestartToSystemd(containerRestart)))
 	}
 
 	return strings.Join(newLines, "\n")
 }
 
 // deployQuadlet writes Quadlet systemd units and generates declarative services.
-func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
+func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger string, logLine func(string)) (*DeployResult, error) {
 	quadletDir := filepath.Join(d.dataDir, "quadlets")
 	_ = os.MkdirAll(quadletDir, 0755)
 
@@ -560,32 +966,32 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID string, l
 	}
 	logLine("✅ Quadlet syntax verified by podman systemd generator.")
 
-	// 3. Pre-flight Ghost Container cleanup (prevent conflict exit code 125)
-	for fname, uContent := range files {
-		if strings.HasSuffix(fname, ".container") {
-			cName := extractDirective(uContent, "ContainerName")
-			if cName == "" {
-				cName = s.ID
-			}
-			if cName != "" {
-				logLine(fmt.Sprintf("🧹 Pre-flight cleanup: removing ghost container '%s'...", cName))
-				if d.podmanClient != nil {
-					_ = d.podmanClient.StopContainer(ctx, cName)
-					_ = d.podmanClient.DeleteContainer(ctx, cName, true)
-				}
-				rmCmd := exec.CommandContext(ctx, "podman", "rm", "-f", cName)
-				d.setupCmdEnv(rmCmd)
-				_ = rmCmd.Run()
-			}
-		}
-	}
-	d.stopPreviousContainer(ctx, s, logLine)
+	// 3. Pre-flight Ghost Container & Unit cleanup (prevent conflict exit code 125 and systemd auto-restart races)
+	d.cleanPreflightConflicts(ctx, s, logLine)
 
-	// 4. Determine systemd user quadlet search path
+	// 4. Determine systemd user quadlet search path and purge legacy space-polluted unit files
 	systemdQuadletDir := os.Getenv("QUADLET_DIR")
 	if systemdQuadletDir == "" {
 		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
 			systemdQuadletDir = filepath.Join(homeDir, ".config", "containers", "systemd")
+		}
+	}
+	if systemdQuadletDir != "" {
+		_ = os.MkdirAll(systemdQuadletDir, 0755)
+		if s.Name != cleanName {
+			_ = os.Remove(filepath.Join(systemdQuadletDir, s.Name+".container"))
+			_ = os.Remove(filepath.Join(systemdQuadletDir, s.Name+".pod"))
+		}
+		if entries, err := os.ReadDir(systemdQuadletDir); err == nil {
+			for _, entry := range entries {
+				eName := entry.Name()
+				if strings.Contains(eName, " ") && (strings.HasSuffix(eName, ".container") || strings.HasSuffix(eName, ".pod")) {
+					cleanSlug := SanitizeQuadletSlug(strings.TrimSuffix(strings.TrimSuffix(eName, ".container"), ".pod"))
+					if cleanSlug == cleanName {
+						_ = os.Remove(filepath.Join(systemdQuadletDir, eName))
+					}
+				}
+			}
 		}
 	}
 
@@ -615,7 +1021,10 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID string, l
 		}
 	}
 
-	if primaryServiceName == "" {
+	if primaryServiceName == "" && len(podMemberServices) > 0 {
+		primaryServiceName = podMemberServices[0]
+		podMemberServices = podMemberServices[1:]
+	} else if primaryServiceName == "" {
 		primaryServiceName = fmt.Sprintf("%s.service", cleanName)
 	}
 
@@ -631,22 +1040,38 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID string, l
 	if mainImage == "" {
 		mainImage = "docker.io/library/nginx:alpine"
 	}
-	logLine(fmt.Sprintf("📦 Pulling container image '%s'...", mainImage))
-	var pullArgs []string
-	if s.RegistryID != "" && d.registryProvider != nil {
-		if reg, err := d.registryProvider.GetRegistry(ctx, s.RegistryID); err == nil && reg != nil && reg.Username != "" {
-			logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
-			pullArgs = append(pullArgs, "--creds", fmt.Sprintf("%s:%s", reg.Username, reg.Token))
+
+	// Smart Image Cache Check: avoid redundant remote pulls when image exists locally
+	hasImage := false
+	if d.podmanClient != nil {
+		chkCmd := exec.CommandContext(ctx, "podman", "image", "exists", mainImage)
+		d.setupCmdEnv(chkCmd)
+		if err := chkCmd.Run(); err == nil {
+			hasImage = true
 		}
 	}
-	pullArgs = append(pullArgs, "pull", mainImage)
-	pullCmd := exec.CommandContext(ctx, "podman", pullArgs...)
-	d.setupCmdEnv(pullCmd)
-	pStdout, _ := pullCmd.StdoutPipe()
-	pStderr, _ := pullCmd.StderrPipe()
-	if err := pullCmd.Start(); err == nil {
-		d.streamPipes(pStdout, pStderr, logLine)
-		_ = pullCmd.Wait()
+
+	shouldPull := !hasImage || trigger == "pull" || trigger == "force-pull" || trigger == "update"
+	if shouldPull {
+		logLine(fmt.Sprintf("📦 Pulling container image '%s'...", mainImage))
+		var pullArgs []string
+		if s.RegistryID != "" && d.registryProvider != nil {
+			if reg, err := d.registryProvider.GetRegistry(ctx, s.RegistryID); err == nil && reg != nil && reg.Username != "" {
+				logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
+				pullArgs = append(pullArgs, "--creds", fmt.Sprintf("%s:%s", reg.Username, reg.Token))
+			}
+		}
+		pullArgs = append(pullArgs, "pull", mainImage)
+		pullCmd := exec.CommandContext(ctx, "podman", pullArgs...)
+		d.setupCmdEnv(pullCmd)
+		pStdout, _ := pullCmd.StdoutPipe()
+		pStderr, _ := pullCmd.StderrPipe()
+		if err := pullCmd.Start(); err == nil {
+			d.streamPipes(pStdout, pStderr, logLine)
+			_ = pullCmd.Wait()
+		}
+	} else {
+		logLine(fmt.Sprintf("⚡ Container image '%s' is cached locally. Reusing existing image.", mainImage))
 	}
 
 	// 7. Reload systemd daemon and activate service
@@ -687,8 +1112,16 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID string, l
 		return nil, fmt.Errorf("systemd daemon unavailable to activate Quadlet unit")
 	}
 
+	deployedContName := cleanName
+	if primaryServiceName != "" {
+		deployedContName = strings.TrimSuffix(primaryServiceName, ".service")
+		if strings.HasSuffix(deployedContName, "-pod") {
+			deployedContName = strings.TrimSuffix(deployedContName, "-pod")
+		}
+	}
+
 	return &DeployResult{
-		ContainerName: cleanName,
+		ContainerName: deployedContName,
 		CommitHash:    "",
 		CommitMessage: fmt.Sprintf("Quadlet unit compiled and activated (%s)", mainImage),
 		Image:         mainImage,

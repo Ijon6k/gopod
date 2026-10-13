@@ -62,3 +62,4 @@ export { default as TerminalView } from './TerminalView.svelte';
 export { default as SectionCard } from './SectionCard.svelte';
 export { default as CopyButton } from './CopyButton.svelte';
 export { default as Kbd } from './Kbd.svelte';
+export { default as DatabaseIcon } from './DatabaseIcon.svelte';

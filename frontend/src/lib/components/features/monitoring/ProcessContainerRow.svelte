@@ -34,6 +34,13 @@
 						>
 							{c.name}
 						</span>
+						{#if c.serviceName && c.serviceName.includes('(')}
+							<span
+								class="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--accent)]"
+							>
+								{c.serviceName.split('(')[1]?.replace(')', '') || ''}
+							</span>
+						{/if}
 						<span
 							class="truncate font-mono text-[11px] text-[var(--text-tertiary)]"
 							title={c.image}

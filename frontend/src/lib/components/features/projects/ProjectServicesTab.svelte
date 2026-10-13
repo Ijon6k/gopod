@@ -330,8 +330,7 @@
 						>No Compose stacks found</span
 					>
 					<p class="m-0 text-xs leading-relaxed text-[var(--text-tertiary)]">
-						Deploy multi-container workloads managed seamlessly via Compose YAML or Kubernetes pod
-						manifests.
+						Deploy multi-container workloads using Compose YAML or Kubernetes manifests.
 					</p>
 				</div>
 				<Button variant="primary" size="sm" onclick={() => oncreateService('compose')} class="mt-1">
@@ -344,11 +343,9 @@
 					<Database size={20} />
 				</div>
 				<div class="flex max-w-md flex-col gap-1">
-					<span class="text-sm font-semibold text-[var(--text-primary)]">No Databases deployed</span
-					>
+					<span class="text-sm font-semibold text-[var(--text-primary)]">No Databases deployed</span>
 					<p class="m-0 text-xs leading-relaxed text-[var(--text-tertiary)]">
-						Launch dedicated PostgreSQL, Redis, MySQL, or MongoDB engines with isolated persistent
-						volumes in 1 click.
+						Deploy PostgreSQL, Redis, MySQL, or MongoDB with persistent storage.
 					</p>
 				</div>
 				<Button

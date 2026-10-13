@@ -115,6 +115,7 @@ export class TelemetryDomainStore {
 	applySystemUpdate(sys: any) {
 		this.server = {
 			...this.server,
+			ip: sys.ip || this.server.ip,
 			hostname: sys.hostname || this.server.hostname,
 			os: sys.os || this.server.os,
 			kernel: sys.kernel || this.server.kernel,

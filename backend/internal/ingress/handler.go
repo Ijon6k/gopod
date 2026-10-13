@@ -29,6 +29,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/domains", h.middleware.RequireAuth(h.handleCreateDomain))
 	mux.HandleFunc("PUT /api/domains/{id}", h.middleware.RequireAuth(h.handleUpdateDomain))
 	mux.HandleFunc("DELETE /api/domains/{id}", h.middleware.RequireAuth(h.handleDeleteDomain))
+	mux.HandleFunc("POST /api/domains/{id}/revalidate", h.middleware.RequireAuth(h.handleRevalidateDomain))
 	mux.HandleFunc("GET /api/traffic/requests", h.middleware.RequireAuth(h.handleTrafficRequests))
 	mux.HandleFunc("GET /api/traffic/metrics", h.middleware.RequireAuth(h.handleTrafficMetrics))
 	mux.HandleFunc("GET /api/ingress/caddyfile", h.middleware.RequireAuth(h.handleGetCaddyfile))
@@ -144,16 +145,35 @@ func (h *Handler) handleTrafficMetrics(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, metrics)
 }
 
+func (h *Handler) handleRevalidateDomain(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "Domain ID is required")
+		return
+	}
+	domain, err := h.service.RevalidateDomain(r.Context(), id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, domain)
+}
+
 func (h *Handler) handleGetCaddyfile(w http.ResponseWriter, r *http.Request) {
 	caddyfile := h.service.GetCaddyfile()
 	adminURL := "http://127.0.0.1:2019"
+	httpPort := 80
+	httpsPort := 443
 	if h.service.reconciler != nil {
 		adminURL = h.service.reconciler.GetAdminURL()
+		httpPort, httpsPort = h.service.reconciler.GetIngressPorts()
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"caddyfile": caddyfile,
 		"status":    "active",
 		"adminUrl":  adminURL,
+		"httpPort":  httpPort,
+		"httpsPort": httpsPort,
 	})
 }
 

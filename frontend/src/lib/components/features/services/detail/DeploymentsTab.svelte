@@ -88,7 +88,11 @@
 
 		isDeploying = true;
 		try {
-			await dataStore.deployService(service.id);
+			const dep = await dataStore.deployService(service.id);
+			if (dep) {
+				selectedLogDep = dep;
+				isLogsModalOpen = true;
+			}
 		} catch (err) {
 			console.error('Deploy error:', err);
 		} finally {
@@ -270,7 +274,7 @@
      ══════════════════════════════════════════════════════════════ -->
 <!-- Deployment Logs Modal with Pipeline Stages -->
 <DeploymentLogsModal
-	deployment={selectedLogDep}
+	deployment={selectedLogDep ? (rawDeployments.find((d) => d.id === selectedLogDep?.id) ?? selectedLogDep) : null}
 	open={isLogsModalOpen}
 	onclose={() => {
 		isLogsModalOpen = false;

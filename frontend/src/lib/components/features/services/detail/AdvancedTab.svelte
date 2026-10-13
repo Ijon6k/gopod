@@ -54,7 +54,7 @@
 
 	// Runtime state
 	let runtimeMode = $state<'rootless' | 'rootful'>('rootless');
-	let userNamespace = $state('keep-id');
+	let userNamespace = $state('');
 	let devices = $state('');
 
 	// Lifecycle state
@@ -93,7 +93,7 @@
 
 	$effect(() => {
 		runtimeMode = service.advanced?.runtime.mode ?? 'rootless';
-		userNamespace = service.advanced?.runtime.userNamespace ?? 'keep-id';
+		userNamespace = (service.advanced?.runtime.userNamespace === 'default' ? '' : service.advanced?.runtime.userNamespace) ?? '';
 		devices = service.advanced?.runtime.devices.join(', ') ?? '';
 		quadletEnabled = service.advanced?.lifecycle.quadletEnabled ?? true;
 		systemdUnit = service.advanced?.lifecycle.systemdUnitName ?? `${service.name}.service`;
@@ -123,10 +123,135 @@
 	let podFiles = $state<Record<string, string>>({});
 	let promoCode = $state<string>('');
 
+	function slugifyName(name: string): string {
+		return name
+			.trim()
+			.toLowerCase()
+			.replace(/[^a-z0-9_-]/g, '-')
+			.replace(/-+/g, '-')
+			.replace(/^-|-$/g, '');
+	}
+
+	interface ComposeWorkloadItem {
+		name: string;
+		image: string;
+		containerName: string;
+		ports: string[];
+		volumes: string[];
+		environment: string[];
+		restart: string;
+		exec: string;
+	}
+
+	function parseAllComposeWorkloads(yamlStr: string): ComposeWorkloadItem[] {
+		const items: ComposeWorkloadItem[] = [];
+		if (!yamlStr) return items;
+
+		const lines = yamlStr.split('\n');
+		let inServices = false;
+		let currentItem: ComposeWorkloadItem | null = null;
+		let inPorts = false;
+		let inVolumes = false;
+		let inEnv = false;
+
+		for (const line of lines) {
+			const rawTrimmed = line.trim();
+			if (!rawTrimmed || rawTrimmed.startsWith('#')) continue;
+
+			if (line.match(/^services:\s*$/i)) {
+				inServices = true;
+				continue;
+			}
+
+			if (inServices) {
+				if (line.match(/^[a-zA-Z0-9_-]+:\s*$/) && !line.startsWith(' ') && !line.startsWith('\t')) {
+					inServices = false;
+					if (currentItem) items.push(currentItem);
+					currentItem = null;
+					continue;
+				}
+
+				const svcMatch = line.match(/^(?:  |\t)([a-zA-Z0-9_-]+):\s*$/);
+				if (svcMatch) {
+					if (currentItem) items.push(currentItem);
+					currentItem = {
+						name: svcMatch[1],
+						image: '',
+						containerName: svcMatch[1],
+						ports: [],
+						volumes: [],
+						environment: [],
+						restart: 'always',
+						exec: ''
+					};
+					inPorts = false;
+					inVolumes = false;
+					inEnv = false;
+					continue;
+				}
+
+				if (currentItem) {
+					const trimmed = rawTrimmed;
+					if (trimmed.startsWith('image:')) {
+						currentItem.image = trimmed.slice(6).trim().replace(/^['"]|['"]$/g, '');
+					} else if (trimmed.startsWith('container_name:')) {
+						currentItem.containerName = trimmed.slice(15).trim().replace(/^['"]|['"]$/g, '');
+					} else if (trimmed.startsWith('command:')) {
+						const rawCmd = trimmed.slice(8).trim();
+						currentItem.exec = rawCmd.replace(/[\[\]"',]/g, ' ').replace(/\s+/g, ' ').trim();
+					} else if (trimmed.startsWith('restart:')) {
+						const rawRestart = trimmed.slice(8).trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+						if (rawRestart === 'unless-stopped' || rawRestart === 'always') {
+							currentItem.restart = 'always';
+						} else if (rawRestart === 'on-failure') {
+							currentItem.restart = 'on-failure';
+						} else if (rawRestart === 'no') {
+							currentItem.restart = 'no';
+						} else {
+							currentItem.restart = 'always';
+						}
+					} else if (trimmed === 'ports:') {
+						inPorts = true; inVolumes = false; inEnv = false;
+					} else if (trimmed === 'volumes:') {
+						inVolumes = true; inPorts = false; inEnv = false;
+					} else if (trimmed === 'environment:') {
+						inEnv = true; inPorts = false; inVolumes = false;
+					} else if (inPorts && trimmed.startsWith('-')) {
+						const p = trimmed.slice(1).trim().replace(/^['"]|['"]$/g, '');
+						if (p) currentItem.ports.push(p);
+					} else if (inVolumes && trimmed.startsWith('-')) {
+						const v = trimmed.slice(1).trim().replace(/^['"]|['"]$/g, '');
+						if (v) currentItem.volumes.push(v);
+					} else if (inEnv && trimmed.startsWith('-')) {
+						const e = trimmed.slice(1).trim().replace(/^['"]|['"]$/g, '');
+						if (e) currentItem.environment.push(e);
+					} else if (!trimmed.startsWith('-') && trimmed.includes(':')) {
+						inPorts = false; inVolumes = false; inEnv = false;
+					}
+				}
+			}
+		}
+
+		if (currentItem) items.push(currentItem);
+		return items;
+	}
+
+	function parseComposeWorkload(yamlStr: string): ComposeWorkloadItem | null {
+		const items = parseAllComposeWorkloads(yamlStr);
+		return items.length > 0 ? items[0] : null;
+	}
+
 	function getSanitizedImage(svc: Service): string {
+		if (svc.composeYaml) {
+			const parsed = parseComposeWorkload(svc.composeYaml);
+			if (parsed?.image && !parsed.image.includes(' ')) {
+				return parsed.image;
+			}
+		}
 		const raw = (svc.image || '').trim();
 		if (
 			raw &&
+			!raw.includes(' ') &&
 			!raw.endsWith('.yaml') &&
 			!raw.endsWith('.yml') &&
 			!raw.startsWith('.') &&
@@ -137,93 +262,170 @@
 			}
 			return raw;
 		}
-		if (
-			svc.source &&
-			!svc.source.endsWith('.yaml') &&
-			!svc.source.endsWith('.yml') &&
-			!svc.source.startsWith('.') &&
-			!svc.source.startsWith('/')
-		) {
-			return svc.source;
-		}
-		return `docker.io/library/${svc.name}:latest`;
+		const clean = slugifyName(svc.name) || 'app';
+		return `docker.io/library/${clean}:latest`;
 	}
 
 	function startPromotionFlow() {
-		if (service.type === 'pod') {
-			const podPublishLine =
-				(service.hostPort && service.hostPort > 0) || (service.port && service.port > 0)
-					? `PublishPort=${service.hostPort || service.port}:${service.port || service.hostPort}\n`
-					: '';
+		const cleanSlug = slugifyName(service.name) || 'service';
+		const comp = service.composeYaml ? parseComposeWorkload(service.composeYaml) : null;
+		const targetImage = comp?.image ? comp.image : getSanitizedImage(service);
+		const targetContainerName = comp?.containerName
+			? slugifyName(comp.containerName)
+			: slugifyName(service.id) || cleanSlug;
+		const execDirective = comp?.exec ? `Exec=${comp.exec}\n` : '';
 
-			const podUnit = `[Unit]
-Description=GoPod Pod ${service.name}
+		let publishDirectives = '';
+		if (comp && comp.ports.length > 0) {
+			publishDirectives = comp.ports.map((p: string) => `PublishPort=${p}`).join('\n') + '\n';
+		} else if (
+			!service.composeYaml &&
+			service.hostPort &&
+			service.hostPort > 0
+		) {
+			publishDirectives = `PublishPort=${service.hostPort}:${service.port || service.hostPort}\n`;
+		}
+
+		let volumeDirectives = '';
+		if (comp && comp.volumes.length > 0) {
+			volumeDirectives = comp.volumes
+				.map((v: string) => {
+					if (!v.includes(':Z') && !v.includes(':z')) {
+						return `Volume=${v}:Z`;
+					}
+					return `Volume=${v}`;
+				})
+				.join('\n');
+		} else if (volumes.length > 0) {
+			volumeDirectives = volumes
+				.filter((v) => v.source.trim() && v.target.trim())
+				.map((v) => `Volume=${slugifyName(v.source)}:${v.target}:${v.options || 'Z'}`)
+				.join('\n');
+		}
+
+		const promoRestart = comp?.restart || restartPolicy || 'always';
+		const multiCompose = service.composeYaml ? parseAllComposeWorkloads(service.composeYaml) : [];
+
+		if (service.type === 'pod' || multiCompose.length > 1) {
+			const files: Record<string, string> = {};
+			const podKey = `pod_${cleanSlug}.pod`;
+
+			if (service.type !== 'pod' && multiCompose.length > 1) {
+				const allPorts = multiCompose.flatMap((c) => c.ports);
+				const podPublishLine = allPorts.length > 0 ? allPorts.map((p: string) => `PublishPort=${p}`).join('\n') + '\n' : '';
+				files[podKey] = `[Unit]
+Description=GoPod ${cleanSlug} Pod
 After=network-online.target
 StartLimitIntervalSec=60s
 StartLimitBurst=5
 
 [Pod]
-PodName=pod_${service.name}
+PodName=pod_${cleanSlug}
 Network=gopod-net
 ${podPublishLine}
 [Install]
 WantedBy=default.target`;
 
-			const memberServices = dataStore.services.filter(
-				(s) =>
-					s.projectId === service.projectId &&
-					s.id !== service.id &&
-					(s.podId === service.id ||
-						s.podId === service.name ||
-						s.podId === `pod_${service.name}` ||
-						(s.inPod && s.type !== 'pod'))
-			);
+				for (const m of multiCompose) {
+					const mSlug = slugifyName(m.containerName || m.name) || 'member';
+					const memberKey = `${mSlug}.container`;
+					const mImg = m.image || `docker.io/library/${mSlug}:latest`;
+					const mExec = m.exec ? `Exec=${m.exec}\n` : '';
+					const mEnv = m.environment.length > 0 ? m.environment.map((e: string) => `Environment=${e}`).join('\n') + '\n' : '';
+					const mVol = m.volumes.length > 0 ? m.volumes.map((v: string) => `Volume=${v.includes(':') ? v : `${slugifyName(v)}:${v}:Z`}`).join('\n') + '\n' : '';
 
-			const files: Record<string, string> = {};
-			const podKey = `pod_${service.name}.pod`;
-			files[podKey] = podUnit;
-
-			if (memberServices.length === 0) {
-				const memberKey = `${service.name}-app.container`;
-				files[memberKey] = `[Unit]
-Description=GoPod Pod Member ${service.name}
+					files[memberKey] = `[Unit]
+Description=GoPod Pod Member ${mSlug}
 After=network-online.target
 StartLimitIntervalSec=60s
 StartLimitBurst=5
 
 [Container]
-ContainerName=${service.name}-app
-Image=${getSanitizedImage(service)}
-Pod=pod_${service.name}.pod
+ContainerName=${mSlug}
+Image=${mImg}
+Pod=pod_${cleanSlug}.pod
+${mExec}${mEnv}${mVol}Label=io.gopod.service=${service.id}
+Label=io.gopod.project=${service.projectId}
+
+[Service]
+Restart=${m.restart || 'always'}
+TimeoutStartSec=300
+
+[Install]
+WantedBy=default.target`;
+				}
+			} else {
+				const podPublishLine = publishDirectives;
+				const podUnit = `[Unit]
+Description=GoPod Pod ${cleanSlug}
+After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Pod]
+PodName=pod_${cleanSlug}
+Network=gopod-net
+${podPublishLine}
+[Install]
+WantedBy=default.target`;
+
+				const memberServices = dataStore.services.filter(
+					(s) =>
+						s.projectId === service.projectId &&
+						s.id !== service.id &&
+						s.type !== 'pod' &&
+						(s.podId === service.id ||
+							s.podId === service.name ||
+							s.podId === `pod_${service.name}` ||
+							s.podId === `pod_${cleanSlug}` ||
+							(s.inPod && (!s.podId || s.podId === service.name || s.podId === `pod_${service.name}`)))
+				);
+
+				files[podKey] = podUnit;
+
+				if (memberServices.length === 0) {
+					const memberKey = `${cleanSlug}-app.container`;
+					files[memberKey] = `[Unit]
+Description=GoPod Pod Member ${cleanSlug}
+After=network-online.target
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Container]
+ContainerName=${targetContainerName}
+Image=${targetImage}
+Pod=pod_${cleanSlug}.pod
 Label=io.gopod.service=${service.id}
 Label=io.gopod.project=${service.projectId}
 
 [Service]
-Restart=always
+Restart=${promoRestart}
 
 [Install]
 WantedBy=default.target`;
-			} else {
-				for (const m of memberServices) {
-					const memberKey = `${m.name}.container`;
-					files[memberKey] = `[Unit]
-Description=GoPod Pod Member ${m.name}
+				} else {
+					for (const m of memberServices) {
+						const mSlug = slugifyName(m.name) || 'member';
+						const memberKey = `${mSlug}.container`;
+						files[memberKey] = `[Unit]
+Description=GoPod Pod Member ${mSlug}
 After=network-online.target
 StartLimitIntervalSec=60s
 StartLimitBurst=5
 
 [Container]
-ContainerName=${m.name}
+ContainerName=${mSlug}
 Image=${getSanitizedImage(m)}
-Pod=pod_${service.name}.pod
+Pod=pod_${cleanSlug}.pod
 Label=io.gopod.service=${m.id}
 Label=io.gopod.project=${m.projectId}
 
 [Service]
-Restart=always
+Restart=${promoRestart}
 
 [Install]
 WantedBy=default.target`;
+					}
 				}
 			}
 
@@ -231,33 +433,28 @@ WantedBy=default.target`;
 			activePromoTab = podKey;
 			promoCode = files[podKey];
 		} else {
-			const standalonePublishLine =
-				(service.hostPort && service.hostPort > 0) || (service.port && service.port > 0)
-					? `PublishPort=${service.hostPort || service.port}:${service.port || service.hostPort}\n`
-					: '';
-
+			const userNsDirective = userNamespace && userNamespace !== 'default' ? `UserNS=${userNamespace}\n` : '';
 			promoCode = `[Unit]
-Description=GoPod ${service.name} Service
+Description=GoPod ${cleanSlug} Service
 After=network-online.target
 StartLimitIntervalSec=60s
 StartLimitBurst=5
 
 [Container]
-ContainerName=${service.name}
-Image=${getSanitizedImage(service)}
-Network=gopod-net
-${standalonePublishLine}Label=io.gopod.service=${service.id}
+ContainerName=${targetContainerName}
+Image=${targetImage}
+${execDirective}Network=gopod-net
+${publishDirectives}Label=io.gopod.service=${service.id}
 Label=io.gopod.project=${service.projectId}
 AutoUpdate=registry
-UserNS=${userNamespace}
-${volumes.map((v) => `Volume=${v.source}:${v.target}:${v.options}`).join('\n')}
+${userNsDirective}${volumeDirectives}
 
 [Service]
-Restart=${restartPolicy}
+Restart=${promoRestart}
 TimeoutStartSec=300
 
 [Install]
-WantedBy=default.target`;
+WantedBy=default.target`.replace(/\n\n\n+/g, '\n\n');
 		}
 
 		validationMessage = null;
@@ -266,7 +463,7 @@ WantedBy=default.target`;
 	}
 
 	function handleSwitchPromoTab(tabKey: string) {
-		if (service.type === 'pod') {
+		if (service.type === 'pod' || Object.keys(podFiles).length > 0) {
 			podFiles[activePromoTab] = promoCode;
 			activePromoTab = tabKey;
 			promoCode = podFiles[tabKey] || '';
@@ -281,13 +478,13 @@ WantedBy=default.target`;
 		validationMessage = null;
 		dryrunOutput = '';
 
-		if (service.type === 'pod') {
+		if (service.type === 'pod' || Object.keys(podFiles).length > 0) {
 			podFiles[activePromoTab] = promoCode;
 		}
 
 		try {
 			const payload =
-				service.type === 'pod'
+				service.type === 'pod' || Object.keys(podFiles).length > 0
 					? { files: podFiles }
 					: { content: promoCode };
 			const res = await api.services.validateQuadlet(service.id, payload);
@@ -377,7 +574,22 @@ WantedBy=default.target`;
 		const originalType = service.type;
 		const originalTarget = service.runtimeTarget;
 
-		if (service.type === 'pod') {
+		// Anchor origin source type so demoting can restore it accurately
+		if (!service.sourceType || service.sourceType === 'git') {
+			if (originalType === 'compose' || (service.composeYaml && service.composeYaml.trim() !== '')) {
+				service.sourceType = 'compose';
+			} else if (originalType === 'kubernetes' || (service.k8sYaml && service.k8sYaml.trim() !== '')) {
+				service.sourceType = 'kubernetes';
+			} else if (originalType === 'pod') {
+				service.sourceType = 'pod';
+			} else if (originalType === 'image') {
+				service.sourceType = 'image';
+			} else {
+				service.sourceType = originalType;
+			}
+		}
+
+		if (service.type === 'pod' || Object.keys(podFiles).length > 0) {
 			podFiles[activePromoTab] = promoCode;
 			const units = Object.entries(podFiles).map(([fname, content]) => {
 				return `# File: ${fname}\n${content.trim()}`;
@@ -429,9 +641,8 @@ StartLimitBurst=5
 [Container]
 Image=${getSanitizedImage(service)}
 ContainerName=${service.projectId}-${service.name}
-${(service.hostPort && service.hostPort > 0) || (service.port && service.port > 0) ? `PublishPort=${service.hostPort || service.port}:${service.port || service.hostPort}\n` : ''}AutoUpdate=registry
-UserNS=${userNamespace}
-${volumes.map((v) => `Volume=${v.source}:${v.target}:${v.options}`).join('\n')}
+${service.hostPort && service.hostPort > 0 ? `PublishPort=${service.hostPort}:${service.port || service.hostPort}\n` : ''}AutoUpdate=registry
+${userNamespace && userNamespace !== 'default' ? `UserNS=${userNamespace}\n` : ''}${volumes.map((v) => `Volume=${v.source}:${v.target}:${v.options}`).join('\n')}
 
 [Service]
 Restart=${restartPolicy}
@@ -452,8 +663,7 @@ spec:
   containers:
     - name: ${service.name}
       image: ${service.image || 'localhost/' + service.name + ':latest'}
-      ports:
-        - containerPort: ${service.port || 3000}
+      ${service.port && service.port > 0 ? `ports:\n        - containerPort: ${service.port}` : ''}
       resources:
         limits:
           cpu: "${cpuLimit}"
@@ -464,10 +674,8 @@ spec:
 
 	let generatedPodmanRun = $derived(`podman run -d \\
   --name ${service.projectId}-${service.name} \\
-  --userns ${userNamespace} \\
-  --restart ${restartPolicy} \\
-  -p ${service.port || 3000}:${service.port || 3000} \\
-  --cpus ${cpuLimit} \\
+${userNamespace && userNamespace !== 'default' ? `  --userns ${userNamespace} \\\n` : ''}  --restart ${restartPolicy} \\
+  ${service.hostPort && service.hostPort > 0 ? `-p ${service.hostPort}:${service.port || service.hostPort} \\\n  ` : ''}--cpus ${cpuLimit} \\
   --memory ${memoryLimit} \\
   --pids-limit ${pidsLimit} \\
   ${volumes.map((v) => `-v ${v.source}:${v.target}:${v.options} \\`).join('\n  ')}
@@ -520,7 +728,7 @@ spec:
 			service.advanced = {
 				runtime: {
 					mode: runtimeMode,
-					userNamespace: userNamespace.trim() || 'keep-id',
+					userNamespace: userNamespace.trim() === 'default' ? '' : userNamespace.trim(),
 					devices: devices
 						.split(',')
 						.map((d) => d.trim())
@@ -639,7 +847,7 @@ spec:
 					<Input
 						id="rt-userns"
 						bind:value={userNamespace}
-						placeholder="keep-id"
+						placeholder="keep-id (leave blank for rootless default)"
 						class="text-xs font-[var(--font-mono)]"
 					/>
 				</div>
@@ -791,7 +999,7 @@ spec:
 							<CodeEditor
 								bind:value={promoCode}
 								language="quadlet"
-								height="240px"
+								height="auto"
 							/>
 						</div>
 
@@ -812,7 +1020,7 @@ spec:
 
 						{#if dryrunOutput}
 							<div
-								class="max-h-40 overflow-y-auto rounded border border-[var(--border)] bg-[var(--bg-table-header)] p-3 font-mono text-[11px] text-[var(--text-secondary)] whitespace-pre-wrap select-text"
+								class="min-h-24 overflow-x-auto rounded border border-[var(--border)] bg-[var(--bg-table-header)] p-3.5 font-mono text-[11px] leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap select-text"
 							>
 								{dryrunOutput}
 							</div>
@@ -881,13 +1089,13 @@ spec:
 			>
 				<div class="flex flex-col gap-0.5">
 					<span class="text-xs font-medium text-[var(--text-primary)]"
-						>Systemd Quadlet Supervisor</span
+						>Systemd Unit Specification</span
 					>
 					<span class="text-[11px] text-[var(--text-tertiary)]">
-						Automatically generates a systemd user service unit for process supervision.
+						Unit file: ~/.config/containers/systemd/{slugifyName(service.name)}.container
 					</span>
 				</div>
-				<Switch bind:checked={quadletEnabled} size="sm" />
+				<span class="font-mono text-xs font-semibold text-[var(--accent)]">{slugifyName(service.name)}.service</span>
 			</div>
 
 			<Select

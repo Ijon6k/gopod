@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"gopod/internal/podman"
@@ -27,11 +28,13 @@ type IngressCleaner func(ctx context.Context, serviceID string)
 
 // WorkloadService encapsulates workload management and deployment orchestration.
 type WorkloadService struct {
-	repo           Repository
-	deployer       *Deployer
-	logManager     *LogManager
-	audit          AuditRecorder
-	ingressCleaner IngressCleaner
+	repo              Repository
+	deployer          *Deployer
+	logManager        *LogManager
+	audit             AuditRecorder
+	ingressCleaner    IngressCleaner
+	activeCancels     sync.Map // deploymentID string -> context.CancelFunc
+	activeServiceDeps sync.Map // serviceID string -> deploymentID string
 }
 
 // NewWorkloadService creates a new services domain service.
@@ -57,9 +60,34 @@ func (s *WorkloadService) reconcileRuntimeStatus(ctx context.Context, svc *Servi
 	if svc == nil || s.deployer == nil {
 		return
 	}
-	// Transient deployment states are managed during deploy lifecycle
 	if svc.Status == "deploying" || svc.Status == "building" {
-		return
+		// Check if actively deploying in-memory
+		if _, active := s.activeServiceDeps.Load(svc.ID); active {
+			return
+		}
+
+		// Verify database state for stale deployments
+		deps, err := s.repo.ListDeployments(ctx, svc.ID)
+		hasActive := false
+		if err == nil && len(deps) > 0 {
+			now := time.Now()
+			for _, d := range deps {
+				if d.Status == "building" || d.Status == "deploying" {
+					// Auto-heal abandoned deployments older than 15 minutes
+					if time.Since(d.StartedAt) > 15*time.Minute {
+						d.Status = "interrupted"
+						d.Duration = "Timed out"
+						d.FinishedAt = &now
+						_ = s.repo.UpdateDeployment(ctx, d)
+					} else {
+						hasActive = true
+					}
+				}
+			}
+		}
+		if hasActive {
+			return
+		}
 	}
 	realStatus := s.deployer.GetRuntimeStatus(ctx, *svc)
 	if realStatus != "" && realStatus != svc.Status {
@@ -82,7 +110,19 @@ func (s *WorkloadService) ListServices(ctx context.Context, projectID string) ([
 		for i := range list {
 			svc := &list[i]
 			if svc.Status == "deploying" || svc.Status == "building" {
-				continue
+				deps, err := s.repo.ListDeployments(ctx, svc.ID)
+				hasActive := false
+				if err == nil && len(deps) > 0 {
+					for _, d := range deps {
+						if d.Status == "building" || d.Status == "deploying" {
+							hasActive = true
+							break
+						}
+					}
+				}
+				if hasActive {
+					continue
+				}
 			}
 			if realSt, ok := statusMap[svc.ID]; ok && realSt != "" && realSt != svc.Status {
 				svc.Status = realSt
@@ -253,6 +293,13 @@ func (s *WorkloadService) DeleteService(ctx context.Context, id string, deleteVo
 		return errors.New("repository not initialized")
 	}
 
+	// 1. Abort any active in-flight deployment for this service
+	if val, ok := s.activeServiceDeps.Load(id); ok {
+		if depID, ok := val.(string); ok {
+			_, _ = s.CancelDeployment(ctx, depID)
+		}
+	}
+
 	svc, err := s.GetService(ctx, id)
 	if err == nil && svc != nil {
 		if s.deployer != nil {
@@ -344,9 +391,10 @@ func (s *WorkloadService) RestartService(ctx context.Context, id string) (*Servi
 		if err := s.deployer.RestartService(ctx, *svc); err != nil {
 			return nil, err
 		}
+		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
+	} else {
+		svc.Status = "running"
 	}
-
-	svc.Status = "running"
 	if err := s.repo.Update(ctx, *svc); err != nil {
 		return nil, err
 	}
@@ -428,9 +476,16 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 	svc.Status = "deploying"
 	_ = s.repo.Update(ctx, *svc)
 
+	bgCtx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
+	s.activeCancels.Store(depRecord.ID, cancel)
+	s.activeServiceDeps.Store(svc.ID, depRecord.ID)
+
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
-		defer cancel()
+		defer func() {
+			cancel()
+			s.activeCancels.Delete(depRecord.ID)
+			s.activeServiceDeps.Delete(svc.ID)
+		}()
 		s.executeDeployment(bgCtx, svc, depRecord, start)
 	}()
 
@@ -494,7 +549,11 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 
 	status := "success"
 	if deployErr != nil {
-		status = "failed"
+		if errors.Is(ctx.Err(), context.Canceled) || errors.Is(deployErr, context.Canceled) {
+			status = "cancelled"
+		} else {
+			status = "failed"
+		}
 	}
 
 	if result != nil {
@@ -513,9 +572,28 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 	}
 
 	// Update service status
-	svc.Status = "running"
-	if deployErr != nil {
+	if status == "cancelled" {
+		if s.deployer != nil {
+			realStatus := s.deployer.GetRuntimeStatus(ctx, *svc)
+			if realStatus != "" {
+				svc.Status = realStatus
+			} else {
+				svc.Status = "stopped"
+			}
+		} else {
+			svc.Status = "stopped"
+		}
+	} else if deployErr != nil {
 		svc.Status = "failed"
+	} else if s.deployer != nil {
+		realStatus := s.deployer.GetRuntimeStatus(ctx, *svc)
+		if realStatus != "" {
+			svc.Status = realStatus
+		} else {
+			svc.Status = "running"
+		}
+	} else {
+		svc.Status = "running"
 	}
 	_ = s.repo.Update(ctx, *svc)
 
@@ -534,6 +612,169 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 		}
 		_ = s.audit.Record(ctx, action, "operator", svc.Name, "deployment", "127.0.0.1", status)
 	}
+}
+
+// CancelDeployment cancels an in-flight deployment and reconciles service state.
+func (s *WorkloadService) CancelDeployment(ctx context.Context, depID string) (*Deployment, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+
+	dep, err := s.repo.GetDeployment(ctx, depID)
+	if err != nil {
+		return nil, err
+	}
+	if dep == nil {
+		return nil, errors.New("deployment not found")
+	}
+
+	// Idempotency: if already in a terminal state, return without modifying
+	if dep.Status != "building" && dep.Status != "deploying" {
+		return dep, nil
+	}
+
+	// Invoke active cancellation context if present
+	if val, ok := s.activeCancels.Load(depID); ok {
+		if cancel, ok := val.(context.CancelFunc); ok {
+			cancel()
+		}
+		s.activeCancels.Delete(depID)
+		s.activeServiceDeps.Delete(dep.ServiceID)
+	}
+
+	now := time.Now()
+	dep.Status = "cancelled"
+	dep.Duration = "Cancelled by operator"
+	dep.FinishedAt = &now
+	_ = s.repo.UpdateDeployment(ctx, *dep)
+
+	if s.logManager != nil {
+		s.logManager.LogLine(depID, "🛑 [gopod-engine] Deployment cancelled by operator.")
+	}
+
+	// Reconcile parent service runtime status
+	svc, _ := s.repo.Get(ctx, dep.ServiceID)
+	if svc != nil {
+		if s.deployer != nil {
+			realStatus := s.deployer.GetRuntimeStatus(ctx, *svc)
+			if realStatus != "" {
+				svc.Status = realStatus
+			} else {
+				svc.Status = "stopped"
+			}
+		} else {
+			svc.Status = "stopped"
+		}
+		_ = s.repo.Update(ctx, *svc)
+
+		if s.audit != nil {
+			_ = s.audit.Record(ctx, "service.cancel_deployment", "operator", svc.Name, "deployment", "127.0.0.1", "cancelled")
+		}
+	}
+
+	return dep, nil
+}
+
+// CancelServiceDeployment cancels any active deployment for a service and forces state reconciliation.
+func (s *WorkloadService) CancelServiceDeployment(ctx context.Context, serviceID string) (*Service, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+
+	svc, err := s.repo.Get(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return nil, errors.New("service not found")
+	}
+
+	// Check if active in memory
+	if val, ok := s.activeServiceDeps.Load(serviceID); ok {
+		if depID, ok := val.(string); ok {
+			_, _ = s.CancelDeployment(ctx, depID)
+		}
+	}
+
+	// Also cancel any deployments marked building/deploying in database for this service
+	deps, _ := s.repo.ListDeployments(ctx, serviceID)
+	now := time.Now()
+	for _, d := range deps {
+		if d.Status == "building" || d.Status == "deploying" {
+			d.Status = "cancelled"
+			d.Duration = "Cancelled by operator"
+			d.FinishedAt = &now
+			_ = s.repo.UpdateDeployment(ctx, d)
+			if s.logManager != nil {
+				s.logManager.LogLine(d.ID, "🛑 [gopod-engine] Deployment cancelled by operator.")
+			}
+		}
+	}
+
+	// Reset service status to real runtime status
+	if s.deployer != nil {
+		realStatus := s.deployer.GetRuntimeStatus(ctx, *svc)
+		if realStatus != "" {
+			svc.Status = realStatus
+		} else {
+			svc.Status = "stopped"
+		}
+	} else {
+		svc.Status = "stopped"
+	}
+	_ = s.repo.Update(ctx, *svc)
+
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.cancel_deployment", "operator", svc.Name, "deployment", "127.0.0.1", "cancelled")
+	}
+
+	return svc, nil
+}
+
+// ReconcileOrphanedDeployments cleans up stale in-flight state left behind by server restarts or crashes.
+func (s *WorkloadService) ReconcileOrphanedDeployments(ctx context.Context) error {
+	if s.repo == nil {
+		return nil
+	}
+
+	services, err := s.repo.List(ctx, "")
+	if err != nil {
+		return err
+	}
+
+	now := time.Now()
+	for _, svc := range services {
+		// Clean up stale deployments
+		deps, _ := s.repo.ListDeployments(ctx, svc.ID)
+		for _, d := range deps {
+			if d.Status == "building" || d.Status == "deploying" {
+				d.Status = "interrupted"
+				d.Duration = "Engine restarted"
+				d.FinishedAt = &now
+				_ = s.repo.UpdateDeployment(ctx, d)
+				if s.logManager != nil {
+					s.logManager.LogLine(d.ID, "⚠️ [gopod-engine] Engine restarted while deployment was running. Marked as interrupted.")
+				}
+			}
+		}
+
+		if svc.Status == "deploying" || svc.Status == "building" {
+			if s.deployer != nil {
+				realStatus := s.deployer.GetRuntimeStatus(ctx, svc)
+				if realStatus != "" {
+					svc.Status = realStatus
+				} else {
+					svc.Status = "stopped"
+				}
+			} else {
+				svc.Status = "stopped"
+			}
+			_ = s.repo.Update(ctx, svc)
+			log.Printf("[Reconcile] Reset stuck service %s (%s) status to %s on startup", svc.Name, svc.ID, svc.Status)
+		}
+	}
+
+	return nil
 }
 
 // GetDeployment retrieves deployment record by ID.
@@ -652,20 +893,47 @@ func (s *WorkloadService) DemoteQuadlet(ctx context.Context, id string) (*Servic
 		}
 	}
 
-	// 1. Stop and disable systemd service
-	if _, err := exec.LookPath("systemctl"); err == nil {
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s.service", cleanName)).Run()
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s-pod.service", cleanName)).Run()
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("pod_%s-pod.service", cleanName)).Run()
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "disable", fmt.Sprintf("%s.service", cleanName)).Run()
+	// 1. Discover all candidate systemd units and unit files
+	var cands []string
+	var filesToDelete []string
+	if s.deployer != nil {
+		cands, _, filesToDelete = s.deployer.findServiceUnitFilesAndCandidates(*svc)
+	} else {
+		cands = getQuadletCandidateUnitNames(*svc, cleanName)
 	}
 
-	// 2. Remove quadlet files
+	// 2. Stop and disable all candidate systemd services
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		for _, cand := range cands {
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", cand).Run()
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", cand).Run()
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "disable", cand).Run()
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", cand).Run()
+		}
+	}
+
+	// 3. Remove discovered quadlet unit files
+	for _, fpath := range filesToDelete {
+		_ = os.Remove(fpath)
+	}
 	if systemdDir != "" {
 		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.container", cleanName)))
 		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.pod", cleanName)))
 		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("pod_%s.pod", cleanName)))
 		_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.container", svc.Name)))
+		if svc.QuadletConfig != "" {
+			units := SplitQuadletUnits(svc.QuadletConfig, cleanName)
+			for fname := range units {
+				_ = os.Remove(filepath.Join(systemdDir, fname))
+			}
+			parsed := ParseQuadlet(svc.QuadletConfig)
+			if parsed.ContainerName != "" {
+				_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.container", parsed.ContainerName)))
+			}
+			if parsed.Pod != "" {
+				_ = os.Remove(filepath.Join(systemdDir, fmt.Sprintf("%s.pod", parsed.Pod)))
+			}
+		}
 	}
 	if s.deployer != nil {
 		quadletDir := filepath.Join(s.deployer.dataDir, "quadlets")
@@ -673,10 +941,13 @@ func (s *WorkloadService) DemoteQuadlet(ctx context.Context, id string) (*Servic
 		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.pod", cleanName)))
 	}
 
-	// 3. Reload daemon and reset failed
+	// 4. Reload daemon and reset failed
 	if _, err := exec.LookPath("systemctl"); err == nil {
 		_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
-		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", fmt.Sprintf("%s.service", cleanName)).Run()
+		for _, cand := range cands {
+			_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", cand).Run()
+		}
+		_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed").Run()
 	}
 
 	// 4. Parse quadlet configuration to preserve image and ports
@@ -691,10 +962,35 @@ func (s *WorkloadService) DemoteQuadlet(ctx context.Context, id string) (*Servic
 		if parsed.HostPort > 0 {
 			svc.HostPort = parsed.HostPort
 		}
+		if len(parsed.Env) > 0 && len(svc.EnvVars) == 0 {
+			for k, v := range parsed.Env {
+				svc.EnvVars = append(svc.EnvVars, EnvVar{Key: k, Value: v})
+			}
+		}
 	}
 
-	svc.Type = "image"
-	svc.RuntimeTarget = "standalone"
+	// 5. Restore origin workload anchor type
+	targetType := "image"
+	if svc.SourceType == "compose" || strings.TrimSpace(svc.ComposeYaml) != "" {
+		targetType = "compose"
+	} else if svc.SourceType == "kubernetes" || strings.TrimSpace(svc.K8sYaml) != "" {
+		targetType = "kubernetes"
+	} else if svc.SourceType == "pod" {
+		targetType = "pod"
+	} else if svc.SourceType == "git" || svc.SourceType == "dockerfile" || svc.GitRepo != "" {
+		targetType = "application"
+	} else if svc.SourceType == "image" {
+		targetType = "image"
+	}
+
+	svc.Type = targetType
+	if targetType == "pod" {
+		svc.RuntimeTarget = "pod"
+		svc.InPod = true
+	} else {
+		svc.RuntimeTarget = "standalone"
+		svc.InPod = false
+	}
 	svc.QuadletConfig = ""
 
 	if err := s.repo.Update(ctx, *svc); err != nil {
@@ -753,7 +1049,7 @@ func (s *WorkloadService) GroupIntoPod(ctx context.Context, id, podName string, 
 	}
 
 	if s.deployer != nil {
-		_ = s.deployer.RestartService(ctx, *svc)
+		_, _ = s.deployer.DeployService(ctx, *svc, fmt.Sprintf("group-pod-%d", time.Now().Unix()), "group-pod")
 		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
 		_ = s.repo.Update(ctx, *svc)
 	}

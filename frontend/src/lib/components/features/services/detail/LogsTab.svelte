@@ -3,7 +3,7 @@
 	import { SearchInput, Select, Checkbox, Button } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
-	import { ArrowClockwise, Copy, Trash, Funnel, Terminal } from 'phosphor-svelte';
+	import { ArrowClockwise, Copy, Trash, Funnel, Terminal, ArrowsOutSimple, ArrowsInSimple } from 'phosphor-svelte';
 	import { onMount } from 'svelte';
 
 	interface Props {
@@ -21,6 +21,7 @@
 	let rawLogsText = $state<string>('');
 	let logsContainer = $state<HTMLDivElement | null>(null);
 	let copyFeedback = $state(false);
+	let isFullscreen = $state(false);
 
 	// Find active container(s) for this service from reactive dataStore
 	let matchingContainers = $derived.by<Container[]>(() => {
@@ -212,6 +213,8 @@
 	});
 </script>
 
+<svelte:window onkeydown={(e) => { if (e.key === 'Escape' && isFullscreen) isFullscreen = false; }} />
+
 <div class="flex w-full flex-col gap-3">
 	<!-- Unified Compact Toolbar -->
 	<div
@@ -323,14 +326,44 @@
 			<Button variant="ghost" size="sm" onclick={handleClear} aria-label="Clear terminal screen">
 				<Trash class="h-3.5 w-3.5 text-[var(--text-tertiary)]" />
 			</Button>
+
+			<Button
+				variant="ghost"
+				size="sm"
+				onclick={() => (isFullscreen = !isFullscreen)}
+				aria-label={isFullscreen ? 'Exit fullscreen logs' : 'Maximize logs'}
+				title={isFullscreen ? 'Exit fullscreen' : 'Maximize logs'}
+			>
+				{#if isFullscreen}
+					<ArrowsInSimple class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+				{:else}
+					<ArrowsOutSimple class="h-3.5 w-3.5 text-[var(--text-secondary)]" />
+				{/if}
+			</Button>
 		</div>
 	</div>
 
-	<!-- Monospace Terminal Log Screen -->
+	<!-- Monospace Terminal Log Screen (Auto-stretching to bottom of viewport) -->
 	<div
 		bind:this={logsContainer}
-		class="relative h-[520px] overflow-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-table-header)] p-4 text-[12px] leading-[1.65] font-[var(--font-mono)] text-[var(--text-primary)] shadow-inner transition-colors select-text"
+		style={isFullscreen
+			? 'position: fixed; inset: 16px; z-index: 50; height: calc(100dvh - 32px);'
+			: 'height: calc(100dvh - 275px); min-height: 480px;'}
+		class="relative w-full overflow-auto rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-table-header)] p-4 text-[12px] leading-[1.65] font-[var(--font-mono)] text-[var(--text-primary)] shadow-inner transition-all select-text {isFullscreen ? 'shadow-2xl ring-1 ring-[var(--border)]' : ''}"
 	>
+		{#if isFullscreen}
+			<div class="sticky top-0 right-0 z-10 flex justify-end pb-2">
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={() => (isFullscreen = false)}
+					class="gap-1.5 shadow-md bg-[var(--bg-panel)]"
+				>
+					<ArrowsInSimple class="h-3.5 w-3.5" />
+					<span>Exit fullscreen</span>
+				</Button>
+			</div>
+		{/if}
 		{#each filteredLogs as log, idx (idx)}
 			<div
 				class="group flex items-baseline gap-2.5 rounded px-1.5 py-0.5 transition-colors hover:bg-[var(--bg-table-row-hover)]"

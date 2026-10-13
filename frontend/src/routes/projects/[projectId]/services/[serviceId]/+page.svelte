@@ -24,14 +24,11 @@
 	let isLoading = $state(true);
 	let lastResolvedServiceId = '';
 
-	let service = $derived(directService ?? (serviceId ? getServiceById(serviceId) : undefined));
+	let service = $derived((serviceId ? getServiceById(serviceId) : undefined) ?? directService);
 	let project = $derived(
-		directProject ??
-			(projectId
-				? getProjectById(projectId)
-				: service
-					? getProjectById(service.projectId)
-					: undefined)
+		(projectId ? getProjectById(projectId) : undefined) ??
+			(service ? getProjectById(service.projectId) : undefined) ??
+			directProject
 	);
 
 	$effect(() => {

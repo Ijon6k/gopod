@@ -216,6 +216,24 @@
 		}
 	}
 
+	let isCancelling = $state(false);
+
+	async function handleCancelDeployment() {
+		if (isCancelling) return;
+		isCancelling = true;
+		showFeedback('Cancelling active deployment...', 'info');
+		try {
+			await dataStore.cancelServiceDeployment(service.id);
+			service.status = 'stopped';
+			isDeploying = false;
+			showFeedback('Deployment cancelled successfully.', 'success');
+		} catch (err: any) {
+			showFeedback(err?.message || 'Failed to cancel deployment', 'info');
+		} finally {
+			isCancelling = false;
+		}
+	}
+
 	function handleToggleAutodeploy(checked?: boolean) {
 		autoDeploy = checked !== undefined ? checked : !autoDeploy;
 		service.autoDeploy = autoDeploy;
@@ -271,6 +289,24 @@
 						<span>Deploy / Reload</span>
 					{/if}
 				</Button>
+
+				{#if isDeploying || service.status === 'deploying'}
+					<Button
+						variant="secondary-destructive"
+						size="sm"
+						onclick={handleCancelDeployment}
+						disabled={isCancelling}
+						class="gap-1.5 shadow-xs"
+					>
+						{#if isCancelling}
+							<ArrowClockwise size={13} class="animate-spin" />
+							<span>Cancelling…</span>
+						{:else}
+							<Stop size={13} weight="fill" />
+							<span>Cancel</span>
+						{/if}
+					</Button>
+				{/if}
 
 				<!-- 2. Daemon Reload (Dedicated systemctl --user daemon-reload) -->
 				<Button
@@ -330,15 +366,15 @@
 					</Button>
 				{/if}
 
-				<!-- 5. Journal Logs -->
+				<!-- 5. Open Terminal -->
 				<Button
 					variant="secondary"
 					size="sm"
 					onclick={onTerminalClick}
 					class="gap-1.5 font-mono text-xs shadow-xs"
 				>
-					<Scroll size={13} />
-					<span>Journal Logs</span>
+					<Terminal size={13} />
+					<span>Terminal</span>
 				</Button>
 			{:else}
 				<!-- 1. Deploy (High-contrast Primary Button) -->
@@ -357,6 +393,24 @@
 						<span>Deploy</span>
 					{/if}
 				</Button>
+
+				{#if isDeploying || service.status === 'deploying'}
+					<Button
+						variant="secondary-destructive"
+						size="sm"
+						onclick={handleCancelDeployment}
+						disabled={isCancelling}
+						class="gap-1.5 shadow-xs"
+					>
+						{#if isCancelling}
+							<ArrowClockwise size={13} class="animate-spin" />
+							<span>Cancelling…</span>
+						{:else}
+							<Stop size={13} weight="fill" />
+							<span>Cancel</span>
+						{/if}
+					</Button>
+				{/if}
 
 				<!-- 2. Fresh Volumes -->
 				<Button
@@ -430,7 +484,7 @@
 					class="gap-1.5 font-mono text-xs shadow-xs"
 				>
 					<Terminal size={13} />
-					<span>&gt;_ Open Terminal</span>
+					<span>Terminal</span>
 				</Button>
 			{/if}
 		</div>
@@ -465,7 +519,7 @@
 				<Badge variant="neutral" class="font-mono text-[11px] text-[var(--accent)]">mode: podman-pod</Badge>
 			</div>
 		</div>
-	{:else}
+	{:else if service.type !== 'compose' && service.type !== 'quadlet'}
 		<div
 			class="flex flex-wrap items-center justify-between gap-3 border-t border-kumo-hairline bg-kumo-elevated px-5 py-3 text-xs"
 		>
@@ -476,9 +530,7 @@
 					aria-label="Toggle encapsulation inside Podman Pod"
 				/>
 				<span class="font-medium text-kumo-default">
-					{service.type === 'compose'
-						? 'Encapsulate stack inside Podman Pod'
-						: 'Run inside Podman Pod'}
+					Run inside Podman Pod
 				</span>
 				<span class="hidden text-[11px] text-kumo-subtle sm:inline">
 					{inPod

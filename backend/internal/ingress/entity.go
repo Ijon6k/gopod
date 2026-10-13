@@ -7,6 +7,7 @@ type Domain struct {
 	ID              string    `json:"id"`
 	ProjectID       string    `json:"projectId"`
 	ServiceID       string    `json:"serviceId"`
+	TargetContainer string    `json:"targetContainer,omitempty"`
 	Hostname        string    `json:"hostname"`
 	ContainerPort   int       `json:"containerPort"`
 	TLS             bool      `json:"tls"`

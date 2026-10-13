@@ -49,12 +49,66 @@ export class ProjectsDomainStore {
 		}
 	}
 
-	cancelDeployment(deploymentId: string) {
+	async cancelDeployment(deploymentId: string): Promise<void> {
 		const dep = this.deployments.find((d) => d.id === deploymentId);
-		if (dep && (dep.status === 'deploying' || dep.status === 'building')) {
+		if (dep) {
 			dep.status = 'cancelled';
-			dep.duration = 'Cancelled';
+			dep.duration = 'Cancelled by operator';
 			dep.finishedAt = new Date().toISOString();
+			this.deployments = [...this.deployments];
+		}
+		try {
+			await api.services.cancelDeployment(deploymentId);
+			if (dep?.serviceId) {
+				const svc = await api.services.get(dep.serviceId);
+				const idx = this.services.findIndex((s) => s.id === dep.serviceId);
+				if (idx >= 0) {
+					this.services[idx] = { ...this.services[idx], ...svc };
+				}
+			}
+		} catch (err) {
+			console.warn('Failed to sync deployment cancellation to backend:', err);
+		}
+	}
+
+	async cancelServiceDeployment(serviceId: string): Promise<void> {
+		const svc = this.services.find((s) => s.id === serviceId);
+		if (svc) {
+			svc.status = 'stopped';
+		}
+		this.deployments = this.deployments.map((d) => {
+			if (d.serviceId === serviceId && (d.status === 'building' || d.status === 'deploying')) {
+				return {
+					...d,
+					status: 'cancelled',
+					duration: 'Cancelled by operator',
+					finishedAt: new Date().toISOString()
+				};
+			}
+			return d;
+		});
+
+		try {
+			const updated = await api.services.cancelServiceDeployment(serviceId);
+			if (svc) {
+				svc.status = updated.status || 'stopped';
+			}
+			const idx = this.services.findIndex((s) => s.id === serviceId);
+			if (idx >= 0) {
+				this.services[idx] = { ...this.services[idx], ...updated };
+			}
+		} catch (err) {
+			console.warn('Failed to cancel service deployment on backend:', err);
+		}
+	}
+
+	upsertDeployment(dep: Partial<Deployment> & { id: string }) {
+		const idx = this.deployments.findIndex((d) => d.id === dep.id);
+		if (idx >= 0) {
+			this.deployments[idx] = { ...this.deployments[idx], ...dep };
+			this.deployments = [...this.deployments];
+		} else {
+			this.deployments = [dep as Deployment, ...this.deployments];
 		}
 	}
 
@@ -267,17 +321,31 @@ export class ProjectsDomainStore {
 						if (updatedDep) {
 							const dIdx = this.deployments.findIndex((d) => d.id === depId);
 							if (dIdx >= 0) {
-								this.deployments[dIdx].status = updatedDep.status;
-								this.deployments[dIdx].duration =
-									updatedDep.duration || this.deployments[dIdx].duration;
-								this.deployments[dIdx].finishedAt = updatedDep.finishedAt || '';
+								this.deployments[dIdx] = {
+									...this.deployments[dIdx],
+									status: updatedDep.status,
+									duration: updatedDep.duration || this.deployments[dIdx].duration,
+									finishedAt: updatedDep.finishedAt || '',
+									commitMessage: updatedDep.commitMessage || this.deployments[dIdx].commitMessage,
+									version: updatedDep.version || this.deployments[dIdx].version,
+									image: updatedDep.image || this.deployments[dIdx].image
+								};
+								this.deployments = [...this.deployments];
 							}
-						}
-						if (updatedSvc && updatedSvc.status !== 'deploying') {
-							if (svc) {
-								svc.status = updatedSvc.status;
+							if (updatedDep.status === 'failed' || updatedDep.status === 'success') {
+								const sIdx = this.services.findIndex((s) => s.id === serviceId);
+								if (sIdx >= 0) {
+									const terminalStatus =
+										updatedSvc?.status && updatedSvc.status !== 'deploying'
+											? updatedSvc.status
+											: updatedDep.status === 'failed'
+												? 'failed'
+												: 'running';
+									this.services[sIdx].status = terminalStatus;
+									this.services = [...this.services];
+								}
+								clearInterval(pollTimer);
 							}
-							clearInterval(pollTimer);
 						}
 					} catch (_) {}
 
@@ -344,6 +412,15 @@ export class ProjectsDomainStore {
 	deleteDomain(domainId: string) {
 		this.domains = this.domains.filter((d) => d.id !== domainId);
 		api.domains.delete(domainId).catch((err) => console.warn('Failed to sync domain delete:', err));
+	}
+
+	async revalidateDomain(domainId: string): Promise<Domain> {
+		const updated = await api.domains.revalidate(domainId);
+		const idx = this.domains.findIndex((d) => d.id === domainId);
+		if (idx !== -1) {
+			this.domains[idx] = { ...this.domains[idx], ...updated };
+		}
+		return updated;
 	}
 
 	async fetchProjectsData() {

@@ -80,6 +80,11 @@ export class RuntimeDomainStore {
 		await this.fetchQuadlets();
 	}
 
+	async deleteQuadlet(name: string) {
+		await api.runtime.quadlets.delete(name);
+		await this.fetchQuadlets();
+	}
+
 	async fetchRuntimeData() {
 		try {
 			const [podsData, imagesData, volumesData, networksData, quadletsData] = await Promise.all([

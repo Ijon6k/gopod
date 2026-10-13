@@ -30,7 +30,48 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 		return err
 	}
 
-	// 1. Compose Stack
+	// 1. Quadlet Service (Takes precedence if active runtime is quadlet)
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (strings.TrimSpace(s.QuadletConfig) != "" && strings.TrimSpace(s.ComposeYaml) == "") {
+		unitName := QuadletUnitName(s)
+		cands := getQuadletCandidateUnitNames(s, unitName)
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			started := false
+			for _, cand := range cands {
+				cmd := exec.CommandContext(ctx, "systemctl", "--user", "start", cand)
+				d.setupCmdEnv(cmd)
+				if out, err := cmd.CombinedOutput(); err == nil {
+					started = true
+					break
+				} else {
+					log.Printf("[DEBUG] systemctl start %s: %s (%v)", cand, strings.TrimSpace(string(out)), err)
+				}
+			}
+			if started {
+				return nil
+			}
+		}
+		if d.podmanClient != nil {
+			if err := d.podmanClient.StartContainer(ctx, s.ID); err == nil {
+				return nil
+			}
+			if err := d.podmanClient.StartContainer(ctx, unitName); err == nil {
+				return nil
+			}
+			parsed := ParseQuadlet(s.QuadletConfig)
+			if parsed.ContainerName != "" {
+				if err := d.podmanClient.StartContainer(ctx, parsed.ContainerName); err == nil {
+					return nil
+				}
+			}
+			if parsed.Pod != "" {
+				_ = d.podmanClient.StartPod(ctx, parsed.Pod)
+			}
+		}
+		_, err := d.DeployService(ctx, s, fmt.Sprintf("start-%d", time.Now().Unix()))
+		return err
+	}
+
+	// 2. Compose Stack
 	if s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "" {
 		projectName := s.ID
 		if projectName == "" {
@@ -71,31 +112,21 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 		return nil
 	}
 
-	// 2. Quadlet Service
-	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
-		unitName := QuadletUnitName(s)
-		if _, err := exec.LookPath("systemctl"); err == nil {
-			cmd := exec.CommandContext(ctx, "systemctl", "--user", "start", fmt.Sprintf("%s.service", unitName))
-			if out, err := cmd.CombinedOutput(); err == nil {
-				return nil
-			} else {
-				log.Printf("[WARN] systemctl start failed for %s: %s (%v)", unitName, strings.TrimSpace(string(out)), err)
-			}
-		}
-		if d.podmanClient != nil {
-			if err := d.podmanClient.StartContainer(ctx, s.ID); err == nil {
-				return nil
-			}
-			if err := d.podmanClient.StartContainer(ctx, unitName); err == nil {
-				return nil
-			}
-		}
-		_, err := d.DeployService(ctx, s, fmt.Sprintf("start-%d", time.Now().Unix()))
-		return err
-	}
-
-	// 3. Container / Git / Direct Image
+	// 3. Container / Git / Direct Image / Pod Workload
 	if d.podmanClient != nil {
+		if s.Type == "pod" || s.RuntimeTarget == "pod" || s.InPod {
+			_ = d.podmanClient.StartPod(ctx, s.ID)
+			_ = d.podmanClient.StartPod(ctx, s.Name)
+			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", s.ID))
+			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", s.Name))
+			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)))
+			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("%s-%s", s.ProjectID, s.Name))
+			if s.PodID != "" {
+				_ = d.podmanClient.StartPod(ctx, s.PodID)
+				_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", s.PodID))
+			}
+		}
+
 		containers, _ := d.podmanClient.GetContainers(ctx)
 		found := false
 		var startErr error
@@ -143,7 +174,39 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 		return nil
 	}
 
-	// 1. Compose Stack
+	// 1. Quadlet Service (Takes precedence if active runtime is quadlet)
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (strings.TrimSpace(s.QuadletConfig) != "" && strings.TrimSpace(s.ComposeYaml) == "") {
+		unitName := QuadletUnitName(s)
+		parsed := ParseQuadlet(s.QuadletConfig)
+		cands := getQuadletCandidateUnitNames(s, unitName)
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			for _, cand := range cands {
+				cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", cand)
+				d.setupCmdEnv(cmd)
+				_ = cmd.Run()
+			}
+		}
+		if d.podmanClient != nil {
+			if parsed.Pod != "" {
+				_ = d.podmanClient.StopPod(ctx, parsed.Pod)
+				_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", parsed.Pod))
+			}
+			_ = d.podmanClient.StopPod(ctx, s.ID)
+			_ = d.podmanClient.StopPod(ctx, s.Name)
+			_ = d.podmanClient.StopPod(ctx, unitName)
+			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", unitName))
+
+			if parsed.ContainerName != "" {
+				_ = d.podmanClient.StopContainer(ctx, parsed.ContainerName)
+			}
+			_ = d.podmanClient.StopContainer(ctx, s.ID)
+			_ = d.podmanClient.StopContainer(ctx, unitName)
+			_ = d.podmanClient.StopContainer(ctx, fmt.Sprintf("systemd-%s", unitName))
+		}
+		return nil
+	}
+
+	// 2. Compose Stack
 	if s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "" {
 		projectName := s.ID
 		if projectName == "" {
@@ -181,34 +244,53 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 		return nil
 	}
 
-	// 2. Quadlet Service
-	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
-		unitName := QuadletUnitName(s)
-		parsed := ParseQuadlet(s.QuadletConfig)
-		if _, err := exec.LookPath("systemctl"); err == nil {
-			cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s.service", unitName))
-			_ = cmd.Run()
-		}
-		if d.podmanClient != nil {
-			if parsed.ContainerName != "" {
-				_ = d.podmanClient.StopContainer(ctx, parsed.ContainerName)
-			}
-			_ = d.podmanClient.StopContainer(ctx, s.ID)
-			_ = d.podmanClient.StopContainer(ctx, unitName)
-			_ = d.podmanClient.StopContainer(ctx, fmt.Sprintf("systemd-%s", unitName))
-		}
-	}
-
-	// 3. Container / Git / Direct Image
+	// 3. Container / Git / Direct Image / Pod Workload
 	if d.podmanClient != nil {
+		if s.Type == "pod" || s.RuntimeTarget == "pod" || s.InPod {
+			_ = d.podmanClient.StopPod(ctx, s.ID)
+			_ = d.podmanClient.StopPod(ctx, s.Name)
+			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.ID))
+			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.Name))
+			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)))
+			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("%s-%s", s.ProjectID, s.Name))
+			if s.PodID != "" {
+				_ = d.podmanClient.StopPod(ctx, s.PodID)
+				_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.PodID))
+			}
+		}
+
 		containers, _ := d.podmanClient.GetContainers(ctx)
+		cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
+		candUnits := getQuadletCandidateUnitNames(s, QuadletUnitName(s))
+
 		for _, c := range containers {
 			isMatch := false
-			if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID) {
-				isMatch = true
-			} else if len(c.Names) > 0 {
+			if c.Labels != nil {
+				if c.Labels["io.gopod.service"] == s.ID ||
+					c.Labels["com.docker.compose.project"] == s.ID ||
+					c.Labels["io.podman.compose.project"] == s.ID ||
+					c.Labels["com.docker.compose.project"] == s.Name {
+					isMatch = true
+				}
+				for _, cand := range candUnits {
+					baseUnit := strings.TrimSuffix(cand, ".service")
+					if c.Labels["io.podman.quadlet.unit"] == fmt.Sprintf("%s.container", baseUnit) ||
+						c.Labels["io.podman.quadlet.unit"] == fmt.Sprintf("%s.pod", baseUnit) {
+						isMatch = true
+					}
+				}
+			}
+			if !isMatch && len(c.Names) > 0 {
 				firstName := strings.TrimPrefix(c.Names[0], "/")
-				if strings.HasPrefix(firstName, s.ID) || firstName == s.Name || strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) {
+				if strings.HasPrefix(firstName, s.ID) ||
+					firstName == s.Name ||
+					firstName == QuadletUnitName(s) ||
+					strings.HasPrefix(firstName, cleanPrefix) ||
+					firstName == fmt.Sprintf("systemd-%s", QuadletUnitName(s)) {
+					isMatch = true
+				}
+				parsed := ParseQuadlet(s.QuadletConfig)
+				if parsed.ContainerName != "" && firstName == parsed.ContainerName {
 					isMatch = true
 				}
 			}
@@ -223,13 +305,185 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 
 // RestartService restarts running containers or units for the service workload.
 func (d *Deployer) RestartService(ctx context.Context, s Service) error {
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+		unitName := QuadletUnitName(s)
+		cands := getQuadletCandidateUnitNames(s, unitName)
+		if _, err := exec.LookPath("systemctl"); err == nil {
+			for _, cand := range cands {
+				cmd := exec.CommandContext(ctx, "systemctl", "--user", "restart", cand)
+				d.setupCmdEnv(cmd)
+				if err := cmd.Run(); err == nil {
+					return nil
+				}
+			}
+		}
+	}
 	_ = d.StopService(ctx, s)
 	return d.StartService(ctx, s)
 }
 
+// cleanPreflightConflicts stops lingering systemd units and deletes ghost containers before a deployment
+// to guarantee zero container name collisions and prevent systemd auto-restart race conditions.
+func (d *Deployer) cleanPreflightConflicts(ctx context.Context, s Service, logLine func(string)) {
+	candUnits, candContainers, _ := d.findServiceUnitFilesAndCandidates(s)
+
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		for _, u := range candUnits {
+			cmdStop := exec.CommandContext(ctx, "systemctl", "--user", "stop", u)
+			d.setupCmdEnv(cmdStop)
+			_ = cmdStop.Run()
+
+			cmdKill := exec.CommandContext(ctx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", u)
+			d.setupCmdEnv(cmdKill)
+			_ = cmdKill.Run()
+
+			cmdReset := exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", u)
+			d.setupCmdEnv(cmdReset)
+			_ = cmdReset.Run()
+		}
+	}
+
+	if d.podmanClient != nil {
+		for _, name := range candContainers {
+			_ = d.podmanClient.StopContainer(ctx, name)
+			_ = d.podmanClient.DeleteContainer(ctx, name, true)
+		}
+	}
+	for _, name := range candContainers {
+		cmdRm := exec.CommandContext(ctx, "podman", "rm", "-f", name)
+		d.setupCmdEnv(cmdRm)
+		_ = cmdRm.Run()
+	}
+	if logLine != nil && len(candContainers) > 0 {
+		logLine(fmt.Sprintf("🧹 Pre-flight cleanup: reconciled %d candidate targets (%s)", len(candContainers), strings.Join(candContainers, ", ")))
+	}
+}
+
 // TeardownService stops and completely removes containers, pods, quadlets, compose stacks, and kube workloads.
 func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes bool) error {
-	// 0. Kubernetes Manifest
+	// Independent detached context with generous timeout to guarantee clean SIGKILL and socket shutdown
+	teardownCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
+	// Phase 0: Discover ALL candidate units, containers, and unit files on disk
+	candUnits, candContainers, filesToDelete := d.findServiceUnitFilesAndCandidates(s)
+
+	// Phase 1: Force Stop and Reset all candidate Systemd Units WHILE unit files still exist on disk!
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		for _, cand := range candUnits {
+			cmdStop := exec.CommandContext(teardownCtx, "systemctl", "--user", "stop", cand)
+			d.setupCmdEnv(cmdStop)
+			_ = cmdStop.Run()
+
+			cmdKill := exec.CommandContext(teardownCtx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", cand)
+			d.setupCmdEnv(cmdKill)
+			_ = cmdKill.Run()
+
+			cmdReset := exec.CommandContext(teardownCtx, "systemctl", "--user", "reset-failed", cand)
+			d.setupCmdEnv(cmdReset)
+			_ = cmdReset.Run()
+		}
+	}
+
+	// Phase 2: Purge ALL discovered unit files from disk
+	for _, fpath := range filesToDelete {
+		_ = os.Remove(fpath)
+	}
+
+	systemdQuadletDir := os.Getenv("QUADLET_DIR")
+	if systemdQuadletDir == "" {
+		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+			systemdQuadletDir = filepath.Join(homeDir, ".config", "containers", "systemd")
+		}
+	}
+	quadletDir := filepath.Join(d.dataDir, "quadlets")
+	for _, base := range candContainers {
+		if systemdQuadletDir != "" {
+			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.container", base)))
+			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.pod", base)))
+			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.volume", base)))
+			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.network", base)))
+		}
+		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.container", base)))
+		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.pod", base)))
+		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.volume", base)))
+		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.network", base)))
+	}
+
+	// Phase 3: Systemd Daemon-Reload so podman-system-generator purges generated services
+	if _, err := exec.LookPath("systemctl"); err == nil {
+		cmdReload := exec.CommandContext(teardownCtx, "systemctl", "--user", "daemon-reload")
+		d.setupCmdEnv(cmdReload)
+		_ = cmdReload.Run()
+
+		for _, cand := range candUnits {
+			cmdReset := exec.CommandContext(teardownCtx, "systemctl", "--user", "reset-failed", cand)
+			d.setupCmdEnv(cmdReset)
+			_ = cmdReset.Run()
+		}
+		cmdResetAll := exec.CommandContext(teardownCtx, "systemctl", "--user", "reset-failed")
+		d.setupCmdEnv(cmdResetAll)
+		_ = cmdResetAll.Run()
+	}
+
+	// Phase 4: Force Remove Containers & Pods (Systemd is now dead, so Restart=always cannot respawn)
+	if d.podmanClient != nil {
+		for _, cName := range candContainers {
+			_ = d.podmanClient.StopContainer(teardownCtx, cName)
+			_ = d.podmanClient.DeleteContainer(teardownCtx, cName, true)
+			cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", cName)
+			d.setupCmdEnv(cmdRm)
+			_ = cmdRm.Run()
+		}
+
+		if containers, err := d.podmanClient.GetContainers(teardownCtx); err == nil {
+			cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
+			for _, c := range containers {
+				isMatch := false
+				if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID || c.Labels["io.podman.compose.project"] == s.ID) {
+					isMatch = true
+				} else {
+					for _, n := range c.Names {
+						trimmed := strings.TrimPrefix(n, "/")
+						if trimmed == s.ID || trimmed == s.Name || strings.HasPrefix(trimmed, cleanPrefix) || strings.HasPrefix(trimmed, s.ID) {
+							isMatch = true
+							break
+						}
+						for _, candC := range candContainers {
+							if trimmed == candC {
+								isMatch = true
+								break
+							}
+						}
+					}
+				}
+				if isMatch {
+					_ = d.podmanClient.StopContainer(teardownCtx, c.ID)
+					_ = d.podmanClient.DeleteContainer(teardownCtx, c.ID, true)
+					cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", c.ID)
+					d.setupCmdEnv(cmdRm)
+					_ = cmdRm.Run()
+				}
+			}
+		}
+
+		// Force-delete pods
+		for _, podCand := range candContainers {
+			_ = d.podmanClient.DeletePod(teardownCtx, podCand, true)
+			_ = d.podmanClient.DeletePod(teardownCtx, "pod_"+podCand, true)
+			cmdPodRm := exec.CommandContext(teardownCtx, "podman", "pod", "rm", "-f", podCand)
+			d.setupCmdEnv(cmdPodRm)
+			_ = cmdPodRm.Run()
+		}
+		_ = d.podmanClient.DeletePod(teardownCtx, fmt.Sprintf("pod_%s", s.Name), true)
+		_ = d.podmanClient.DeletePod(teardownCtx, fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)), true)
+		if s.PodID != "" {
+			_ = d.podmanClient.DeletePod(teardownCtx, s.PodID, true)
+			_ = d.podmanClient.DeletePod(teardownCtx, fmt.Sprintf("pod_%s", s.PodID), true)
+		}
+	}
+
+	// Phase 5: Kubernetes Manifest Teardown
 	if s.Type == "kubernetes" || s.Type == "k8s" || strings.TrimSpace(s.K8sYaml) != "" {
 		manifestName := s.ID
 		if manifestName == "" {
@@ -243,14 +497,14 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				downArgs = append(downArgs, "--force")
 			}
 			downArgs = append(downArgs, kubeFile)
-			cmd := exec.CommandContext(ctx, "podman", downArgs...)
+			cmd := exec.CommandContext(teardownCtx, "podman", downArgs...)
 			d.setupCmdEnv(cmd)
 			_ = cmd.Run()
 		}
 		_ = os.RemoveAll(kubeDir)
 	}
 
-	// 1. Compose Workload
+	// Phase 6: Compose Workload Teardown
 	if s.Type == "compose" || s.ComposeYaml != "" {
 		projectName := s.ID
 		if projectName == "" {
@@ -266,7 +520,7 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				if deleteVolumes {
 					downArgs = append(downArgs, "-v")
 				}
-				cmd := exec.CommandContext(ctx, "podman-compose", downArgs...)
+				cmd := exec.CommandContext(teardownCtx, "podman-compose", downArgs...)
 				d.setupCmdEnv(cmd)
 				_ = cmd.Run()
 			} else if _, err := exec.LookPath("podman"); err == nil {
@@ -274,105 +528,39 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				if deleteVolumes {
 					downArgs = append(downArgs, "-v")
 				}
-				cmd := exec.CommandContext(ctx, "podman", downArgs...)
+				cmd := exec.CommandContext(teardownCtx, "podman", downArgs...)
 				d.setupCmdEnv(cmd)
 				_ = cmd.Run()
 			}
 		}
 
-		// Also remove pod if created by podman-compose
 		if d.podmanClient != nil {
-			_ = d.podmanClient.DeletePod(ctx, "pod_"+projectName, true)
+			_ = d.podmanClient.DeletePod(teardownCtx, "pod_"+projectName, true)
 		}
-
-		// Clean up disk workspace
 		_ = os.RemoveAll(composeDir)
 	}
 
-	// 2. Quadlet Service
-	var quadletVolumes []string
-	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
-		unitName := QuadletUnitName(s)
-		parsed := ParseQuadlet(s.QuadletConfig)
-		quadletVolumes = parsed.Volumes
-
-		quadletDir := filepath.Join(d.dataDir, "quadlets")
-		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.container", unitName)))
-		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.container", s.Name)))
-
-		systemdQuadletDir := os.Getenv("QUADLET_DIR")
-		if systemdQuadletDir == "" {
-			if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
-				systemdQuadletDir = filepath.Join(homeDir, ".config", "containers", "systemd")
-			}
-		}
-
-		if systemdQuadletDir != "" {
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.container", unitName)))
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.container", s.Name)))
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.pod", unitName)))
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.pod", s.Name)))
-		}
-
-		if _, err := exec.LookPath("systemctl"); err == nil {
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", fmt.Sprintf("%s.service", unitName)).Run()
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "disable", fmt.Sprintf("%s.service", unitName)).Run()
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", fmt.Sprintf("%s.service", unitName)).Run()
-		}
-		if d.podmanClient != nil {
-			if parsed.ContainerName != "" {
-				_ = d.podmanClient.StopContainer(ctx, parsed.ContainerName)
-				_ = d.podmanClient.DeleteContainer(ctx, parsed.ContainerName, true)
-			}
-			_ = d.podmanClient.StopContainer(ctx, s.ID)
-			_ = d.podmanClient.DeleteContainer(ctx, s.ID, true)
-			_ = d.podmanClient.StopContainer(ctx, unitName)
-			_ = d.podmanClient.DeleteContainer(ctx, unitName, true)
-			_ = d.podmanClient.StopContainer(ctx, fmt.Sprintf("systemd-%s", unitName))
-			_ = d.podmanClient.DeleteContainer(ctx, fmt.Sprintf("systemd-%s", unitName), true)
-		}
-	}
-
-	// 3. Container / Pod / Direct Image Workload cleanup
-	if d.podmanClient != nil {
-		containers, _ := d.podmanClient.GetContainers(ctx)
+	// Phase 7: Persistent Volume Cleanup (Only if explicitly requested)
+	if deleteVolumes && d.podmanClient != nil {
+		vols, _ := d.podmanClient.GetVolumes(teardownCtx)
 		cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
-		for _, c := range containers {
-			isMatch := false
-			if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID) {
-				isMatch = true
-			} else if len(c.Names) > 0 {
-				firstName := strings.TrimPrefix(c.Names[0], "/")
-				if strings.HasPrefix(firstName, s.ID) || firstName == s.Name || strings.HasPrefix(firstName, cleanPrefix) {
-					isMatch = true
-				}
+		for _, v := range vols {
+			if strings.HasPrefix(v.Name, s.ID) || strings.HasPrefix(v.Name, cleanPrefix) || strings.HasPrefix(v.Name, s.Name) {
+				_ = d.podmanClient.DeleteVolume(teardownCtx, v.Name, true)
 			}
-			if isMatch {
-				_ = d.podmanClient.StopContainer(ctx, c.ID)
-				_ = d.podmanClient.DeleteContainer(ctx, c.ID, true)
+			for _, cand := range candContainers {
+				if v.Name == cand || strings.HasPrefix(v.Name, cand+"_") {
+					_ = d.podmanClient.DeleteVolume(teardownCtx, v.Name, true)
+				}
 			}
 		}
 
-		// Deterministic pod deletion
-		_ = d.podmanClient.DeletePod(ctx, s.ID, true)
-		_ = d.podmanClient.DeletePod(ctx, s.Name, true)
-		_ = d.podmanClient.DeletePod(ctx, "pod_"+s.ID, true)
-		_ = d.podmanClient.DeletePod(ctx, "pod_"+s.Name, true)
-		_ = d.podmanClient.DeletePod(ctx, cleanPrefix, true)
-
-		// 4. Volume Cleanup if requested (deterministic prefix matching)
-		if deleteVolumes {
-			vols, _ := d.podmanClient.GetVolumes(ctx)
-			for _, v := range vols {
-				if strings.HasPrefix(v.Name, s.ID) || strings.HasPrefix(v.Name, cleanPrefix) || strings.HasPrefix(v.Name, s.Name) {
-					_ = d.podmanClient.DeleteVolume(ctx, v.Name, true)
-				}
-			}
-			for _, qv := range quadletVolumes {
+		if strings.TrimSpace(s.QuadletConfig) != "" {
+			parsed := ParseQuadlet(s.QuadletConfig)
+			for _, qv := range parsed.Volumes {
 				volName := strings.Split(qv, ":")[0]
 				if volName != "" && !strings.HasPrefix(volName, "/") && !strings.HasPrefix(volName, ".") {
-					_ = d.podmanClient.DeleteVolume(ctx, volName, true)
+					_ = d.podmanClient.DeleteVolume(teardownCtx, volName, true)
 				}
 			}
 		}

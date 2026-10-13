@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service, Container } from '$lib/types';
 	import { dataStore } from '$lib/data';
+	import { parseComposeWorkloads } from '$lib/parsers/compose';
 	import { StatusBadge } from '$lib/components/ui';
 	import {
 		Badge,
@@ -42,62 +43,11 @@
 
 		// Fallback from workloads or compose YAML or service identity
 		let workloads = service.workloads;
-		if (!workloads && service.composeYaml) {
-			try {
-				const lines = service.composeYaml.split('\n');
-				const detected: {
-					name: string;
-					image: string;
-					status: string;
-					cpu?: number;
-					memory?: number;
-				}[] = [];
-				let inServices = false;
-				let currentName = '';
-				let currentImg = '';
-				for (const line of lines) {
-					const trimmed = line.trim();
-					if (trimmed.startsWith('services:')) {
-						inServices = true;
-						continue;
-					}
-					if (inServices) {
-						if (
-							/^[a-zA-Z0-9_-]+:/.test(trimmed) &&
-							!trimmed.startsWith('image:') &&
-							!trimmed.startsWith('ports:') &&
-							!trimmed.startsWith('volumes:') &&
-							!trimmed.startsWith('environment:')
-						) {
-							if (currentName) {
-								detected.push({
-									name: currentName,
-									image: currentImg || '—',
-									status: service.status || 'stopped',
-									cpu: 0,
-									memory: 0
-								});
-							}
-							currentName = trimmed.replace(':', '');
-							currentImg = '';
-						} else if (trimmed.startsWith('image:')) {
-							currentImg = trimmed.replace('image:', '').trim().replace(/['"]/g, '');
-						}
-					}
-				}
-				if (currentName) {
-					detected.push({
-						name: currentName,
-						image: currentImg || '—',
-						status: service.status || 'stopped',
-						cpu: 0,
-						memory: 0
-					});
-				}
-				if (detected.length > 0) {
-					workloads = detected as any;
-				}
-			} catch (_) {}
+		if ((!workloads || workloads.length === 0) && service.composeYaml) {
+			const parsed = parseComposeWorkloads(service.composeYaml, service.status || 'stopped');
+			if (parsed.length > 0) {
+				workloads = parsed;
+			}
 		}
 
 		if (!workloads || workloads.length === 0) {
@@ -153,7 +103,7 @@
 		<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 			<span class="text-[var(--status-green)]">● cgroups v2 active</span>
 			<span>•</span>
-			<span>userns: {service.advanced?.runtime.userNamespace || 'keep-id'}</span>
+			<span>userns: {service.advanced?.runtime.userNamespace && service.advanced.runtime.userNamespace !== 'default' ? service.advanced.runtime.userNamespace : 'rootless (default)'}</span>
 		</div>
 	</div>
 
@@ -213,11 +163,20 @@
 										<Cube size={15} />
 									</div>
 									<div class="flex min-w-0 flex-col">
-										<span
-											class="truncate font-mono text-[13px] font-medium text-[var(--text-primary)]"
-										>
-											{c.name}
-										</span>
+										<div class="flex items-center gap-2">
+											<span
+												class="truncate font-mono text-[13px] font-medium text-[var(--text-primary)]"
+											>
+												{c.name}
+											</span>
+											{#if c.serviceName && c.serviceName.includes('(')}
+												<span
+													class="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--accent)]"
+												>
+													{c.serviceName.split('(')[1]?.replace(')', '') || ''}
+												</span>
+											{/if}
+										</div>
 										<span
 											class="truncate font-mono text-[11px] text-[var(--text-tertiary)]"
 											title={c.image}

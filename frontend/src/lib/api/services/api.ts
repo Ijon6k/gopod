@@ -77,6 +77,16 @@ export const servicesApi = {
 		return res.data;
 	},
 
+	async cancelDeployment(id: string): Promise<Deployment> {
+		const res = await apiClient.post<Deployment>(`/deployments/${id}/cancel`);
+		return res.data;
+	},
+
+	async cancelServiceDeployment(id: string): Promise<Service> {
+		const res = await apiClient.post<Service>(`/services/${id}/cancel`);
+		return res.data;
+	},
+
 	async deploymentLogs(id: string): Promise<{ deploymentId: string; logs: string }> {
 		const res = await apiClient.get<{ deploymentId: string; logs: string }>(
 			`/deployments/${id}/logs`

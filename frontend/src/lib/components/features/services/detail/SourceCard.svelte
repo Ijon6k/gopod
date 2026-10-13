@@ -62,7 +62,12 @@
 	});
 
 	$effect(() => {
-		sourceType = service.sourceType || (service.image ? 'image' : 'git');
+		sourceType =
+			service.sourceType === 'image' || service.sourceType === 'drop'
+				? service.sourceType
+				: service.image
+					? 'image'
+					: 'git';
 		repoUrl = service.source || '';
 		branch = service.branch || 'main';
 		buildPath = service.buildPath || '/';

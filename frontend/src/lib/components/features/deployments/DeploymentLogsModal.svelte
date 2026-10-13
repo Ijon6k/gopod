@@ -6,6 +6,7 @@
 	import { LayerDialog, Badge, Switch } from 'kumo-svelte';
 	import { api } from '$lib/api';
 	import { getDeploymentSteps, getDeploymentLogs } from '$lib/utils/deploymentLogs';
+	import { dataStore } from '$lib/stores/data.svelte';
 	import {
 		Copy,
 		Check,
@@ -28,6 +29,14 @@
 	let fetchedLogs = $state<string[]>([]);
 	let isLogsLoading = $state(false);
 
+	let activeDep = $derived.by(() => {
+		if (!deployment) return null;
+		const fromStore = dataStore
+			.getServiceDeployments(deployment.serviceId)
+			.find((d) => d.id === deployment.id);
+		return fromStore || deployment;
+	});
+
 	function sanitizeLogLine(raw: string): string {
 		const trimmed = raw.trim();
 		if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
@@ -43,15 +52,15 @@
 		return raw;
 	}
 
-	let steps = $derived(deployment ? getDeploymentSteps(deployment) : []);
+	let steps = $derived(activeDep ? getDeploymentSteps(activeDep) : []);
 	let logs = $derived.by(() => {
 		const source =
 			fetchedLogs.length > 0
 				? fetchedLogs
-				: deployment?.logs && deployment.logs.length > 0
-					? deployment.logs
-					: deployment
-						? getDeploymentLogs(deployment)
+				: activeDep?.logs && activeDep.logs.length > 0
+					? activeDep.logs
+					: activeDep
+						? getDeploymentLogs(activeDep)
 						: [];
 		return source.map(sanitizeLogLine);
 	});
@@ -63,10 +72,19 @@
 	});
 
 	$effect(() => {
-		if (open && deployment) {
-			const depId = deployment.id;
+		if (open && activeDep) {
+			const depId = activeDep.id;
 			let isSubscribed = true;
 			isLogsLoading = true;
+
+			const syncStatus = async () => {
+				try {
+					const latest = await api.services.getDeployment(depId);
+					if (latest && isSubscribed) {
+						dataStore.upsertDeployment(latest);
+					}
+				} catch (_) {}
+			};
 
 			// Fetch stored log file
 			api.services
@@ -79,6 +97,7 @@
 							.map(sanitizeLogLine)
 							.filter((line: string) => line.length > 0);
 					}
+					syncStatus();
 				})
 				.catch((err) => {
 					console.warn('Could not load stored deployment logs:', err);
@@ -87,9 +106,20 @@
 					if (isSubscribed) isLogsLoading = false;
 				});
 
+			// Periodic poller while active
+			let pollInterval: ReturnType<typeof setInterval> | null = null;
+			if (activeDep.status === 'building' || activeDep.status === 'deploying') {
+				pollInterval = setInterval(async () => {
+					await syncStatus();
+					if (activeDep?.status === 'success' || activeDep?.status === 'failed') {
+						if (pollInterval) clearInterval(pollInterval);
+					}
+				}, 1200);
+			}
+
 			// If active building/deploying, subscribe to SSE stream via centralized API
 			let unsubscribeStream: (() => void) | null = null;
-			if (deployment.status === 'building' || deployment.status === 'deploying') {
+			if (activeDep.status === 'building' || activeDep.status === 'deploying') {
 				try {
 					unsubscribeStream = api.services.streamDeploymentLogs(
 						depId,
@@ -102,6 +132,7 @@
 						},
 						() => {
 							unsubscribeStream?.();
+							syncStatus();
 						}
 					);
 				} catch (e) {
@@ -111,6 +142,7 @@
 
 			return () => {
 				isSubscribed = false;
+				if (pollInterval) clearInterval(pollInterval);
 				if (unsubscribeStream) unsubscribeStream();
 			};
 		} else if (fetchedLogs.length > 0) {
@@ -142,12 +174,12 @@
 	}
 
 	function downloadLogFile() {
-		if (!deployment || !logs.length) return;
+		if (!activeDep || !logs.length) return;
 		const blob = new Blob([logs.join('\n')], { type: 'text/plain;charset=utf-8' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
 		a.href = url;
-		a.download = `gopod-deployment-${deployment.id}-${deployment.number}.log`;
+		a.download = `gopod-deployment-${activeDep.id}-${activeDep.number}.log`;
 		document.body.appendChild(a);
 		a.click();
 		document.body.removeChild(a);
@@ -155,7 +187,7 @@
 	}
 </script>
 
-{#if open && deployment}
+{#if open && activeDep}
 	<LayerDialog.Root
 		open={true}
 		onOpenChange={(isOpen) => {
@@ -166,7 +198,7 @@
 			size="xl"
 			class="h-[85vh] min-h-[560px] max-h-[860px] sm:max-w-4xl p-0 overflow-hidden flex flex-col [&>div]:h-full [&>div]:flex-1 [&>div>div]:h-full [&>div>div]:flex-1"
 		>
-		{#if deployment}
+		{#if activeDep}
 			<!-- Top Modal Header (Padding-right reserved for Kumo's close X button) -->
 			<div
 				class="flex shrink-0 items-center justify-between border-b border-kumo-hairline bg-kumo-base px-5 py-3.5 pr-14"
@@ -174,25 +206,25 @@
 				<div class="flex min-w-0 items-center gap-3">
 					<div class="flex items-center gap-2">
 						<span class="font-mono text-sm font-semibold text-kumo-default">
-							#{deployment.number}
+							#{activeDep.number}
 						</span>
 						<Badge
-							variant={deployment.status === 'success' || deployment.status === 'running' || deployment.status === 'healthy'
+							variant={activeDep.status === 'success' || activeDep.status === 'running' || activeDep.status === 'healthy'
 								? 'success'
-								: deployment.status === 'failed'
+								: activeDep.status === 'failed'
 									? 'error'
-									: deployment.status === 'building' || deployment.status === 'deploying'
+									: activeDep.status === 'building' || activeDep.status === 'deploying'
 										? 'warning'
 										: 'neutral'}
 							appearance="dot"
 						>
-							{deployment.status === 'success' || deployment.status === 'running' || deployment.status === 'healthy'
+							{activeDep.status === 'success' || activeDep.status === 'running' || activeDep.status === 'healthy'
 								? 'Success'
-								: deployment.status === 'building' || deployment.status === 'deploying'
+								: activeDep.status === 'building' || activeDep.status === 'deploying'
 									? 'Building'
-									: deployment.status === 'failed'
+									: activeDep.status === 'failed'
 										? 'Failed'
-										: deployment.status}
+										: activeDep.status}
 						</Badge>
 					</div>
 
@@ -201,22 +233,22 @@
 					<div class="flex min-w-0 items-center gap-2">
 						<span
 							class="max-w-[320px] truncate text-sm font-medium text-kumo-default"
-							title={deployment.commitMessage}
+							title={activeDep.commitMessage}
 						>
-							{deployment.commitMessage}
+							{activeDep.commitMessage}
 						</span>
-						{#if deployment.commit && deployment.commit !== '—'}
+						{#if activeDep.commit && activeDep.commit !== '—'}
 							<span
 								class="rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-xs text-kumo-subtle ring ring-kumo-hairline/60"
 							>
-								{deployment.commit.substring(0, 7)}
+								{activeDep.commit.substring(0, 7)}
 							</span>
 						{/if}
 					</div>
 				</div>
 
 				<div class="hidden shrink-0 items-center gap-2 text-xs text-kumo-subtle tabular-nums sm:flex">
-					<span>Duration: {deployment.duration}</span>
+					<span>Duration: {activeDep.duration}</span>
 				</div>
 			</div>
 
@@ -226,7 +258,7 @@
 					<div class="flex items-center justify-between">
 						<span class="text-xs font-medium text-kumo-subtle">Pipeline stages</span>
 						<span class="font-mono text-xs text-kumo-subtle tabular-nums sm:hidden">
-							Duration: {deployment.duration}
+							Duration: {activeDep.duration}
 						</span>
 					</div>
 					<DeploymentPipelineStepper {steps} />
@@ -334,13 +366,13 @@
 			>
 				<div class="flex items-center gap-2">
 					<span
-						class="size-1.5 rounded-full {deployment.status === 'running' || deployment.status === 'healthy'
+						class="size-1.5 rounded-full {activeDep.status === 'running' || activeDep.status === 'healthy' || activeDep.status === 'success'
 							? 'bg-kumo-success'
-							: deployment.status === 'failed'
+							: activeDep.status === 'failed'
 								? 'bg-kumo-danger'
 								: 'bg-[var(--accent)]'}"
 					></span>
-					<span>Stream finished • {logs.length} lines captured</span>
+					<span>{activeDep.status === 'building' || activeDep.status === 'deploying' ? 'Streaming live deployment logs' : 'Deployment completed'} • {logs.length} lines captured</span>
 				</div>
 
 				<Button variant="secondary" size="sm" onclick={onclose}>

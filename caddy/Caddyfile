@@ -6,7 +6,7 @@
 # Default Control Plane Dashboard Proxy
 :80 {
     log {
-        output file ../caddy/logs/access.log {
+        output file /var/log/caddy/access.log {
             roll_size 20MiB
             roll_keep 7
         }
@@ -15,9 +15,9 @@
     reverse_proxy 127.0.0.1:8000
 }
 
-http://app.localhost, https://app.localhost {
+http://landing.localhost, https://landing.localhost {
     log {
-        output file ../caddy/logs/access.log {
+        output file /var/log/caddy/access.log {
             roll_size 20MiB
             roll_keep 7
         }
@@ -25,36 +25,19 @@ http://app.localhost, https://app.localhost {
     }
     encode zstd gzip
     tls internal
-    reverse_proxy self-hosted-traefik-6bf480:80
+    reverse_proxy self-hosted-landing-page-eaa749:80
 }
 
-chat.example.com {
+http://me.localhost, https://me.localhost {
     log {
-        output file ../caddy/logs/access.log {
+        output file /var/log/caddy/access.log {
             roll_size 20MiB
             roll_keep 7
         }
         format json
     }
     encode zstd gzip
-    header Access-Control-Allow-Origin *
-    header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-    reverse_proxy aerochat-web:3000
-}
-
-ws.example.com {
-    log {
-        output file ../caddy/logs/access.log {
-            roll_size 20MiB
-            roll_keep 7
-        }
-        format json
-    }
-    encode zstd gzip
-    header Access-Control-Allow-Origin *
-    header Access-Control-Allow-Methods "GET, POST, PUT, DELETE, OPTIONS"
-    header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-    reverse_proxy aerochat-ws:8080
+    tls internal
+    reverse_proxy whoami:80
 }
 

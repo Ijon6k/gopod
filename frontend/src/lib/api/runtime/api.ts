@@ -152,6 +152,13 @@ export const runtimeApi = {
 				`/quadlets/${encodeURIComponent(name)}/content`
 			);
 			return res.data;
+		},
+
+		async delete(name: string): Promise<{ message: string }> {
+			const res = await apiClient.delete<{ message: string }>(
+				`/quadlets/${encodeURIComponent(name)}`
+			);
+			return res.data;
 		}
 	}
 };

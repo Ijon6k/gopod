@@ -80,7 +80,7 @@
 >
 	<div class="flex flex-col gap-1">
 		<div class="flex items-center gap-3">
-			<h1 class="m-0 text-xl font-bold tracking-tight text-[var(--text-primary)]">
+			<h1 class="m-0 text-xl font-semibold text-[var(--text-primary)]">
 				{service.name}
 			</h1>
 			<StatusBadge status={service.status} size="sm" />
@@ -101,7 +101,9 @@
 				class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)]"
 			>
 				<Package size={14} class="text-[var(--accent)]" />
-				<span>Podman Pod · {podMemberCount} {podMemberCount === 1 ? 'Container' : 'Containers'}</span>
+				<span
+					>Podman Pod · {podMemberCount} {podMemberCount === 1 ? 'Container' : 'Containers'}</span
+				>
 			</div>
 		{/if}
 

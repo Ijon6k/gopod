@@ -1,8 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap');
-@source "../node_modules/kumo-svelte/dist/**/*.{js,svelte,ts}";
-@import "kumo-svelte/styles.css";
-@import "@xyflow/svelte/dist/style.css";
+@source '../node_modules/kumo-svelte/dist/**/*.{js,svelte,ts}';
+@import 'kumo-svelte/styles.css';
+@import '@xyflow/svelte/dist/style.css';
 @import 'tailwindcss';
 
 /* ──────────────────────────────────────────────
@@ -453,7 +453,10 @@ button:focus-visible {
 	background-color: var(--border) !important;
 	border: 2px solid var(--bg-canvas-node) !important;
 	border-radius: 9999px !important;
-	transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+	transition:
+		background-color 0.15s ease,
+		border-color 0.15s ease,
+		transform 0.15s ease;
 }
 
 .svelte-flow__handle:hover {
@@ -545,7 +548,9 @@ select {
 	background-color: var(--color-kumo-control) !important;
 	border-radius: var(--radius-sm);
 	color: var(--text-primary);
-	transition: border-color 0.15s ease, box-shadow 0.15s ease;
+	transition:
+		border-color 0.15s ease,
+		box-shadow 0.15s ease;
 }
 
 input:not([type='checkbox']):not([type='radio']):focus,
@@ -561,5 +566,3 @@ textarea:hover,
 select:hover {
 	border-color: var(--color-kumo-subtle) !important;
 }
-
-

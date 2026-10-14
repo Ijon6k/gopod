@@ -72,7 +72,7 @@
 		}
 	}
 
-	function connectSession() {
+	async function connectSession() {
 		if (!browser || !terminalContainer) return;
 
 		// Cleanup existing session
@@ -107,7 +107,15 @@
 
 		const cols = term ? term.cols : 80;
 		const rows = term ? term.rows : 24;
-		const url = api.runtime.containers.getTerminalWsUrl(target, cols, rows, activeShell);
+
+		let ticket: string | undefined;
+		try {
+			ticket = await api.runtime.containers.getTerminalTicket(target);
+		} catch {
+			// fallback silently to session token
+		}
+
+		const url = api.runtime.containers.getTerminalWsUrl(target, cols, rows, activeShell, ticket);
 
 		try {
 			const socket = new WebSocket(url);
@@ -319,12 +327,12 @@
 					<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
 					<DropdownMenu>
 						<DropdownMenu.Trigger
-							class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-[var(--font-sans)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none"
+							class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2.5 py-1 text-xs font-[var(--font-sans)] text-[var(--text-primary)] outline-none hover:bg-[var(--bg-hover)]"
 						>
 							<span class="max-w-[140px] truncate sm:max-w-[200px]">
 								{selectedWorkload || workloads[0]?.name}
 							</span>
-							<CaretDown size={11} class="text-[var(--text-tertiary)] shrink-0" />
+							<CaretDown size={11} class="shrink-0 text-[var(--text-tertiary)]" />
 						</DropdownMenu.Trigger>
 						<DropdownMenu.Content class="w-56" align="start">
 							{#each workloads as w (w.name)}
@@ -375,13 +383,9 @@
 
 			<!-- Status indicator using Kumo Badge -->
 			{#if isConnected}
-				<Badge variant="primary" size="sm">
-					Connected
-				</Badge>
+				<Badge variant="primary" size="sm">Connected</Badge>
 			{:else}
-				<Badge variant="neutral" size="sm">
-					Disconnected
-				</Badge>
+				<Badge variant="neutral" size="sm">Disconnected</Badge>
 			{/if}
 		</div>
 

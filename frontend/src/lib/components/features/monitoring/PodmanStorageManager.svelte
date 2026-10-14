@@ -63,9 +63,7 @@
 			icon: ImageSquare,
 			totalCount: imageUsage?.total ?? images.length,
 			activeCount: imageUsage?.active ?? images.length,
-			inactiveCount: imageUsage
-				? Math.max(0, imageUsage.total - imageUsage.active)
-				: 0,
+			inactiveCount: imageUsage ? Math.max(0, imageUsage.total - imageUsage.active) : 0,
 			activeText: `${imageUsage?.active ?? images.length} in use`,
 			inactiveText: `${imageUsage ? Math.max(0, imageUsage.total - imageUsage.active) : 0} unreferenced`,
 			rawSize: imageUsage?.rawSize ?? images.length * 350000000,
@@ -90,9 +88,7 @@
 			icon: Database,
 			totalCount: volumeUsage?.total ?? volumes.length,
 			activeCount: volumeUsage?.active ?? volumes.length,
-			inactiveCount: volumeUsage
-				? Math.max(0, volumeUsage.total - volumeUsage.active)
-				: 0,
+			inactiveCount: volumeUsage ? Math.max(0, volumeUsage.total - volumeUsage.active) : 0,
 			activeText: `${volumeUsage?.active ?? volumes.length} in use`,
 			inactiveText: `${volumeUsage ? Math.max(0, volumeUsage.total - volumeUsage.active) : 0} unreferenced`,
 			rawSize: volumeUsage?.rawSize ?? volumes.length * 25000000,
@@ -141,9 +137,7 @@
 			? dfData.reduce((acc, c) => acc + (c.rawSize || 0), 0)
 			: storageCategories.reduce((acc, c) => acc + c.rawSize, 0)
 	);
-	let totalRawReclaimable = $derived(
-		dfData.reduce((acc, c) => acc + (c.rawReclaimable || 0), 0)
-	);
+	let totalRawReclaimable = $derived(dfData.reduce((acc, c) => acc + (c.rawReclaimable || 0), 0));
 
 	let totalPodmanDisplay = $derived(
 		dfData.length > 0
@@ -273,7 +267,8 @@
 		>
 			<div class="flex items-center gap-2">
 				<CheckCircle size={16} class="shrink-0" />
-				<span>Successfully reclaimed <strong>{recentReclaimedText}</strong> of Podman storage.</span>
+				<span>Successfully reclaimed <strong>{recentReclaimedText}</strong> of Podman storage.</span
+				>
 			</div>
 			<button
 				type="button"

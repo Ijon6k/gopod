@@ -142,11 +142,19 @@
 
 	const gopodHighlightStyle = HighlightStyle.define([
 		{ tag: tags.keyword, color: 'var(--accent, #7c5ce6)', fontWeight: '600' },
-		{ tag: [tags.propertyName, tags.definition(tags.propertyName)], color: '#c084fc', fontWeight: '600' },
+		{
+			tag: [tags.propertyName, tags.definition(tags.propertyName)],
+			color: '#c084fc',
+			fontWeight: '600'
+		},
 		{ tag: [tags.string, tags.special(tags.string)], color: '#34d399' },
 		{ tag: [tags.number, tags.integer], color: '#fbbf24' },
 		{ tag: [tags.bool, tags.null], color: '#f472b6' },
-		{ tag: [tags.comment, tags.lineComment, tags.blockComment], color: '#94a3b8', fontStyle: 'italic' },
+		{
+			tag: [tags.comment, tags.lineComment, tags.blockComment],
+			color: '#94a3b8',
+			fontStyle: 'italic'
+		},
 		{ tag: tags.punctuation, color: '#94a3b8' },
 		{ tag: tags.operator, color: '#e2e8f0' },
 		{ tag: tags.variableName, color: '#c084fc', fontWeight: '600' },
@@ -250,7 +258,7 @@
 	<div
 		class="flex shrink-0 items-center justify-between border-b border-[var(--border-subtle)] bg-[var(--bg-surface)] px-3 py-1.5 select-none"
 	>
-		<span class="text-[10px] font-bold tracking-wider text-[var(--text-tertiary)] uppercase">
+		<span class="font-mono text-[11px] font-medium text-[var(--text-tertiary)]">
 			{title || language}
 		</span>
 		<button

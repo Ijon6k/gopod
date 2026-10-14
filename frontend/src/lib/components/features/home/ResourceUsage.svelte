@@ -26,13 +26,11 @@
 
 <LayerCard class={cn('flex flex-col p-5', className)}>
 	<div class="mb-4 flex min-h-[22px] items-center justify-between gap-4">
-		<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase">
-			Resource usage
-		</span>
+		<span class="text-xs font-medium text-[var(--text-tertiary)]"> Resource usage </span>
 		<Tabs {tabs} bind:active={activeTab} size="sm" />
 	</div>
 	<div class="mb-1.5 flex items-baseline gap-2.5">
-		<strong class="text-xl md:text-2xl font-semibold tracking-tight text-[var(--text-primary)]">
+		<strong class="text-xl font-semibold text-[var(--text-primary)] md:text-2xl">
 			{currentMeta?.current ?? '—'}
 		</strong>
 		<small class="text-xs text-[var(--text-tertiary)]">last 24 hours</small>

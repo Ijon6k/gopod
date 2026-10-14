@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -411,6 +412,21 @@ func (r *Reconciler) ReadAccessLogs(limit int) []AccessLogItem {
 		return []AccessLogItem{}
 	}
 	defer file.Close()
+
+	// Bound disk I/O: seek to end of file if larger than tail buffer
+	if fi, err := file.Stat(); err == nil {
+		const bytesPerLineEstimate = 1024
+		tailBytes := int64(limit * bytesPerLineEstimate * 2)
+		if tailBytes < 64*1024 {
+			tailBytes = 64 * 1024
+		}
+		if fi.Size() > tailBytes {
+			_, _ = file.Seek(fi.Size()-tailBytes, io.SeekStart)
+			// Discard first partial line after seek
+			br := bufio.NewReader(file)
+			_, _ = br.ReadString('\n')
+		}
+	}
 
 	// Maintain circular buffer of the most recent lines
 	lines := make([]string, 0, limit)

@@ -343,7 +343,8 @@
 					<Database size={20} />
 				</div>
 				<div class="flex max-w-md flex-col gap-1">
-					<span class="text-sm font-semibold text-[var(--text-primary)]">No Databases deployed</span>
+					<span class="text-sm font-semibold text-[var(--text-primary)]">No Databases deployed</span
+					>
 					<p class="m-0 text-xs leading-relaxed text-[var(--text-tertiary)]">
 						Deploy PostgreSQL, Redis, MySQL, or MongoDB with persistent storage.
 					</p>
@@ -381,8 +382,9 @@
 				{@const sourceInfo = formatSource(svc)}
 				{@const categoryLabel = getCategoryLabel(svc)}
 				<LayerCard
-					onclick={() => goto(`/projects/${project.id}/services/${svc.id}`)}
-					class="group flex h-full cursor-pointer flex-col justify-between gap-4 p-4 transition-colors hover:border-kumo-line-hover"
+					as="a"
+					href="/projects/{project.id}/services/{svc.id}"
+					class="group hover:border-kumo-line-hover flex h-full cursor-pointer flex-col justify-between gap-4 p-4 text-inherit no-underline transition-colors"
 				>
 					<div class="flex flex-col gap-2.5">
 						<!-- Top Row: Name + Status on left, Category Chip on right -->
@@ -397,7 +399,9 @@
 							</div>
 							<Badge
 								size="sm"
-								variant={svc.type === 'quadlet' || svc.type === 'kubernetes' ? 'neutral' : 'outline'}
+								variant={svc.type === 'quadlet' || svc.type === 'kubernetes'
+									? 'neutral'
+									: 'outline'}
 							>
 								{categoryLabel}
 							</Badge>
@@ -453,15 +457,14 @@
 		</div>
 	{:else if viewMode === 'table'}
 		<!-- Table / List View -->
-		<LayerCard class="overflow-hidden p-0 divide-y divide-kumo-line">
+		<LayerCard class="divide-y divide-kumo-line overflow-hidden p-0">
 			{#each filteredServices as svc}
 				{@const domainInfo = getServiceDomain(svc)}
 				{@const sourceInfo = formatSource(svc)}
 				{@const categoryLabel = getCategoryLabel(svc)}
-				<button
-					type="button"
-					onclick={() => goto(`/projects/${project.id}/services/${svc.id}`)}
-					class="group flex w-full cursor-pointer items-center justify-between border-0 bg-transparent p-4 text-left transition-colors hover:bg-[var(--bg-hover)]"
+				<a
+					href="/projects/{project.id}/services/{svc.id}"
+					class="group flex w-full cursor-pointer items-center justify-between border-0 bg-transparent p-4 text-left text-inherit no-underline transition-colors hover:bg-[var(--bg-hover)]"
 				>
 					<div class="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center sm:gap-6">
 						<!-- Name + Status -->
@@ -478,7 +481,9 @@
 						<div class="min-w-[110px]">
 							<Badge
 								size="sm"
-								variant={svc.type === 'quadlet' || svc.type === 'kubernetes' ? 'neutral' : 'outline'}
+								variant={svc.type === 'quadlet' || svc.type === 'kubernetes'
+									? 'neutral'
+									: 'outline'}
 							>
 								{categoryLabel}
 							</Badge>
@@ -509,7 +514,7 @@
 					>
 						<ArrowRight size={14} />
 					</span>
-				</button>
+				</a>
 			{/each}
 		</LayerCard>
 	{:else if viewMode === 'topology'}

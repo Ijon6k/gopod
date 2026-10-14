@@ -44,10 +44,10 @@
 			if (!isOpen) onclose();
 		}}
 	>
-	<LayerDialog.Content
-		size={kumoSize}
-		class={cn('p-0 overflow-hidden flex flex-col', customMaxW, className)}
-	>
+		<LayerDialog.Content
+			size={kumoSize}
+			class={cn('flex flex-col overflow-hidden p-0', customMaxW, className)}
+		>
 		{#if title || showClose || headerActions}
 			<div
 				class={cn(
@@ -66,16 +66,12 @@
 					{/if}
 					<div class="flex min-w-0 flex-col gap-0.5">
 						{#if title}
-							<LayerDialog.Title
-								class="m-0 truncate text-sm font-semibold tracking-tight text-kumo-default"
-							>
+							<LayerDialog.Title class="m-0 truncate text-sm font-semibold text-kumo-default">
 								{title}
 							</LayerDialog.Title>
 						{/if}
 						{#if subtitle}
-							<LayerDialog.Description
-								class="m-0 text-xs leading-normal text-kumo-subtle"
-							>
+							<LayerDialog.Description class="m-0 text-xs leading-normal text-kumo-subtle">
 								{subtitle}
 							</LayerDialog.Description>
 						{/if}
@@ -91,9 +87,7 @@
 		{/if}
 
 		<!-- Modal Body (Scrollable if overflowing) -->
-		<div
-			class="flex flex-1 flex-col gap-4 overflow-y-auto p-5 text-xs text-kumo-subtle"
-		>
+		<div class="flex flex-1 flex-col gap-4 overflow-y-auto p-5 text-xs text-kumo-subtle">
 			{@render children()}
 		</div>
 

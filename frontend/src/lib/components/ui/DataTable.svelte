@@ -37,7 +37,6 @@
 		showRowsPerPage?: boolean;
 		onPageChange?: (page: number) => void;
 		onPageSizeChange?: (pageSize: number) => void;
-		paginationControls?: 'full' | 'simple';
 	}
 
 	let {
@@ -85,7 +84,7 @@
 					{#each columns as col (col.key)}
 						<TableHead
 							class={cn(
-								'sticky top-0 z-20 bg-kumo-base px-4 py-3 text-[12px] font-semibold whitespace-nowrap text-kumo-subtle select-none normal-case',
+								'sticky top-0 z-20 bg-kumo-base px-4 py-3 text-[12px] font-semibold whitespace-nowrap text-kumo-subtle normal-case select-none',
 								col.align === 'right'
 									? 'text-right'
 									: col.align === 'center'
@@ -116,7 +115,7 @@
 					{#each displayedRows as row, i (keyExtractor(row))}
 						<TableRow
 							class={cn(
-								'transition-colors hover:bg-[var(--bg-table-row-hover)]',
+								'hover:bg-[var(--bg-table-row-hover)]',
 								striped
 									? i % 2 === 1
 										? 'bg-[var(--bg-table-row-alt)]'

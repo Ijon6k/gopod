@@ -148,7 +148,9 @@ func (d *DB) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_services_project ON services(project_id);
 	CREATE INDEX IF NOT EXISTS idx_domains_project ON domains(project_id);
 	CREATE INDEX IF NOT EXISTS idx_deployments_service ON deployments(service_id);
+	CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);
 	CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+	CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 	CREATE INDEX IF NOT EXISTS idx_audit_category ON audit_logs(category);
 	`
 
@@ -187,6 +189,9 @@ func (d *DB) migrate() error {
 		"ALTER TABLE deployments ADD COLUMN trigger TEXT DEFAULT 'manual';",
 		"ALTER TABLE deployments ADD COLUMN number INTEGER DEFAULT 1;",
 		"ALTER TABLE deployments ADD COLUMN image TEXT DEFAULT '';",
+		"CREATE INDEX IF NOT EXISTS idx_services_webhook ON services(webhook_token);",
+		"CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);",
 	}
 	for _, q := range newCols {
 		_, _ = d.Exec(q)

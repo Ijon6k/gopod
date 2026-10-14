@@ -44,14 +44,17 @@
 	{#if filtered.length > 0}
 		<div class="grid grid-cols-1 gap-4 md:grid-cols-2">
 			{#each filtered as project (project.id)}
-				{@const svcCount = project.serviceCount ?? (project.services?.length || getProjectServices(project.id).length)}
-				{@const domCount = project.domainCount ?? (project.domains?.length || getProjectDomains(project.id).length)}
+				{@const svcCount =
+					project.serviceCount ??
+					(project.services?.length || getProjectServices(project.id).length)}
+				{@const domCount =
+					project.domainCount ?? (project.domains?.length || getProjectDomains(project.id).length)}
 				{@const cpuTotal = project.cpu || 0}
 				{@const memTotal = project.memory || 0}
 				{@const memory = formatMemory(memTotal)}
 
 				<LayerCard
-					class="group flex flex-col justify-between gap-4 cursor-pointer p-4.5 transition-all hover:border-[var(--accent)] hover:shadow-xs hover:bg-[var(--bg-hover)]"
+					class="group flex cursor-pointer flex-col justify-between gap-4 p-4.5 transition-all hover:border-[var(--accent)] hover:bg-[var(--bg-hover)] hover:shadow-xs"
 					onclick={() => goto(`/projects/${project.id}`)}
 				>
 					<!-- Top Row: Icon, Name, Status, and Nav Arrow -->
@@ -80,23 +83,27 @@
 					</div>
 
 					<!-- Middle: Clamped Description -->
-					<p class="m-0 line-clamp-2 min-h-[34px] text-xs leading-relaxed text-[var(--text-secondary)]">
+					<p
+						class="m-0 line-clamp-2 min-h-[34px] text-xs leading-relaxed text-[var(--text-secondary)]"
+					>
 						{project.description || 'No description provided'}
 					</p>
 
 					<!-- Bottom Row: Metrics & Subsystem Badges -->
 					<div
-						class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-3 text-[11px] font-mono text-[var(--text-tertiary)]"
+						class="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--border-subtle)] pt-3 font-mono text-[11px] text-[var(--text-tertiary)]"
 					>
 						<div class="flex items-center gap-2">
 							<span class="rounded bg-[var(--color-kumo-fill)] px-2 py-0.5">
-								{svcCount} {pluralize(svcCount, 'service')}
+								{svcCount}
+								{pluralize(svcCount, 'service')}
 							</span>
 							<span class="rounded bg-[var(--color-kumo-fill)] px-2 py-0.5">
-								{domCount} {pluralize(domCount, 'domain')}
+								{domCount}
+								{pluralize(domCount, 'domain')}
 							</span>
 						</div>
-						<span class="tabular-nums text-[var(--text-secondary)]">
+						<span class="text-[var(--text-secondary)] tabular-nums">
 							{cpuTotal.toFixed(1)}% CPU · {memory}
 						</span>
 					</div>
@@ -108,9 +115,7 @@
 			title={`No projects match "${search}"`}
 			description="Clear your search term or create a new project to get started."
 		>
-			<Button variant="secondary" size="sm" onclick={() => (search = '')}>
-				Clear search
-			</Button>
+			<Button variant="secondary" size="sm" onclick={() => (search = '')}>Clear search</Button>
 		</Empty>
 	{/if}
 </div>

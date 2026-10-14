@@ -1,7 +1,16 @@
 export interface AuditLog {
 	id: string;
 	action: string;
-	category: 'deployment' | 'runtime' | 'settings' | 'security' | 'network' | 'service' | 'auth' | 'system' | string;
+	category:
+		| 'deployment'
+		| 'runtime'
+		| 'settings'
+		| 'security'
+		| 'network'
+		| 'service'
+		| 'auth'
+		| 'system'
+		| string;
 	actor: string;
 	target: string;
 	status: 'success' | 'failed' | 'healthy' | 'running' | 'warning' | string;

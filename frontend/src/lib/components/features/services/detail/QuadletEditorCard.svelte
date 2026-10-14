@@ -103,11 +103,7 @@
 			</div>
 
 			<!-- Right Action: Preview Systemd Generator Output -->
-			<Button
-				variant="secondary"
-				onclick={() => (previewOpen = !previewOpen)}
-				class="gap-1.5"
-			>
+			<Button variant="secondary" onclick={() => (previewOpen = !previewOpen)} class="gap-1.5">
 				<Eye size={14} />
 				{previewOpen ? 'Hide Systemd Output' : 'Preview Systemd Unit'}
 			</Button>
@@ -252,18 +248,10 @@
 				>
 					+ Env
 				</Button>
-				<Button
-					variant="secondary"
-					size="xs"
-					onclick={() => insertSnippet('UserNS=auto')}
-				>
+				<Button variant="secondary" size="xs" onclick={() => insertSnippet('UserNS=auto')}>
 					+ UserNS
 				</Button>
-				<Button
-					variant="secondary"
-					size="xs"
-					onclick={() => insertSnippet('AutoUpdate=registry')}
-				>
+				<Button variant="secondary" size="xs" onclick={() => insertSnippet('AutoUpdate=registry')}>
 					+ AutoUpdate
 				</Button>
 			</div>
@@ -353,11 +341,7 @@ WantedBy=default.target</pre>
 						<Check size={14} weight="bold" /> Saved & Reloaded
 					</span>
 				{/if}
-				<Button
-					variant="primary"
-					onclick={handleSave}
-					disabled={saveStatus === 'saving'}
-				>
+				<Button variant="primary" onclick={handleSave} disabled={saveStatus === 'saving'}>
 					{saveStatus === 'saving' ? 'Reloading...' : 'Save & Reload Systemd'}
 				</Button>
 			</div>

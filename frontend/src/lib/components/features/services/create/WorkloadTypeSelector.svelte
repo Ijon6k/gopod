@@ -22,22 +22,19 @@
 		{
 			id: 'quadlet' as const,
 			title: 'Quadlet (Systemd)',
-			description:
-				'Native systemd-supervised container service with host boot persistence.',
+			description: 'Native systemd-supervised container service with host boot persistence.',
 			icon: FileText
 		},
 		{
 			id: 'compose' as const,
 			title: 'Stack / Compose',
-			description:
-				'Multi-container service defined using Compose YAML or Kubernetes manifests.',
+			description: 'Multi-container service defined using Compose YAML or Kubernetes manifests.',
 			icon: Stack
 		},
 		{
 			id: 'database' as const,
 			title: 'Database',
-			description:
-				'Managed database instance with persistent volume storage.',
+			description: 'Managed database instance with persistent volume storage.',
 			icon: Database
 		}
 	];

@@ -20,12 +20,18 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 	}
 
 	composeDir := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName)
+	if abs, err := filepath.Abs(composeDir); err == nil {
+		composeDir = abs
+	}
 	if err := os.MkdirAll(composeDir, 0755); err != nil {
 		logLine(fmt.Sprintf("❌ Failed to create compose workspace dir: %v", err))
 		return nil, err
 	}
 
 	composeFile := filepath.Join(composeDir, "docker-compose.yml")
+	if abs, err := filepath.Abs(composeFile); err == nil {
+		composeFile = abs
+	}
 	content := strings.TrimSpace(s.ComposeYaml)
 	if content == "" {
 		content = fmt.Sprintf("version: '3.8'\nservices:\n  %s:\n    image: %s\n    restart: always\n", s.Name, s.Image)
@@ -46,11 +52,15 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 		countVars := 0
 		for _, env := range s.EnvVars {
 			if strings.HasPrefix(env.Key, "#") {
-				envBuf.WriteString(env.Key + "\n")
+				envBuf.WriteString(env.Key)
+				envBuf.WriteByte('\n')
 			} else if env.Key == "" && env.Value == "" {
-				envBuf.WriteString("\n")
+				envBuf.WriteByte('\n')
 			} else if env.Key != "" {
-				envBuf.WriteString(fmt.Sprintf("%s=%s\n", env.Key, env.Value))
+				envBuf.WriteString(env.Key)
+				envBuf.WriteByte('=')
+				envBuf.WriteString(env.Value)
+				envBuf.WriteByte('\n')
 				countVars++
 			}
 		}
@@ -195,7 +205,8 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 				}
 				if isMember {
 					status := strings.ToLower(c.Status)
-					if !strings.HasPrefix(status, "up") && status != "running" && status != "healthy" {
+					state := strings.ToLower(c.State)
+					if !strings.HasPrefix(status, "up") && status != "running" && status != "healthy" && state != "running" {
 						cName := c.ID[:12]
 						if len(c.Names) > 0 {
 							cName = c.Names[0]

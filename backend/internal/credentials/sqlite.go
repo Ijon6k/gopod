@@ -3,6 +3,7 @@ package credentials
 import (
 	"context"
 	"database/sql"
+	"fmt"
 
 	"gopod/pkg/crypto"
 )
@@ -62,7 +63,7 @@ func (r *SQLiteRepository) GetSSHKey(ctx context.Context, id string) (*SSHKey, e
 func (r *SQLiteRepository) CreateSSHKey(ctx context.Context, k SSHKey) error {
 	encKey, err := crypto.Encrypt(k.PrivateKey)
 	if err != nil {
-		encKey = k.PrivateKey
+		return fmt.Errorf("failed to encrypt ssh private key: %w", err)
 	}
 	_, err = r.db.ExecContext(ctx,
 		"INSERT INTO ssh_keys (id, name, public_key, private_key, fingerprint, type) VALUES (?, ?, ?, ?, ?, ?)",
@@ -121,7 +122,7 @@ func (r *SQLiteRepository) GetRegistry(ctx context.Context, id string) (*Contain
 func (r *SQLiteRepository) CreateRegistry(ctx context.Context, reg ContainerRegistry) error {
 	encToken, err := crypto.Encrypt(reg.Token)
 	if err != nil {
-		encToken = reg.Token
+		return fmt.Errorf("failed to encrypt registry token: %w", err)
 	}
 	_, err = r.db.ExecContext(ctx,
 		"INSERT INTO container_registries (id, name, url, username, token) VALUES (?, ?, ?, ?, ?)",
@@ -180,7 +181,7 @@ func (r *SQLiteRepository) GetSecret(ctx context.Context, id string) (*Secret, e
 func (r *SQLiteRepository) CreateSecret(ctx context.Context, s Secret) error {
 	encVal, err := crypto.Encrypt(s.Value)
 	if err != nil {
-		encVal = s.Value
+		return fmt.Errorf("failed to encrypt secret value: %w", err)
 	}
 	_, err = r.db.ExecContext(ctx,
 		"INSERT INTO secrets (id, name, value, driver) VALUES (?, ?, ?, ?)",

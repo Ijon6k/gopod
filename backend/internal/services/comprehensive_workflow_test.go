@@ -341,7 +341,10 @@ func TestEnvironmentVariables_DiskSync(t *testing.T) {
 	var envBuf strings.Builder
 	for _, env := range svcWithEnv.EnvVars {
 		if env.Key != "" {
-			envBuf.WriteString(env.Key + "=" + env.Value + "\n")
+			envBuf.WriteString(env.Key)
+			envBuf.WriteByte('=')
+			envBuf.WriteString(env.Value)
+			envBuf.WriteByte('\n')
 		}
 	}
 	if err := os.WriteFile(envFile, []byte(envBuf.String()), 0600); err != nil {

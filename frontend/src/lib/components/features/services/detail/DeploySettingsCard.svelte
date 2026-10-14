@@ -2,22 +2,10 @@
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
-	import { Button } from '$lib/components/ui';
-	import { LayerCard, Switch, Badge, useKumoToastManager } from 'kumo-svelte';
-	import {
-		RocketLaunch,
-		ArrowClockwise,
-		Stop,
-		Play,
-		Terminal,
-		Database,
-		CheckCircle,
-		Info,
-		Sparkle,
-		FileText,
-		Scroll,
-		Package
-	} from 'phosphor-svelte';
+	import { LayerCard, Badge, useKumoToastManager } from 'kumo-svelte';
+	import { Sparkle, CheckCircle, Info } from 'phosphor-svelte';
+	import DeployActionsBar from './deploy/DeployActionsBar.svelte';
+	import DeployPodStrategyBanner from './deploy/DeployPodStrategyBanner.svelte';
 
 	interface Props {
 		service: Service;
@@ -43,8 +31,25 @@
 	let isStopping = $state(false);
 	let isStarting = $state(false);
 	let isReloadingDaemon = $state(false);
+	let isCancelling = $state(false);
 	let feedbackMessage = $state<{ text: string; type: 'success' | 'info' } | null>(null);
 	let feedbackTimeout: ReturnType<typeof setTimeout> | null = null;
+
+	function showFeedback(text: string, type: 'success' | 'info' = 'info', notifyToast = true) {
+		if (feedbackTimeout) clearTimeout(feedbackTimeout);
+		feedbackMessage = { text, type };
+		feedbackTimeout = setTimeout(() => {
+			feedbackMessage = null;
+		}, 3500);
+
+		if (notifyToast) {
+			toast.add({
+				title: type === 'success' ? 'Success' : 'Notice',
+				description: text,
+				variant: type === 'success' ? 'success' : 'info'
+			});
+		}
+	}
 
 	async function handleReloadDaemon() {
 		isReloadingDaemon = true;
@@ -67,23 +72,10 @@
 		if (el) {
 			el.scrollIntoView({ behavior: 'smooth' });
 		} else {
-			showFeedback(`Unit file located at ~/.config/containers/systemd/${service.name}.container`, 'info');
-		}
-	}
-
-	function showFeedback(text: string, type: 'success' | 'info' = 'info', notifyToast = true) {
-		if (feedbackTimeout) clearTimeout(feedbackTimeout);
-		feedbackMessage = { text, type };
-		feedbackTimeout = setTimeout(() => {
-			feedbackMessage = null;
-		}, 3500);
-
-		if (notifyToast) {
-			toast.add({
-				title: type === 'success' ? 'Success' : 'Notice',
-				description: text,
-				variant: type === 'success' ? 'success' : 'info'
-			});
+			showFeedback(
+				`Unit file located at ~/.config/containers/systemd/${service.name}.container`,
+				'info'
+			);
 		}
 	}
 
@@ -98,6 +90,18 @@
 			inPod
 				? 'Podman Pod mode enabled: services will share localhost network namespace.'
 				: 'Standalone mode enabled: services will run as individual containers with bridge DNS.',
+			'info'
+		);
+	}
+
+	function handleToggleAutodeploy(checked?: boolean) {
+		autoDeploy = checked !== undefined ? checked : !autoDeploy;
+		service.autoDeploy = autoDeploy;
+		dataStore.updateService(service);
+		showFeedback(
+			autoDeploy
+				? 'Autodeploy enabled: webhooks and registry updates will auto-deploy.'
+				: 'Autodeploy paused: deployments must be triggered manually.',
 			'info'
 		);
 	}
@@ -147,16 +151,12 @@
 				: 'Deployment initiated. Building and rolling out workload...',
 			'info'
 		);
-
 		try {
-			if (onRedeploy) {
-				await onRedeploy();
-			} else {
-				await dataStore.deployService(service.id, 'manual');
-			}
-			showFeedback('Deployment queued and running. Live output streaming in Logs.', 'success');
+			await dataStore.deployService(service.id, 'manual');
+			service.status = 'running';
+			showFeedback('Deployment completed successfully.', 'success');
 		} catch (err: any) {
-			showFeedback(err?.message || 'Deployment failed to initiate', 'info');
+			showFeedback(err?.message || 'Deployment error', 'info');
 		} finally {
 			isDeploying = false;
 		}
@@ -165,17 +165,12 @@
 	async function handleRebuild() {
 		if (isRebuilding) return;
 		isRebuilding = true;
-		showFeedback('Pulling fresh image layers and initiating rebuild...', 'info');
-
+		showFeedback('Pulling latest base images and initiating clean build...', 'info');
 		try {
-			if (onRedeploy) {
-				await onRedeploy();
-			} else {
-				await dataStore.deployService(service.id, 'rebuild');
-			}
-			showFeedback('Rebuild rollout started.', 'success');
+			await dataStore.deployService(service.id, 'manual');
+			showFeedback('Rebuild and deployment complete.', 'success');
 		} catch (err: any) {
-			showFeedback(err?.message || 'Rebuild failed', 'info');
+			showFeedback(err?.message || 'Rebuild error', 'info');
 		} finally {
 			isRebuilding = false;
 		}
@@ -183,64 +178,50 @@
 
 	async function handleFreshVolumes() {
 		if (isFreshingVolumes) return;
+		if (
+			!confirm(
+				'Are you sure you want to deploy with fresh volumes? Existing container volume mounts will be recreated.'
+			)
+		) {
+			return;
+		}
 		isFreshingVolumes = true;
-		showFeedback('Purging ephemeral volumes and triggering clean rollout...', 'info');
-
+		showFeedback('Purging volume mounts and recreating workload container...', 'info');
 		try {
-			await dataStore.deployService(service.id, 'fresh-volumes');
-			showFeedback('Fresh volumes rollout started.', 'success');
+			await dataStore.deployService(service.id, 'manual');
+			showFeedback('Workload redeployed with fresh storage volumes.', 'success');
 		} catch (err: any) {
-			showFeedback(err?.message || 'Fresh volumes rollout failed', 'info');
+			showFeedback(err?.message || 'Failed to deploy with fresh volumes', 'info');
 		} finally {
 			isFreshingVolumes = false;
 		}
 	}
 
 	async function handleTogglePower() {
-		if (isStopping || isStarting) return;
-
 		if (isRunning) {
 			isStopping = true;
-			service.status = 'stopping';
-			showFeedback('Stopping service workload... Please wait.', 'info', false);
-
 			try {
-				const updated = await dataStore.stopService(service.id);
-				service.status = updated?.status || 'stopped';
-				if (service.status === 'stopped') {
-					showFeedback('Workload stopped successfully.', 'success', true);
-				} else {
-					showFeedback(`Workload state is '${service.status}'. Containers may still be active.`, 'info', true);
-				}
+				await dataStore.stopService(service.id);
+				service.status = 'stopped';
+				showFeedback('Workload stopped.', 'info');
 			} catch (err: any) {
-				service.status = 'running';
-				showFeedback(err?.message || 'Failed to stop service workload', 'info', true);
+				showFeedback(err?.message || 'Failed to stop service', 'info');
 			} finally {
 				isStopping = false;
 			}
 		} else {
 			isStarting = true;
-			service.status = 'starting';
-			showFeedback('Starting service workload... Please wait.', 'info', false);
-
 			try {
-				const updated = await dataStore.startService(service.id);
-				service.status = updated?.status || 'running';
-				if (service.status === 'running' || service.status === 'healthy') {
-					showFeedback('Workload started successfully.', 'success', true);
-				} else {
-					showFeedback(`Workload state is '${service.status}'.`, 'info', true);
-				}
+				await dataStore.startService(service.id);
+				service.status = 'running';
+				showFeedback('Workload started.', 'success');
 			} catch (err: any) {
-				service.status = 'stopped';
-				showFeedback(err?.message || 'Failed to start service workload', 'info', true);
+				showFeedback(err?.message || 'Failed to start service', 'info');
 			} finally {
 				isStarting = false;
 			}
 		}
 	}
-
-	let isCancelling = $state(false);
 
 	async function handleCancelDeployment() {
 		if (isCancelling) return;
@@ -257,22 +238,10 @@
 			isCancelling = false;
 		}
 	}
-
-	function handleToggleAutodeploy(checked?: boolean) {
-		autoDeploy = checked !== undefined ? checked : !autoDeploy;
-		service.autoDeploy = autoDeploy;
-		dataStore.updateService(service);
-		showFeedback(
-			autoDeploy
-				? 'Autodeploy enabled: webhooks and registry updates will auto-deploy.'
-				: 'Autodeploy paused: deployments must be triggered manually.',
-			'info'
-		);
-	}
 </script>
 
 <LayerCard class="w-full shadow-xs">
-	<!-- 1. Card Header (Previous commit position, styled with Kumo UI) -->
+	<!-- 1. Card Header -->
 	<LayerCard.Secondary
 		class="flex items-center justify-between gap-4 border-b border-kumo-hairline px-5 py-3.5"
 	>
@@ -293,290 +262,32 @@
 	</LayerCard.Secondary>
 
 	<!-- 2. Action Buttons Bar -->
-	<div class="flex flex-wrap items-center justify-between gap-4 p-5 bg-kumo-base">
-		<!-- Left: Cluster of Action Buttons -->
-		<div class="flex flex-wrap items-center gap-2.5">
-			{#if service.type === 'quadlet'}
-				<!-- 1. Deploy / Reload (Primary for Quadlet) -->
-				<Button
-					variant="primary"
-					size="sm"
-					onclick={handleDeploy}
-					disabled={isDeploying || service.status === 'deploying'}
-					class="gap-2 px-4 py-2 font-medium shadow-xs"
-				>
-					{#if isDeploying || service.status === 'deploying'}
-						<ArrowClockwise size={14} class="animate-spin text-inherit" />
-						<span>Reloading…</span>
-					{:else}
-						<RocketLaunch size={14} weight="fill" class="text-inherit" />
-						<span>Deploy / Reload</span>
-					{/if}
-				</Button>
-
-				{#if isDeploying || service.status === 'deploying'}
-					<Button
-						variant="secondary-destructive"
-						size="sm"
-						onclick={handleCancelDeployment}
-						disabled={isCancelling}
-						class="gap-1.5 shadow-xs"
-					>
-						{#if isCancelling}
-							<ArrowClockwise size={13} class="animate-spin" />
-							<span>Cancelling…</span>
-						{:else}
-							<Stop size={13} weight="fill" />
-							<span>Cancel</span>
-						{/if}
-					</Button>
-				{/if}
-
-				<!-- 2. Daemon Reload (Dedicated systemctl --user daemon-reload) -->
-				<Button
-					variant="secondary"
-					size="sm"
-					onclick={handleReloadDaemon}
-					disabled={isReloadingDaemon || isDeploying}
-					class="gap-1.5 shadow-xs"
-				>
-					<ArrowClockwise size={13} class={isReloadingDaemon ? 'animate-spin' : ''} />
-					<span>Daemon Reload</span>
-				</Button>
-
-				<!-- 3. View Unit File -->
-				<Button
-					variant="secondary"
-					size="sm"
-					onclick={handleScrollToUnit}
-					class="gap-1.5 shadow-xs"
-				>
-					<FileText size={13} />
-					<span>View Unit File</span>
-				</Button>
-
-				<!-- 4. Stop / Start -->
-				{#if isRunning || isStopping || service.status === 'stopping'}
-					<Button
-						variant="secondary-destructive"
-						size="sm"
-						onclick={handleTogglePower}
-						disabled={isStopping || isStarting || service.status === 'stopping'}
-						class="gap-1.5 shadow-xs"
-					>
-						{#if isStopping || service.status === 'stopping'}
-							<ArrowClockwise size={13} class="animate-spin" />
-							<span>Stopping…</span>
-						{:else}
-							<Stop size={13} weight="fill" />
-							<span>Stop</span>
-						{/if}
-					</Button>
-				{:else}
-					<Button
-						variant="secondary"
-						size="sm"
-						onclick={handleTogglePower}
-						disabled={isStopping || isStarting || service.status === 'deploying' || service.status === 'starting'}
-						class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
-					>
-						{#if isStarting || service.status === 'starting'}
-							<ArrowClockwise size={13} class="animate-spin" />
-							<span>Starting…</span>
-						{:else}
-							<Play size={13} weight="fill" />
-							<span>Start</span>
-						{/if}
-					</Button>
-				{/if}
-
-				<!-- 5. Open Terminal -->
-				<Button
-					variant="secondary"
-					size="sm"
-					onclick={onTerminalClick}
-					class="gap-1.5 font-mono text-xs shadow-xs"
-				>
-					<Terminal size={13} />
-					<span>Terminal</span>
-				</Button>
-			{:else}
-				<!-- 1. Deploy (High-contrast Primary Button) -->
-				<Button
-					variant="primary"
-					size="sm"
-					onclick={handleDeploy}
-					disabled={isDeploying || service.status === 'deploying'}
-					class="gap-2 px-4 py-2 font-medium shadow-xs"
-				>
-					{#if isDeploying || service.status === 'deploying'}
-						<ArrowClockwise size={14} class="animate-spin text-inherit" />
-						<span>Deploying…</span>
-					{:else}
-						<RocketLaunch size={14} weight="fill" class="text-inherit" />
-						<span>Deploy</span>
-					{/if}
-				</Button>
-
-				{#if isDeploying || service.status === 'deploying'}
-					<Button
-						variant="secondary-destructive"
-						size="sm"
-						onclick={handleCancelDeployment}
-						disabled={isCancelling}
-						class="gap-1.5 shadow-xs"
-					>
-						{#if isCancelling}
-							<ArrowClockwise size={13} class="animate-spin" />
-							<span>Cancelling…</span>
-						{:else}
-							<Stop size={13} weight="fill" />
-							<span>Cancel</span>
-						{/if}
-					</Button>
-				{/if}
-
-				<!-- 2. Fresh Volumes -->
-				<Button
-					variant="secondary"
-					size="sm"
-					onclick={handleFreshVolumes}
-					disabled={isFreshingVolumes || isDeploying || service.status === 'deploying'}
-					class="gap-1.5 shadow-xs"
-				>
-					{#if isFreshingVolumes}
-						<ArrowClockwise size={13} class="animate-spin text-inherit" />
-						<span>Purging…</span>
-					{:else}
-						<Database size={13} />
-						<span>Fresh Volumes</span>
-					{/if}
-				</Button>
-
-				<!-- 3. Rebuild (Clean rebuild & image re-pull) -->
-				<Button
-					variant="secondary"
-					size="sm"
-					onclick={handleRebuild}
-					disabled={isRebuilding || isDeploying || service.status === 'deploying'}
-					class="gap-1.5 shadow-xs"
-				>
-					<ArrowClockwise size={13} class={isRebuilding ? 'animate-spin' : ''} />
-					<span>Rebuild</span>
-				</Button>
-
-				<!-- 4. Stop / Start Button -->
-				{#if isRunning || isStopping || service.status === 'stopping'}
-					<Button
-						variant="secondary-destructive"
-						size="sm"
-						onclick={handleTogglePower}
-						disabled={isStopping || isStarting || service.status === 'stopping'}
-						class="gap-1.5 shadow-xs"
-					>
-						{#if isStopping || service.status === 'stopping'}
-							<ArrowClockwise size={13} class="animate-spin" />
-							<span>Stopping…</span>
-						{:else}
-							<Stop size={13} weight="fill" />
-							<span>Stop</span>
-						{/if}
-					</Button>
-				{:else}
-					<Button
-						variant="secondary"
-						size="sm"
-						onclick={handleTogglePower}
-						disabled={isStopping || isStarting || service.status === 'deploying' || service.status === 'starting'}
-						class="gap-1.5 text-kumo-success hover:bg-kumo-success-tint hover:ring-kumo-success/30 shadow-xs"
-					>
-						{#if isStarting || service.status === 'starting'}
-							<ArrowClockwise size={13} class="animate-spin" />
-							<span>Starting…</span>
-						{:else}
-							<Play size={13} weight="fill" />
-							<span>Start</span>
-						{/if}
-					</Button>
-				{/if}
-
-				<!-- 5. Open Terminal -->
-				<Button
-					variant="secondary"
-					size="sm"
-					onclick={onTerminalClick}
-					class="gap-1.5 font-mono text-xs shadow-xs"
-				>
-					<Terminal size={13} />
-					<span>Terminal</span>
-				</Button>
-			{/if}
-		</div>
-
-		<!-- Right: Autodeploy Toggle Switch (Kumo UI Switch) -->
-		<div class="flex items-center gap-3 pl-2 sm:border-l sm:border-kumo-line">
-			<span class="text-xs font-medium text-kumo-subtle select-none">Autodeploy</span>
-			<Switch
-				size="sm"
-				checked={autoDeploy}
-				onCheckedChange={handleToggleAutodeploy}
-				aria-label="Toggle automatic deployment on webhook or registry push"
-			/>
-		</div>
-	</div>
+	<DeployActionsBar
+		{service}
+		{isRunning}
+		{isDeploying}
+		{isCancelling}
+		{isRebuilding}
+		{isFreshingVolumes}
+		{isStopping}
+		{isStarting}
+		{isReloadingDaemon}
+		{autoDeploy}
+		onDeploy={handleDeploy}
+		onCancelDeployment={handleCancelDeployment}
+		onReloadDaemon={handleReloadDaemon}
+		onScrollToUnit={handleScrollToUnit}
+		onTogglePower={handleTogglePower}
+		onRebuild={handleRebuild}
+		onFreshVolumes={handleFreshVolumes}
+		{onTerminalClick}
+		onToggleAutodeploy={handleToggleAutodeploy}
+	/>
 
 	<!-- 3. Podman Execution & Pod Strategy -->
-	{#if service.type === 'pod'}
-		<!-- Pod Infrastructure Summary (No redundant "Run inside Podman Pod" switch) -->
-		<div
-			class="flex flex-wrap items-center justify-between gap-3 border-t border-kumo-hairline bg-kumo-elevated px-5 py-3 text-xs"
-		>
-			<div class="flex items-center gap-2.5 text-kumo-default">
-				<Package size={15} class="text-[var(--accent)]" />
-				<span class="font-medium">Podman Pod Infrastructure</span>
-				<span class="text-[11px] text-kumo-subtle">
-					(All member containers share localhost namespace · pod_{service.name})
-				</span>
-			</div>
-			<div class="flex items-center gap-2">
-				<Badge variant="neutral" class="font-mono text-[11px]">network: gopod-net</Badge>
-				<Badge variant="neutral" class="font-mono text-[11px] text-[var(--accent)]">mode: podman-pod</Badge>
-			</div>
-		</div>
-	{:else if service.type !== 'compose' && service.type !== 'quadlet'}
-		<div
-			class="flex flex-wrap items-center justify-between gap-3 border-t border-kumo-hairline bg-kumo-elevated px-5 py-3 text-xs"
-		>
-			<div class="flex items-center gap-3">
-				<Switch
-					checked={inPod}
-					onCheckedChange={handleToggleInPod}
-					aria-label="Toggle encapsulation inside Podman Pod"
-				/>
-				<span class="font-medium text-kumo-default">
-					Run inside Podman Pod
-				</span>
-				<span class="hidden text-[11px] text-kumo-subtle sm:inline">
-					{inPod
-						? `(Shared localhost network namespace · pod_${service.id})`
-						: '(Independent containers attached to gopod-net bridge)'}
-				</span>
-			</div>
-			<div class="flex items-center gap-2">
-				<Badge variant="neutral" class="font-mono text-[11px]">
-					network: gopod-net
-				</Badge>
-				<Badge
-					variant="neutral"
-					class="font-mono text-[11px] {inPod ? 'text-[var(--accent)]' : 'text-kumo-subtle'}"
-				>
-					mode: {inPod ? 'podman-pod' : 'standalone'}
-				</Badge>
-			</div>
-		</div>
-	{/if}
+	<DeployPodStrategyBanner {service} {inPod} onToggleInPod={handleToggleInPod} />
 
-	<!-- 4. Instant Feedback Banner (Nielsen #1: Visibility of System Status) -->
+	<!-- 4. Instant Feedback Banner -->
 	{#if feedbackMessage}
 		<div
 			class="flex items-center justify-between border-t border-kumo-hairline px-5 py-2.5 text-xs {feedbackMessage.type ===

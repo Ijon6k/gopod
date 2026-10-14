@@ -64,11 +64,7 @@
 			</div>
 		{/if}
 
-		<Field
-			label="Project name"
-			description="A descriptive name to identify your project."
-			required
-		>
+		<Field label="Project name" description="A descriptive name to identify your project." required>
 			<Input
 				id="project-name"
 				bind:value={name}
@@ -77,10 +73,7 @@
 			/>
 		</Field>
 
-		<Field
-			label="Description"
-			description="Optional purpose or notes for this workspace."
-		>
+		<Field label="Description" description="Optional purpose or notes for this workspace.">
 			<Input
 				id="project-desc"
 				bind:value={description}

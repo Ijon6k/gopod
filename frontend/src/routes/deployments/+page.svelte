@@ -100,7 +100,9 @@
 			tabs={[
 				{ id: 'all', label: `All (${counts.total})` },
 				{ id: 'running', label: `Success (${counts.running})` },
-				...(counts.building > 0 ? [{ id: 'building', label: `Building (${counts.building})` }] : []),
+				...(counts.building > 0
+					? [{ id: 'building', label: `Building (${counts.building})` }]
+					: []),
 				...(counts.failed > 0 ? [{ id: 'failed', label: `Failed (${counts.failed})` }] : [])
 			]}
 			bind:active={statusFilter}

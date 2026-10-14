@@ -25,11 +25,7 @@
 		</Field>
 
 		<Field label="Description (optional)">
-			<Input
-				id="app-svc-desc"
-				bind:value={description}
-				placeholder="Frontend application or API"
-			/>
+			<Input id="app-svc-desc" bind:value={description} placeholder="Frontend application or API" />
 		</Field>
 	</div>
 

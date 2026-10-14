@@ -139,10 +139,7 @@ export const servicesApi = {
 		content?: string;
 		files?: Record<string, string>;
 	}): Promise<QuadletValidationResponse> {
-		const res = await apiClient.post<QuadletValidationResponse>(
-			'/quadlet/validate',
-			payload
-		);
+		const res = await apiClient.post<QuadletValidationResponse>('/quadlet/validate', payload);
 		return res.data;
 	},
 

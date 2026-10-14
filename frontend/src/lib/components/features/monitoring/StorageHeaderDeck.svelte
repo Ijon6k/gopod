@@ -34,9 +34,7 @@
 >
 	<div class="flex flex-col gap-1">
 		<div class="flex flex-wrap items-center gap-2.5">
-			<h3 class="text-sm font-semibold text-[var(--text-primary)]">
-				Storage allocation
-			</h3>
+			<h3 class="text-sm font-semibold text-[var(--text-primary)]">Storage allocation</h3>
 			<span
 				class="rounded border border-[var(--status-green)] bg-[var(--status-green-muted)] px-2 py-0.5 font-mono text-[11px] font-medium text-[var(--status-green)]"
 			>

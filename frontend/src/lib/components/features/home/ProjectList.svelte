@@ -18,9 +18,7 @@
 
 <LayerCard class={cn('flex flex-col p-5', className)}>
 	<div class="mb-4 flex min-h-[22px] items-center justify-between gap-4">
-		<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase">
-			Projects
-		</span>
+		<span class="text-xs font-medium text-[var(--text-tertiary)]"> Projects </span>
 		<button
 			onclick={() => goto('/projects')}
 			class="inline-flex cursor-pointer items-center gap-1.5 border-0 bg-transparent p-0 text-xs font-[var(--font-sans)] whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)]"

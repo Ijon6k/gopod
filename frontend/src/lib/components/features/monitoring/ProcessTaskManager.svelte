@@ -341,9 +341,7 @@
 
 											<Folder size={16} class="shrink-0 text-[var(--accent)]" />
 
-											<span
-												class="text-[13.5px] font-bold tracking-tight text-[var(--text-primary)]"
-											>
+											<span class="text-[13.5px] font-semibold text-[var(--text-primary)]">
 												{pNode.project.name}
 											</span>
 
@@ -363,13 +361,13 @@
 									</td>
 
 									<td
-										class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-bold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
+										class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-semibold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
 									>
 										{pNode.totalCpu.toFixed(1)}%
 									</td>
 
 									<td
-										class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-bold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
+										class="px-3.5 py-2 text-right align-middle font-mono text-[13.5px] font-semibold whitespace-nowrap text-[var(--text-primary)] tabular-nums"
 									>
 										{pNode.totalMem} MB
 									</td>

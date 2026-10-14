@@ -47,7 +47,11 @@ export const systemApi = {
 		onError?: (error: Event) => void
 	): () => void {
 		if (typeof window === 'undefined') return () => {};
-		const es = new EventSource('/api/stats/stream');
+		const token = typeof localStorage !== 'undefined' ? localStorage.getItem('gopod_token') : null;
+		const url = token
+			? `/api/stats/stream?token=${encodeURIComponent(token)}`
+			: '/api/stats/stream';
+		const es = new EventSource(url, { withCredentials: true });
 		es.onmessage = (event) => {
 			try {
 				const parsed = JSON.parse(event.data);

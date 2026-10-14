@@ -218,7 +218,7 @@ func (s *Service) ReloadQuadlets(ctx context.Context) error {
 		}
 		return nil
 	}
-	return fmt.Errorf("systemctl not available")
+	return fmt.Errorf("systemctl not available (containerized runtime: unit files are mounted to host ~/.config/containers/systemd/)")
 }
 
 // DeleteQuadlet thoroughly stops systemd supervision, removes unit files, reloads daemon, and forces Podman container/pod removal.

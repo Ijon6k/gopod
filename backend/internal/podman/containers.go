@@ -68,11 +68,16 @@ func (c *Client) GetContainersWithStats(ctx context.Context, includeStats bool) 
 							}
 						}
 
+						status := cItem.Status
+						if status == "" {
+							status = cItem.State
+						}
+
 						item := ContainerItem{
 							ID:      idShort,
 							Names:   cItem.Names,
 							Image:   cItem.Image,
-							Status:  cItem.Status,
+							Status:  status,
 							State:   cItem.State,
 							Created: cItem.Created,
 							Ports:   strings.Join(ports, ", "),

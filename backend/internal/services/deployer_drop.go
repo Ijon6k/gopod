@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // deployDrop deploys an extracted static site directory via an nginx:alpine container.
@@ -42,6 +43,13 @@ func (d *Deployer) deployDrop(ctx context.Context, s Service, depID, trigger str
 		absDistDir = distDir
 	}
 
+	hostDistDir := absDistDir
+	if hostDataDir := os.Getenv("HOST_DATA_DIR"); hostDataDir != "" {
+		if strings.HasPrefix(absDistDir, "/app/data") {
+			hostDistDir = filepath.Join(hostDataDir, strings.TrimPrefix(absDistDir, "/app/data"))
+		}
+	}
+
 	logLine(fmt.Sprintf("📂 Serving static directory: %s", absDistDir))
 
 	// Configure container for static nginx hosting
@@ -67,7 +75,7 @@ func (d *Deployer) deployDrop(ctx context.Context, s Service, depID, trigger str
 	_ = os.Chmod(absDistDir, 0755)
 	if !hasDistMount {
 		s.Advanced.Storage.Volumes = append(s.Advanced.Storage.Volumes, VolumeMountConfig{
-			Source:  absDistDir,
+			Source:  hostDistDir,
 			Target:  "/usr/share/nginx/html",
 			Options: "Z",
 		})

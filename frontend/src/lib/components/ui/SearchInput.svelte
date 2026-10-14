@@ -21,19 +21,13 @@
 	<InputGroupAddon align="start">
 		<MagnifyingGlass size={15} />
 	</InputGroupAddon>
-	<InputGroupInput
-		type="search"
-		bind:value
-		{placeholder}
-		{oninput}
-		aria-label="Search"
-	/>
+	<InputGroupInput type="search" bind:value {placeholder} {oninput} aria-label="Search" />
 	{#if value}
 		<InputGroupAddon align="end">
 			<button
 				type="button"
 				onclick={() => (value = '')}
-				class="cursor-pointer border-0 bg-transparent p-0.5 text-kumo-subtle hover:text-kumo-default transition-colors"
+				class="cursor-pointer border-0 bg-transparent p-0.5 text-kumo-subtle transition-colors hover:text-kumo-default"
 				aria-label="Clear search"
 			>
 				<X size={14} />

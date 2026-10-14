@@ -49,8 +49,7 @@
 <Badge
 	variant={info.variant}
 	appearance="dot"
-	class={cn(size === 'sm' ? 'text-[11px] py-0 px-1.5' : 'text-xs', className)}
+	class={cn(size === 'sm' ? 'px-1.5 py-0 text-[11px]' : 'text-xs', className)}
 >
 	{label ?? info.label}
 </Badge>
-

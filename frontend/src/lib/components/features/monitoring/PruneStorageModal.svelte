@@ -267,9 +267,9 @@
 		<div
 			class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-3 text-xs"
 		>
-			<span class="font-medium text-[var(--text-secondary)]">Estimated Recoverable Space:</span>
+			<span class="font-medium text-[var(--text-secondary)]">Estimated recoverable space:</span>
 			<span
-				class="font-mono text-sm font-bold {totalReclaimableBytes > 0
+				class="font-mono text-sm font-semibold {totalReclaimableBytes > 0
 					? 'text-[var(--status-green)]'
 					: 'text-[var(--text-tertiary)]'}"
 			>

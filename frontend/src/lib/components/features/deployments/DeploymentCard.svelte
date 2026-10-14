@@ -43,16 +43,16 @@
 
 	let resolvedProjectName = $derived(
 		deployment.projectName ||
-		dataStore.getProjectById(deployment.projectId)?.name ||
-		deployment.projectId ||
-		'Default'
+			dataStore.getProjectById(deployment.projectId)?.name ||
+			deployment.projectId ||
+			'Default'
 	);
 
 	let resolvedServiceName = $derived(
 		deployment.serviceName ||
-		dataStore.getServiceById(deployment.serviceId)?.name ||
-		deployment.serviceId ||
-		'Service'
+			dataStore.getServiceById(deployment.serviceId)?.name ||
+			deployment.serviceId ||
+			'Service'
 	);
 
 	async function copyCommit(e: MouseEvent) {
@@ -71,8 +71,8 @@
 
 	const isSuccess = $derived(
 		deployment.status === 'success' ||
-		deployment.status === 'running' ||
-		deployment.status === 'healthy'
+			deployment.status === 'running' ||
+			deployment.status === 'healthy'
 	);
 
 	const isBuilding = $derived(
@@ -82,28 +82,18 @@
 	const isFailed = $derived(deployment.status === 'failed');
 
 	const badgeVariant = $derived(
-		isSuccess
-			? 'success'
-			: isFailed
-				? 'error'
-				: isBuilding
-					? 'warning'
-					: 'neutral'
+		isSuccess ? 'success' : isFailed ? 'error' : isBuilding ? 'warning' : 'neutral'
 	);
 
 	const statusLabel = $derived(
-		isSuccess
-			? 'Success'
-			: isBuilding
-				? 'Building'
-				: isFailed
-					? 'Failed'
-					: deployment.status
+		isSuccess ? 'Success' : isBuilding ? 'Building' : isFailed ? 'Failed' : deployment.status
 	);
 </script>
 
 <div
-	class="group relative flex w-full flex-col justify-between gap-3.5 rounded-lg bg-kumo-base p-4 ring {isBuilding ? 'ring-kumo-brand/40 shadow-xs' : 'ring-kumo-line'} transition-colors hover:bg-kumo-tint md:flex-row md:items-center"
+	class="group relative flex w-full flex-col justify-between gap-3.5 rounded-lg bg-kumo-base p-4 ring {isBuilding
+		? 'shadow-xs ring-kumo-brand/40'
+		: 'ring-kumo-line'} transition-colors hover:bg-kumo-tint md:flex-row md:items-center"
 >
 	<!-- Left / Primary: Status, Number, Commit Message, Metadata -->
 	<div class="flex min-w-0 flex-1 items-start gap-3">
@@ -128,7 +118,7 @@
 					<FolderSimple size={13} class="shrink-0 text-kumo-subtle/70" />
 					<a
 						href="/projects/{deployment.projectId}"
-						class="font-medium text-kumo-subtle hover:text-kumo-default transition-colors no-underline"
+						class="font-medium text-kumo-subtle no-underline transition-colors hover:text-kumo-default"
 						title="Go to project {resolvedProjectName}"
 					>
 						{resolvedProjectName}
@@ -238,7 +228,7 @@
 		{/if}
 
 		<!-- Timing -->
-		<div class="flex items-center gap-1.5 tabular-nums text-kumo-subtle">
+		<div class="flex items-center gap-1.5 text-kumo-subtle tabular-nums">
 			<span class="inline-flex items-center gap-1" title="Duration">
 				<Timer size={13} />
 				{deployment.duration}
@@ -258,7 +248,7 @@
 			variant="secondary"
 			size="sm"
 			onclick={() => onViewLogs(deployment)}
-			class="gap-1.5 whitespace-nowrap border border-kumo-line bg-kumo-elevated text-kumo-default shadow-xs hover:bg-kumo-fill"
+			class="gap-1.5 border border-kumo-line bg-kumo-elevated whitespace-nowrap text-kumo-default shadow-xs hover:bg-kumo-fill"
 		>
 			<Terminal size={13} />
 			<span>View logs</span>
@@ -270,7 +260,7 @@
 				variant="secondary"
 				size="sm"
 				onclick={() => onRedeploy(deployment)}
-				class="gap-1.5 whitespace-nowrap border border-kumo-line bg-kumo-elevated text-kumo-default shadow-xs hover:bg-kumo-fill"
+				class="gap-1.5 border border-kumo-line bg-kumo-elevated whitespace-nowrap text-kumo-default shadow-xs hover:bg-kumo-fill"
 			>
 				<ArrowCounterClockwise size={13} />
 				<span>{isCurrent ? 'Redeploy' : 'Rollback'}</span>
@@ -296,7 +286,10 @@
 			class="border border-kumo-line bg-kumo-elevated shadow-xs hover:bg-kumo-fill hover:text-kumo-danger"
 			aria-label="Delete deployment"
 		>
-			<Trash size={14} class="text-kumo-subtle transition-colors group-hover:text-kumo-danger hover:text-kumo-danger" />
+			<Trash
+				size={14}
+				class="text-kumo-subtle transition-colors group-hover:text-kumo-danger hover:text-kumo-danger"
+			/>
 		</Button>
 	</div>
 </div>

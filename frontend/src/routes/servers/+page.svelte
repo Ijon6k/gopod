@@ -38,27 +38,19 @@
 		<!-- Health checks -->
 		<div class="grid grid-cols-2 gap-4 border-t border-[var(--border-subtle)] pt-4 md:grid-cols-4">
 			<div class="flex flex-col gap-1">
-				<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase"
-					>Podman</span
-				>
+				<span class="text-xs font-medium text-[var(--text-tertiary)]">Podman</span>
 				<StatusBadge status={server.podmanHealth} size="sm" />
 			</div>
 			<div class="flex flex-col gap-1">
-				<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase"
-					>Caddy</span
-				>
+				<span class="text-xs font-medium text-[var(--text-tertiary)]">Caddy</span>
 				<StatusBadge status={server.caddy} size="sm" />
 			</div>
 			<div class="flex flex-col gap-1">
-				<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase"
-					>Network</span
-				>
+				<span class="text-xs font-medium text-[var(--text-tertiary)]">Network</span>
 				<StatusBadge status={server.networkHealth} size="sm" />
 			</div>
 			<div class="flex flex-col gap-1">
-				<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase"
-					>Storage</span
-				>
+				<span class="text-xs font-medium text-[var(--text-tertiary)]">Storage</span>
 				<StatusBadge status={server.storageHealth} size="sm" />
 			</div>
 		</div>

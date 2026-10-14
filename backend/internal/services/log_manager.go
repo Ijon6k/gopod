@@ -142,4 +142,7 @@ func (m *LogManager) PipeReader(deploymentID string, r io.Reader) {
 	for scanner.Scan() {
 		m.LogLine(deploymentID, scanner.Text())
 	}
+	if err := scanner.Err(); err != nil && err != io.EOF {
+		m.LogLine(deploymentID, "[log error] "+err.Error())
+	}
 }

@@ -64,8 +64,18 @@
 			}
 		}, 1000);
 
+		const handleVisibilityChange = () => {
+			if (document.hidden) {
+				dataStore.stopStreamingStats();
+			} else if (refreshRate !== 'paused') {
+				dataStore.startStreamingStats();
+			}
+		};
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+
 		return () => {
 			// Clean up when user navigates away
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
 			dataStore.stopStreamingStats();
 			clearInterval(secTimer);
 		};

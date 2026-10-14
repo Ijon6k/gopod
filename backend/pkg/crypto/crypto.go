@@ -62,15 +62,13 @@ func InitMasterKey(dataDir string) error {
 	return nil
 }
 
-func getKey() []byte {
+func getKey() ([]byte, error) {
 	keyMu.RLock()
 	defer keyMu.RUnlock()
 	if len(masterKey) == 32 {
-		return masterKey
+		return masterKey, nil
 	}
-	// Fallback deterministic fallback if not explicitly initialized
-	fallback := sha256.Sum256([]byte("gopod-internal-default-fallback-key"))
-	return fallback[:]
+	return nil, fmt.Errorf("master encryption key not initialized")
 }
 
 // Encrypt encrypts plaintext using AES-256-GCM.
@@ -79,7 +77,12 @@ func Encrypt(plaintext string) (string, error) {
 		return "", nil
 	}
 
-	block, err := aes.NewCipher(getKey())
+	key, err := getKey()
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}
@@ -124,7 +127,12 @@ func Decrypt(ciphertext string) (string, error) {
 		return "", err
 	}
 
-	block, err := aes.NewCipher(getKey())
+	key, err := getKey()
+	if err != nil {
+		return "", err
+	}
+
+	block, err := aes.NewCipher(key)
 	if err != nil {
 		return "", err
 	}

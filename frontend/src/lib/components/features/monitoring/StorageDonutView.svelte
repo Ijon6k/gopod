@@ -88,9 +88,7 @@
 			<span class="font-mono text-xl font-semibold text-[var(--text-primary)]">
 				{totalPodmanDisplay}
 			</span>
-			<span class="text-[10px] font-medium text-[var(--text-tertiary)] uppercase">
-				Allocated
-			</span>
+			<span class="text-[10px] font-medium text-[var(--text-tertiary)] uppercase"> Allocated </span>
 			<span class="mt-0.5 font-mono text-[10px] font-medium text-[var(--status-green)]">
 				{totalReclaimableDisplay} freeable
 			</span>

@@ -10,8 +10,8 @@
 		DATABASE_ENGINES,
 		type DatabaseEngine
 	} from '../database/database-utils';
-	import EditDatabaseModal from './EditDatabaseModal.svelte';
-	import ChangePasswordModal from './ChangePasswordModal.svelte';
+	import EditDatabaseModal from './modals/EditDatabaseModal.svelte';
+	import ChangePasswordModal from './modals/ChangePasswordModal.svelte';
 	import {
 		Database,
 		ShieldCheck,
@@ -113,7 +113,7 @@
 						{currentEngine.name} Instance
 					</span>
 					<span
-						class="rounded-sm bg-kumo-base px-1.5 py-0.5 font-mono text-[10px] font-medium text-kumo-subtle ring-1 ring-kumo-hairline uppercase"
+						class="rounded-sm bg-kumo-base px-1.5 py-0.5 font-mono text-[10px] font-medium text-kumo-subtle uppercase ring-1 ring-kumo-hairline"
 					>
 						Managed
 					</span>
@@ -171,7 +171,9 @@
 				</div>
 				<CopyButton text={internalConnUri} />
 			</div>
-			<div class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs text-[var(--accent)] ring-1 ring-kumo-hairline">
+			<div
+				class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs text-[var(--accent)] ring-1 ring-kumo-hairline"
+			>
 				<span class="truncate select-all">
 					{showPassword ? internalConnUri : internalConnUri.replace(creds.password, '••••••••••••')}
 				</span>
@@ -186,17 +188,22 @@
 				<div class="flex items-center justify-between">
 					<div class="flex items-center gap-1.5">
 						<LinkSimple size={14} class="text-kumo-success" />
-						<span class="text-xs font-semibold text-kumo-default">External Host Connection String</span>
+						<span class="text-xs font-semibold text-kumo-default"
+							>External Host Connection String</span
+						>
 					</div>
 					<CopyButton text={hostConnUri} />
 				</div>
-				<div class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs text-kumo-success ring-1 ring-kumo-hairline">
+				<div
+					class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs text-kumo-success ring-1 ring-kumo-hairline"
+				>
 					<span class="truncate select-all">
 						{showPassword ? hostConnUri : hostConnUri.replace(creds.password, '••••••••••••')}
 					</span>
 				</div>
 				<span class="text-[10px] text-kumo-subtle">
-					Exposed externally on host port <code>{creds.hostPort}</code> for local development tools and database GUIs.
+					Exposed externally on host port <code>{creds.hostPort}</code> for local development tools and
+					database GUIs.
 				</span>
 			</div>
 		{/if}
@@ -222,7 +229,9 @@
 				<div class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring-1 ring-kumo-hairline">
 					<span class="text-[10px] font-medium text-kumo-subtle uppercase">Host</span>
 					<div class="flex items-center justify-between">
-						<span class="truncate font-mono text-xs font-medium text-kumo-default">{internalHost}</span>
+						<span class="truncate font-mono text-xs font-medium text-kumo-default"
+							>{internalHost}</span
+						>
 						<CopyButton text={internalHost} />
 					</div>
 				</div>
@@ -241,7 +250,9 @@
 					<div class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring-1 ring-kumo-hairline">
 						<span class="text-[10px] font-medium text-kumo-subtle uppercase">Username</span>
 						<div class="flex items-center justify-between">
-							<span class="truncate font-mono text-xs font-medium text-kumo-default">{creds.user}</span>
+							<span class="truncate font-mono text-xs font-medium text-kumo-default"
+								>{creds.user}</span
+							>
 							<CopyButton text={creds.user} />
 						</div>
 					</div>
@@ -252,14 +263,18 @@
 					<div class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring-1 ring-kumo-hairline">
 						<span class="text-[10px] font-medium text-kumo-subtle uppercase">Database</span>
 						<div class="flex items-center justify-between">
-							<span class="truncate font-mono text-xs font-medium text-kumo-default">{creds.databaseName}</span>
+							<span class="truncate font-mono text-xs font-medium text-kumo-default"
+								>{creds.databaseName}</span
+							>
 							<CopyButton text={creds.databaseName} />
 						</div>
 					</div>
 				{/if}
 
 				<!-- Password (with Change Password modal trigger) -->
-				<div class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring-1 ring-kumo-hairline sm:col-span-2">
+				<div
+					class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring-1 ring-kumo-hairline sm:col-span-2"
+				>
 					<div class="flex items-center justify-between">
 						<span class="text-[10px] font-medium text-kumo-subtle uppercase">Password</span>
 						<div class="flex items-center gap-2">
@@ -293,7 +308,9 @@
 
 				<!-- Root Password (if MySQL / MariaDB) -->
 				{#if currentEngine.hasRootPassword && creds.rootPassword}
-					<div class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring-1 ring-kumo-hairline sm:col-span-2">
+					<div
+						class="flex flex-col gap-1 rounded bg-kumo-elevated p-2.5 ring-1 ring-kumo-hairline sm:col-span-2"
+					>
 						<div class="flex items-center justify-between">
 							<span class="text-[10px] font-medium text-kumo-subtle uppercase">Root Password</span>
 							<button
@@ -334,7 +351,9 @@
 					Edit Volume
 				</button>
 			</div>
-			<div class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-2 text-xs ring-1 ring-kumo-hairline">
+			<div
+				class="flex items-center justify-between rounded-md bg-kumo-elevated px-3 py-2 text-xs ring-1 ring-kumo-hairline"
+			>
 				<div class="flex items-center gap-2">
 					<span class="text-kumo-subtle">Named Volume:</span>
 					<code class="font-mono font-medium text-kumo-default">
@@ -356,7 +375,9 @@
 				</div>
 				<CopyButton text={cliCommand} />
 			</div>
-			<div class="rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs text-kumo-subtle ring-1 ring-kumo-hairline">
+			<div
+				class="rounded-md bg-kumo-elevated px-3 py-2 font-mono text-xs text-kumo-subtle ring-1 ring-kumo-hairline"
+			>
 				<code>{cliCommand}</code>
 			</div>
 		</div>

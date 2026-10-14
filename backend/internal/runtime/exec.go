@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -14,6 +15,8 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
+
+	"gopod/pkg/httputil"
 )
 
 var upgrader = websocket.Upgrader{
@@ -26,7 +29,22 @@ var upgrader = websocket.Upgrader{
 		if err != nil {
 			return false
 		}
-		return u.Host == r.Host || strings.HasPrefix(u.Host, "localhost:") || strings.HasPrefix(u.Host, "127.0.0.1:") || u.Host == "localhost"
+		if u.Host == r.Host {
+			return true
+		}
+		if allowed := os.Getenv("ALLOWED_ORIGIN"); allowed != "" {
+			for _, a := range strings.Split(allowed, ",") {
+				trimmed := strings.TrimSpace(a)
+				if trimmed == origin || trimmed == u.Host {
+					return true
+				}
+			}
+		}
+		// Allow exact match with host port on localhost
+		if (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1") && (r.Host == u.Host || strings.HasPrefix(r.Host, u.Hostname()+":")) {
+			return true
+		}
+		return false
 	},
 }
 
@@ -47,20 +65,54 @@ var allowedShells = map[string]bool{
 	"/bin/ash":  true,
 }
 
-// handleContainerExec provides interactive WebSocket terminal sessions with pseudo-terminal (PTY) emulation.
-func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
-	// Guard WebSocket endpoint with authentication check
-	var authenticated bool
-	h.middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
-		authenticated = true
-	})(w, r)
-	if !authenticated {
+// handleContainerTerminalTicket generates a short-lived single-use ticket for WebSocket terminal exec.
+func (h *Handler) handleContainerTerminalTicket(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if id == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "Missing container ID")
 		return
 	}
+	if strings.HasPrefix(id, "-") || strings.ContainsAny(id, " \t\r\n/\\`\"'$;&|<>") {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid container identifier")
+		return
+	}
+	if h.ticketManager == nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "Ticket manager unavailable")
+		return
+	}
+	ticket, err := h.ticketManager.IssueTicket(id)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to issue terminal ticket")
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"ticket": ticket})
+}
 
+// handleContainerExec provides interactive WebSocket terminal sessions with pseudo-terminal (PTY) emulation.
+func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if id == "" {
 		http.Error(w, "Missing container ID", http.StatusBadRequest)
+		return
+	}
+	if strings.HasPrefix(id, "-") || strings.ContainsAny(id, " \t\r\n/\\`\"'$;&|<>") {
+		http.Error(w, "Invalid container identifier", http.StatusBadRequest)
+		return
+	}
+
+	// Guard WebSocket endpoint: check one-time ticket first, then fallback to session auth
+	var authenticated bool
+	if ticket := r.URL.Query().Get("ticket"); ticket != "" && h.ticketManager != nil {
+		if h.ticketManager.ValidateAndConsume(ticket, id) {
+			authenticated = true
+		}
+	}
+	if !authenticated {
+		h.middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+			authenticated = true
+		})(w, r)
+	}
+	if !authenticated {
 		return
 	}
 
@@ -95,7 +147,7 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 	var status string
 
 	// 1. Check direct container inspect (--type container prevents inspecting images)
-	checkCmd := exec.CommandContext(ctx, "podman", "inspect", "--type", "container", "--format", "{{.State.Status}}", targetID)
+	checkCmd := exec.CommandContext(ctx, "podman", "inspect", "--type", "container", "--format", "{{.State.Status}}", "--", targetID)
 	if out, err := checkCmd.CombinedOutput(); err == nil {
 		status = strings.TrimSpace(string(out))
 	}
@@ -134,17 +186,17 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if status == "" {
-		_ = ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[33m⚠️ Container '%s' was not found.\x1b[0m\r\n\x1b[90mPlease deploy this service first before opening an interactive terminal session.\x1b[0m\r\n", id)))
+		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m⚠️ Container '%s' was not found.\x1b[0m\r\n\x1b[90mPlease deploy this service first before opening an interactive terminal session.\x1b[0m\r\n", id))
 		return
 	}
 
 	if status != "running" {
-		_ = ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[33m⚠️ Container '%s' is currently %s.\x1b[0m\r\n\x1b[90mPlease start or deploy this service to open an interactive terminal session.\x1b[0m\r\n", targetID, strings.ToUpper(status))))
+		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m⚠️ Container '%s' is currently %s.\x1b[0m\r\n\x1b[90mPlease start or deploy this service to open an interactive terminal session.\x1b[0m\r\n", targetID, strings.ToUpper(status)))
 		return
 	}
 
 	// 2. Spawn pseudo-terminal via creack/pty with podman exec -it
-	cmd := exec.CommandContext(ctx, "podman", "exec", "-it", "-w", "/", targetID, cmdName)
+	cmd := exec.CommandContext(ctx, "podman", "exec", "-it", "-w", "/", "--", targetID, cmdName)
 	if h.service != nil {
 		h.service.SetupCmdEnv(cmd)
 	}
@@ -155,7 +207,7 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		Cols: uint16(cols),
 	})
 	if err != nil {
-		_ = ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[31m[ERROR] Failed to start pseudo-terminal: %v\x1b[0m\r\n", err)))
+		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[31m[ERROR] Failed to start pseudo-terminal: %v\x1b[0m\r\n", err))
 		return
 	}
 
@@ -178,6 +230,10 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		for {
 			n, err := ptmx.Read(buf)
 			if n > 0 {
+				outStr := string(buf[:n])
+				if strings.Contains(outStr, "executable file not found in $PATH") || strings.Contains(outStr, "exec: \"sh\": not found") {
+					_ = ws.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m⚠️ Container image is built FROM scratch and contains no shell environment (/bin/sh).\x1b[0m\r\n\x1b[90m💡 Scratch containers (like traefik/whoami) only contain the compiled binary without a shell.\x1b[0m\r\n\x1b[90m💡 To test connectivity inside the pod network, use an adjacent container with a shell (e.g. redis:alpine or alpine).\x1b[0m\r\n"))
+				}
 				if writeErr := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
 					return
 				}
@@ -228,8 +284,8 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if exitCode == 127 {
-		_ = ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[33m[Container closed: '%s' not found in container]\x1b[0m\r\n\x1b[90m(If this image is a minimal scratch/distroless container, it does not include an interactive shell)\x1b[0m\r\n", cmdName)))
+		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m[Container closed: '%s' not found in container]\x1b[0m\r\n\x1b[90m(If this image is a minimal scratch/distroless container, it does not include an interactive shell)\x1b[0m\r\n", cmdName))
 	} else {
-		_ = ws.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[33m[Session closed with exit code %d]\x1b[0m\r\n", exitCode)))
+		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m[Session closed with exit code %d]\x1b[0m\r\n", exitCode))
 	}
 }

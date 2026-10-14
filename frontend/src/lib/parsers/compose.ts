@@ -112,7 +112,11 @@ export function parseComposeServices(yaml: string): ComposeServiceDetail[] {
 				trimmed.startsWith('deploy:') ||
 				trimmed.startsWith('entrypoint:');
 
-			if (leadingSpaces === serviceIndent && /^[a-zA-Z0-9_.-]+:\s*$/.test(trimmed) && !isServiceDirective) {
+			if (
+				leadingSpaces === serviceIndent &&
+				/^[a-zA-Z0-9_.-]+:\s*$/.test(trimmed) &&
+				!isServiceDirective
+			) {
 				flushService();
 				currentName = trimmed.replace(/:\s*$/, '').trim();
 				currentImg = '';

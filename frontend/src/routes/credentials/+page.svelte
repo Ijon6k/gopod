@@ -13,7 +13,7 @@
 	} from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
 	import { Key, Package, ShieldCheck, Plus, Trash } from 'phosphor-svelte';
-	import AddCredentialModal from '$lib/components/features/services/detail/AddCredentialModal.svelte';
+	import AddCredentialModal from '$lib/components/features/services/detail/modals/AddCredentialModal.svelte';
 
 	let activeTab = $state<'ssh' | 'registries' | 'secrets'>('ssh');
 	let isModalOpen = $state(false);
@@ -76,11 +76,22 @@
 					<Table class="w-full text-left text-xs">
 						<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
 							<TableRow>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Key name</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Fingerprint</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Type</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Created</TableHead>
-								<TableHead class="px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case">Actions</TableHead>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Key name</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Fingerprint</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Type</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Created</TableHead
+								>
+								<TableHead
+									class="px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Actions</TableHead
+								>
 							</TableRow>
 						</TableHeader>
 						<TableBody class="divide-y divide-kumo-hairline">
@@ -167,11 +178,22 @@
 					<Table class="w-full text-left text-xs">
 						<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
 							<TableRow>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Registry name</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Registry URL</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Username</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Created</TableHead>
-								<TableHead class="px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case">Actions</TableHead>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Registry name</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Registry URL</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Username</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Created</TableHead
+								>
+								<TableHead
+									class="px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Actions</TableHead
+								>
 							</TableRow>
 						</TableHeader>
 						<TableBody class="divide-y divide-kumo-hairline">
@@ -244,10 +266,19 @@
 					<Table class="w-full text-left text-xs">
 						<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
 							<TableRow>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Secret name</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Storage driver</TableHead>
-								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case">Created</TableHead>
-								<TableHead class="px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case">Actions</TableHead>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Secret name</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Storage driver</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Created</TableHead
+								>
+								<TableHead
+									class="px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Actions</TableHead
+								>
 							</TableRow>
 						</TableHeader>
 						<TableBody class="divide-y divide-kumo-hairline">

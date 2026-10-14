@@ -6,14 +6,14 @@
 	import { api } from '$lib/api';
 	import type { Service, Project } from '$lib/types';
 	import ServiceHeader from '$lib/components/features/services/detail/ServiceHeader.svelte';
-	import GeneralTab from '$lib/components/features/services/detail/GeneralTab.svelte';
-	import EnvironmentTab from '$lib/components/features/services/detail/EnvironmentTab.svelte';
-	import DomainsTab from '$lib/components/features/services/detail/DomainsTab.svelte';
-	import DeploymentsTab from '$lib/components/features/services/detail/DeploymentsTab.svelte';
-	import MonitoringTab from '$lib/components/features/services/detail/MonitoringTab.svelte';
-	import LogsTab from '$lib/components/features/services/detail/LogsTab.svelte';
-	import TerminalTab from '$lib/components/features/services/detail/TerminalTab.svelte';
-	import AdvancedTab from '$lib/components/features/services/detail/AdvancedTab.svelte';
+	import GeneralTab from '$lib/components/features/services/detail/tabs/GeneralTab.svelte';
+	import EnvironmentTab from '$lib/components/features/services/detail/tabs/EnvironmentTab.svelte';
+	import DomainsTab from '$lib/components/features/services/detail/tabs/DomainsTab.svelte';
+	import DeploymentsTab from '$lib/components/features/services/detail/tabs/DeploymentsTab.svelte';
+	import MonitoringTab from '$lib/components/features/services/detail/tabs/MonitoringTab.svelte';
+	import LogsTab from '$lib/components/features/services/detail/tabs/LogsTab.svelte';
+	import TerminalTab from '$lib/components/features/services/detail/tabs/TerminalTab.svelte';
+	import AdvancedTab from '$lib/components/features/services/detail/tabs/AdvancedTab.svelte';
 	import { SpinnerGap } from 'phosphor-svelte';
 
 	let serviceId = $derived(page.params.serviceId ?? '');
@@ -227,7 +227,9 @@
 			<Tabs {tabs} bind:active={activeTab} />
 
 			{#if activeTab === 'terminal'}
-				<span class="absolute right-0 bottom-2.5 text-xs font-[var(--font-mono)] font-medium text-[var(--accent)]">
+				<span
+					class="absolute right-0 bottom-2.5 text-xs font-[var(--font-mono)] font-medium text-[var(--accent)]"
+				>
 					[Terminal Session]
 				</span>
 			{/if}
@@ -238,7 +240,7 @@
 			{#if activeTab === 'general'}
 				<GeneralTab
 					{service}
-					onNavigateTab={(tab) => (activeTab = tab)}
+					onNavigateTab={(tab: string) => (activeTab = tab)}
 					onTerminalClick={() => (activeTab = 'terminal')}
 					onRedeploy={handleRedeploy}
 				/>
@@ -249,7 +251,7 @@
 			{:else if activeTab === 'deployments'}
 				<DeploymentsTab {service} onRedeploy={handleRedeploy} />
 			{:else if activeTab === 'monitoring'}
-				<MonitoringTab {service} onNavigateTab={(tab) => (activeTab = tab)} />
+				<MonitoringTab {service} onNavigateTab={(tab: string) => (activeTab = tab)} />
 			{:else if activeTab === 'logs'}
 				<LogsTab {service} />
 			{:else if activeTab === 'terminal'}

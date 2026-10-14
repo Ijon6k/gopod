@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"strings"
+
+	"gopod/pkg/crypto"
 )
 
 // SQLiteRepository implements services.Repository using SQLite.
@@ -50,6 +52,9 @@ func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Servic
 		); err != nil {
 			return nil, err
 		}
+		if dec, err := crypto.Decrypt(envJSON); err == nil {
+			envJSON = dec
+		}
 		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
 		if advJSON != "" && advJSON != "{}" {
 			_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
@@ -82,6 +87,9 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error)
 	if err != nil {
 		return nil, err
 	}
+	if dec, err := crypto.Decrypt(envJSON); err == nil {
+		envJSON = dec
+	}
 	_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
 	if advJSON != "" && advJSON != "{}" {
 		_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
@@ -90,7 +98,11 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error)
 }
 
 func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
-	envJSON, _ := json.Marshal(s.EnvVars)
+	rawEnv, _ := json.Marshal(s.EnvVars)
+	envJSON := string(rawEnv)
+	if enc, err := crypto.Encrypt(envJSON); err == nil {
+		envJSON = enc
+	}
 	advJSON := []byte("{}")
 	if s.Advanced != nil {
 		if b, err := json.Marshal(s.Advanced); err == nil {
@@ -140,7 +152,11 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 }
 
 func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
-	envJSON, _ := json.Marshal(s.EnvVars)
+	rawEnv, _ := json.Marshal(s.EnvVars)
+	envJSON := string(rawEnv)
+	if enc, err := crypto.Encrypt(envJSON); err == nil {
+		envJSON = enc
+	}
 	advJSON := []byte("{}")
 	if s.Advanced != nil {
 		if b, err := json.Marshal(s.Advanced); err == nil {

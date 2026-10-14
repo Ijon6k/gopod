@@ -3,13 +3,7 @@
 	import type { TopologyNode } from './types';
 	import { Badge as KumoBadge } from 'kumo-svelte';
 	import { cn } from '$lib/utils/cn';
-	import {
-		Stack,
-		FileText,
-		Folder,
-		ShareNetwork,
-		AppWindow
-	} from 'phosphor-svelte';
+	import { Stack, FileText, Folder, ShareNetwork, AppWindow } from 'phosphor-svelte';
 
 	let { data, selected }: NodeProps = $props();
 	let node = $derived(data.node as TopologyNode);
@@ -61,14 +55,14 @@
 	class={cn(
 		'relative rounded-[var(--radius-card)] p-3.5 text-left select-none',
 		borderStyle,
-		selected && 'ring-2 ring-[var(--accent)] border-[var(--accent)] shadow-md'
+		selected && 'border-[var(--accent)] shadow-md ring-2 ring-[var(--accent)]'
 	)}
 >
 	<!-- Group Header (Drag Handle) styled strictly with Kumo Semantic Tokens -->
 	<div
-		class="drag-handle flex items-center justify-between border-b border-[var(--color-kumo-line)] bg-[var(--color-kumo-elevated)] -mx-3.5 -mt-3.5 mb-2 px-3.5 py-2.5 rounded-t-[calc(var(--radius-card)-1px)] cursor-grab active:cursor-grabbing"
+		class="drag-handle -mx-3.5 -mt-3.5 mb-2 flex cursor-grab items-center justify-between rounded-t-[calc(var(--radius-card)-1px)] border-b border-[var(--color-kumo-line)] bg-[var(--color-kumo-elevated)] px-3.5 py-2.5 active:cursor-grabbing"
 	>
-		<div class="flex items-center gap-2 min-w-0">
+		<div class="flex min-w-0 items-center gap-2">
 			<div
 				class={cn(
 					'flex h-6 w-6 shrink-0 items-center justify-center rounded-[var(--radius-sm)] border border-[var(--color-kumo-line)] bg-[var(--color-kumo-base)] shadow-2xs',
@@ -91,28 +85,27 @@
 			<div class="min-w-0">
 				<div class="flex items-center gap-1.5">
 					<span
-						class="text-xs font-[var(--font-sans)] font-semibold text-[var(--text-primary)] truncate max-w-[210px]"
+						class="max-w-[210px] truncate text-xs font-[var(--font-sans)] font-semibold text-[var(--text-primary)]"
 					>
 						{node.title}
 					</span>
 					{#if node.status}
-						<span
-							class={cn('h-1.5 w-1.5 shrink-0 rounded-full', getStatusDotColor(node.status))}
+						<span class={cn('h-1.5 w-1.5 shrink-0 rounded-full', getStatusDotColor(node.status))}
 						></span>
 					{/if}
 				</div>
 				{#if node.subtitle}
-					<span class="block text-xs text-[var(--text-tertiary)] truncate max-w-[210px]">
+					<span class="block max-w-[210px] truncate text-xs text-[var(--text-tertiary)]">
 						{node.subtitle}
 					</span>
 				{/if}
 			</div>
 		</div>
 
-		<div class="flex items-center gap-1.5 shrink-0">
+		<div class="flex shrink-0 items-center gap-1.5">
 			{#if node.monoDetail}
 				<span
-					class="font-mono text-xs font-medium text-[var(--text-secondary)] px-1.5 py-0.5 rounded-[var(--radius-xs)] bg-[var(--color-kumo-base)] border border-[var(--color-kumo-line)]"
+					class="rounded-[var(--radius-xs)] border border-[var(--color-kumo-line)] bg-[var(--color-kumo-base)] px-1.5 py-0.5 font-mono text-xs font-medium text-[var(--text-secondary)]"
 				>
 					{node.monoDetail}
 				</span>
@@ -126,5 +119,5 @@
 	</div>
 
 	<!-- Child Content Zone rendered within parent group boundary -->
-	<div class="relative w-full h-[calc(100%-42px)] mt-2 pointer-events-none"></div>
+	<div class="pointer-events-none relative mt-2 h-[calc(100%-42px)] w-full"></div>
 </div>

@@ -64,7 +64,7 @@
 		{#if region.sublabel}
 			<Badge
 				variant="secondary"
-				class="ml-2 shrink-0 !rounded !px-2 !py-0.5 !text-[11px] font-normal border border-[var(--border-subtle)] text-[var(--text-tertiary)]"
+				class="ml-2 shrink-0 !rounded border border-[var(--border-subtle)] !px-2 !py-0.5 !text-[11px] font-normal text-[var(--text-tertiary)]"
 			>
 				{region.sublabel}
 			</Badge>

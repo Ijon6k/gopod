@@ -15,7 +15,7 @@
 
 <LayerCard class={cn('flex flex-col justify-start p-5', className)}>
 	<div class="mb-4 flex min-h-[22px] items-center justify-between gap-4">
-		<span class="text-[10px] font-medium tracking-[0.1em] text-[var(--text-tertiary)] uppercase">
+		<span class="text-xs font-medium text-[var(--text-tertiary)]">
 			Attention{failed.length > 1 ? ` · ${failed.length}` : ''}
 		</span>
 	</div>

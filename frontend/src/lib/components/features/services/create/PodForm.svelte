@@ -87,10 +87,7 @@
 				>
 					<div class="grid flex-1 grid-cols-1 gap-3 sm:grid-cols-2">
 						<div class="flex flex-col gap-1">
-							<span
-								class="text-[10px] font-medium tracking-[0.08em] text-[var(--text-tertiary)] uppercase"
-								>Container Name</span
-							>
+							<span class="text-xs font-medium text-[var(--text-tertiary)]"> Container name </span>
 							<Input
 								bind:value={c.name}
 								placeholder="e.g. app"
@@ -98,10 +95,7 @@
 							/>
 						</div>
 						<div class="flex flex-col gap-1">
-							<span
-								class="text-[10px] font-medium tracking-[0.08em] text-[var(--text-tertiary)] uppercase"
-								>Image Reference</span
-							>
+							<span class="text-xs font-medium text-[var(--text-tertiary)]"> Image reference </span>
 							<Input
 								bind:value={c.image}
 								placeholder="image:tag"

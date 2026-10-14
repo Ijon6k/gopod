@@ -26,7 +26,12 @@
 	let { graph, selectedItem, onselect }: Props = $props();
 
 	// Svelte Flow Hook
-	const { zoomIn: flowZoomIn, zoomOut: flowZoomOut, fitView: flowFitView, setZoom } = useSvelteFlow();
+	const {
+		zoomIn: flowZoomIn,
+		zoomOut: flowZoomOut,
+		fitView: flowFitView,
+		setZoom
+	} = useSvelteFlow();
 
 	export function zoomIn() {
 		flowZoomIn({ duration: 250 });
@@ -67,7 +72,7 @@
 
 		if (currentGraph !== lastGraphRef) {
 			lastGraphRef = currentGraph;
-			
+
 			// Compute nodes and edges on graph transition; parent groups MUST precede children
 			const sortedNodes = [...currentGraph.nodes].sort((a, b) => {
 				if (a.isGroup && !b.isGroup) return -1;
@@ -87,7 +92,13 @@
 					height: n.height,
 					draggable: true,
 					dragHandle: isGroup ? '.drag-handle' : undefined,
-					zIndex: isGroup ? (selectedItem?.kind === 'node' && selectedItem.item.id === n.id ? 3 : 2) : (selectedItem?.kind === 'node' && selectedItem.item.id === n.id ? 20 : 10),
+					zIndex: isGroup
+						? selectedItem?.kind === 'node' && selectedItem.item.id === n.id
+							? 3
+							: 2
+						: selectedItem?.kind === 'node' && selectedItem.item.id === n.id
+							? 20
+							: 10,
 					...(n.parentId ? { parentId: n.parentId, extent: 'parent' as const } : {})
 				};
 			});
@@ -142,7 +153,7 @@
 				if (node.selected !== shouldBeSelected) {
 					node.selected = shouldBeSelected;
 					const isGroup = node.type === 'gopodGroup';
-					node.zIndex = isGroup ? (shouldBeSelected ? 3 : 2) : (shouldBeSelected ? 20 : 10);
+					node.zIndex = isGroup ? (shouldBeSelected ? 3 : 2) : shouldBeSelected ? 20 : 10;
 					updated = true;
 				}
 			}
@@ -209,7 +220,7 @@
 		onnodeclick={handleNodeClick}
 		onpaneclick={handlePaneClick}
 		proOptions={{ hideAttribution: true }}
-		class="w-full h-full bg-[var(--bg-canvas)]"
+		class="h-full w-full bg-[var(--bg-canvas)]"
 	>
 		<!-- Svelte Flow Dot Grid Background -->
 		<Background
@@ -226,7 +237,7 @@
 			nodeColor={getMiniMapNodeColor}
 			nodeStrokeColor="transparent"
 			maskColor="rgba(0, 0, 0, 0.55)"
-			class="!bg-[var(--bg-panel)]/95 !border !border-[var(--border)] !rounded-[var(--radius-card)] !shadow-xl !backdrop-blur-md"
+			class="!rounded-[var(--radius-card)] !border !border-[var(--border)] !bg-[var(--bg-panel)]/95 !shadow-xl !backdrop-blur-md"
 		/>
 
 		<!-- Viewport Backplane: Architecture Pipeline Column Guides & Region Boundaries -->

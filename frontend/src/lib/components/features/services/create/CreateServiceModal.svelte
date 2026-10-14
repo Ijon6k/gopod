@@ -199,10 +199,18 @@ WantedBy=default.target`;
 				restartPolicy: 'always',
 				health: 'healthy',
 				replicas: 1,
-				description: desc || `Multi-container ${stackSubtype} stack`,
-				composeYaml: `version: "3.8"\nservices:\n  ${sSlug || 'app'}:\n    image: nginx:alpine\n    ports:\n      - "8080:80"\n    restart: always`,
-				k8sYaml: `apiVersion: v1\nkind: Pod\nmetadata:\n  name: ${sSlug}\nspec:\n  containers:\n    - name: main\n      image: nginx:alpine\n      ports:\n        - containerPort: 80`,
-				workloads: [{ name: sSlug || 'app', image: 'nginx:alpine', status: 'stopped' }],
+				composeYaml:
+					realType === 'compose'
+						? `version: "3.8"\nservices:\n  ${sSlug || 'app'}:\n    image: nginx:alpine\n    ports:\n      - "8080:80"\n    restart: always`
+						: '',
+				k8sYaml:
+					realType === 'kubernetes'
+						? `apiVersion: v1\nkind: Pod\nmetadata:\n  name: ${sSlug}\nspec:\n  containers:\n    - name: main\n      image: nginx:alpine\n      ports:\n        - containerPort: 80`
+						: '',
+				workloads:
+					realType === 'pod'
+						? []
+						: [{ name: sSlug || 'app', image: 'nginx:alpine', status: 'stopped' }],
 				envVars: [],
 				deployments: [],
 				createdAt: new Date().toISOString()
@@ -304,7 +312,9 @@ WantedBy=default.target`;
 						<Input
 							id="inline-svc-name"
 							bind:value={serviceName}
-							placeholder={selectedType === 'database' ? 'e.g. production-db or cache' : 'e.g. system-daemon, api-gateway, or cache'}
+							placeholder={selectedType === 'database'
+								? 'e.g. production-db or cache'
+								: 'e.g. system-daemon, api-gateway, or cache'}
 							class="text-xs"
 						/>
 					</div>
@@ -343,7 +353,8 @@ WantedBy=default.target`;
 					</div>
 				{:else if selectedType === 'quadlet'}
 					<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-						💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume mounts, and environment variables are configured in Service Detail.
+						💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume
+						mounts, and environment variables are configured in Service Detail.
 					</p>
 				{/if}
 
@@ -351,7 +362,12 @@ WantedBy=default.target`;
 					class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2"
 				>
 					<Button variant="ghost" size="sm" onclick={handleCancel}>Cancel</Button>
-					<Button variant="primary" size="sm" disabled={!isFormValid || isCreating} onclick={handleCreate}>
+					<Button
+						variant="primary"
+						size="sm"
+						disabled={!isFormValid || isCreating}
+						onclick={handleCreate}
+					>
 						Create & Configure <ArrowRight size={13} />
 					</Button>
 				</div>
@@ -404,11 +420,7 @@ WantedBy=default.target`;
 
 			<!-- Universal Service Name & Description Fields in Modal -->
 			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<Field
-					label="Service Name"
-					required
-					error={createError || undefined}
-				>
+				<Field label="Service Name" required error={createError || undefined}>
 					<Input
 						id="modal-svc-name"
 						bind:value={serviceName}
@@ -443,7 +455,8 @@ WantedBy=default.target`;
 				</Field>
 			{:else if selectedType === 'quadlet'}
 				<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-					💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume mounts, and environment variables are configured in Service Detail.
+					💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume
+					mounts, and environment variables are configured in Service Detail.
 				</p>
 			{/if}
 

@@ -152,7 +152,7 @@
 			<!-- Dropdown Selector using Kumo DropdownMenu -->
 			<DropdownMenu>
 				<DropdownMenu.Trigger
-					class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border-0 bg-transparent px-1.5 py-0.5 text-xs font-[var(--font-sans)] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none"
+					class="flex cursor-pointer items-center gap-1.5 rounded-[var(--radius-sm)] border-0 bg-transparent px-1.5 py-0.5 text-xs font-[var(--font-sans)] font-medium text-[var(--text-primary)] outline-none hover:bg-[var(--bg-hover)]"
 				>
 					<span class="max-w-[180px] truncate sm:max-w-[240px]">
 						{#if viewMode === 'global'}
@@ -161,24 +161,16 @@
 							{currentProject?.name ?? viewMode} (Project)
 						{/if}
 					</span>
-					<CaretDown size={11} class="text-[var(--text-tertiary)] shrink-0" />
+					<CaretDown size={11} class="shrink-0 text-[var(--text-tertiary)]" />
 				</DropdownMenu.Trigger>
 				<DropdownMenu.Content class="w-60" align="start">
-					<DropdownMenu.Item
-						selected={viewMode === 'global'}
-						onclick={() => setViewMode('global')}
-					>
+					<DropdownMenu.Item selected={viewMode === 'global'} onclick={() => setViewMode('global')}>
 						<span class="text-xs">Global Infrastructure (Overview)</span>
 					</DropdownMenu.Item>
 					<DropdownMenu.Separator />
-					<div class="px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
-						Projects
-					</div>
+					<div class="px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">Projects</div>
 					{#each projects as proj (proj.id)}
-						<DropdownMenu.Item
-							selected={viewMode === proj.id}
-							onclick={() => setViewMode(proj.id)}
-						>
+						<DropdownMenu.Item selected={viewMode === proj.id} onclick={() => setViewMode(proj.id)}>
 							<span class="truncate text-xs">{proj.name} (Project)</span>
 						</DropdownMenu.Item>
 					{/each}
@@ -303,7 +295,7 @@
 		<!-- Mobile backdrop for easy dismissal -->
 		<button
 			type="button"
-			class="fixed inset-0 z-25 bg-[var(--bg-canvas)]/75 backdrop-blur-2xs transition-opacity sm:hidden cursor-pointer border-0 p-0"
+			class="backdrop-blur-2xs fixed inset-0 z-25 cursor-pointer border-0 bg-[var(--bg-canvas)]/75 p-0 transition-opacity sm:hidden"
 			onclick={() => (selectedItem = null)}
 			aria-label="Close drawer overlay"
 		></button>

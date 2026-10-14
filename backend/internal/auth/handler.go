@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/mail"
 	"strings"
+	"time"
 
 	"gopod/pkg/httputil"
 )
@@ -18,11 +19,15 @@ type StatusResponse struct {
 // Handler handles authentication HTTP endpoints.
 type Handler struct {
 	service *Service
+	limiter *LoginRateLimiter
 }
 
 // NewHandler creates a new auth HTTP handler.
 func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+	return &Handler{
+		service: service,
+		limiter: NewLoginRateLimiter(5, time.Minute),
+	}
 }
 
 // RegisterRoutes registers auth endpoints on the mux.
@@ -97,11 +102,16 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setSessionCookie(w, token, 30*86400)
+	setSessionCookie(w, r, token, 30*86400)
 	httputil.WriteJSON(w, http.StatusCreated, AuthResponse{User: *user, Token: token})
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if h.limiter != nil && !h.limiter.IsAllowed(r) {
+		httputil.WriteError(w, http.StatusTooManyRequests, "Too many failed login attempts. Please wait a minute before retrying.")
+		return
+	}
+
 	var req LoginRequest
 	if err := httputil.ParseJSON(r, &req); err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, "Invalid request body")
@@ -128,11 +138,18 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 
 	user, token, err := h.service.Login(r.Context(), email, password)
 	if err != nil {
+		if h.limiter != nil {
+			h.limiter.RecordFailure(r)
+		}
 		httputil.WriteError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	setSessionCookie(w, token, 30*86400)
+	if h.limiter != nil {
+		h.limiter.Reset(r)
+	}
+
+	setSessionCookie(w, r, token, 30*86400)
 	httputil.WriteJSON(w, http.StatusOK, AuthResponse{User: *user, Token: token})
 }
 
@@ -142,7 +159,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 		_ = h.service.Logout(r.Context(), token)
 	}
 
-	setSessionCookie(w, "", -1)
+	setSessionCookie(w, r, "", -1)
 	httputil.WriteJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -160,12 +177,14 @@ func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"user": user})
 }
 
-func setSessionCookie(w http.ResponseWriter, token string, maxAge int) {
+func setSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
+	isSecure := r != nil && (r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https")
 	http.SetCookie(w, &http.Cookie{
 		Name:     "gopod_session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   isSecure,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   maxAge,
 	})

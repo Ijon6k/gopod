@@ -14,20 +14,8 @@ import (
 // StartService powers on workload containers or units according to service workload type.
 func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	// 0. Kubernetes Manifest
-	if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
-		manifestName := s.ID
-		if manifestName == "" {
-			manifestName = s.Name
-		}
-		kubeFile := filepath.Join(d.dataDir, "kube", s.ProjectID, manifestName, "manifest.yaml")
-		if _, err := os.Stat(kubeFile); err == nil {
-			cmd := exec.CommandContext(ctx, "podman", "play", "kube", "--network", "gopod-net", "--replace", kubeFile)
-			d.setupCmdEnv(cmd)
-			_ = cmd.Run()
-			return nil
-		}
-		_, err := d.DeployService(ctx, s, fmt.Sprintf("start-%d", time.Now().Unix()))
-		return err
+	if d.isKubeWorkload(s) {
+		return d.startKubeService(ctx, s)
 	}
 
 	// 1. Quadlet Service (Takes precedence if active runtime is quadlet)
@@ -72,44 +60,8 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	}
 
 	// 2. Compose Stack
-	if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
-		projectName := s.ID
-		if projectName == "" {
-			projectName = s.Name
-		}
-
-		composeFile := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName, "docker-compose.yml")
-		if _, err := os.Stat(composeFile); err != nil {
-			legacyFile := filepath.Join(d.dataDir, "compose", s.ProjectID, s.Name, "docker-compose.yml")
-			if _, err2 := os.Stat(legacyFile); err2 == nil {
-				composeFile = legacyFile
-			} else {
-				_, err := d.DeployService(ctx, s, fmt.Sprintf("start-%d", time.Now().Unix()))
-				return err
-			}
-		}
-
-		runner := "podman-compose"
-		usePod := s.InPod || s.RuntimeTarget == "pod"
-		podVal := "false"
-		if usePod {
-			podVal = "true"
-		}
-		args := []string{"--in-pod", podVal, "-p", projectName, "-f", composeFile, "up", "-d"}
-		if _, err := exec.LookPath("podman-compose"); err != nil {
-			runner = "podman"
-			args = []string{"compose", "-p", projectName, "-f", composeFile, "up", "-d"}
-		}
-
-		cmd := exec.CommandContext(ctx, runner, args...)
-		d.setupCmdEnv(cmd)
-		if out, err := cmd.CombinedOutput(); err != nil {
-			outStr := string(out)
-			if !strings.Contains(outStr, "pod already exists") && !strings.Contains(outStr, "already in use") {
-				return fmt.Errorf("compose start error: %s (%w)", strings.TrimSpace(outStr), err)
-			}
-		}
-		return nil
+	if d.isComposeWorkload(s) {
+		return d.startComposeService(ctx, s)
 	}
 
 	// 3. Container / Git / Direct Image / Pod Workload
@@ -160,18 +112,8 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 // StopService gracefully halts containers or units for the service workload.
 func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	// 0. Kubernetes Manifest
-	if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
-		manifestName := s.ID
-		if manifestName == "" {
-			manifestName = s.Name
-		}
-		kubeFile := filepath.Join(d.dataDir, "kube", s.ProjectID, manifestName, "manifest.yaml")
-		if _, err := os.Stat(kubeFile); err == nil {
-			cmd := exec.CommandContext(ctx, "podman", "play", "kube", "--down", kubeFile)
-			d.setupCmdEnv(cmd)
-			_ = cmd.Run()
-		}
-		return nil
+	if d.isKubeWorkload(s) {
+		return d.stopKubeService(ctx, s)
 	}
 
 	// 1. Quadlet Service (Takes precedence if active runtime is quadlet)
@@ -207,63 +149,8 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	}
 
 	// 2. Compose Stack
-	if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
-		projectName := s.ID
-		if projectName == "" {
-			projectName = s.Name
-		}
-
-		composeFile := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName, "docker-compose.yml")
-		if _, err := os.Stat(composeFile); err != nil {
-			legacyFile := filepath.Join(d.dataDir, "compose", s.ProjectID, s.Name, "docker-compose.yml")
-			if _, err2 := os.Stat(legacyFile); err2 == nil {
-				composeFile = legacyFile
-			}
-		}
-
-		if _, err := os.Stat(composeFile); err == nil {
-			runner := "podman-compose"
-			args := []string{"-p", projectName, "-f", composeFile, "stop"}
-			if _, err := exec.LookPath("podman-compose"); err != nil {
-				runner = "podman"
-				args = []string{"compose", "-p", projectName, "-f", composeFile, "stop"}
-			}
-			cmd := exec.CommandContext(ctx, runner, args...)
-			cmd.Dir = filepath.Dir(composeFile)
-			d.setupCmdEnv(cmd)
-			_ = cmd.Run()
-		}
-
-		if d.podmanClient != nil {
-			containers, _ := d.podmanClient.GetContainers(ctx)
-			for _, c := range containers {
-				isMatch := false
-				if c.Labels != nil {
-					if c.Labels["io.gopod.service"] == s.ID ||
-						c.Labels["com.docker.compose.project"] == s.ID ||
-						c.Labels["io.podman.compose.project"] == s.ID ||
-						c.Labels["com.docker.compose.project"] == projectName ||
-						c.Labels["io.podman.compose.project"] == projectName ||
-						c.Labels["com.docker.compose.project"] == s.Name ||
-						c.Labels["io.podman.compose.project"] == s.Name {
-						isMatch = true
-					}
-				}
-				if !isMatch && len(c.Names) > 0 {
-					firstName := strings.TrimPrefix(c.Names[0], "/")
-					if strings.HasPrefix(firstName, projectName+"_") ||
-						strings.HasPrefix(firstName, s.ID+"_") ||
-						strings.HasPrefix(firstName, s.Name+"_") ||
-						strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) {
-						isMatch = true
-					}
-				}
-				if isMatch {
-					_ = d.podmanClient.StopContainer(ctx, c.ID)
-				}
-			}
-		}
-		return nil
+	if d.isComposeWorkload(s) {
+		return d.stopComposeService(ctx, s)
 	}
 
 	// 3. Container / Git / Direct Image / Pod Workload
@@ -506,60 +393,13 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	}
 
 	// Phase 5: Kubernetes Manifest Teardown
-	if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
-		manifestName := s.ID
-		if manifestName == "" {
-			manifestName = s.Name
-		}
-		kubeDir := filepath.Join(d.dataDir, "kube", s.ProjectID, manifestName)
-		kubeFile := filepath.Join(kubeDir, "manifest.yaml")
-		if _, err := os.Stat(kubeFile); err == nil {
-			downArgs := []string{"play", "kube", "--down"}
-			if deleteVolumes {
-				downArgs = append(downArgs, "--force")
-			}
-			downArgs = append(downArgs, kubeFile)
-			cmd := exec.CommandContext(teardownCtx, "podman", downArgs...)
-			d.setupCmdEnv(cmd)
-			_ = cmd.Run()
-		}
-		_ = os.RemoveAll(kubeDir)
+	if d.isKubeWorkload(s) {
+		d.teardownKubeService(teardownCtx, s, deleteVolumes)
 	}
 
 	// Phase 6: Compose Workload Teardown
-	if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
-		projectName := s.ID
-		if projectName == "" {
-			projectName = s.Name
-		}
-		composeDir := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName)
-		composeFile := filepath.Join(composeDir, "docker-compose.yml")
-
-		if _, err := os.Stat(composeFile); err == nil {
-			var downArgs []string
-			if _, err := exec.LookPath("podman-compose"); err == nil {
-				downArgs = []string{"-p", projectName, "-f", composeFile, "down"}
-				if deleteVolumes {
-					downArgs = append(downArgs, "-v")
-				}
-				cmd := exec.CommandContext(teardownCtx, "podman-compose", downArgs...)
-				d.setupCmdEnv(cmd)
-				_ = cmd.Run()
-			} else if _, err := exec.LookPath("podman"); err == nil {
-				downArgs = []string{"compose", "-p", projectName, "-f", composeFile, "down"}
-				if deleteVolumes {
-					downArgs = append(downArgs, "-v")
-				}
-				cmd := exec.CommandContext(teardownCtx, "podman", downArgs...)
-				d.setupCmdEnv(cmd)
-				_ = cmd.Run()
-			}
-		}
-
-		if d.podmanClient != nil {
-			_ = d.podmanClient.DeletePod(teardownCtx, "pod_"+projectName, true)
-		}
-		_ = os.RemoveAll(composeDir)
+	if d.isComposeWorkload(s) {
+		d.teardownComposeService(teardownCtx, s, deleteVolumes)
 	}
 
 	// Phase 7: Persistent Volume Cleanup (Only if explicitly requested)

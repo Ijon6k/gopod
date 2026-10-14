@@ -34,11 +34,6 @@
 	class="relative h-full min-h-[680px] w-full flex-1 overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-canvas)] transition-colors duration-200"
 >
 	<SvelteFlowProvider>
-		<TopologyFlowInner
-			bind:this={innerRef}
-			{graph}
-			{selectedItem}
-			{onselect}
-		/>
+		<TopologyFlowInner bind:this={innerRef} {graph} {selectedItem} {onselect} />
 	</SvelteFlowProvider>
 </div>

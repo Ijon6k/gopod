@@ -13,15 +13,17 @@ import (
 
 // Handler handles container runtime, host telemetry, and resource management.
 type Handler struct {
-	service    *Service
-	middleware *auth.Middleware
+	service       *Service
+	middleware    *auth.Middleware
+	ticketManager *TerminalTicketManager
 }
 
 // NewHandler creates a new runtime domain handler.
 func NewHandler(service *Service, mw *auth.Middleware) *Handler {
 	return &Handler{
-		service:    service,
-		middleware: mw,
+		service:       service,
+		middleware:    mw,
+		ticketManager: NewTerminalTicketManager(30 * time.Second),
 	}
 }
 
@@ -43,6 +45,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/containers/{id}", h.middleware.RequireAuth(h.handleContainerDelete))
 	mux.HandleFunc("POST /api/containers/prune", h.middleware.RequireAuth(h.handlePruneContainers))
 	mux.HandleFunc("GET /api/containers/{id}/logs", h.middleware.RequireAuth(h.handleContainerLogs))
+	mux.HandleFunc("POST /api/containers/{id}/terminal-ticket", h.middleware.RequireAuth(h.handleContainerTerminalTicket))
 	mux.HandleFunc("GET /api/containers/{id}/exec", h.handleContainerExec) // auth handled inside WebSocket upgrade
 
 	// Protected Podman resources

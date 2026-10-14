@@ -18,9 +18,7 @@
 	let copiedUrl = $state(false);
 	let copiedCurl = $state(false);
 
-	let webhookUrl = $derived(
-		api.services.getWebhookUrl(service.webhookToken || service.id)
-	);
+	let webhookUrl = $derived(api.services.getWebhookUrl(service.webhookToken || service.id));
 
 	let curlCommand = $derived(
 		`curl -X POST "${webhookUrl}" \\\n  -H "Content-Type: application/json" \\\n  -d '{"ref": "refs/heads/${service.branch || 'main'}", "commit": "HEAD"}'`
@@ -79,18 +77,14 @@
 				</span>
 			</div>
 
-			<Switch
-				size="sm"
-				bind:checked={autoDeployEnabled}
-				aria-label="Auto-deploy on git push"
-			/>
+			<Switch size="sm" bind:checked={autoDeployEnabled} aria-label="Auto-deploy on git push" />
 		</div>
 
 		<!-- Webhook Endpoint URL -->
 		<div class="flex flex-col gap-1.5">
 			<span class="text-xs font-medium text-kumo-subtle">Webhook URL (POST)</span>
 			<div
-				class="flex items-center gap-2 rounded-lg bg-kumo-recessed p-2 text-xs font-mono text-kumo-default ring ring-kumo-hairline/60"
+				class="flex items-center gap-2 rounded-lg bg-kumo-recessed p-2 font-mono text-xs text-kumo-default ring ring-kumo-hairline/60"
 			>
 				<span class="flex-1 truncate">{webhookUrl}</span>
 				<Button variant="ghost" size="sm" onclick={copyUrl} class="h-6 gap-1 px-2 text-xs">
@@ -126,7 +120,7 @@
 			</div>
 
 			<pre
-				class="m-0 overflow-x-auto rounded-lg bg-[var(--bg-terminal)] p-3 text-xs leading-relaxed font-mono whitespace-pre text-[var(--code-text)] ring ring-kumo-hairline/50">{curlCommand}</pre>
+				class="m-0 overflow-x-auto rounded-lg bg-[var(--bg-terminal)] p-3 font-mono text-xs leading-relaxed whitespace-pre text-[var(--code-text)] ring ring-kumo-hairline/50">{curlCommand}</pre>
 		</div>
 	</div>
 </Modal>

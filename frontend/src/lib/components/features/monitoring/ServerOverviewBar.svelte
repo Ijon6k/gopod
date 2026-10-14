@@ -37,7 +37,7 @@
 
 			<div class="flex items-baseline justify-between gap-2">
 				<strong
-					class="text-2xl font-[var(--font-mono)] font-medium tracking-tight text-[var(--text-primary)] tabular-nums"
+					class="text-2xl font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 				>
 					{server.cpuUsage.toFixed(1)}%
 				</strong>
@@ -94,7 +94,7 @@
 
 			<div class="flex items-baseline justify-between gap-2">
 				<strong
-					class="text-2xl font-[var(--font-mono)] font-medium tracking-tight text-[var(--text-primary)] tabular-nums"
+					class="text-2xl font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 				>
 					{server.memoryUsed.toFixed(1)}
 					<span class="text-xs font-normal text-[var(--text-tertiary)]">/ {server.memory} GB</span>
@@ -154,7 +154,7 @@
 
 			<div class="flex w-full items-baseline justify-between gap-2">
 				<strong
-					class="text-2xl font-[var(--font-mono)] font-medium tracking-tight text-[var(--text-primary)] tabular-nums"
+					class="text-2xl font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 				>
 					{server.storageUsed.toFixed(1)}
 					<span class="text-xs font-normal text-[var(--text-tertiary)]">/ {server.storage} GB</span>
@@ -193,7 +193,7 @@
 
 			<div class="flex items-baseline justify-between gap-2">
 				<strong
-					class="text-2xl font-[var(--font-mono)] font-medium tracking-tight text-[var(--text-primary)] tabular-nums"
+					class="text-2xl font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 				>
 					{activeContainers}
 					<span class="text-xs font-normal text-[var(--text-tertiary)]">active</span>

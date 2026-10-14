@@ -103,7 +103,12 @@
 		<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 			<span class="text-[var(--status-green)]">● cgroups v2 active</span>
 			<span>•</span>
-			<span>userns: {service.advanced?.runtime.userNamespace && service.advanced.runtime.userNamespace !== 'default' ? service.advanced.runtime.userNamespace : 'rootless (default)'}</span>
+			<span
+				>userns: {service.advanced?.runtime.userNamespace &&
+				service.advanced.runtime.userNamespace !== 'default'
+					? service.advanced.runtime.userNamespace
+					: 'rootless (default)'}</span
+			>
 		</div>
 	</div>
 
@@ -141,114 +146,114 @@
 					</TableRow>
 				</TableHeader>
 				<TableBody class="divide-y divide-kumo-hairline">
-				{#each serviceContainers as c, idx (c.id)}
-					{@const limit = c.memoryLimit || 512}
-					{@const memPct = getMemPercent(c.memory, limit)}
+					{#each serviceContainers as c, idx (c.id)}
+						{@const limit = c.memoryLimit || 512}
+						{@const memPct = getMemPercent(c.memory, limit)}
 
-					<!-- Distinct tokenized zebra striping on flat table + prominent hover state -->
-					<TableRow
-						class="group transition-colors hover:bg-[var(--bg-table-row-hover)] {idx % 2 === 1
-							? 'bg-[var(--bg-table-row-alt)]'
-							: 'bg-[var(--bg-table-row)]'}"
-					>
-						<!-- Name & Image with Hover Actions -->
-						<TableCell
-							class="px-4 py-2.5 align-middle text-[13px] whitespace-nowrap text-[var(--text-primary)]"
+						<!-- Distinct tokenized zebra striping on flat table + prominent hover state -->
+						<TableRow
+							class="group hover:bg-[var(--bg-table-row-hover)] {idx % 2 === 1
+								? 'bg-[var(--bg-table-row-alt)]'
+								: 'bg-[var(--bg-table-row)]'}"
 						>
-							<div class="flex min-w-0 items-center justify-between pr-1">
-								<div class="flex min-w-0 items-center gap-2.5">
-									<div
-										class="shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent-muted)] p-1.5 text-[var(--accent)]"
-									>
-										<Cube size={15} />
-									</div>
-									<div class="flex min-w-0 flex-col">
-										<div class="flex items-center gap-2">
-											<span
-												class="truncate font-mono text-[13px] font-medium text-[var(--text-primary)]"
-											>
-												{c.name}
-											</span>
-											{#if c.serviceName && c.serviceName.includes('(')}
-												<span
-													class="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--accent)]"
-												>
-													{c.serviceName.split('(')[1]?.replace(')', '') || ''}
-												</span>
-											{/if}
+							<!-- Name & Image with Hover Actions -->
+							<TableCell
+								class="px-4 py-2.5 align-middle text-[13px] whitespace-nowrap text-[var(--text-primary)]"
+							>
+								<div class="flex min-w-0 items-center justify-between pr-1">
+									<div class="flex min-w-0 items-center gap-2.5">
+										<div
+											class="shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent-muted)] p-1.5 text-[var(--accent)]"
+										>
+											<Cube size={15} />
 										</div>
-										<span
-											class="truncate font-mono text-[11px] text-[var(--text-tertiary)]"
-											title={c.image}
-										>
-											{c.image}
-										</span>
+										<div class="flex min-w-0 flex-col">
+											<div class="flex items-center gap-2">
+												<span
+													class="truncate font-mono text-[13px] font-medium text-[var(--text-primary)]"
+												>
+													{c.name}
+												</span>
+												{#if c.serviceName && c.serviceName.includes('(')}
+													<span
+														class="rounded bg-[var(--accent-muted)] px-1.5 py-0.5 font-mono text-[10px] font-semibold text-[var(--accent)]"
+													>
+														{c.serviceName.split('(')[1]?.replace(')', '') || ''}
+													</span>
+												{/if}
+											</div>
+											<span
+												class="truncate font-mono text-[11px] text-[var(--text-tertiary)]"
+												title={c.image}
+											>
+												{c.image}
+											</span>
+										</div>
+									</div>
+
+									<!-- Row Quick Actions on Hover (Refactored: 14px icon, 28px hit target, high contrast) -->
+									<div
+										class="ml-3 flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100"
+									>
+										{#if onOpenTerminal}
+											<button
+												type="button"
+												onclick={() => onOpenTerminal?.(c.name)}
+												class="flex min-h-[28px] min-w-[28px] cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-1.5 text-[var(--text-secondary)] shadow-xs hover:bg-[var(--accent)] hover:text-black"
+												title="Open container terminal"
+												aria-label="Open container terminal"
+											>
+												<Terminal size={14} />
+											</button>
+										{/if}
+										{#if onOpenLogs}
+											<button
+												type="button"
+												onclick={() => onOpenLogs?.(c.name)}
+												class="flex min-h-[28px] min-w-[28px] cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-1.5 text-[var(--text-secondary)] shadow-xs hover:bg-[var(--accent)] hover:text-black"
+												title="View container logs"
+												aria-label="View container logs"
+											>
+												<FileText size={14} />
+											</button>
+										{/if}
 									</div>
 								</div>
+							</TableCell>
 
-								<!-- Row Quick Actions on Hover (Refactored: 14px icon, 28px hit target, high contrast) -->
-								<div
-									class="ml-3 flex shrink-0 items-center gap-1.5 opacity-0 transition-opacity group-hover:opacity-100"
+							<!-- Status Badge -->
+							<TableCell class="px-3.5 py-2.5 align-middle text-[13px] whitespace-nowrap">
+								<StatusBadge status={c.status} size="sm" />
+							</TableCell>
+
+							<!-- CPU Metric (numerical only) -->
+							<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
+								<span
+									class="font-mono text-[12px] font-medium text-[var(--text-primary)] tabular-nums"
 								>
-									{#if onOpenTerminal}
-										<button
-											type="button"
-											onclick={() => onOpenTerminal?.(c.name)}
-											class="flex min-h-[28px] min-w-[28px] cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-1.5 text-[var(--text-secondary)] shadow-xs transition-colors hover:bg-[var(--accent)] hover:text-black"
-											title="Open container terminal"
-											aria-label="Open container terminal"
-										>
-											<Terminal size={14} />
-										</button>
-									{/if}
-									{#if onOpenLogs}
-										<button
-											type="button"
-											onclick={() => onOpenLogs?.(c.name)}
-											class="flex min-h-[28px] min-w-[28px] cursor-pointer items-center justify-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-1.5 text-[var(--text-secondary)] shadow-xs transition-colors hover:bg-[var(--accent)] hover:text-black"
-											title="View container logs"
-											aria-label="View container logs"
-										>
-											<FileText size={14} />
-										</button>
-									{/if}
-								</div>
-							</div>
-						</TableCell>
+									{(c.cpu || 0).toFixed(1)}%
+								</span>
+							</TableCell>
 
-						<!-- Status Badge -->
-						<TableCell class="px-3.5 py-2.5 align-middle text-[13px] whitespace-nowrap">
-							<StatusBadge status={c.status} size="sm" />
-						</TableCell>
+							<!-- Memory Metric (usage only) -->
+							<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
+								<span
+									class="font-mono text-[12px] font-medium text-[var(--text-primary)] tabular-nums"
+								>
+									{c.memory || 0} MB
+								</span>
+							</TableCell>
 
-						<!-- CPU Metric (numerical only) -->
-						<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
-							<span
-								class="font-mono text-[12px] font-medium text-[var(--text-primary)] tabular-nums"
+							<!-- PIDs -->
+							<TableCell
+								class="px-3 py-2.5 text-center align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
 							>
-								{(c.cpu || 0).toFixed(1)}%
-							</span>
-						</TableCell>
-
-						<!-- Memory Metric (usage only) -->
-						<TableCell class="px-4 py-2.5 text-right align-middle text-[13px] whitespace-nowrap">
-							<span
-								class="font-mono text-[12px] font-medium text-[var(--text-primary)] tabular-nums"
-							>
-								{c.memory || 0} MB
-							</span>
-						</TableCell>
-
-						<!-- PIDs -->
-						<TableCell
-							class="px-3 py-2.5 text-center align-middle font-mono text-[13px] whitespace-nowrap text-[var(--text-secondary)]"
-						>
-							{c.pids ?? (c.status === 'running' ? 1 : 0)}
-						</TableCell>
-					</TableRow>
-				{/each}
-			</TableBody>
-		</Table>
-	</div>
-</LayerCard>
+								{c.pids ?? (c.status === 'running' ? 1 : 0)}
+							</TableCell>
+						</TableRow>
+					{/each}
+				</TableBody>
+			</Table>
+		</div>
+	</LayerCard>
 </div>

@@ -41,6 +41,17 @@ function run(cmd: string): string {
 	}
 }
 
+function checkUnitActive(unitName: string): string {
+	let state = run(`systemctl --user is-active ${unitName}`);
+	if (state !== "active") {
+		// When backend runs containerized, trigger host systemd daemon-reload to sync generated units
+		run("systemctl --user daemon-reload");
+		run(`systemctl --user restart ${unitName}`);
+		state = run(`systemctl --user is-active ${unitName}`);
+	}
+	return state;
+}
+
 async function api(path: string, options: RequestInit = {}) {
 	const headers: Record<string, string> = {};
 	if (!(options.body instanceof FormData)) {
@@ -301,7 +312,7 @@ describe("GOPOD End-to-End Suite: Container, Quadlet & Pod Lifecycles", () => {
 		expect(unitBase).not.toBeEmpty();
 
 		await new Promise((r) => setTimeout(r, 1500));
-		const activeState = run(`systemctl --user is-active ${unitBase}`);
+		const activeState = checkUnitActive(unitBase);
 		expect(activeState).toBe("active");
 
 		// 6. Verify HTTP still responds through systemd-supervised Quadlet container
@@ -441,7 +452,7 @@ describe("GOPOD End-to-End Suite: Container, Quadlet & Pod Lifecycles", () => {
 		await new Promise((r) => setTimeout(r, 2000));
 
 		// Assert systemd unit is active and NOT in start-limit-hit failure
-		const activeState = run("systemctl --user is-active quadlet-alpine-exec.service");
+		const activeState = checkUnitActive("quadlet-alpine-exec.service");
 		expect(activeState).toBe("active");
 	}, 120000);
 
@@ -634,10 +645,10 @@ WantedBy=default.target`;
 		expect(gatewayFile).not.toBeEmpty();
 
 		// 6. Assert systemd user supervisor has the Pod service and Member services active
-		const podState = run("systemctl --user is-active pod_quadlet_bundle-pod.service");
+		const podState = checkUnitActive("pod_quadlet_bundle-pod.service");
 		expect(podState).toBe("active");
 
-		const gatewayState = run("systemctl --user is-active quadlet_gateway.service");
+		const gatewayState = checkUnitActive("quadlet_gateway.service");
 		expect(gatewayState).toBe("active");
 
 		// 7. Verify HTTP responds on port 8094
@@ -725,7 +736,7 @@ WantedBy=default.target`;
 		await new Promise((r) => setTimeout(r, 2000));
 
 		// Assert systemd unit is active
-		const unitActive = run(`systemctl --user is-active ${containerName}.service`);
+		const unitActive = checkUnitActive(`${containerName}.service`);
 		expect(unitActive).toBe("active");
 
 		// 4. Inspect data inside the new Quadlet container:

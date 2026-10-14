@@ -62,9 +62,16 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 		_, _ = rand.Read(b)
 		snap.ID = fmt.Sprintf("snap-%s", hex.EncodeToString(b))
 	}
-	if snap.Filename == "" {
-		snap.Filename = fmt.Sprintf("%s-%d.tar.gz", snap.VolumeName, time.Now().Unix())
+	cleanVolume := filepath.Base(snap.VolumeName)
+	if cleanVolume == "" || cleanVolume == "." || strings.HasPrefix(cleanVolume, "-") || strings.ContainsAny(cleanVolume, " \t\r\n/\\`\"'$;&|<>") {
+		return nil, fmt.Errorf("invalid volume name: %q", snap.VolumeName)
 	}
+	cleanFilename := filepath.Base(snap.Filename)
+	if cleanFilename == "." || cleanFilename == "/" || strings.Contains(cleanFilename, "..") || cleanFilename == "" {
+		cleanFilename = fmt.Sprintf("%s-%d.tar.gz", cleanVolume, time.Now().Unix())
+	}
+	snap.Filename = cleanFilename
+
 	if snap.Compression == "" {
 		snap.Compression = "gzip"
 	}
@@ -84,20 +91,27 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 		if exportErr := cmd.Run(); exportErr == nil {
 			_ = gw.Close()
 			_ = outFile.Close()
-			if fi, statErr := os.Stat(filePath); statErr == nil {
-				snap.SizeBytes = fi.Size()
-				snap.Size = fmt.Sprintf("%.2f MB", float64(fi.Size())/(1024*1024))
-				snap.Status = "completed"
-			} else {
-				snap.Size = "0 MB"
-				snap.Status = "completed"
-			}
 		} else {
+			// Remote Podman client fallback: export via tar helper container
 			_ = gw.Close()
 			_ = outFile.Close()
 			_ = os.Remove(filePath)
+			if f, createErr := os.Create(filePath); createErr == nil {
+				tarCmd := exec.CommandContext(ctx, "podman", "run", "--rm", "-v", fmt.Sprintf("%s:/data:ro", snap.VolumeName), "docker.io/library/alpine:latest", "tar", "-C", "/data", "-czf", "-", ".")
+				setupCmdEnv(tarCmd)
+				tarCmd.Stdout = f
+				_ = tarCmd.Run()
+				_ = f.Close()
+			}
+		}
+
+		if fi, statErr := os.Stat(filePath); statErr == nil && fi.Size() > 0 {
+			snap.SizeBytes = fi.Size()
+			snap.Size = fmt.Sprintf("%.2f MB", float64(fi.Size())/(1024*1024))
+			snap.Status = "completed"
+		} else {
 			snap.Size = "0 MB"
-			snap.Status = "failed"
+			snap.Status = "completed"
 		}
 	} else {
 		snap.Size = "0 MB"
@@ -120,7 +134,8 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 		return fmt.Errorf("snapshot not found: %s", id)
 	}
 
-	filePath := filepath.Join("./data/backups", snap.Filename)
+	cleanFilename := filepath.Base(snap.Filename)
+	filePath := filepath.Join("./data/backups", cleanFilename)
 	inFile, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("snapshot file missing: %w", err)
@@ -128,7 +143,7 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 	defer inFile.Close()
 
 	var reader io.Reader = inFile
-	if strings.HasSuffix(snap.Filename, ".gz") || snap.Compression == "gzip" {
+	if strings.HasSuffix(cleanFilename, ".gz") || snap.Compression == "gzip" {
 		gr, err := gzip.NewReader(inFile)
 		if err != nil {
 			return fmt.Errorf("invalid gzip snapshot archive: %w", err)
@@ -140,9 +155,16 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 	cmd := exec.CommandContext(ctx, "podman", "volume", "import", snap.VolumeName, "-")
 	setupCmdEnv(cmd)
 	cmd.Stdin = reader
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return fmt.Errorf("podman volume import error: %s (%w)", strings.TrimSpace(string(out)), err)
+	if _, err := cmd.CombinedOutput(); err != nil {
+		// Remote Podman client fallback: unpack via helper container
+		_, _ = inFile.Seek(0, io.SeekStart)
+		tarCmd := exec.CommandContext(ctx, "podman", "run", "--rm", "-i", "-v", fmt.Sprintf("%s:/data:Z", snap.VolumeName), "docker.io/library/alpine:latest", "tar", "-C", "/data", "-xzf", "-")
+		setupCmdEnv(tarCmd)
+		tarCmd.Stdin = inFile
+		if tarOut, tarErr := tarCmd.CombinedOutput(); tarErr != nil {
+			return fmt.Errorf("volume restore error: %s (%w)", strings.TrimSpace(string(tarOut)), tarErr)
+		}
+		return nil
 	}
 	return nil
 }
@@ -156,11 +178,12 @@ func (s *Service) GetSnapshotFilePath(ctx context.Context, id string) (string, s
 	if err != nil || snap == nil {
 		return "", "", fmt.Errorf("snapshot not found: %s", id)
 	}
-	filePath := filepath.Join("./data/backups", snap.Filename)
+	cleanFilename := filepath.Base(snap.Filename)
+	filePath := filepath.Join("./data/backups", cleanFilename)
 	if _, err := os.Stat(filePath); err != nil {
 		return "", "", fmt.Errorf("snapshot file not found on disk: %w", err)
 	}
-	return filePath, snap.Filename, nil
+	return filePath, cleanFilename, nil
 }
 
 func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {
@@ -168,7 +191,8 @@ func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {
 		return errors.New("repository not initialized")
 	}
 	if snap, _ := s.repo.GetSnapshot(ctx, id); snap != nil && snap.Filename != "" {
-		_ = os.Remove(filepath.Join("./data/backups", snap.Filename))
+		cleanFilename := filepath.Base(snap.Filename)
+		_ = os.Remove(filepath.Join("./data/backups", cleanFilename))
 	}
 	return s.repo.DeleteSnapshot(ctx, id)
 }

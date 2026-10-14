@@ -12,12 +12,7 @@
 		onpruneCategory: (type: 'images' | 'containers' | 'volumes') => void;
 	}
 
-	let {
-		storageCategories,
-		totalPodmanNum,
-		pruningTarget,
-		onpruneCategory
-	}: Props = $props();
+	let { storageCategories, totalPodmanNum, pruningTarget, onpruneCategory }: Props = $props();
 
 	let isDark = $derived(uiStore.theme === 'dark');
 
@@ -120,13 +115,7 @@
 <div class="flex flex-col gap-5">
 	<!-- Generous ECharts Horizontal Comparative Bar Chart -->
 	<div class="w-full">
-		<Chart
-			{echarts}
-			options={barChartOptions}
-			isDarkMode={isDark}
-			height={240}
-			class="w-full"
-		/>
+		<Chart {echarts} options={barChartOptions} isDarkMode={isDark} height={240} class="w-full" />
 	</div>
 
 	<!-- Subsystem Metric Cards with Inline Prune Triggers -->

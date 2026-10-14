@@ -141,7 +141,7 @@
 		{
 			id: 'nav-networking-domains',
 			title: 'Domains & SSL',
-			description: 'Caddy automatic Let\'s Encrypt HTTPS and custom hostnames',
+			description: "Caddy automatic Let's Encrypt HTTPS and custom hostnames",
 			category: 'Navigation',
 			icon: Globe,
 			action: () => goto('/networking/domains'),
@@ -380,7 +380,7 @@
 >
 	<!-- Integrated Search Input -->
 	<div class="relative flex items-center border-b border-kumo-hairline bg-kumo-base px-4 py-3">
-		<MagnifyingGlass size={16} class="shrink-0 text-kumo-subtle mr-3" />
+		<MagnifyingGlass size={16} class="mr-3 shrink-0 text-kumo-subtle" />
 		<input
 			bind:this={inputEl}
 			type="text"
@@ -404,7 +404,7 @@
 		<CommandPalette.Results>
 			{#each filteredGroups as group (group.label)}
 				<CommandPalette.Group value={group.label} class="mb-2">
-					<CommandPalette.GroupLabel class="px-2.5 py-1 text-[11px] font-semibold text-kumo-subtle uppercase tracking-wider">
+					<CommandPalette.GroupLabel class="px-2.5 py-1 text-[11px] font-medium text-kumo-subtle">
 						{group.label}
 					</CommandPalette.GroupLabel>
 					<CommandPalette.Items>
@@ -417,11 +417,15 @@
 								class="group flex w-full cursor-pointer items-center justify-between gap-3 rounded-md px-2.5 py-2 text-left transition-colors hover:bg-kumo-fill data-[selected]:bg-kumo-fill"
 							>
 								<div class="flex min-w-0 items-center gap-2.5">
-									<div class="flex size-7 shrink-0 items-center justify-center rounded bg-kumo-elevated text-kumo-subtle ring-1 ring-kumo-hairline group-hover:text-kumo-default group-hover:ring-kumo-line">
+									<div
+										class="flex size-7 shrink-0 items-center justify-center rounded bg-kumo-elevated text-kumo-subtle ring-1 ring-kumo-hairline group-hover:text-kumo-default group-hover:ring-kumo-line"
+									>
 										<IconComp size={15} />
 									</div>
 									<div class="flex min-w-0 flex-col">
-										<span class="truncate text-xs font-medium text-kumo-default group-hover:text-[var(--accent-text)]">
+										<span
+											class="truncate text-xs font-medium text-kumo-default group-hover:text-[var(--accent-text)]"
+										>
 											{item.title}
 										</span>
 										{#if item.description}
@@ -431,7 +435,10 @@
 										{/if}
 									</div>
 								</div>
-								<ArrowRight size={13} class="shrink-0 text-kumo-muted opacity-0 transition-opacity group-hover:opacity-100 group-data-[selected]:opacity-100" />
+								<ArrowRight
+									size={13}
+									class="shrink-0 text-kumo-muted opacity-0 transition-opacity group-hover:opacity-100 group-data-[selected]:opacity-100"
+								/>
 							</CommandPalette.Item>
 						{/each}
 					</CommandPalette.Items>
@@ -445,7 +452,9 @@
 	</CommandPalette.List>
 
 	<!-- Footer with keyboard hints -->
-	<CommandPalette.Footer class="flex items-center justify-between border-t border-kumo-hairline bg-kumo-elevated px-4 py-2.5 text-[11px] text-kumo-subtle">
+	<CommandPalette.Footer
+		class="flex items-center justify-between border-t border-kumo-hairline bg-kumo-elevated px-4 py-2.5 text-[11px] text-kumo-subtle"
+	>
 		<div class="flex items-center gap-3">
 			<span class="inline-flex items-center gap-1">
 				<Kbd class="text-[9px]">↑</Kbd>

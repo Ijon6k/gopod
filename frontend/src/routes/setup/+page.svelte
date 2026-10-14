@@ -71,10 +71,8 @@
 			</div>
 			<div class="text-left">
 				<div class="flex items-center gap-1.5">
-					<span class="font-mono text-lg font-bold tracking-tight text-[var(--text-primary)]"
-						>GOPOD</span
-					>
-					<Badge variant="secondary" class="!px-1.5 !py-0 !text-[10px] font-mono uppercase">
+					<span class="font-mono text-lg font-semibold text-[var(--text-primary)]">GOPOD</span>
+					<Badge variant="secondary" class="!px-1.5 !py-0 font-mono !text-[10px] uppercase">
 						Init
 					</Badge>
 				</div>
@@ -82,9 +80,7 @@
 			</div>
 		</div>
 
-		<h1 class="text-xl font-semibold tracking-tight text-[var(--text-primary)]">
-			Create Administrator Account
-		</h1>
+		<h1 class="text-xl font-semibold text-[var(--text-primary)]">Create administrator account</h1>
 		<p class="mx-auto mt-1.5 max-w-[380px] text-xs leading-relaxed text-[var(--text-secondary)]">
 			Welcome to GOPOD. Configure your master administrative credentials to take ownership of this
 			node and manage your containers.
@@ -118,7 +114,7 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
+						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
 					>
 						<UserIcon size={15} />
 					</div>
@@ -129,7 +125,7 @@
 						placeholder="e.g. Administrator"
 						required
 						autocomplete="name"
-						class="!h-10 !pl-9 text-sm w-full"
+						class="!h-10 w-full !pl-9 text-sm"
 					/>
 				</div>
 			</div>
@@ -144,7 +140,7 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
+						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
 					>
 						<Envelope size={15} />
 					</div>
@@ -155,7 +151,7 @@
 						placeholder="admin@yourdomain.com"
 						required
 						autocomplete="email"
-						class="!h-10 !pl-9 text-sm w-full"
+						class="!h-10 w-full !pl-9 text-sm"
 					/>
 				</div>
 			</div>
@@ -170,7 +166,7 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
+						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
 					>
 						<Lock size={15} />
 					</div>
@@ -181,7 +177,7 @@
 						placeholder="••••••••••••"
 						required
 						autocomplete="new-password"
-						class="!h-10 !pl-9 text-sm w-full"
+						class="!h-10 w-full !pl-9 text-sm"
 					/>
 				</div>
 			</div>
@@ -196,7 +192,7 @@
 				</label>
 				<div class="relative">
 					<div
-						class="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-[var(--text-tertiary)] z-10"
+						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
 					>
 						<Lock size={15} />
 					</div>
@@ -207,7 +203,7 @@
 						placeholder="••••••••••••"
 						required
 						autocomplete="new-password"
-						class="!h-10 !pl-9 text-sm w-full"
+						class="!h-10 w-full !pl-9 text-sm"
 					/>
 				</div>
 			</div>
@@ -218,7 +214,8 @@
 			>
 				<ShieldCheck size={14} class="mt-0.5 shrink-0 text-[var(--accent)]" />
 				<span
-					>Account setup locks permanently once initialized. Further accounts can only be added via administrator invites.</span
+					>Account setup locks permanently once initialized. Further accounts can only be added via
+					administrator invites.</span
 				>
 			</div>
 
@@ -227,7 +224,7 @@
 				variant="primary"
 				type="submit"
 				disabled={isSubmitting}
-				class="mt-2 w-full !h-10 text-sm font-medium gap-2 justify-center shadow-xs"
+				class="mt-2 !h-10 w-full justify-center gap-2 text-sm font-medium shadow-xs"
 			>
 				{#if isSubmitting}
 					<CircleNotch size={16} class="animate-spin" />
@@ -243,10 +240,7 @@
 		<div class="mt-5 border-t border-[var(--border-subtle)] pt-4 text-center">
 			<p class="text-xs text-[var(--text-tertiary)]">
 				Already have an account?
-				<a
-					href="/login"
-					class="font-medium text-[var(--accent)] hover:underline ml-1"
-				>
+				<a href="/login" class="ml-1 font-medium text-[var(--accent)] hover:underline">
 					Sign in to GOPOD
 				</a>
 			</p>

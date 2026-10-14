@@ -38,12 +38,7 @@
 </script>
 
 <!-- Kumo Flat Section Card -->
-<LayerCard
-	class={cn(
-		'overflow-hidden shadow-none p-0',
-		className
-	)}
->
+<LayerCard class={cn('overflow-hidden p-0 shadow-none', className)}>
 	<!-- Header -->
 	{#if collapsible}
 		<button

@@ -36,7 +36,10 @@ export function computeGlobalLayout({
 		const svcCount = Math.max(1, projServices.length);
 		const rHeight = Math.max(
 			120,
-			groupPaddingTop + svcCount * (COMPACT_NODE_HEIGHT + itemSpacing) - itemSpacing + groupPaddingBottom
+			groupPaddingTop +
+				svcCount * (COMPACT_NODE_HEIGHT + itemSpacing) -
+				itemSpacing +
+				groupPaddingBottom
 		);
 		calculatedTotalHeight += rHeight + (idx < projects.length - 1 ? regionGap : 0);
 	});
@@ -107,7 +110,10 @@ export function computeGlobalLayout({
 		const svcCount = Math.max(1, projServices.length);
 		const regionHeight = Math.max(
 			120,
-			groupPaddingTop + svcCount * (COMPACT_NODE_HEIGHT + itemSpacing) - itemSpacing + groupPaddingBottom
+			groupPaddingTop +
+				svcCount * (COMPACT_NODE_HEIGHT + itemSpacing) -
+				itemSpacing +
+				groupPaddingBottom
 		);
 
 		// 3A. Native Svelte Flow Parent Group Node

@@ -17,12 +17,12 @@
 	<div class="flex items-start justify-between">
 		<div>
 			<div class="flex items-center gap-3">
-				<h2 class="m-0 text-lg md:text-xl font-semibold tracking-tight text-[var(--text-primary)]">
+				<h2 class="m-0 text-lg font-semibold text-[var(--text-primary)] md:text-xl">
 					{server.hostname}
 				</h2>
 				<StatusBadge status="online" size="sm" />
 			</div>
-			<p class="mt-1.5 mb-0 text-xs md:text-sm text-[var(--text-tertiary)]">
+			<p class="mt-1.5 mb-0 text-xs text-[var(--text-tertiary)] md:text-sm">
 				{server.os} · Podman {server.podmanVersion} · Rootless{server.systemd ? ' · systemd' : ''}
 			</p>
 		</div>

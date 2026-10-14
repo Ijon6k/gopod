@@ -14,11 +14,4 @@
 	let customValue = $derived(`${value.toFixed(1)}${unit} / ${max}${unit}`);
 </script>
 
-<Meter
-	{label}
-	{value}
-	min={0}
-	{max}
-	{customValue}
-	class={className}
-/>
+<Meter {label} {value} min={0} {max} {customValue} class={className} />

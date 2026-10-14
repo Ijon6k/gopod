@@ -202,7 +202,7 @@
 {/snippet}
 
 {#snippet quadletTypeSnippet(row: (typeof quadlets)[0])}
-	<Badge variant="secondary" class="font-mono uppercase text-[11px]">{row.type}</Badge>
+	<Badge variant="secondary" class="font-mono text-[11px] uppercase">{row.type}</Badge>
 {/snippet}
 
 {#snippet quadletStatusSnippet(row: (typeof quadlets)[0])}

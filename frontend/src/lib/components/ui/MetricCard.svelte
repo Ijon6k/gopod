@@ -15,9 +15,7 @@
 	<span class="text-xs font-medium text-kumo-subtle">
 		{label}
 	</span>
-	<strong
-		class="text-2xl leading-tight font-semibold whitespace-nowrap text-kumo-default"
-	>
+	<strong class="text-2xl leading-tight font-semibold whitespace-nowrap text-kumo-default">
 		{value}
 	</strong>
 	{#if detail}

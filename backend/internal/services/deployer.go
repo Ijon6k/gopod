@@ -51,6 +51,9 @@ func NewDeployer(client *podman.Client, keyProvider SSHKeyProvider, logMgr *LogM
 	if dataDir == "" {
 		dataDir = "./data"
 	}
+	if abs, err := filepath.Abs(dataDir); err == nil {
+		dataDir = abs
+	}
 	_ = os.MkdirAll(dataDir, 0755)
 	return &Deployer{
 		podmanClient:   client,
@@ -285,6 +288,9 @@ func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) [
 					mu.Unlock()
 				}
 			}
+		}
+		if err := scanner.Err(); err != nil && err != io.EOF {
+			logLine("[stream error] " + err.Error())
 		}
 		done <- true
 	}

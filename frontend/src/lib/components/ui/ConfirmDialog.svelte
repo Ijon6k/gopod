@@ -90,7 +90,7 @@
 				<button
 					type="button"
 					onclick={handleCopy}
-					class="inline-flex cursor-pointer items-center gap-1 rounded border border-kumo-line bg-kumo-base px-2 py-0.5 text-[11px] font-mono text-kumo-subtle hover:text-kumo-default transition-colors"
+					class="inline-flex cursor-pointer items-center gap-1 rounded border border-kumo-line bg-kumo-base px-2 py-0.5 font-mono text-[11px] text-kumo-subtle transition-colors hover:text-kumo-default"
 					title="Copy to clipboard"
 				>
 					{#if copied}
@@ -102,13 +102,7 @@
 					{/if}
 				</button>
 			</div>
-			<Input
-				type="text"
-				bind:value={inputVal}
-				placeholder={matchValue}
-				size="sm"
-				class="w-full"
-			/>
+			<Input type="text" bind:value={inputVal} placeholder={matchValue} size="sm" class="w-full" />
 		</div>
 	{/if}
 
@@ -121,7 +115,11 @@
 			{cancelText}
 		</Button>
 		<Button
-			variant={variant === 'danger' ? 'destructive' : variant === 'warning' ? 'secondary' : 'primary'}
+			variant={variant === 'danger'
+				? 'destructive'
+				: variant === 'warning'
+					? 'secondary'
+					: 'primary'}
 			size="sm"
 			disabled={!canConfirm}
 			loading={isConfirming}

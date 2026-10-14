@@ -625,15 +625,21 @@ export function parseContainerPortMappings(containers: Container[]): PortMapping
 	const result: PortMapping[] = [];
 	for (const c of containers) {
 		if (!c.ports || c.ports === '—') continue;
-		const portItems = c.ports.split(/[\n,]+/).map((s) => s.trim()).filter(Boolean);
+		const portItems = c.ports
+			.split(/[\n,]+/)
+			.map((s) => s.trim())
+			.filter(Boolean);
 		for (const item of portItems) {
-			const arrowMatch = item.match(/^(?:([0-9a-fA-F.:*]+):)?(\d+)\s*(?:->|:)\s*(\d+)(?:\/(\w+))?$/);
+			const arrowMatch = item.match(
+				/^(?:([0-9a-fA-F.:*]+):)?(\d+)\s*(?:->|:)\s*(\d+)(?:\/(\w+))?$/
+			);
 			if (arrowMatch) {
 				const bindIp = arrowMatch[1] || '0.0.0.0';
 				const hostPort = parseInt(arrowMatch[2], 10);
 				const containerPort = parseInt(arrowMatch[3], 10);
 				const proto = (arrowMatch[4] || 'tcp').toLowerCase();
-				const isPublic = bindIp === '0.0.0.0' || bindIp === '::' || bindIp === '*' || bindIp === '[::]';
+				const isPublic =
+					bindIp === '0.0.0.0' || bindIp === '::' || bindIp === '*' || bindIp === '[::]';
 				result.push({
 					id: `${c.id}-${hostPort}-${proto}`,
 					hostPort,

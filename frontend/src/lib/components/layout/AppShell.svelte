@@ -40,13 +40,13 @@
 			<Sidebar />
 
 			<!-- Main Workspace (Edge-to-Edge Natural Flow, No Wrapper Box Clutter) -->
-			<div class="flex flex-1 flex-col min-w-0 min-h-0 h-screen overflow-hidden">
+			<div class="flex h-screen min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				<!-- Level 1: Global Context - Sticky Docked Topbar -->
 				<Topbar />
 
 				<!-- Level 4: Action & Content Canvas (Docked Edge-to-Edge) -->
 				<main
-					class="min-h-0 flex-1 w-full {isFullBleed
+					class="min-h-0 w-full flex-1 {isFullBleed
 						? 'overflow-hidden p-0'
 						: 'overflow-x-hidden overflow-y-auto px-4 py-5 md:px-6 md:py-6'}"
 				>

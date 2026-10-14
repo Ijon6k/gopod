@@ -64,7 +64,9 @@
 	<div class="flex items-center gap-2">
 		{#if totalCount > 0}
 			<span>
-				Showing <strong>{startItem}</strong>–<strong>{endItem}</strong> of <strong>{totalCount}</strong> {itemName}
+				Showing <strong>{startItem}</strong>–<strong>{endItem}</strong> of
+				<strong>{totalCount}</strong>
+				{itemName}
 			</span>
 		{:else}
 			<span>No {itemName} to display</span>
@@ -94,7 +96,7 @@
 				type="button"
 				disabled={page <= 1}
 				onclick={() => goToPage(page - 1)}
-				class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+				class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
 				aria-label="Previous page"
 			>
 				<CaretLeft size={13} />
@@ -108,7 +110,7 @@
 				type="button"
 				disabled={page >= totalPages}
 				onclick={() => goToPage(page + 1)}
-				class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+				class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-panel)] hover:text-[var(--text-primary)] disabled:cursor-not-allowed disabled:opacity-40"
 				aria-label="Next page"
 			>
 				<CaretRight size={13} />

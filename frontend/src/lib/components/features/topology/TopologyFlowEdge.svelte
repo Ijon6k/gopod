@@ -61,9 +61,7 @@
 	let labelY = $derived(pathData.labelY);
 
 	let kind = $derived((data as any)?.kind || 'workload');
-	let isDashed = $derived(
-		(data as any)?.dashed || kind === 'localhost-port' || false
-	);
+	let isDashed = $derived((data as any)?.dashed || kind === 'localhost-port' || false);
 	let isStopped = $derived((data as any)?.isStopped || false);
 
 	// Semantic stroke color based on traffic kind:
@@ -109,7 +107,9 @@
 		{id}
 		{path}
 		{markerEnd}
-		style="stroke: {strokeColor}; stroke-width: {strokeWidth}px; {isDashed ? 'stroke-dasharray: 5 4; stroke-opacity: 0.6;' : ''} {style || ''}"
+		style="stroke: {strokeColor}; stroke-width: {strokeWidth}px; {isDashed
+			? 'stroke-dasharray: 5 4; stroke-opacity: 0.6;'
+			: ''} {style || ''}"
 		class="transition-colors"
 	/>
 
@@ -119,7 +119,11 @@
 			<div
 				class="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--color-kumo-line)] bg-[var(--color-kumo-base)] px-2 py-0.5 font-mono text-[9.5px] font-medium text-[var(--text-secondary)] shadow-xs select-none"
 			>
-				<span class="h-1.5 w-1.5 rounded-full {isStopped ? 'bg-[var(--text-tertiary)]' : 'bg-[var(--accent)]'}"></span>
+				<span
+					class="h-1.5 w-1.5 rounded-full {isStopped
+						? 'bg-[var(--text-tertiary)]'
+						: 'bg-[var(--accent)]'}"
+				></span>
 				<span>{label}</span>
 			</div>
 		</EdgeLabel>

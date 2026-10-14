@@ -14,7 +14,9 @@
 </script>
 
 <!-- Level 3: View Level Sub-Header (Kumo Sentence Case, font-semibold, normal tracking) -->
-<header class={cn('flex flex-col justify-between gap-3 sm:flex-row sm:items-center sm:gap-4', className)}>
+<header
+	class={cn('flex flex-col justify-between gap-3 sm:flex-row sm:items-center sm:gap-4', className)}
+>
 	<div class="flex flex-col gap-1">
 		<div class="flex items-center gap-3">
 			<h1 class="m-0 text-xl font-semibold text-[var(--text-primary)]">

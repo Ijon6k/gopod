@@ -43,7 +43,7 @@
 		<!-- Kumo DropdownMenu Selector -->
 		<DropdownMenu>
 			<DropdownMenu.Trigger
-				class="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-[var(--font-sans)] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] outline-none"
+				class="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-2.5 py-1.5 text-xs font-[var(--font-sans)] font-medium text-[var(--text-primary)] outline-none hover:bg-[var(--bg-hover)]"
 			>
 				<span class="shrink-0 text-[var(--text-tertiary)]">
 					{#if viewMode === 'global'}
@@ -59,7 +59,7 @@
 						{currentProject ? `Project: ${currentProject.name}` : viewMode}
 					{/if}
 				</span>
-				<CaretDown size={11} class="text-[var(--text-tertiary)] shrink-0" />
+				<CaretDown size={11} class="shrink-0 text-[var(--text-tertiary)]" />
 			</DropdownMenu.Trigger>
 			<DropdownMenu.Content class="w-64" align="start">
 				<DropdownMenu.Item
@@ -69,8 +69,8 @@
 					<span class="text-xs">Global Infrastructure (Overview)</span>
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator />
-				<div class="px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-[var(--text-muted)]">
-					Projects (Territories)
+				<div class="px-2 py-1 text-[11px] font-medium text-[var(--text-muted)]">
+					Projects (territories)
 				</div>
 				{#each projects as proj}
 					<DropdownMenu.Item

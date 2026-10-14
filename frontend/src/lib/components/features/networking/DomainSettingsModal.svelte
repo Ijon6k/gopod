@@ -85,7 +85,11 @@
 			hsts = domain.hsts !== false;
 			basicAuth = !!domain.basicAuth;
 			basicAuthUser = domain.basicAuthUser || 'admin';
-			const isLocal = domain.hostname.endsWith('.localhost') || domain.hostname.endsWith('.local') || domain.hostname.includes('127.0.0.1') || domain.hostname === 'localhost';
+			const isLocal =
+				domain.hostname.endsWith('.localhost') ||
+				domain.hostname.endsWith('.local') ||
+				domain.hostname.includes('127.0.0.1') ||
+				domain.hostname === 'localhost';
 			dnsVerified = isLocal || domain.dnsStatus !== 'pending';
 		} else {
 			hostname = '';
@@ -125,8 +129,16 @@
 		if (!hostname.trim()) return;
 		isCheckingDNS = true;
 		try {
-			const clean = hostname.trim().toLowerCase().replace(/^https?:\/\//, '').replace(/:\d+$/, '');
-			const isLocal = clean.endsWith('.localhost') || clean.endsWith('.local') || clean.includes('127.0.0.1') || clean === 'localhost';
+			const clean = hostname
+				.trim()
+				.toLowerCase()
+				.replace(/^https?:\/\//, '')
+				.replace(/:\d+$/, '');
+			const isLocal =
+				clean.endsWith('.localhost') ||
+				clean.endsWith('.local') ||
+				clean.includes('127.0.0.1') ||
+				clean === 'localhost';
 			if (isLocal) {
 				dnsVerified = true;
 			} else if (domain?.id) {
@@ -151,7 +163,11 @@
 		cleanHost = cleanHost.replace(/^https?:\/\//, '');
 		cleanHost = cleanHost.replace(/:\d+$/, '');
 
-		const isLocal = cleanHost.endsWith('.localhost') || cleanHost.endsWith('.local') || cleanHost.includes('127.0.0.1') || cleanHost === 'localhost';
+		const isLocal =
+			cleanHost.endsWith('.localhost') ||
+			cleanHost.endsWith('.local') ||
+			cleanHost.includes('127.0.0.1') ||
+			cleanHost === 'localhost';
 		const dnsStatus = isLocal || dnsVerified ? 'valid' : 'pending';
 
 		const updated: Domain = {

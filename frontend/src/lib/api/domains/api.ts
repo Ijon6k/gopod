@@ -27,8 +27,20 @@ export const domainsApi = {
 		return res.data;
 	},
 
-	async getCaddyfile(): Promise<{ caddyfile: string; status: string; adminUrl: string; httpPort?: number; httpsPort?: number }> {
-		const res = await apiClient.get<{ caddyfile: string; status: string; adminUrl: string; httpPort?: number; httpsPort?: number }>('/ingress/caddyfile');
+	async getCaddyfile(): Promise<{
+		caddyfile: string;
+		status: string;
+		adminUrl: string;
+		httpPort?: number;
+		httpsPort?: number;
+	}> {
+		const res = await apiClient.get<{
+			caddyfile: string;
+			status: string;
+			adminUrl: string;
+			httpPort?: number;
+			httpsPort?: number;
+		}>('/ingress/caddyfile');
 		return res.data;
 	},
 

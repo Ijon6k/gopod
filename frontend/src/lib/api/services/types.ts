@@ -1,13 +1,7 @@
 import type { Status } from '$lib/types/common';
 
 export type ServiceType =
-	| 'application'
-	| 'image'
-	| 'compose'
-	| 'pod'
-	| 'kubernetes'
-	| 'quadlet'
-	| 'database';
+	'application' | 'image' | 'compose' | 'pod' | 'kubernetes' | 'quadlet' | 'database';
 
 export interface ServiceSecretMount {
 	secretId: string;

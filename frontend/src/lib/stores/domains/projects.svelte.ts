@@ -285,7 +285,12 @@ export class ProjectsDomainStore {
 				const dep: Deployment = {
 					id: (res as any).id,
 					projectId: targetProjId,
-					projectName: foundProj?.name || (res as any).projectName || (svc as any)?.projectName || targetProjId || 'Default',
+					projectName:
+						foundProj?.name ||
+						(res as any).projectName ||
+						(svc as any)?.projectName ||
+						targetProjId ||
+						'Default',
 					serviceId: (res as any).serviceId || serviceId,
 					serviceName: svc?.name || (res as any).serviceName || serviceId,
 					number: (res as any).number || this.deployments.length + 1,
@@ -465,11 +470,7 @@ export class ProjectsDomainStore {
 								branch: dep.branch || svc?.branch || 'main',
 								timeAgo: dep.startedAt ? 'Recently' : 'Just now',
 								projectName:
-									proj?.name ||
-									dep.projectName ||
-									svc?.projectName ||
-									targetProjId ||
-									'Default',
+									proj?.name || dep.projectName || svc?.projectName || targetProjId || 'Default',
 								serviceName: svc?.name || dep.serviceName || dep.serviceId || 'Service'
 							});
 						}

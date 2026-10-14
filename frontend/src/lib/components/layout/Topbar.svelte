@@ -10,21 +10,15 @@
 	import { DropdownMenu } from 'kumo-svelte';
 	import { Kbd } from '$lib/components/ui';
 	import CommandPaletteModal from './CommandPaletteModal.svelte';
-	import {
-		MagnifyingGlass,
-		Plus,
-		CaretDown,
-		Sun,
-		Moon,
-		GearSix,
-		SignOut
-	} from 'phosphor-svelte';
+	import { MagnifyingGlass, Plus, CaretDown, Sun, Moon, GearSix, SignOut } from 'phosphor-svelte';
 
 	let openCommandPalette = $state(false);
 	let isMac = $state(false);
 
 	onMount(() => {
-		isMac = typeof navigator !== 'undefined' && /(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent || navigator.platform || '');
+		isMac =
+			typeof navigator !== 'undefined' &&
+			/(Mac|iPhone|iPod|iPad)/i.test(navigator.userAgent || navigator.platform || '');
 	});
 
 	function handleKeydown(e: KeyboardEvent) {
@@ -108,7 +102,7 @@
 					{#if crumbs.project && crumb === crumbs.project.name}
 						<DropdownMenu>
 							<DropdownMenu.Trigger
-								class="flex cursor-pointer items-center gap-1 rounded border-0 bg-transparent px-1 py-0.5 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] outline-none"
+								class="flex cursor-pointer items-center gap-1 rounded border-0 bg-transparent px-1 py-0.5 text-[13px] font-medium text-[var(--text-primary)] outline-none hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
 							>
 								<span class="max-w-[120px] truncate sm:max-w-[160px]">{crumbs.project.name}</span>
 								<CaretDown size={11} class="text-[var(--text-tertiary)]" />
@@ -136,7 +130,7 @@
 					{:else if crumbs.service && crumb === crumbs.service.name}
 						<DropdownMenu>
 							<DropdownMenu.Trigger
-								class="flex cursor-pointer items-center gap-1 rounded border-0 bg-transparent px-1 py-0.5 text-[13px] font-medium text-[var(--text-primary)] hover:bg-[var(--bg-hover)] hover:text-[var(--accent)] outline-none"
+								class="flex cursor-pointer items-center gap-1 rounded border-0 bg-transparent px-1 py-0.5 text-[13px] font-medium text-[var(--text-primary)] outline-none hover:bg-[var(--bg-hover)] hover:text-[var(--accent)]"
 							>
 								<span class="max-w-[120px] truncate sm:max-w-[160px]">{crumbs.service.name}</span>
 								<CaretDown size={11} class="text-[var(--text-tertiary)]" />
@@ -158,10 +152,14 @@
 									</DropdownMenu.Item>
 								{/each}
 								{#if projectServices.length === 0}
-									<div class="px-2 py-1.5 text-xs text-[var(--text-muted)]">No services in project</div>
+									<div class="px-2 py-1.5 text-xs text-[var(--text-muted)]">
+										No services in project
+									</div>
 								{/if}
 								<DropdownMenu.Separator />
-								<DropdownMenu.Item onclick={() => goto(`/projects/${crumbs.project?.id}/new-service`)}>
+								<DropdownMenu.Item
+									onclick={() => goto(`/projects/${crumbs.project?.id}/new-service`)}
+								>
 									<span class="flex items-center gap-1.5 text-xs font-medium text-[var(--accent)]">
 										<Plus size={12} /> New service
 									</span>
@@ -180,7 +178,7 @@
 	<div class="flex items-center gap-2">
 		<!-- Podman Engine Status Pill Badge -->
 		<div
-			class="hidden items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)] lg:flex select-none shrink-0"
+			class="hidden shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)] select-none lg:flex"
 			title="Podman local engine status"
 		>
 			<span
@@ -199,13 +197,18 @@
 			onclick={() => (openCommandPalette = true)}
 			title="Search GOPOD ({isMac ? '⌘K' : 'Ctrl K'})"
 			aria-label="Search GOPOD"
-			class="group flex h-7.5 w-[130px] cursor-pointer items-center justify-between rounded-md border border-kumo-line bg-kumo-control px-2.5 text-xs text-kumo-subtle shadow-xs transition-colors hover:border-kumo-focus hover:bg-kumo-base hover:text-kumo-default sm:w-[170px] md:w-[210px]"
+			class="group hover:border-kumo-focus flex h-7.5 w-[130px] cursor-pointer items-center justify-between rounded-md border border-kumo-line bg-kumo-control px-2.5 text-xs text-kumo-subtle shadow-xs transition-colors hover:bg-kumo-base hover:text-kumo-default sm:w-[170px] md:w-[210px]"
 		>
 			<div class="flex items-center gap-2 truncate">
-				<MagnifyingGlass size={13} class="shrink-0 text-kumo-muted transition-colors group-hover:text-kumo-default" />
+				<MagnifyingGlass
+					size={13}
+					class="shrink-0 text-kumo-muted transition-colors group-hover:text-kumo-default"
+				/>
 				<span class="truncate text-xs font-normal">Search…</span>
 			</div>
-			<Kbd class="shrink-0 border-kumo-hairline bg-kumo-recessed text-[10px] text-kumo-subtle transition-colors group-hover:border-kumo-line group-hover:text-kumo-default">
+			<Kbd
+				class="shrink-0 border-kumo-hairline bg-kumo-recessed text-[10px] text-kumo-subtle transition-colors group-hover:border-kumo-line group-hover:text-kumo-default"
+			>
 				{isMac ? '⌘K' : 'Ctrl K'}
 			</Kbd>
 		</button>
@@ -228,7 +231,7 @@
 		<!-- User Profile Dropdown using Kumo DropdownMenu -->
 		<DropdownMenu>
 			<DropdownMenu.Trigger
-				class="flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] p-0.5 pr-1.5 hover:border-[var(--accent)] outline-none"
+				class="flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] p-0.5 pr-1.5 outline-none hover:border-[var(--accent)]"
 				title="Account profile"
 			>
 				<div
@@ -236,7 +239,9 @@
 				>
 					{authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'A'}
 				</div>
-				<span class="hidden max-w-[80px] truncate text-xs font-medium text-[var(--text-primary)] sm:inline">
+				<span
+					class="hidden max-w-[80px] truncate text-xs font-medium text-[var(--text-primary)] sm:inline"
+				>
 					{authStore.user?.name || 'Admin'}
 				</span>
 				<CaretDown size={10} class="text-[var(--text-tertiary)]" />
@@ -250,10 +255,7 @@
 						{authStore.user?.email || 'admin@gopod.dev'}
 					</p>
 				</div>
-				<DropdownMenu.Item
-					onclick={() => goto('/settings')}
-					icon={GearSix}
-				>
+				<DropdownMenu.Item onclick={() => goto('/settings')} icon={GearSix}>
 					<span class="text-xs">Settings</span>
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator />

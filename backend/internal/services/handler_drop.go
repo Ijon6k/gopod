@@ -114,6 +114,11 @@ func (h *Handler) handleDropUpload(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		// Reject symlinks to prevent symlink traversal
+		if f.FileInfo().Mode()&os.ModeSymlink != 0 {
+			continue
+		}
+
 		if f.FileInfo().IsDir() {
 			_ = os.MkdirAll(cleanTarget, 0755)
 			_ = os.Chmod(cleanTarget, 0755)

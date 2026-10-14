@@ -124,8 +124,8 @@
 		<div class="flex items-center justify-between">
 			<div class="flex items-center gap-2">
 				<Database size={16} class="text-[var(--accent)]" />
-				<h3 class="m-0 text-xs font-semibold tracking-wider text-[var(--text-primary)] uppercase">
-					Active Project Volumes ({projectVolumes.length})
+				<h3 class="m-0 text-xs font-semibold text-[var(--text-primary)]">
+					Active project volumes ({projectVolumes.length})
 				</h3>
 			</div>
 			<span class="font-mono text-[11px] text-[var(--text-tertiary)]">
@@ -166,7 +166,7 @@
 							</div>
 
 							<div class="flex flex-col items-end">
-								<span class="font-mono text-sm font-bold text-[var(--text-primary)]"
+								<span class="font-mono text-sm font-semibold text-[var(--text-primary)]"
 									>{vol.size}</span
 								>
 								<span class="text-[10.5px] text-[var(--text-tertiary)]">on disk</span>
@@ -353,7 +353,10 @@
 					<TableBody class="divide-y divide-[var(--border-subtle)]">
 						{#if snapshots.length === 0}
 							<TableRow>
-								<TableCell colspan={6} class="py-12 text-center text-xs text-[var(--text-tertiary)]">
+								<TableCell
+									colspan={6}
+									class="py-12 text-center text-xs text-[var(--text-tertiary)]"
+								>
 									No volume snapshots taken yet. Click "Snapshot Now" on an active volume above.
 								</TableCell>
 							</TableRow>

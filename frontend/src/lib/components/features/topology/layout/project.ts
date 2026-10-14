@@ -565,7 +565,12 @@ export function computeProjectFocusLayout({
 						sourceY: targetVolY + 26,
 						targetX: volNode.x,
 						targetY: targetVolY + 26,
-						path: createCurvedBezierPath(colWorkloadsX + groupWidth, targetVolY + 26, volNode.x, targetVolY + 26),
+						path: createCurvedBezierPath(
+							colWorkloadsX + groupWidth,
+							targetVolY + 26,
+							volNode.x,
+							targetVolY + 26
+						),
 						kind: 'storage',
 						dashed: true
 					});

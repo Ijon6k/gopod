@@ -36,3 +36,21 @@ func TestEncryptDecrypt(t *testing.T) {
 		t.Fatalf("Legacy decrypt mismatch. Got: %s, Want: %s", decRaw, rawPlain)
 	}
 }
+
+func TestUninitializedMasterKeyReturnsError(t *testing.T) {
+	keyMu.Lock()
+	saved := masterKey
+	masterKey = nil
+	keyMu.Unlock()
+	defer func() {
+		keyMu.Lock()
+		masterKey = saved
+		keyMu.Unlock()
+	}()
+
+	_, err := Encrypt("test")
+	if err == nil {
+		t.Fatalf("Expected error when encrypting with uninitialized master key, got nil")
+	}
+}
+

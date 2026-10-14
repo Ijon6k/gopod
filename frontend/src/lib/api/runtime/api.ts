@@ -1,5 +1,13 @@
 import apiClient from '../client';
-import type { Pod, Image, Volume, Network, PodmanContainerItem, ContainerLogsResponse, QuadletUnit } from './types';
+import type {
+	Pod,
+	Image,
+	Volume,
+	Network,
+	PodmanContainerItem,
+	ContainerLogsResponse,
+	QuadletUnit
+} from './types';
 
 export const runtimeApi = {
 	containers: {
@@ -44,13 +52,27 @@ export const runtimeApi = {
 			return res.data;
 		},
 
-		getTerminalWsUrl(id: string, cols = 80, rows = 24, cmd = 'sh'): string {
+		async getTerminalTicket(id: string): Promise<string> {
+			const res = await apiClient.post<{ ticket: string }>(
+				`/containers/${encodeURIComponent(id)}/terminal-ticket`
+			);
+			return res.data.ticket;
+		},
+
+		getTerminalWsUrl(id: string, cols = 80, rows = 24, cmd = 'sh', ticket?: string): string {
 			if (typeof window === 'undefined') return '';
 			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-			const token =
-				typeof localStorage !== 'undefined' ? localStorage.getItem('gopod_token') || '' : '';
-			const tokenParam = token ? `&token=${encodeURIComponent(token)}` : '';
-			return `${protocol}//${window.location.host}/api/containers/${encodeURIComponent(id)}/exec?cmd=${encodeURIComponent(cmd)}&cols=${cols}&rows=${rows}${tokenParam}`;
+			let authParam = '';
+			if (ticket) {
+				authParam = `&ticket=${encodeURIComponent(ticket)}`;
+			} else {
+				const token =
+					typeof localStorage !== 'undefined' ? localStorage.getItem('gopod_token') || '' : '';
+				if (token) {
+					authParam = `&token=${encodeURIComponent(token)}`;
+				}
+			}
+			return `${protocol}//${window.location.host}/api/containers/${encodeURIComponent(id)}/exec?cmd=${encodeURIComponent(cmd)}&cols=${cols}&rows=${rows}${authParam}`;
 		}
 	},
 
@@ -60,7 +82,12 @@ export const runtimeApi = {
 			return res.data;
 		},
 
-		async create(pod: { name: string; ports?: string[]; network?: string; labels?: Record<string, string> }): Promise<{ id: string; name: string }> {
+		async create(pod: {
+			name: string;
+			ports?: string[];
+			network?: string;
+			labels?: Record<string, string>;
+		}): Promise<{ id: string; name: string }> {
 			const res = await apiClient.post<{ id: string; name: string }>('/pods', pod);
 			return res.data;
 		},
@@ -128,17 +155,23 @@ export const runtimeApi = {
 		},
 
 		async start(name: string): Promise<{ message: string }> {
-			const res = await apiClient.post<{ message: string }>(`/quadlets/${encodeURIComponent(name)}/start`);
+			const res = await apiClient.post<{ message: string }>(
+				`/quadlets/${encodeURIComponent(name)}/start`
+			);
 			return res.data;
 		},
 
 		async stop(name: string): Promise<{ message: string }> {
-			const res = await apiClient.post<{ message: string }>(`/quadlets/${encodeURIComponent(name)}/stop`);
+			const res = await apiClient.post<{ message: string }>(
+				`/quadlets/${encodeURIComponent(name)}/stop`
+			);
 			return res.data;
 		},
 
 		async restart(name: string): Promise<{ message: string }> {
-			const res = await apiClient.post<{ message: string }>(`/quadlets/${encodeURIComponent(name)}/restart`);
+			const res = await apiClient.post<{ message: string }>(
+				`/quadlets/${encodeURIComponent(name)}/restart`
+			);
 			return res.data;
 		},
 

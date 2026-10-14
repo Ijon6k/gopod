@@ -171,7 +171,7 @@
 		{#if cleanMonoDetail}
 			<KumoBadge
 				variant="secondary"
-				class="!rounded !px-1.5 !py-0 !text-[10px] !font-mono font-normal border border-[var(--border-subtle)] text-[var(--text-secondary)] shrink-0"
+				class="shrink-0 !rounded border border-[var(--border-subtle)] !px-1.5 !py-0 !font-mono !text-[10px] font-normal text-[var(--text-secondary)]"
 			>
 				{cleanMonoDetail}
 			</KumoBadge>

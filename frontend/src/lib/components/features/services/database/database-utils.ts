@@ -1,14 +1,7 @@
 import type { Service, EnvVar } from '$lib/types';
 
 export type DatabaseEngine =
-	| 'postgres'
-	| 'mysql'
-	| 'mariadb'
-	| 'redis'
-	| 'mongodb'
-	| 'clickhouse'
-	| 'libsql'
-	| 'custom';
+	'postgres' | 'mysql' | 'mariadb' | 'redis' | 'mongodb' | 'clickhouse' | 'libsql' | 'custom';
 
 export interface DatabaseEngineDefinition {
 	id: DatabaseEngine;
@@ -197,7 +190,10 @@ export function validateDatabasePassword(password: string): { valid: boolean; er
 		return { valid: false, error: 'Password must not contain quotes (\' ") or backslashes (\\)' };
 	}
 	if (password.includes('$')) {
-		return { valid: false, error: 'Password must not contain dollar signs ($) to prevent shell interpolation' };
+		return {
+			valid: false,
+			error: 'Password must not contain dollar signs ($) to prevent shell interpolation'
+		};
 	}
 	if (password.length < 6) {
 		return { valid: false, error: 'Password should be at least 6 characters' };
@@ -242,7 +238,11 @@ export function buildDatabaseEnvVars(config: DatabaseConfig): EnvVar[] {
 				{ key: 'POSTGRES_DB', value: config.databaseName || 'gopod', secret: false },
 				{ key: 'POSTGRES_USER', value: config.user || 'postgres', secret: false },
 				{ key: 'POSTGRES_PASSWORD', value: config.password, secret: true },
-				{ key: 'PGDATA', value: `${config.volumeMountPath || '/var/lib/postgresql/data'}/pgdata`, secret: false }
+				{
+					key: 'PGDATA',
+					value: `${config.volumeMountPath || '/var/lib/postgresql/data'}/pgdata`,
+					secret: false
+				}
 			);
 			break;
 		case 'mysql':
@@ -260,7 +260,11 @@ export function buildDatabaseEnvVars(config: DatabaseConfig): EnvVar[] {
 		case 'mariadb':
 			vars.push(
 				{ key: 'MARIADB_DATABASE', value: config.databaseName || 'gopod', secret: false },
-				{ key: 'MARIADB_ROOT_PASSWORD', value: config.rootPassword || config.password, secret: true }
+				{
+					key: 'MARIADB_ROOT_PASSWORD',
+					value: config.rootPassword || config.password,
+					secret: true
+				}
 			);
 			if (config.user && config.user !== 'root') {
 				vars.push(
@@ -288,9 +292,7 @@ export function buildDatabaseEnvVars(config: DatabaseConfig): EnvVar[] {
 			);
 			break;
 		case 'libsql':
-			vars.push(
-				{ key: 'SQLD_NODE', value: 'primary', secret: false }
-			);
+			vars.push({ key: 'SQLD_NODE', value: 'primary', secret: false });
 			if (config.password) {
 				vars.push({ key: 'SQLD_AUTH_JWT_KEY', value: config.password, secret: true });
 			}
@@ -448,12 +450,15 @@ export function buildConnectionString(params: {
 /**
  * Generates ready-to-run Podman CLI command for interactive container shell.
  */
-export function buildCliCommand(service: Service, creds: {
-	engine: DatabaseEngine;
-	user: string;
-	password: string;
-	databaseName: string;
-}): string {
+export function buildCliCommand(
+	service: Service,
+	creds: {
+		engine: DatabaseEngine;
+		user: string;
+		password: string;
+		databaseName: string;
+	}
+): string {
 	const cName = service.id || service.name;
 	switch (creds.engine) {
 		case 'postgres':
@@ -478,21 +483,41 @@ export function buildCliCommand(service: Service, creds: {
  * Pure function that updates a Service with new DatabaseConfig parameters,
  * preserving any custom env vars and accurately mutating database credentials.
  */
-export function updateServiceWithDatabaseConfig(service: Service, newConfig: DatabaseConfig): Service {
+export function updateServiceWithDatabaseConfig(
+	service: Service,
+	newConfig: DatabaseConfig
+): Service {
 	const newEnvVars = buildDatabaseEnvVars(newConfig);
 
 	// Merge with existing env vars: replace managed keys, preserve custom additions
 	const managedKeys = new Set(newEnvVars.map((e) => e.key));
 	// Also remove older variant keys for other engines if engine switched
 	const allPossibleManagedKeys = new Set([
-		'POSTGRES_DB', 'POSTGRES_USER', 'POSTGRES_PASSWORD', 'PGDATA',
-		'MYSQL_DATABASE', 'MYSQL_ROOT_PASSWORD', 'MYSQL_USER', 'MYSQL_PASSWORD',
-		'MARIADB_DATABASE', 'MARIADB_ROOT_PASSWORD', 'MARIADB_USER', 'MARIADB_PASSWORD',
+		'POSTGRES_DB',
+		'POSTGRES_USER',
+		'POSTGRES_PASSWORD',
+		'PGDATA',
+		'MYSQL_DATABASE',
+		'MYSQL_ROOT_PASSWORD',
+		'MYSQL_USER',
+		'MYSQL_PASSWORD',
+		'MARIADB_DATABASE',
+		'MARIADB_ROOT_PASSWORD',
+		'MARIADB_USER',
+		'MARIADB_PASSWORD',
 		'REDIS_PASSWORD',
-		'MONGO_INITDB_ROOT_USERNAME', 'MONGO_INITDB_ROOT_PASSWORD', 'MONGO_INITDB_DATABASE',
-		'CLICKHOUSE_DB', 'CLICKHOUSE_USER', 'CLICKHOUSE_PASSWORD', 'CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT',
-		'SQLD_NODE', 'SQLD_AUTH_JWT_KEY',
-		'DB_NAME', 'DB_USER', 'DB_PASSWORD'
+		'MONGO_INITDB_ROOT_USERNAME',
+		'MONGO_INITDB_ROOT_PASSWORD',
+		'MONGO_INITDB_DATABASE',
+		'CLICKHOUSE_DB',
+		'CLICKHOUSE_USER',
+		'CLICKHOUSE_PASSWORD',
+		'CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT',
+		'SQLD_NODE',
+		'SQLD_AUTH_JWT_KEY',
+		'DB_NAME',
+		'DB_USER',
+		'DB_PASSWORD'
 	]);
 
 	const existingCustom = (service.envVars || []).filter(

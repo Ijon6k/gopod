@@ -1,0 +1,453 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import type { Service, Workload, TimeSeriesPoint, Container } from '$lib/types';
+	import { StatusBadge, Select } from '$lib/components/ui';
+	import { Button } from 'kumo-svelte';
+	import { dataStore } from '$lib/data';
+	import { api } from '$lib/api';
+	import { MicroWorkloadTable } from '$lib/components/features/monitoring';
+	import { formatMemory, parseNetToMb } from '$lib/utils/format';
+	import TelemetryMetricCards from '../monitoring/TelemetryMetricCards.svelte';
+	import TelemetryChartsGrid from '../monitoring/TelemetryChartsGrid.svelte';
+	import { ArrowClockwise, Warning, CheckCircle } from 'phosphor-svelte';
+
+	interface Props {
+		service: Service;
+		onNavigateTab?: (tab: string) => void;
+	}
+
+	let { service, onNavigateTab }: Props = $props();
+
+	// Match actual containers from Podman runtime store
+	let matchingContainers = $derived.by<Container[]>(() => {
+		return dataStore.containers.filter(
+			(c) =>
+				c.serviceId === service.id ||
+				(c.labels &&
+					(c.labels['io.gopod.service'] === service.id ||
+						c.labels['com.docker.compose.project'] === service.id ||
+						c.labels['io.podman.compose.project'] === service.id ||
+						c.labels['com.docker.compose.project'] === `${service.projectId}-${service.name}` ||
+						c.labels['io.podman.compose.project'] === `${service.projectId}-${service.name}`)) ||
+				c.name === service.id ||
+				c.name === service.name ||
+				(service.id && (c.name.startsWith(`${service.id}-`) || c.name.startsWith(`${service.id}_`)))
+		);
+	});
+
+	let selectedContainer = $state('all');
+	let containerOptions = $derived.by(() => {
+		const opts: { label: string; value: string }[] = [];
+		if (matchingContainers.length > 1) {
+			opts.push({ label: `All Containers (${matchingContainers.length} Aggregate)`, value: 'all' });
+		}
+		for (const c of matchingContainers) {
+			opts.push({ label: `${c.name} (${c.id.slice(0, 12)}) — ${c.status}`, value: c.name });
+		}
+		if (matchingContainers.length === 0) {
+			opts.push({ label: `${service.name} (Waiting for container to start)`, value: 'all' });
+		}
+		return opts;
+	});
+
+	let timeRange = $state<'1h' | '6h' | '24h' | '7d'>('24h');
+	let isRefreshing = $state(false);
+	let isRestartingContainer = $state(false);
+	let refreshRate = $state<'3s' | '5s' | '15s' | 'paused'>('3s');
+	const refreshOptions = [
+		{ label: '3s', value: '3s' },
+		{ label: '5s', value: '5s' },
+		{ label: '15s', value: '15s' },
+		{ label: 'Pause', value: 'paused' }
+	];
+	let lastUpdatedSec = $state(0);
+
+	// Currently targeted container (null if aggregate 'all')
+	let activeContainer = $derived.by<Container | null>(() => {
+		if (selectedContainer === 'all') {
+			return matchingContainers.length === 1 ? matchingContainers[0] : null;
+		}
+		return (
+			matchingContainers.find((c) => c.name === selectedContainer || c.id === selectedContainer) ??
+			null
+		);
+	});
+
+	// Compute real live metrics based on selected container or container aggregate
+	let currentCpu = $derived.by<number>(() => {
+		if (activeContainer) {
+			return activeContainer.cpu ?? 0;
+		}
+		if (matchingContainers.length > 0) {
+			return parseFloat(matchingContainers.reduce((acc, c) => acc + (c.cpu || 0), 0).toFixed(1));
+		}
+		return service.cpu ?? 0;
+	});
+
+	let currentMem = $derived.by<number>(() => {
+		if (activeContainer) {
+			return activeContainer.memory ?? 0;
+		}
+		if (matchingContainers.length > 0) {
+			return matchingContainers.reduce((acc, c) => acc + (c.memory || 0), 0);
+		}
+		return service.memory ?? 0;
+	});
+
+	let memLimit = $derived.by<number>(() => {
+		if (activeContainer && activeContainer.memoryLimit) {
+			return activeContainer.memoryLimit;
+		}
+		if (matchingContainers.length > 0) {
+			const maxLimit = Math.max(...matchingContainers.map((c) => c.memoryLimit || 0));
+			if (maxLimit > 0) return maxLimit;
+		}
+		return 512;
+	});
+
+	let memPercent = $derived(
+		memLimit > 0 ? Math.min(Math.round((currentMem / memLimit) * 100), 100) : 0
+	);
+
+	let currentNetRx = $derived.by<string>(() => {
+		if (activeContainer) return activeContainer.netRx || '0 B';
+		if (matchingContainers.length > 0) {
+			const valid = matchingContainers.map((c) => c.netRx).filter((v) => v && v !== '—');
+			return valid.length > 0 ? valid.join(' + ') : '0 B';
+		}
+		return '0 B';
+	});
+
+	let currentNetTx = $derived.by<string>(() => {
+		if (activeContainer) return activeContainer.netTx || '0 B';
+		if (matchingContainers.length > 0) {
+			const valid = matchingContainers.map((c) => c.netTx).filter((v) => v && v !== '—');
+			return valid.length > 0 ? valid.join(' + ') : '0 B';
+		}
+		return '0 B';
+	});
+
+	let currentPids = $derived.by<number>(() => {
+		if (activeContainer)
+			return activeContainer.pids || (activeContainer.status === 'running' ? 1 : 0);
+		if (matchingContainers.length > 0) {
+			return matchingContainers.reduce((acc, c) => acc + (c.pids || 0), 0);
+		}
+		return service.status === 'running' ? 1 : 0;
+	});
+
+	let currentStatus = $derived.by<string>(() => {
+		if (activeContainer) return activeContainer.status;
+		if (matchingContainers.length > 0) {
+			return matchingContainers.some((c) => c.status === 'running') ? 'running' : 'stopped';
+		}
+		return service.status || 'stopped';
+	});
+
+	let isElevatedMem = $derived(memPercent >= 75);
+	let isElevatedCpu = $derived(currentCpu >= 5.0);
+	let isUnhealthy = $derived(
+		service.health === 'unhealthy' ||
+			service.status === 'failed' ||
+			service.status === 'degraded' ||
+			currentStatus === 'stopped'
+	);
+
+	// Dynamic Rolling Telemetry Buffers for Live Container Charts
+	function initSeries(baseVal: number, count = 20): TimeSeriesPoint[] {
+		const now = Date.now();
+		return Array.from({ length: count }, (_, i) => {
+			const t = new Date(now - (count - 1 - i) * 2000);
+			return {
+				time: t.toISOString(),
+				label: `${t.getHours().toString().padStart(2, '0')}:${t.getMinutes().toString().padStart(2, '0')}:${t.getSeconds().toString().padStart(2, '0')}`,
+				value: Math.max(0, parseFloat(baseVal.toFixed(2)))
+			};
+		});
+	}
+
+	let cpuHistory = $state<TimeSeriesPoint[]>(initSeries(0));
+	let memoryHistory = $state<TimeSeriesPoint[]>(initSeries(0));
+	let networkHistory = $state<TimeSeriesPoint[]>(initSeries(0));
+
+	function recordPoint(series: TimeSeriesPoint[], val: number, timeStr: string, labelStr: string) {
+		series.push({ time: timeStr, label: labelStr, value: Math.max(0, parseFloat(val.toFixed(2))) });
+		if (series.length > 25) {
+			series.shift();
+		}
+	}
+
+	async function tickStats() {
+		await dataStore.fetchLiveStats();
+		lastUpdatedSec = 0;
+		const cpu = currentCpu;
+		const mem = currentMem;
+		const netRxMb = parseNetToMb(currentNetRx);
+		const netTxMb = parseNetToMb(currentNetTx);
+		const netTotal = parseFloat((netRxMb + netTxMb).toFixed(2));
+
+		const now = new Date();
+		const timeStr = now.toISOString();
+		const labelStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+
+		recordPoint(cpuHistory, cpu, timeStr, labelStr);
+		recordPoint(memoryHistory, mem, timeStr, labelStr);
+		recordPoint(networkHistory, netTotal, timeStr, labelStr);
+	}
+
+	async function handleRefresh() {
+		isRefreshing = true;
+		try {
+			await tickStats();
+		} finally {
+			setTimeout(() => (isRefreshing = false), 400);
+		}
+	}
+
+	async function handleRestartContainer() {
+		const targetId =
+			activeContainer?.id || (matchingContainers.length > 0 ? matchingContainers[0].id : null);
+		if (!targetId || isRestartingContainer) return;
+		isRestartingContainer = true;
+		try {
+			await api.runtime.containers.restart(targetId);
+			await tickStats();
+		} catch (err) {
+			console.error('Failed to restart container:', err);
+		} finally {
+			isRestartingContainer = false;
+		}
+	}
+
+	onMount(() => {
+		tickStats();
+		let pollTimer: any;
+
+		function setupTimer() {
+			if (pollTimer) clearInterval(pollTimer);
+			if (refreshRate === 'paused') return;
+
+			const ms = refreshRate === '3s' ? 3000 : refreshRate === '5s' ? 5000 : 15000;
+			pollTimer = setInterval(tickStats, ms);
+		}
+
+		setupTimer();
+
+		const secTimer = setInterval(() => {
+			if (refreshRate !== 'paused') {
+				lastUpdatedSec += 1;
+			}
+		}, 1000);
+
+		return () => {
+			if (pollTimer) clearInterval(pollTimer);
+			clearInterval(secTimer);
+		};
+	});
+</script>
+
+<div class="flex w-full flex-col gap-6">
+	<!-- Top Bar: Filter Bar + Container Selector + Polling Controls -->
+	<div
+		class="flex flex-col justify-between gap-3 border-b border-[var(--border-subtle)] pb-3 sm:flex-row sm:items-center"
+	>
+		<div class="flex flex-wrap items-center gap-3">
+			<!-- Container Selector -->
+			<div class="flex items-center gap-2">
+				<span class="text-xs font-medium text-[var(--text-tertiary)]">Container:</span>
+				<div class="min-w-[200px]">
+					<Select
+						value={selectedContainer}
+						onValueChange={(val: any) => {
+							if (typeof val === 'string') selectedContainer = val;
+						}}
+						options={containerOptions}
+						size="sm"
+					/>
+				</div>
+			</div>
+
+			<!-- Quick Restart Action -->
+			{#if matchingContainers.length > 0}
+				<Button
+					variant="secondary"
+					size="xs"
+					onclick={handleRestartContainer}
+					disabled={isRestartingContainer}
+					title="Restart container via Podman socket"
+				>
+					<ArrowClockwise size={12} class={isRestartingContainer ? 'animate-spin' : ''} />
+					<span>Restart Container</span>
+				</Button>
+			{/if}
+
+			<!-- Polling & Live Socket Indicator -->
+			<div
+				class="flex items-center gap-1.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-2 py-1 text-xs"
+			>
+				<span
+					class="h-2 w-2 rounded-full {refreshRate === 'paused'
+						? 'bg-amber-400'
+						: 'animate-pulse bg-emerald-400'}"
+				></span>
+				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
+					{refreshRate === 'paused' ? 'Paused' : 'Live'}
+				</span>
+				<div class="w-[80px]">
+					<Select
+						value={refreshRate}
+						onValueChange={(val: any) => {
+							if (val) refreshRate = val;
+						}}
+						options={refreshOptions}
+						size="xs"
+					/>
+				</div>
+			</div>
+
+			{#if refreshRate !== 'paused'}
+				<span class="hidden font-mono text-[10.5px] text-[var(--text-tertiary)] md:inline">
+					{lastUpdatedSec}s ago
+				</span>
+			{/if}
+		</div>
+
+		<!-- Time range selector & Manual Refresh -->
+		<div class="flex items-center gap-2">
+			<div
+				class="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
+			>
+				{#each ['1h', '6h', '24h', '7d'] as r}
+					<button
+						type="button"
+						onclick={() => (timeRange = r as any)}
+						class="cursor-pointer rounded border-0 px-2.5 py-1 text-xs transition-colors {timeRange ===
+						r
+							? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
+							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+					>
+						{r}
+					</button>
+				{/each}
+			</div>
+
+			<button
+				type="button"
+				onclick={handleRefresh}
+				class="cursor-pointer rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-1.5 text-[var(--text-secondary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
+				title="Refresh telemetry"
+				aria-label="Refresh telemetry"
+			>
+				<ArrowClockwise size={13} class={isRefreshing ? 'animate-spin' : ''} />
+			</button>
+		</div>
+	</div>
+
+	<!-- Real-Time Anomaly & Threshold Status Banner -->
+	{#if isUnhealthy}
+		<div
+			class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--status-red)] bg-[var(--status-red-muted)] p-3 text-xs shadow-xs sm:flex-row sm:items-center"
+		>
+			<div class="flex items-center gap-2.5 text-[var(--status-red)]">
+				<Warning size={16} class="shrink-0" />
+				<div>
+					<span class="font-semibold">Service inactive or degraded:</span>
+					<span class="ml-1 text-[var(--text-secondary)]">
+						{matchingContainers.length === 0
+							? 'No container running for this workload. Click Deploy or Start to initialize.'
+							: 'Container process exited or healthcheck is degraded.'}
+					</span>
+				</div>
+			</div>
+			<button
+				type="button"
+				onclick={() => onNavigateTab?.('logs')}
+				class="shrink-0 cursor-pointer self-start rounded border border-[var(--status-red)] bg-[var(--bg-panel)] px-2.5 py-1 font-mono text-[11px] text-[var(--status-red)] hover:bg-[var(--bg-hover)] sm:self-auto"
+			>
+				Inspect Logs →
+			</button>
+		</div>
+	{:else if isElevatedMem || isElevatedCpu}
+		<div
+			class="flex flex-col justify-between gap-3 rounded-[var(--radius-card)] border border-[var(--status-amber)] bg-[var(--status-amber-muted)] p-3 text-xs shadow-xs sm:flex-row sm:items-center"
+		>
+			<div class="flex items-center gap-2.5 text-[var(--status-amber)]">
+				<Warning size={16} class="shrink-0" />
+				<div>
+					<span class="font-semibold">Elevated resource consumption:</span>
+					<span class="ml-1 text-[var(--text-secondary)]">
+						{#if isElevatedMem}
+							Memory allocation is at {memPercent}% of {memLimit} MB budget ({formatMemory(
+								currentMem
+							)}). Close to cgroup threshold.
+						{:else}
+							CPU is peaking at {currentCpu.toFixed(1)}% across allocated cores.
+						{/if}
+					</span>
+				</div>
+			</div>
+			<button
+				type="button"
+				onclick={() => onNavigateTab?.('advanced')}
+				class="shrink-0 cursor-pointer self-start rounded border border-[var(--status-amber)] bg-[var(--bg-panel)] px-2.5 py-1 font-mono text-[11px] text-[var(--status-amber)] transition-colors hover:bg-[var(--bg-hover)] sm:self-auto"
+			>
+				Adjust Cgroups Limit →
+			</button>
+		</div>
+	{:else}
+		<div
+			class="flex items-center justify-between rounded-[var(--radius-card)] border border-[var(--status-green)] bg-[var(--status-green-muted)] px-3.5 py-2.5 text-xs text-[var(--text-secondary)] shadow-xs"
+		>
+			<div class="flex flex-wrap items-center gap-2.5">
+				<CheckCircle size={15} class="shrink-0 text-[var(--status-green)]" />
+				<span class="font-semibold text-[var(--text-primary)]">Workload operating nominally</span>
+				<span class="text-[var(--text-tertiary)]">•</span>
+				<span>{formatMemory(currentMem)} / {memLimit} MB allocated</span>
+				<span class="text-[var(--text-tertiary)]">•</span>
+				<span
+					>{matchingContainers.length}
+					{matchingContainers.length > 1 ? 'containers active' : 'container active'}</span
+				>
+				<span class="text-[var(--text-tertiary)]">•</span>
+				<span class="font-mono text-[var(--status-green)]">cgroups v2 live</span>
+			</div>
+			<span class="hidden shrink-0 font-mono text-[11px] text-[var(--status-green)] sm:inline"
+				>Podman 5.x OK</span
+			>
+		</div>
+	{/if}
+
+	<!-- Contextual Metric Cards with Progress Bars -->
+	<TelemetryMetricCards
+		{currentCpu}
+		{currentMem}
+		{memLimit}
+		{memPercent}
+		{currentNetRx}
+		{currentNetTx}
+		hasContainers={matchingContainers.length > 0}
+	/>
+
+	<!-- 2x2 Metric Charts Grid with Live Per-Container Time Series -->
+	<TelemetryChartsGrid
+		{timeRange}
+		{cpuHistory}
+		{currentCpu}
+		{memoryHistory}
+		{currentMem}
+		{memLimit}
+		{networkHistory}
+		{currentNetRx}
+		{currentNetTx}
+		storageHistory={dataStore.monitoringData.storage}
+		storageUsed={dataStore.server.storageUsed}
+		storageTotal={dataStore.server.storage}
+	/>
+
+	<!-- Micro-Workloads & Container Cgroups Breakdown -->
+	<MicroWorkloadTable
+		{service}
+		onOpenTerminal={() => onNavigateTab?.('terminal')}
+		onOpenLogs={() => onNavigateTab?.('logs')}
+	/>
+</div>

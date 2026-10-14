@@ -43,12 +43,14 @@
 
 <KumoSidebar>
 	<!-- Header: GOPOD Brand & Collapse Trigger (Top-Right) -->
-	<KumoSidebar.Header class="h-12 border-b border-[var(--border)] px-3 flex items-center justify-between">
+	<KumoSidebar.Header
+		class="flex h-12 items-center justify-between border-b border-[var(--border)] px-3"
+	>
 		{#if sidebar.open}
 			<!-- Expanded State: Logo + Title on left, Collapse Trigger on right -->
 			<a
 				href="/"
-				class="group flex cursor-pointer items-center gap-2.5 overflow-hidden text-decoration-none min-w-0"
+				class="group text-decoration-none flex min-w-0 cursor-pointer items-center gap-2.5 overflow-hidden"
 				title="GOPOD Dashboard"
 			>
 				<div
@@ -63,18 +65,20 @@
 						/>
 					</svg>
 				</div>
-				<div class="flex flex-col min-w-0">
-					<span class="text-sm font-semibold tracking-normal text-[var(--text-primary)] leading-tight truncate">
+				<div class="flex min-w-0 flex-col">
+					<span
+						class="truncate text-sm leading-tight font-semibold tracking-normal text-[var(--text-primary)]"
+					>
 						GOPOD
 					</span>
-					<span class="text-[10px] font-mono text-[var(--text-tertiary)] leading-tight truncate">
+					<span class="truncate font-mono text-[10px] leading-tight text-[var(--text-tertiary)]">
 						Podman v{podmanVersion}
 					</span>
 				</div>
 			</a>
 
 			<KumoSidebar.Trigger
-				class="text-[var(--text-tertiary)] hover:text-[var(--text-primary)] shrink-0"
+				class="shrink-0 text-[var(--text-tertiary)] hover:text-[var(--text-primary)]"
 				title="Collapse sidebar"
 			/>
 		{:else}
@@ -109,12 +113,7 @@
 			<KumoSidebar.GroupLabel>Overview</KumoSidebar.GroupLabel>
 			<KumoSidebar.Menu>
 				<KumoSidebar.MenuItem>
-					<KumoSidebar.MenuButton
-						href="/"
-						active={isActive('/')}
-						icon={SquaresFour}
-						tooltip="Home"
-					>
+					<KumoSidebar.MenuButton href="/" active={isActive('/')} icon={SquaresFour} tooltip="Home">
 						Home
 					</KumoSidebar.MenuButton>
 				</KumoSidebar.MenuItem>
@@ -138,11 +137,7 @@
 				<!-- Runtime Collapsible -->
 				<KumoSidebar.Collapsible bind:open={runtimeOpen}>
 					<KumoSidebar.CollapsibleTrigger>
-						<KumoSidebar.MenuButton
-							icon={Stack}
-							active={isRuntimeActive}
-							tooltip="Runtime"
-						>
+						<KumoSidebar.MenuButton icon={Stack} active={isRuntimeActive} tooltip="Runtime">
 							<span class="flex-1 text-left">Runtime</span>
 							<KumoSidebar.MenuChevron open={runtimeOpen} />
 						</KumoSidebar.MenuButton>
@@ -158,10 +153,7 @@
 								</KumoSidebar.MenuSubButton>
 							</KumoSidebar.MenuSubItem>
 							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/runtime/pods"
-									active={isActive('/runtime/pods')}
-								>
+								<KumoSidebar.MenuSubButton href="/runtime/pods" active={isActive('/runtime/pods')}>
 									Pods
 								</KumoSidebar.MenuSubButton>
 							</KumoSidebar.MenuSubItem>
@@ -196,11 +188,7 @@
 				<!-- Networking Collapsible -->
 				<KumoSidebar.Collapsible bind:open={networkingOpen}>
 					<KumoSidebar.CollapsibleTrigger>
-						<KumoSidebar.MenuButton
-							icon={Globe}
-							active={isNetworkingActive}
-							tooltip="Networking"
-						>
+						<KumoSidebar.MenuButton icon={Globe} active={isNetworkingActive} tooltip="Networking">
 							<span class="flex-1 text-left">Networking</span>
 							<KumoSidebar.MenuChevron open={networkingOpen} />
 						</KumoSidebar.MenuButton>
@@ -323,9 +311,11 @@
 	</KumoSidebar.Content>
 
 	<!-- Footer: Server status indicator -->
-	<KumoSidebar.Footer class="flex items-center justify-center border-t border-[var(--border)] px-3 group-not-data-[state=collapsed]/sidebar:justify-start">
+	<KumoSidebar.Footer
+		class="flex items-center justify-center border-t border-[var(--border)] px-3 group-not-data-[state=collapsed]/sidebar:justify-start"
+	>
 		<div class="flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-muted)]">
-			<span class="inline-block h-1.5 w-1.5 rounded-full bg-[var(--status-green)] shrink-0"></span>
+			<span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--status-green)]"></span>
 			<span class="truncate group-data-[state=collapsed]/sidebar:hidden">{serverHostname}</span>
 		</div>
 	</KumoSidebar.Footer>

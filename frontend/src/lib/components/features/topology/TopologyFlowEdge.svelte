@@ -61,7 +61,9 @@
 	let labelY = $derived(pathData.labelY);
 
 	let kind = $derived((data as any)?.kind || 'workload');
-	let isDashed = $derived((data as any)?.dashed || kind === 'localhost-port' || false);
+	let isDashed = $derived(
+		(data as any)?.dashed || kind === 'localhost-port' || kind === 'localhost' || false
+	);
 	let isStopped = $derived((data as any)?.isStopped || false);
 
 	// Semantic stroke color based on traffic kind:
@@ -71,7 +73,7 @@
 	let strokeColor = $derived.by(() => {
 		if (selected) return 'var(--accent)';
 		if (isStopped) return 'var(--text-tertiary)';
-		if (kind === 'localhost-port') return 'var(--status-blue)';
+		if (kind === 'localhost-port' || kind === 'localhost') return 'var(--status-blue)';
 		if (kind === 'direct-port') return 'var(--status-amber)';
 		if (kind === 'ingress') return 'var(--accent)';
 		return 'var(--accent)';

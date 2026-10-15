@@ -22,16 +22,14 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (s.Type != "compose" && strings.TrimSpace(s.QuadletConfig) != "" && strings.TrimSpace(s.ComposeYaml) == "") {
 		unitName := QuadletUnitName(s)
 		cands := getQuadletCandidateUnitNames(s, unitName)
-		if _, err := exec.LookPath("systemctl"); err == nil {
+		if d.hasUserManager() {
 			started := false
 			for _, cand := range cands {
-				cmd := exec.CommandContext(ctx, "systemctl", "--user", "start", cand)
-				d.setupCmdEnv(cmd)
-				if out, err := cmd.CombinedOutput(); err == nil {
+				if out, err := d.systemctlUser(ctx, "start", cand); err == nil {
 					started = true
 					break
 				} else {
-					log.Printf("[DEBUG] systemctl start %s: %s (%v)", cand, strings.TrimSpace(string(out)), err)
+					log.Printf("[DEBUG] systemctl start %s: %s (%v)", cand, strings.TrimSpace(out), err)
 				}
 			}
 			if started {
@@ -76,6 +74,10 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 			if s.PodID != "" {
 				_ = d.podmanClient.StartPod(ctx, s.PodID)
 				_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", s.PodID))
+				podSlug := SanitizeQuadletSlug(strings.TrimPrefix(s.PodID, "pod_"))
+				if podSlug != "" {
+					_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", podSlug))
+				}
 			}
 		}
 
@@ -121,11 +123,9 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 		unitName := QuadletUnitName(s)
 		parsed := ParseQuadlet(s.QuadletConfig)
 		cands := getQuadletCandidateUnitNames(s, unitName)
-		if _, err := exec.LookPath("systemctl"); err == nil {
+		if d.hasUserManager() {
 			for _, cand := range cands {
-				cmd := exec.CommandContext(ctx, "systemctl", "--user", "stop", cand)
-				d.setupCmdEnv(cmd)
-				_ = cmd.Run()
+				_, _ = d.systemctlUser(ctx, "stop", cand)
 			}
 		}
 		if d.podmanClient != nil {
@@ -156,6 +156,7 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	// 3. Container / Git / Direct Image / Pod Workload
 	if d.podmanClient != nil {
 		if s.Type == "pod" || s.RuntimeTarget == "pod" || s.InPod {
+			_ = d.podmanClient.StopPod(ctx, PodNameForService(s))
 			_ = d.podmanClient.StopPod(ctx, s.ID)
 			_ = d.podmanClient.StopPod(ctx, s.Name)
 			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.ID))
@@ -165,6 +166,13 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 			if s.PodID != "" {
 				_ = d.podmanClient.StopPod(ctx, s.PodID)
 				_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.PodID))
+				podSlug := SanitizeQuadletSlug(strings.TrimPrefix(s.PodID, "pod_"))
+				if podSlug != "" {
+					_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", podSlug))
+				}
+			}
+			for _, leg := range legacyPodCandidates(s) {
+				_ = d.podmanClient.StopPod(ctx, leg)
 			}
 		}
 
@@ -217,11 +225,9 @@ func (d *Deployer) RestartService(ctx context.Context, s Service) error {
 	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || (s.Type != "compose" && strings.TrimSpace(s.QuadletConfig) != "") {
 		unitName := QuadletUnitName(s)
 		cands := getQuadletCandidateUnitNames(s, unitName)
-		if _, err := exec.LookPath("systemctl"); err == nil {
+		if d.hasUserManager() {
 			for _, cand := range cands {
-				cmd := exec.CommandContext(ctx, "systemctl", "--user", "restart", cand)
-				d.setupCmdEnv(cmd)
-				if err := cmd.Run(); err == nil {
+				if _, err := d.systemctlUser(ctx, "restart", cand); err == nil {
 					return nil
 				}
 			}
@@ -236,19 +242,11 @@ func (d *Deployer) RestartService(ctx context.Context, s Service) error {
 func (d *Deployer) cleanPreflightConflicts(ctx context.Context, s Service, logLine func(string)) {
 	candUnits, candContainers, _ := d.findServiceUnitFilesAndCandidates(s)
 
-	if _, err := exec.LookPath("systemctl"); err == nil {
+	if d.hasUserManager() {
 		for _, u := range candUnits {
-			cmdStop := exec.CommandContext(ctx, "systemctl", "--user", "stop", u)
-			d.setupCmdEnv(cmdStop)
-			_ = cmdStop.Run()
-
-			cmdKill := exec.CommandContext(ctx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", u)
-			d.setupCmdEnv(cmdKill)
-			_ = cmdKill.Run()
-
-			cmdReset := exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", u)
-			d.setupCmdEnv(cmdReset)
-			_ = cmdReset.Run()
+			_, _ = d.systemctlUser(ctx, "stop", u)
+			_, _ = d.systemctlUser(ctx, "kill", "--kill-who=all", "--signal=SIGKILL", u)
+			_, _ = d.systemctlUser(ctx, "reset-failed", u)
 		}
 	}
 
@@ -278,19 +276,11 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	candUnits, candContainers, filesToDelete := d.findServiceUnitFilesAndCandidates(s)
 
 	// Phase 1: Force Stop and Reset all candidate Systemd Units WHILE unit files still exist on disk!
-	if _, err := exec.LookPath("systemctl"); err == nil {
+	if d.hasUserManager() {
 		for _, cand := range candUnits {
-			cmdStop := exec.CommandContext(teardownCtx, "systemctl", "--user", "stop", cand)
-			d.setupCmdEnv(cmdStop)
-			_ = cmdStop.Run()
-
-			cmdKill := exec.CommandContext(teardownCtx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", cand)
-			d.setupCmdEnv(cmdKill)
-			_ = cmdKill.Run()
-
-			cmdReset := exec.CommandContext(teardownCtx, "systemctl", "--user", "reset-failed", cand)
-			d.setupCmdEnv(cmdReset)
-			_ = cmdReset.Run()
+			_, _ = d.systemctlUser(teardownCtx, "stop", cand)
+			_, _ = d.systemctlUser(teardownCtx, "kill", "--kill-who=all", "--signal=SIGKILL", cand)
+			_, _ = d.systemctlUser(teardownCtx, "reset-failed", cand)
 		}
 	}
 
@@ -320,19 +310,13 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	}
 
 	// Phase 3: Systemd Daemon-Reload so podman-system-generator purges generated services
-	if _, err := exec.LookPath("systemctl"); err == nil {
-		cmdReload := exec.CommandContext(teardownCtx, "systemctl", "--user", "daemon-reload")
-		d.setupCmdEnv(cmdReload)
-		_ = cmdReload.Run()
+	if d.hasUserManager() {
+		_, _ = d.systemctlUser(teardownCtx, "daemon-reload")
 
 		for _, cand := range candUnits {
-			cmdReset := exec.CommandContext(teardownCtx, "systemctl", "--user", "reset-failed", cand)
-			d.setupCmdEnv(cmdReset)
-			_ = cmdReset.Run()
+			_, _ = d.systemctlUser(teardownCtx, "reset-failed", cand)
 		}
-		cmdResetAll := exec.CommandContext(teardownCtx, "systemctl", "--user", "reset-failed")
-		d.setupCmdEnv(cmdResetAll)
-		_ = cmdResetAll.Run()
+		_, _ = d.systemctlUser(teardownCtx, "reset-failed")
 	}
 
 	// Phase 4: Force Remove Containers & Pods (Systemd is now dead, so Restart=always cannot respawn)
@@ -427,6 +411,11 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 			}
 		}
 	}
+
+	emitEngineEventSafe(teardownCtx, "info", "service", s.ID, s.ProjectID, "engine", "service.teardown_summary",
+		fmt.Sprintf("Teardown summary for service '%s': %d unit(s), %d container candidate(s), %d file(s) removed (deleteVolumes=%v)",
+			s.Name, len(candUnits), len(candContainers), len(filesToDelete), deleteVolumes),
+		map[string]any{"service": s.Name, "units": len(candUnits), "containers": len(candContainers), "files": len(filesToDelete), "deleteVolumes": deleteVolumes})
 
 	return nil
 }

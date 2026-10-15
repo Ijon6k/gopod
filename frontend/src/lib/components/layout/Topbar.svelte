@@ -7,13 +7,14 @@
 	import { dataStore } from '$lib/stores/data.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { ui } from '$lib/stores/ui.svelte';
-	import { DropdownMenu } from 'kumo-svelte';
+	import { DropdownMenu, useSidebar } from 'kumo-svelte';
 	import { Kbd } from '$lib/components/ui';
 	import CommandPaletteModal from './CommandPaletteModal.svelte';
-	import { MagnifyingGlass, Plus, CaretDown, Sun, Moon, GearSix, SignOut } from 'phosphor-svelte';
+	import { MagnifyingGlass, Plus, CaretDown, Sun, Moon, GearSix, SignOut, List } from 'phosphor-svelte';
 
 	let openCommandPalette = $state(false);
 	let isMac = $state(false);
+	const sidebar = useSidebar();
 
 	onMount(() => {
 		isMac =
@@ -86,6 +87,15 @@
 >
 	<!-- Left section: Context Switcher & Breadcrumbs -->
 	<div class="flex min-w-0 items-center gap-2 sm:gap-3">
+		<!-- Mobile hamburger: opens Kumo offcanvas drawer -->
+		<button
+			type="button"
+			onclick={() => sidebar.setOpenMobile(true)}
+			aria-label="Open navigation menu"
+			class="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-md border border-[var(--border)] bg-[var(--bg-surface)] text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)] md:hidden"
+		>
+			<List size={17} />
+		</button>
 		<!-- Breadcrumbs & Dynamic Switcher with Kumo DropdownMenu -->
 		<nav class="flex min-w-0 items-center gap-1 overflow-hidden" aria-label="Breadcrumbs">
 			{#each crumbs.items as crumb, index}
@@ -197,17 +207,17 @@
 			onclick={() => (openCommandPalette = true)}
 			title="Search GOPOD ({isMac ? '⌘K' : 'Ctrl K'})"
 			aria-label="Search GOPOD"
-			class="group hover:border-kumo-focus flex h-7.5 w-[130px] cursor-pointer items-center justify-between rounded-md border border-kumo-line bg-kumo-control px-2.5 text-xs text-kumo-subtle shadow-xs transition-colors hover:bg-kumo-base hover:text-kumo-default sm:w-[170px] md:w-[210px]"
+			class="group hover:border-kumo-focus flex h-7.5 w-[104px] cursor-pointer items-center justify-between rounded-md border border-kumo-line bg-kumo-control px-2.5 text-xs text-kumo-subtle shadow-xs transition-colors hover:bg-kumo-base hover:text-kumo-default sm:w-[170px] md:w-[210px]"
 		>
 			<div class="flex items-center gap-2 truncate">
 				<MagnifyingGlass
 					size={13}
 					class="shrink-0 text-kumo-muted transition-colors group-hover:text-kumo-default"
 				/>
-				<span class="truncate text-xs font-normal">Search…</span>
+				<span class="hidden truncate text-xs font-normal min-[400px]:inline">Search…</span>
 			</div>
 			<Kbd
-				class="shrink-0 border-kumo-hairline bg-kumo-recessed text-[10px] text-kumo-subtle transition-colors group-hover:border-kumo-line group-hover:text-kumo-default"
+				class="hidden shrink-0 border-kumo-hairline bg-kumo-recessed text-[10px] text-kumo-subtle transition-colors group-hover:border-kumo-line group-hover:text-kumo-default sm:inline"
 			>
 				{isMac ? '⌘K' : 'Ctrl K'}
 			</Kbd>

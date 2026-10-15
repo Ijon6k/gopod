@@ -167,3 +167,7 @@ export function parseComposeWorkloads(yaml: string, defaultStatus: Status = 'sto
 		status: defaultStatus
 	}));
 }
+
+export * from './pod-ports';
+
+

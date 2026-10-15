@@ -33,6 +33,7 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 			Name       string `json:"Name"`
 			Status     string `json:"Status"`
 			Created    string `json:"Created"`
+			InfraID    string `json:"InfraId"`
 			Containers []struct {
 				ID    string      `json:"Id"`
 				Names interface{} `json:"Names"`
@@ -82,6 +83,7 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 				Status:     p.Status,
 				Containers: cNames,
 				Created:    p.Created,
+				InfraID:    p.InfraID,
 			})
 		}
 		return result, nil
@@ -110,6 +112,7 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 			Name:    getString(item, "Name"),
 			Status:  getString(item, "Status"),
 			Created: getString(item, "Created"),
+			InfraID: getString(item, "InfraId"),
 		})
 	}
 	return pods, nil
@@ -158,18 +161,17 @@ func (c *Client) CreatePod(ctx context.Context, opts CreatePodOptions) (string, 
 		}
 		var portMappings []map[string]interface{}
 		for _, p := range opts.Ports {
-			parts := strings.Split(p, ":")
-			if len(parts) == 2 {
-				var hp, cp int
-				_, _ = fmt.Sscanf(parts[0], "%d", &hp)
-				_, _ = fmt.Sscanf(parts[1], "%d", &cp)
-				if hp > 0 && cp > 0 {
-					portMappings = append(portMappings, map[string]interface{}{
-						"host_port":      hp,
-						"container_port": cp,
-						"protocol":       "tcp",
-					})
+			hostIP, hp, cp, proto := parsePortMapping(p)
+			if hp > 0 && cp > 0 {
+				m := map[string]interface{}{
+					"host_port":      hp,
+					"container_port": cp,
+					"protocol":       proto,
 				}
+				if strings.TrimSpace(hostIP) != "" {
+					m["host_ip"] = strings.TrimSpace(hostIP)
+				}
+				portMappings = append(portMappings, m)
 			}
 		}
 		if len(portMappings) > 0 {
@@ -212,6 +214,35 @@ func (c *Client) CreatePod(ctx context.Context, opts CreatePodOptions) (string, 
 		return "", fmt.Errorf("podman pod create failed: %s (%w)", strings.TrimSpace(string(out)), err)
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+// parsePortMapping normalizes "host:container", "host:container/udp",
+// "host:container/tcp", and "ip:host:container[/proto]" into its parts.
+// The leading bind IP is preserved ("" when absent, meaning all interfaces)
+// so callers can forward it as host_ip; protocol defaults to tcp.
+func parsePortMapping(p string) (hostIP string, hostPort, containerPort int, proto string) {
+	proto = "tcp"
+	clean := strings.TrimSpace(p)
+	if strings.HasSuffix(strings.ToLower(clean), "/udp") {
+		proto = "udp"
+		clean = clean[:len(clean)-4]
+	} else if strings.HasSuffix(strings.ToLower(clean), "/tcp") {
+		clean = clean[:len(clean)-4]
+	}
+	parts := strings.Split(clean, ":")
+	var hStr, cStr string
+	switch {
+	case len(parts) == 2:
+		hStr, cStr = strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	case len(parts) >= 3:
+		hostIP = strings.TrimSpace(strings.Join(parts[:len(parts)-2], ":"))
+		hStr, cStr = strings.TrimSpace(parts[len(parts)-2]), strings.TrimSpace(parts[len(parts)-1])
+	default:
+		return "", 0, 0, proto
+	}
+	_, _ = fmt.Sscanf(hStr, "%d", &hostPort)
+	_, _ = fmt.Sscanf(cStr, "%d", &containerPort)
+	return hostIP, hostPort, containerPort, proto
 }
 
 // StartPod starts a pod by ID or name.

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader, StatusBadge, Tabs, ConfirmDialog } from '$lib/components/ui';
+	import { PageHeader, StatusBadge, Tabs, ConfirmDialog, Banner } from '$lib/components/ui';
 	import { Button } from '$lib/components/ui';
 	import {
 		getProjectById,
@@ -167,18 +167,17 @@
 			}}
 		>
 			{#if services.length > 0}
-				<div
-					class="flex items-start gap-3 rounded-md border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-400"
-				>
-					<WarningCircle size={18} class="mt-0.5 shrink-0" />
-					<div>
-						<strong class="font-semibold">Active services detected ({services.length})</strong>
-						<p class="m-0 mt-1 text-[var(--text-secondary)]">
-							GOPOD safety policy: You have active services in this project. Please terminate and
-							delete all services first before deleting the project.
-						</p>
+				<Banner variant="alert" size="sm" class="shadow-xs">
+					{#snippet icon()}
+						<WarningCircle size={18} weight="fill" class="shrink-0 text-kumo-warning" />
+					{/snippet}
+					<div class="flex flex-col gap-1 text-xs">
+						<strong class="font-semibold text-kumo-warning">Active services detected ({services.length})</strong>
+						<span class="text-kumo-warning/90 leading-relaxed">
+							Safety policy: You have active services in this project. Please terminate and delete all services before deleting the project.
+						</span>
 					</div>
-				</div>
+				</Banner>
 			{/if}
 		</ConfirmDialog>
 

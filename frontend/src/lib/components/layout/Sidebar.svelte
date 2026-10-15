@@ -39,6 +39,12 @@
 	$effect(() => {
 		if (isNetworkingActive) networkingOpen = true;
 	});
+
+	// Close the mobile offcanvas drawer on every navigation.
+	$effect(() => {
+		page.url.pathname;
+		sidebar.setOpenMobile(false);
+	});
 </script>
 
 <KumoSidebar>

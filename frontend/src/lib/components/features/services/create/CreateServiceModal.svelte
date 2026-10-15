@@ -1,11 +1,12 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
-	import { Button, Input, Field, Select } from '$lib/components/ui';
+	import { Button, Input, Field, Select, Banner } from '$lib/components/ui';
 	import { Modal } from '$lib/components/ui';
 	import { dataStore, projects } from '$lib/data';
 	import type { Service, ServiceType } from '$lib/types';
 	import WorkloadTypeSelector, { type WorkloadChoice } from './WorkloadTypeSelector.svelte';
 	import { ArrowRight } from 'phosphor-svelte';
+	import { serializePodK8sYaml } from '$lib/parsers/pod-ports';
 
 	interface Props {
 		projectId?: string;
@@ -35,8 +36,8 @@
 		}
 	});
 
-	// Sub-options
-	let stackSubtype = $state<'compose' | 'kubernetes' | 'pod'>('compose');
+	// Sub-options for Stack / Multi-Container
+	let stackSubtype = $state<'compose' | 'pod'>('compose');
 
 	let serviceName = $state('');
 	let serviceDescription = $state('');
@@ -176,9 +177,11 @@ WantedBy=default.target`;
 				createdAt: new Date().toISOString()
 			};
 		} else {
-			// Stack / Compose
-			const realType: ServiceType =
-				stackSubtype === 'kubernetes' ? 'kubernetes' : stackSubtype === 'pod' ? 'pod' : 'compose';
+			// Stack / Multi-Container (Compose or Podman Pod)
+			// NOTE: Pod starts with ZERO published ports. The operator adds host
+			// bindings explicitly in Visual/Manifest view; a hardcoded 8080:80
+			// default would look like a phantom binding and can collide.
+			const realType: ServiceType = stackSubtype === 'pod' ? 'pod' : 'compose';
 			newService = {
 				id: internalId,
 				projectId: targetProj,
@@ -187,13 +190,8 @@ WantedBy=default.target`;
 				sourceType: realType,
 				status: 'stopped',
 				runtimeTarget: realType === 'pod' ? 'pod' : 'standalone',
-				source:
-					stackSubtype === 'compose'
-						? 'compose.yaml'
-						: stackSubtype === 'kubernetes'
-							? 'manifest.yaml'
-							: '',
-				port: 8080,
+				source: stackSubtype === 'compose' ? 'compose.yaml' : 'manifest.yaml',
+				port: 0,
 				cpu: 0,
 				memory: 0,
 				restartPolicy: 'always',
@@ -202,10 +200,10 @@ WantedBy=default.target`;
 				composeYaml:
 					realType === 'compose'
 						? `version: "3.8"\nservices:\n  ${sSlug || 'app'}:\n    image: nginx:alpine\n    ports:\n      - "8080:80"\n    restart: always`
-						: '',
+						: `version: "3.8"\nservices:\n  ${sSlug || 'pod'}:\n    restart: always\n`,
 				k8sYaml:
-					realType === 'kubernetes'
-						? `apiVersion: v1\nkind: Pod\nmetadata:\n  name: ${sSlug}\nspec:\n  containers:\n    - name: main\n      image: nginx:alpine\n      ports:\n        - containerPort: 80`
+					realType === 'pod'
+						? serializePodK8sYaml(sSlug || 'pod', [])
 						: '',
 				workloads:
 					realType === 'pod'
@@ -248,6 +246,15 @@ WantedBy=default.target`;
 					Select a service type and choose a name.
 				</p>
 			</div>
+
+			{#if createError}
+				<Banner variant="error" size="sm">
+					<div class="text-xs">
+						<span class="font-medium">Failed to create service:</span>
+						<span>{createError}</span>
+					</div>
+				</Banner>
+			{/if}
 
 			{#if !projectId && projects.length > 1}
 				<div class="max-w-[280px]">
@@ -295,10 +302,14 @@ WantedBy=default.target`;
 							{/each}
 						</div>
 						{#if stackSubtype === 'pod'}
-							<p class="m-0 mt-1 text-[11px] text-[var(--text-tertiary)]">
-								💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar).
-								You can add additional containers to this Pod inside the Service Detail Studio.
-							</p>
+							<Banner variant="default" size="sm" class="mt-2">
+								<div class="text-xs">
+									<span class="font-semibold text-[var(--color-kumo-default)]">Shared localhost namespace:</span>
+									<span class="text-[var(--color-kumo-subtle)]">
+										Containers in a Pod share the network namespace and communicate on <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">localhost:&lt;port&gt;</code>. Additional containers can be attached in the Service Detail Studio.
+									</span>
+								</div>
+							</Banner>
 						{/if}
 					</div>
 				{/if}
@@ -352,10 +363,14 @@ WantedBy=default.target`;
 						</span>
 					</div>
 				{:else if selectedType === 'quadlet'}
-					<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-						💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume
-						mounts, and environment variables are configured in Service Detail.
-					</p>
+					<Banner variant="default" size="sm">
+						<div class="text-xs">
+							<span class="font-semibold text-[var(--color-kumo-default)]">Systemd Quadlet specification:</span>
+							<span class="text-[var(--color-kumo-subtle)]">
+								Native systemd unit files are managed in <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">~/.config/containers/systemd</code>. Storage volumes and restart policies are configured in Service Detail.
+							</span>
+						</div>
+					</Banner>
 				{/if}
 
 				<div
@@ -392,8 +407,11 @@ WantedBy=default.target`;
 					<span class="text-xs font-medium text-[var(--text-secondary)]"
 						>Workload Architecture & Manifest</span
 					>
-					<div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
-						{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service' }, { id: 'kubernetes', label: 'Kubernetes YAML', desc: 'Native podman play kube manifest' }, { id: 'pod', label: 'Podman Pod', desc: 'Multi-container shared localhost network' }] as s (s.id)}
+					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+						{#each [
+							{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service on bridge network' },
+							{ id: 'pod', label: 'Podman Pod', desc: 'Kubernetes-compatible Pod sharing localhost network namespace' }
+						] as s (s.id)}
 							<button
 								type="button"
 								onclick={() => (stackSubtype = s.id as any)}
@@ -410,10 +428,14 @@ WantedBy=default.target`;
 						{/each}
 					</div>
 					{#if stackSubtype === 'pod'}
-						<p class="m-0 mt-1 text-[11px] text-[var(--text-tertiary)]">
-							💡 Containers in a Pod share localhost IP and networking (e.g. Web + Redis sidecar).
-							You can add additional containers to this Pod inside the Service Detail Studio.
-						</p>
+						<Banner variant="default" size="sm" class="mt-2">
+							<div class="text-xs">
+								<span class="font-semibold text-[var(--color-kumo-default)]">Shared localhost namespace & Kubernetes parity:</span>
+								<span class="text-[var(--color-kumo-subtle)]">
+									Containers in a Pod share the network namespace and communicate on <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">localhost:&lt;port&gt;</code>. Manage this workload visually in the Studio or declaratively using Kubernetes Manifest (<code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">apiVersion: v1, kind: Pod</code>).
+								</span>
+							</div>
+						</Banner>
 					{/if}
 				</div>
 			{/if}
@@ -454,10 +476,14 @@ WantedBy=default.target`;
 					/>
 				</Field>
 			{:else if selectedType === 'quadlet'}
-				<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
-					💡 Native systemd unit file (<code>~/.config/containers/systemd</code>), presets, volume
-					mounts, and environment variables are configured in Service Detail.
-				</p>
+				<Banner variant="default" size="sm">
+					<div class="text-xs">
+						<span class="font-semibold text-[var(--color-kumo-default)]">Systemd Quadlet specification:</span>
+						<span class="text-[var(--color-kumo-subtle)]">
+							Native systemd unit files are managed in <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">~/.config/containers/systemd</code>. Storage volumes and restart policies are configured in Service Detail.
+						</span>
+					</div>
+				</Banner>
 			{/if}
 
 			{#snippet footer()}

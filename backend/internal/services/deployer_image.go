@@ -76,9 +76,9 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger st
 func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, imageToRun string, logLine func(string)) error {
 	ports := []string{}
 	if s.HostPort > 0 && s.Port > 0 {
-		ports = append(ports, fmt.Sprintf("%d:%d", s.HostPort, s.Port))
+		ports = append(ports, servicePortBinding(s.HostIP, s.HostPort, s.Port))
 	} else if s.HostPort > 0 {
-		ports = append(ports, fmt.Sprintf("%d:%d", s.HostPort, s.HostPort))
+		ports = append(ports, servicePortBinding(s.HostIP, s.HostPort, s.HostPort))
 	}
 
 	envMap := make(map[string]string)
@@ -150,25 +150,50 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 
 	logLine(fmt.Sprintf("🚀 Starting container '%s' (image: %s)...", containerName, imageToRun))
 	if d.podmanClient != nil {
-		targetPod := s.PodID
-		if targetPod == "" && (s.InPod || s.RuntimeTarget == "pod") {
-			targetPod = fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name))
+		var targetPod string
+		if s.InPod || s.RuntimeTarget == "pod" {
+			rawPod := strings.TrimSpace(s.PodID)
+			if rawPod == "" {
+				rawPod = s.Name
+			}
+			// Member PodIDs are already canonical runtime names (pod_...);
+			// only slugify ad-hoc values.
+			if strings.HasPrefix(strings.ToLower(rawPod), "pod_") {
+				targetPod = "pod_" + strings.ToLower(SanitizeQuadletSlug(strings.TrimPrefix(rawPod, "pod_")))
+			} else {
+				targetPod = PodNameFor(rawPod)
+			}
+			logLine(fmt.Sprintf("🔗 Resolved target pod '%s' for service '%s' (inPod=%v runtimeTarget=%s rawPodID=%q).", targetPod, s.Name, s.InPod, s.RuntimeTarget, s.PodID))
 		}
+
 		if targetPod != "" {
-			// Check if pod exists as-is, or with pod_ prefix
 			if _, err := d.podmanClient.InspectPod(ctx, targetPod); err != nil {
-				if _, err2 := d.podmanClient.InspectPod(ctx, fmt.Sprintf("pod_%s", targetPod)); err2 == nil {
-					targetPod = fmt.Sprintf("pod_%s", targetPod)
-				} else {
-					logLine(fmt.Sprintf("📦 Auto-creating pod '%s' on network gopod-net...", targetPod))
-					_, _ = d.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
-						Name:    targetPod,
-						Network: "gopod-net",
-						Labels: map[string]string{
-							"io.gopod.project": s.ProjectID,
-						},
-					})
+				logLine(fmt.Sprintf("📦 Auto-creating pod '%s' on network gopod-net...", targetPod))
+				var podPorts []string
+				if s.HostPort > 0 && s.Port > 0 {
+					podPorts = append(podPorts, servicePortBinding(s.HostIP, s.HostPort, s.Port))
+				} else if s.HostPort > 0 {
+					podPorts = append(podPorts, servicePortBinding(s.HostIP, s.HostPort, s.HostPort))
 				}
+				logLine(fmt.Sprintf("📦 Pod auto-create: name='%s' network=gopod-net ports=%v (service '%s').", targetPod, podPorts, s.Name))
+				_, err := d.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
+					Name:    targetPod,
+					Ports:   podPorts,
+					Network: "gopod-net",
+					Labels: map[string]string{
+						"io.gopod.project": s.ProjectID,
+					},
+				})
+				if err != nil && !strings.Contains(err.Error(), "already exists") {
+					logLine(fmt.Sprintf("❌ Failed to create pod '%s': %v", targetPod, err))
+					emitEngineEventSafe(ctx, "error", "service", s.ID, s.ProjectID, "engine", "pod.autocreate_failed",
+						fmt.Sprintf("Pod auto-create '%s' failed: %v", targetPod, err), map[string]any{"pod": targetPod, "service": s.Name})
+					return fmt.Errorf("failed to create pod '%s': %w", targetPod, err)
+				}
+				emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "pod.autocreate",
+					fmt.Sprintf("Pod '%s' auto-created with ports %v for service '%s'", targetPod, podPorts, s.Name), map[string]any{"pod": targetPod, "ports": podPorts, "service": s.Name})
+			} else {
+				logLine(fmt.Sprintf("🔗 Target pod '%s' exists; joining it.", targetPod))
 			}
 		}
 
@@ -177,7 +202,7 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 			cmdArgs = strings.Fields(s.Command)
 		}
 
-		_, err := d.podmanClient.RunContainer(ctx, podman.RunContainerOptions{
+		runOpts := podman.RunContainerOptions{
 			Name:          containerName,
 			Image:         imageToRun,
 			Command:       cmdArgs,
@@ -197,11 +222,18 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 			Devices:       devices,
 			PidsLimit:     pidsLimit,
 			SecurityOpt:   secOpts,
-		})
+		}
+		logLine(fmt.Sprintf("🧾 Equivalent: %s", sanitizedPodmanRunArgs(runOpts)))
+		_, err := d.podmanClient.RunContainer(ctx, runOpts)
 		if err != nil {
 			logLine(fmt.Sprintf("❌ Container run failed: %v", err))
+			d.enrichRunFailure(ctx, containerName, err, logLine)
+			emitEngineEventSafe(ctx, "error", "service", s.ID, s.ProjectID, "engine", "container.run_failed",
+				fmt.Sprintf("Container '%s' run failed: %v", containerName, err), map[string]any{"container": containerName, "image": imageToRun, "pod": targetPod})
 			return err
 		}
+		emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "container.run",
+			fmt.Sprintf("Container '%s' started (image %s, pod %q)", containerName, imageToRun, targetPod), map[string]any{"container": containerName, "image": imageToRun, "pod": targetPod})
 	}
 	logLine(fmt.Sprintf("✅ Container '%s' is up and healthy.", containerName))
 	return nil

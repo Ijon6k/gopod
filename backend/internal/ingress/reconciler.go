@@ -20,17 +20,31 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
+// ServiceMeta provides workload metadata needed for ingress upstream resolution.
+type ServiceMeta struct {
+	ID        string
+	Name      string
+	Type      string
+	InPod     bool
+	PodID     string
+	ProjectID string
+}
+
+// ServiceResolver queries service metadata by service ID or name.
+type ServiceResolver func(ctx context.Context, idOrName string) (*ServiceMeta, error)
+
 // Reconciler synchronizes database domain routes into Caddy reverse proxy.
 type Reconciler struct {
-	adminURL      string
-	caddyfilePath string
-	logFilePath   string
-	controlPort   string
-	httpPort      int
-	httpsPort     int
-	httpClient    *http.Client
-	mu            sync.RWMutex
-	hostDomainMap map[string]Domain
+	adminURL        string
+	caddyfilePath   string
+	logFilePath     string
+	controlPort     string
+	httpPort        int
+	httpsPort       int
+	httpClient      *http.Client
+	mu              sync.RWMutex
+	hostDomainMap   map[string]Domain
+	serviceResolver ServiceResolver
 }
 
 // AccessLogItem represents a structured Caddy JSON access log.
@@ -115,6 +129,35 @@ func (r *Reconciler) SetControlPort(port string) {
 	}
 }
 
+// SetServiceResolver sets the service metadata lookup function for intelligent Pod DNS routing.
+func (r *Reconciler) SetServiceResolver(resolver ServiceResolver) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.serviceResolver = resolver
+}
+
+func sanitizePodSlug(name string) string {
+	lower := strings.ToLower(strings.TrimSpace(name))
+	lower = strings.TrimPrefix(lower, "pod_")
+	var b strings.Builder
+	for _, r := range lower {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			b.WriteRune(r)
+		} else if r == ' ' || r == '.' || r == '/' || r == ':' {
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
+func canonicalPodHost(raw string) string {
+	slug := sanitizePodSlug(raw)
+	if slug == "" {
+		slug = "pod-service"
+	}
+	return fmt.Sprintf("pod_%s", slug)
+}
+
 // SetIngressPorts manually sets the public/dev HTTP and HTTPS ports.
 func (r *Reconciler) SetIngressPorts(httpPort, httpsPort int) {
 	r.mu.Lock()
@@ -196,6 +239,61 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 
 	content := r.GenerateCaddyfile(domains)
 
+	// Verbose per-route mapping log: hostname -> upstream host:port + flags.
+	for _, d := range domains {
+		cleanHost := strings.TrimSpace(d.Hostname)
+		cleanHost = strings.TrimPrefix(cleanHost, "https://")
+		cleanHost = strings.TrimPrefix(cleanHost, "http://")
+		if idx := strings.Index(cleanHost, ":"); idx != -1 {
+			cleanHost = cleanHost[:idx]
+		}
+		if cleanHost == "" {
+			continue
+		}
+		upstreamHost := "127.0.0.1"
+		if d.TargetContainer != "" {
+			upstreamHost = strings.TrimSpace(d.TargetContainer)
+		} else if d.ServiceID != "" {
+			upstreamHost = strings.TrimSpace(d.ServiceID)
+		}
+		if r.serviceResolver != nil {
+			var targetSvc *ServiceMeta
+			if d.ServiceID != "" {
+				if s, err := r.serviceResolver(context.Background(), d.ServiceID); err == nil && s != nil {
+					targetSvc = s
+				}
+			}
+			if targetSvc == nil && d.TargetContainer != "" {
+				if s, err := r.serviceResolver(context.Background(), d.TargetContainer); err == nil && s != nil {
+					targetSvc = s
+				}
+			}
+			if targetSvc != nil {
+				if targetSvc.Type == "pod" {
+					podHost := canonicalPodHost(targetSvc.Name)
+					if strings.TrimSpace(targetSvc.PodID) != "" {
+						podHost = canonicalPodHost(targetSvc.PodID)
+					} else if strings.TrimSpace(targetSvc.ID) != "" && podHost == "pod_pod-service" {
+						podHost = canonicalPodHost(targetSvc.ID)
+					}
+					upstreamHost = podHost
+				} else if targetSvc.InPod || targetSvc.PodID != "" {
+					podHost := canonicalPodHost(targetSvc.Name)
+					if strings.TrimSpace(targetSvc.PodID) != "" {
+						podHost = canonicalPodHost(targetSvc.PodID)
+					}
+					upstreamHost = podHost
+				}
+			}
+		}
+		targetUpstream := fmt.Sprintf("%s:%d", upstreamHost, d.ContainerPort)
+		path := d.PathPrefix
+		if path == "" {
+			path = "/"
+		}
+		log.Printf("[ingress] route %s -> %s (tls=%v basicAuth=%v path=%s)", cleanHost, targetUpstream, d.TLS, d.BasicAuth, path)
+	}
+
 	// 1. Write to disk for persistence
 	dir := filepath.Dir(r.caddyfilePath)
 	_ = os.MkdirAll(dir, 0755)
@@ -242,6 +340,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 	if !reloaded && lastErr != nil {
 		log.Printf("[INFO] Caddy Admin API not reachable on any endpoint (%v). Caddyfile written to %s.", lastErr, r.caddyfilePath)
 	}
+	emitIngressReconcileEvent(ctx, len(domains), reloaded)
 	return nil
 }
 
@@ -350,6 +449,43 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 		} else if d.ServiceID != "" {
 			upstreamHost = strings.TrimSpace(d.ServiceID)
 		}
+
+		// Intelligent Podman Pod DNS resolution:
+		// In Podman Netavark DNS, all containers in a Pod share the network namespace,
+		// and ONLY the Pod name (e.g. 'pod_cluster-demo') is registered in DNS.
+		// Dialing individual member container names yields 'bad address' (502 Bad Gateway).
+		if r.serviceResolver != nil {
+			var targetSvc *ServiceMeta
+			if d.ServiceID != "" {
+				if s, err := r.serviceResolver(context.Background(), d.ServiceID); err == nil && s != nil {
+					targetSvc = s
+				}
+			}
+			if targetSvc == nil && d.TargetContainer != "" {
+				if s, err := r.serviceResolver(context.Background(), d.TargetContainer); err == nil && s != nil {
+					targetSvc = s
+				}
+			}
+
+			if targetSvc != nil {
+				if targetSvc.Type == "pod" {
+					podHost := canonicalPodHost(targetSvc.Name)
+					if strings.TrimSpace(targetSvc.PodID) != "" {
+						podHost = canonicalPodHost(targetSvc.PodID)
+					} else if strings.TrimSpace(targetSvc.ID) != "" && podHost == "pod_pod-service" {
+						podHost = canonicalPodHost(targetSvc.ID)
+					}
+					upstreamHost = podHost
+				} else if targetSvc.InPod || targetSvc.PodID != "" {
+					podHost := canonicalPodHost(targetSvc.Name)
+					if strings.TrimSpace(targetSvc.PodID) != "" {
+						podHost = canonicalPodHost(targetSvc.PodID)
+					}
+					upstreamHost = podHost
+				}
+			}
+		}
+
 		targetUpstream := fmt.Sprintf("%s:%d", upstreamHost, d.ContainerPort)
 
 		if d.PathPrefix != "" && d.PathPrefix != "/" {

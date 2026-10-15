@@ -399,6 +399,16 @@ export class ProjectsDomainStore {
 		return res;
 	}
 
+	async ungroupFromPod(serviceId: string): Promise<Service> {
+		const res = await api.services.ungroupFromPod(serviceId);
+		const idx = this.services.findIndex((s) => s.id === serviceId);
+		if (idx >= 0 && res) {
+			this.services[idx] = res;
+		}
+		await this.fetchProjectsData();
+		return res;
+	}
+
 	addDomain(domain: Domain) {
 		this.domains.unshift(domain);
 		api.domains.create(domain).catch((err) => console.warn('Failed to sync domain:', err));

@@ -33,6 +33,7 @@
 	// 2. Port & Networking State (Non-forced, optional)
 	let containerPort = $state('');
 	let hostPort = $state('');
+	let hostIp = $state('0.0.0.0');
 
 	// 3. Advanced / Secondary State (Progressive disclosure)
 	let showAdvanced = $state(false);
@@ -96,6 +97,7 @@
 
 		containerPort = service.port ? String(service.port) : '';
 		hostPort = service.hostPort ? String(service.hostPort) : '';
+		hostIp = service.hostIp === '127.0.0.1' ? '127.0.0.1' : '0.0.0.0';
 
 		runtimeTarget =
 			service.runtimeTarget === 'quadlet'
@@ -175,8 +177,10 @@
 					return;
 				}
 				service.hostPort = hp;
+				service.hostIp = hostIp === '127.0.0.1' ? '127.0.0.1' : '0.0.0.0';
 			} else {
 				service.hostPort = undefined;
+				service.hostIp = undefined;
 			}
 
 			// 3. Runtime & Resources
@@ -268,7 +272,7 @@
 		/>
 
 		<!-- SECTION 2: Networking & Ports -->
-		<ServicePortConfig {service} bind:containerPort bind:hostPort />
+		<ServicePortConfig {service} bind:containerPort bind:hostPort bind:hostIp />
 
 		<!-- SECTION 3: Advanced Options -->
 		<ServiceAdvancedConfig

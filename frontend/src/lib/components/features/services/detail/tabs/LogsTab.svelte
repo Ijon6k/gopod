@@ -33,16 +33,45 @@
 
 	// Find active container(s) for this service from reactive dataStore
 	let matchingContainers = $derived.by<Container[]>(() => {
+		if (service.type === 'pod') {
+			const podKey = service.id;
+			const podNameKey = service.name;
+			const podPrefixedKey = `pod_${service.name}`;
+
+			const memberSvcs = dataStore.services.filter(
+				(s) =>
+					s.projectId === service.projectId &&
+					s.id !== service.id &&
+					(s.podId === podKey ||
+						s.podId === podNameKey ||
+						s.podId === podPrefixedKey ||
+						(s.inPod && s.type !== 'pod'))
+			);
+			const memberServiceIds = new Set(memberSvcs.map((m) => m.id));
+
+			return dataStore.containers.filter(
+				(c) =>
+					!c.name.endsWith('-infra') &&
+					(c.pod === podPrefixedKey ||
+						c.pod === podNameKey ||
+						c.pod === podKey ||
+						memberServiceIds.has(c.serviceId) ||
+						(c.labels && c.labels['io.gopod.service'] && memberServiceIds.has(c.labels['io.gopod.service'])) ||
+						(c.name.includes(service.name) && !c.name.endsWith('-infra')))
+			);
+		}
+
 		return dataStore.containers.filter(
 			(c) =>
-				c.serviceId === service.id ||
-				c.name === service.name ||
-				c.name.startsWith(`${service.projectId}-${service.name}`) ||
-				(c.serviceName && c.serviceName === service.name) ||
-				(c.labels &&
-					(c.labels['com.docker.compose.project'] === service.name ||
-						c.labels['io.podman.compose.project'] === service.name ||
-						c.labels['io.gopod.service'] === service.id))
+				!c.name.endsWith('-infra') &&
+				(c.serviceId === service.id ||
+					c.name === service.name ||
+					c.name.startsWith(`${service.projectId}-${service.name}`) ||
+					(c.serviceName && c.serviceName === service.name) ||
+					(c.labels &&
+						(c.labels['com.docker.compose.project'] === service.name ||
+							c.labels['io.podman.compose.project'] === service.name ||
+							c.labels['io.gopod.service'] === service.id)))
 		);
 	});
 

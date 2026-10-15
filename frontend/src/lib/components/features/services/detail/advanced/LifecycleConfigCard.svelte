@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { SectionCard, Select, Button } from '$lib/components/ui';
+	import { SectionCard, Select, Button, Banner } from '$lib/components/ui';
 	import { WarningCircle, ShieldCheck, SpinnerGap, Trash, Lightning } from 'phosphor-svelte';
 	import { slugifyName } from '$lib/parsers/compose-inspect';
 
@@ -33,23 +33,23 @@
 >
 	<!-- Systemd Linger Warning Banner -->
 	{#if lingerInfo && !lingerInfo.linger}
-		<div
-			class="mb-4 flex items-start gap-3 rounded-[var(--radius-sm)] border border-amber-500/30 bg-amber-500/10 p-3.5 text-xs text-amber-200"
-		>
-			<WarningCircle size={18} weight="fill" class="mt-0.5 shrink-0 text-amber-400" />
-			<div class="flex flex-col gap-1">
-				<span class="font-semibold text-amber-300">
-					Systemd User Linger Disabled ({lingerInfo.user})
-				</span>
-				<span class="leading-relaxed text-amber-200/90">
-					Rootless systemd services will stop when the user session logs out. Run
-					<code class="rounded bg-black/40 px-1.5 py-0.5 font-mono text-amber-300"
+		<Banner variant="alert" class="mb-4 shadow-xs">
+			{#snippet icon()}
+				<WarningCircle size={18} weight="fill" class="shrink-0 text-kumo-warning" />
+			{/snippet}
+			<div class="flex flex-col gap-1 text-xs">
+				<strong class="font-semibold text-kumo-warning">
+					Systemd user linger disabled ({lingerInfo.user})
+				</strong>
+				<span class="leading-relaxed text-kumo-warning/90">
+					Rootless systemd services stop when the session logs out. Run
+					<code class="rounded bg-black/20 px-1.5 py-0.5 font-mono text-[0.9em]"
 						>loginctl enable-linger {lingerInfo.user}</code
 					>
-					on the host to keep background Quadlet services running 24/7 across reboots and logouts.
+					on the host to keep background Quadlet services running across reboots and logouts.
 				</span>
 			</div>
-		</div>
+		</Banner>
 	{/if}
 
 	{#if service.type === 'quadlet' || service.runtimeTarget === 'quadlet'}

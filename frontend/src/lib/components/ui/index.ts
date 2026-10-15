@@ -40,6 +40,8 @@ export {
 	ChartPalette,
 	TimeseriesChart,
 	Empty,
+	Banner,
+	BannerAction,
 	useKumoToastManager
 } from 'kumo-svelte';
 

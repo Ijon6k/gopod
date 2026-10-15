@@ -7,6 +7,7 @@
 		ViewportPortal,
 		useSvelteFlow,
 		MarkerType,
+		Position,
 		type Node as FlowNode,
 		type Edge as FlowEdge
 	} from '@xyflow/svelte';
@@ -122,6 +123,12 @@
 					label: e.label,
 					animated: false,
 					zIndex: 0,
+					// Intra-pod localhost links connect a member (below) to the
+					// infra row (above) in the same column: Top/Bottom handles
+					// draw a short vertical link inside the group. Side
+					// handles would loop outside the group border.
+					sourcePosition: e.kind === 'localhost' ? Position.Top : Position.Right,
+					targetPosition: e.kind === 'localhost' ? Position.Bottom : Position.Left,
 					data: {
 						kind: e.kind || 'workload',
 						dashed: isStopped,

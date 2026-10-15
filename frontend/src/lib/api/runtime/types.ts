@@ -22,6 +22,8 @@ export interface Container {
 	pids?: number;
 	restarts?: number;
 	uptime?: string;
+	pod?: string;
+	podId?: string;
 	labels?: Record<string, string>;
 }
 

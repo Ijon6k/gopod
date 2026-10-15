@@ -1,15 +1,22 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import { Input } from '$lib/components/ui';
+	import { Select } from 'kumo-svelte';
 	import { Info } from 'phosphor-svelte';
 
 	interface Props {
 		service: Service;
 		containerPort: string;
 		hostPort: string;
+		hostIp: string;
 	}
 
-	let { service, containerPort = $bindable(), hostPort = $bindable() }: Props = $props();
+	let { service, containerPort = $bindable(), hostPort = $bindable(), hostIp = $bindable() }: Props = $props();
+
+	const bindAddressOptions = [
+		{ value: '0.0.0.0', label: '0.0.0.0 (all interfaces)' },
+		{ value: '127.0.0.1', label: '127.0.0.1 (loopback only)' }
+	];
 </script>
 
 <div class="flex flex-col gap-3 border-t border-kumo-hairline pt-5">
@@ -51,11 +58,32 @@
 				class="h-8.5 w-full font-mono text-xs"
 			/>
 			<span class="text-[11px] leading-normal text-kumo-subtle">
-				Direct host exposure (0.0.0.0:port). Leave empty to isolate container on <code
-					>gopod-net</code
-				>.
+				Direct host exposure ({hostIp === '127.0.0.1' ? '127.0.0.1' : '0.0.0.0'}:port). Leave
+				empty to isolate container on <code>gopod-net</code>.
 			</span>
 		</div>
+	</div>
+
+	<!-- Bind Address -->
+	<div class="flex max-w-xl flex-col gap-1.5">
+		<span class="text-xs font-medium text-kumo-default">Bind address</span>
+		<div class="max-w-xs">
+			<Select
+				value={hostIp}
+				onValueChange={(v: any) => {
+					if (v === '0.0.0.0' || v === '127.0.0.1') hostIp = v;
+				}}
+				options={bindAddressOptions}
+				size="sm"
+			/>
+		</div>
+		<span class="text-[11px] leading-normal text-kumo-subtle">
+			{#if hostIp === '127.0.0.1'}
+				Reachable only from this host; good for databases.
+			{:else}
+				Listens on all host interfaces, including the public network.
+			{/if}
+		</span>
 	</div>
 
 	<!-- Compact Inline Tip Banner -->

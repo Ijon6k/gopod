@@ -13,6 +13,8 @@ export * as credentialsDomain from './credentials';
 export * as domainsDomain from './domains';
 export * as storageDomain from './storage';
 export * as auditDomain from './audit';
+export * as activityDomain from './activity';
+export * as engineDomain from './engine';
 export * as trafficDomain from './traffic';
 export * as authDomain from './auth';
 
@@ -24,6 +26,8 @@ export { credentialsApi } from './credentials/api';
 export { domainsApi } from './domains/api';
 export { storageApi as volumesApi } from './storage/api';
 export { auditApi } from './audit/api';
+export { activityApi } from './activity/api';
+export { engineEventsApi } from './engine/api';
 export { trafficApi } from './traffic/api';
 export { authApi } from './auth/api';
 
@@ -35,6 +39,8 @@ import { credentialsApi } from './credentials/api';
 import { domainsApi } from './domains/api';
 import { storageApi } from './storage/api';
 import { auditApi } from './audit/api';
+import { activityApi } from './activity/api';
+import { engineEventsApi } from './engine/api';
 import { trafficApi } from './traffic/api';
 import { authApi } from './auth/api';
 
@@ -47,6 +53,8 @@ export const api = {
 	domains: domainsApi,
 	volumes: storageApi,
 	audit: auditApi,
+	activity: activityApi,
+	engineEvents: engineEventsApi,
 	traffic: trafficApi,
 	auth: authApi
 };

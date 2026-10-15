@@ -6,8 +6,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
+
+	"gopod/internal/podman"
 )
 
 // deployQuadlet writes Quadlet systemd units and generates declarative services.
@@ -41,6 +44,7 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 				logLine(fmt.Sprintf("❌ Invalid container image in '%s': %v", fname, err))
 				return nil, fmt.Errorf("Invalid container image identifier: must not be a compose file or path")
 			}
+			logLine(fmt.Sprintf("🔍 Unit '%s': image '%s' validated.", fname, img))
 		}
 	}
 
@@ -52,6 +56,12 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 		return nil, fmt.Errorf("Pre-flight Quadlet validation failed: %v", err)
 	}
 	logLine("✅ Quadlet syntax verified by podman systemd generator.")
+	if trimmed := strings.TrimSpace(dryOut); trimmed != "" {
+		if len(trimmed) > 2000 {
+			trimmed = trimmed[:2000] + "…[truncated]"
+		}
+		logLine(fmt.Sprintf("🔍 Quadlet dry-run detail: %s", trimmed))
+	}
 
 	// 3. Pre-flight Ghost Container & Unit cleanup (prevent conflict exit code 125 and systemd auto-restart races)
 	d.cleanPreflightConflicts(ctx, s, logLine)
@@ -88,7 +98,9 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 
 	for fname, uContent := range files {
 		// Local data backup
-		_ = os.WriteFile(filepath.Join(quadletDir, fname), []byte(uContent), 0644)
+		backupPath := filepath.Join(quadletDir, fname)
+		_ = os.WriteFile(backupPath, []byte(uContent), 0644)
+		logLine(fmt.Sprintf("📄 Quadlet artifact staged: %s", backupPath))
 
 		if systemdQuadletDir != "" {
 			_ = os.MkdirAll(systemdQuadletDir, 0755)
@@ -115,6 +127,9 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 	} else if primaryServiceName == "" {
 		primaryServiceName = fmt.Sprintf("%s.service", cleanName)
 	}
+	emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "quadlet.units_written",
+		fmt.Sprintf("Quadlet units written for service '%s': %d file(s), primary %s", s.Name, len(files), primaryServiceName),
+		map[string]any{"service": s.Name, "files": len(files), "primary": primaryServiceName, "dir": systemdQuadletDir})
 
 	// 6. Pull image first with streaming progress
 	mainImage := s.Image
@@ -162,38 +177,38 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 		logLine(fmt.Sprintf("⚡ Container image '%s' is cached locally. Reusing existing image.", mainImage))
 	}
 
-	// 7. Reload systemd daemon and activate service
+	// 7. Reload systemd daemon and activate service (native binary or
+	// D-Bus user bus when the engine runs containerized with the host bus).
 	systemdSuccess := false
-	if _, err := exec.LookPath("systemctl"); err == nil {
+	if d.hasUserManager() {
 		logLine("⚙️ Executing: systemctl --user daemon-reload...")
-		reloadCmd := exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload")
-		d.setupCmdEnv(reloadCmd)
-		if out, err := reloadCmd.CombinedOutput(); err != nil {
-			logLine(fmt.Sprintf("⚠️ daemon-reload notice: %v (%s)", err, strings.TrimSpace(string(out))))
+		if out, err := d.systemctlUser(ctx, "daemon-reload"); err != nil {
+			logLine(fmt.Sprintf("⚠️ daemon-reload notice: %v (%s)", err, strings.TrimSpace(out)))
 		}
 
 		// Reset failed counter so clean start is permitted
-		resetCmd := exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", primaryServiceName)
-		d.setupCmdEnv(resetCmd)
-		_ = resetCmd.Run()
+		_, _ = d.systemctlUser(ctx, "reset-failed", primaryServiceName)
 
 		logLine(fmt.Sprintf("🚀 Activating systemd service: %s...", primaryServiceName))
-		startCmd := exec.CommandContext(ctx, "systemctl", "--user", "restart", primaryServiceName)
-		d.setupCmdEnv(startCmd)
-		if out, err := startCmd.CombinedOutput(); err != nil {
-			logLine(fmt.Sprintf("❌ systemctl restart failed: %v (%s)", err, strings.TrimSpace(string(out))))
-			return nil, fmt.Errorf("systemctl start failed: %s", strings.TrimSpace(string(out)))
+		if out, err := d.systemctlUser(ctx, "restart", primaryServiceName); err != nil {
+			logLine(fmt.Sprintf("❌ systemctl restart failed: %v (%s)", err, strings.TrimSpace(out)))
+			return nil, fmt.Errorf("systemctl start failed: %s", strings.TrimSpace(out))
 		}
 
 		// Also start member services if part of a Pod bundle
 		for _, memberSvc := range podMemberServices {
-			mStart := exec.CommandContext(ctx, "systemctl", "--user", "restart", memberSvc)
-			d.setupCmdEnv(mStart)
-			_ = mStart.Run()
+			if out, err := d.systemctlUser(ctx, "restart", memberSvc); err != nil {
+				logLine(fmt.Sprintf("⚠️ Member service '%s' restart notice: %v (%s)", memberSvc, err, strings.TrimSpace(out)))
+			} else {
+				logLine(fmt.Sprintf("✅ Member service '%s' restarted under systemd.", memberSvc))
+			}
 		}
 
 		systemdSuccess = true
 		logLine(fmt.Sprintf("✅ Service '%s' activated successfully under systemd user supervisor.", primaryServiceName))
+		logLine(fmt.Sprintf("🔧 Supervisor path taken: systemd user manager (primary=%s members=%v).", primaryServiceName, podMemberServices))
+		emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "quadlet.systemd_activate",
+			fmt.Sprintf("Quadlet units activated via systemd: primary %s members %v", primaryServiceName, podMemberServices), map[string]any{"primary": primaryServiceName, "members": podMemberServices, "dir": systemdQuadletDir})
 	}
 
 	deployedContName := cleanName
@@ -203,11 +218,30 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 	}
 
 	if !systemdSuccess {
-		logLine("ℹ️ Containerized environment detected (systemctl not in container PATH).")
+		// No systemd user manager reachable at all (neither binary nor
+		// D-Bus user bus): host-side activation is impossible from here.
+		// Keep traffic alive by serving the units as direct containers,
+		// and say so explicitly instead of claiming supervision.
+		logLine("ℹ️ No systemd user manager reachable from the engine.")
+		logLine("🔧 Supervisor path taken: fallback-direct (no systemd user manager; serving units as plain podman containers).")
 		logLine(fmt.Sprintf("📄 Quadlet unit written to: %s", systemdQuadletDir))
-		logLine(fmt.Sprintf("💡 On host Fedora/Linux, supervise with: systemctl --user daemon-reload && systemctl --user start %s", primaryServiceName))
-		systemdSuccess = true
-		logLine(fmt.Sprintf("✅ Quadlet unit '%s' compiled and ready for host systemd supervision.", primaryServiceName))
+		emitEngineEventSafe(ctx, "warn", "service", s.ID, s.ProjectID, "engine", "quadlet.fallback_direct",
+			fmt.Sprintf("No systemd user manager; quadlet units served directly (%s)", systemdQuadletDir), map[string]any{"dir": systemdQuadletDir})
+		if err := d.runQuadletUnitsDirectly(ctx, s, files, logLine); err != nil {
+			logLine(fmt.Sprintf("❌ Direct fallback failed: %v", err))
+			emitEngineEventSafe(ctx, "error", "service", s.ID, s.ProjectID, "engine", "quadlet.fallback_failed",
+				fmt.Sprintf("Direct fallback failed: %v", err), nil)
+			return nil, err
+		}
+		emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "quadlet.fallback_ok",
+			fmt.Sprintf("Quadlet units served by direct containers (systemd unsupervised, image %s)", mainImage), map[string]any{"image": mainImage})
+		return &DeployResult{
+			ContainerName: deployedContName,
+			CommitHash:    "",
+			CommitMessage: fmt.Sprintf("Quadlet unit compiled; served by direct container, systemd unsupervised (%s)", mainImage),
+			Image:         mainImage,
+			Version:       "quadlet",
+		}, nil
 	}
 
 	return &DeployResult{
@@ -217,6 +251,248 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 		Image:         mainImage,
 		Version:       "quadlet",
 	}, nil
+}
+
+// quadletPublishPorts extracts canonical "[IP:]host:container[/udp]"
+// PublishPort bindings from a unit body, preserving non-default bind IPs.
+func quadletPublishPorts(content string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";") {
+			continue
+		}
+		kv := strings.SplitN(trimmed, "=", 2)
+		if len(kv) != 2 {
+			continue
+		}
+		if !strings.EqualFold(strings.TrimSpace(kv[0]), "PublishPort") {
+			continue
+		}
+		raw := strings.Trim(strings.TrimSpace(kv[1]), "\"'")
+		if entry := canonicalPortBinding(raw); entry != "" {
+			if !seen[entry] {
+				seen[entry] = true
+				out = append(out, entry)
+			}
+		}
+	}
+	return out
+}
+
+// runQuadletUnitsDirectly serves Quadlet units as plain podman containers.
+// Used only when no systemd user manager is reachable (containerized engine):
+// .pod units become real pods (ports on infra), .container members join them,
+// standalone units run with their own published ports.
+func (d *Deployer) runQuadletUnitsDirectly(ctx context.Context, s Service, files map[string]string, logLine func(string)) error {
+	if d.podmanClient == nil {
+		return fmt.Errorf("podman client unavailable")
+	}
+	_ = d.podmanClient.EnsureNetwork(ctx, "gopod-net")
+
+	// Deterministic order: pods first, then members, then standalone.
+	names := make([]string, 0, len(files))
+	for fname := range files {
+		names = append(names, fname)
+	}
+	sort.Strings(names)
+
+	newPods := map[string]bool{}
+	ensurePod := func(podName string, ports []string) error {
+		if newPods[podName] {
+			return nil
+		}
+		if _, err := d.podmanClient.InspectPod(ctx, podName); err != nil {
+			logLine(fmt.Sprintf("📦 Creating fallback pod '%s' with ports %v...", podName, ports))
+			if _, err := d.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
+				Name:    podName,
+				Ports:   ports,
+				Network: "gopod-net",
+				Labels: map[string]string{
+					"io.gopod.service": s.ID,
+					"io.gopod.project": s.ProjectID,
+				},
+			}); err != nil && !strings.Contains(err.Error(), "already exists") {
+				return err
+			}
+		} else {
+			_ = d.podmanClient.StartPod(ctx, podName)
+		}
+		newPods[podName] = true
+		return nil
+	}
+
+	// Pass 1: materialize .pod units (infra owns PublishPort).
+	for _, fname := range names {
+		if !strings.HasSuffix(fname, ".pod") {
+			continue
+		}
+		content := files[fname]
+		podName := strings.TrimSuffix(extractDirective(content, "PodName"), ".pod")
+		if podName == "" {
+			podName = strings.TrimSuffix(filepath.Base(fname), ".pod")
+		}
+		if err := ensurePod(podName, quadletPublishPorts(content)); err != nil {
+			return fmt.Errorf("fallback pod '%s': %w", podName, err)
+		}
+	}
+
+	// Pass 2: run .container units.
+	pulled := map[string]bool{}
+	ensureImage := func(image string) {
+		if image == "" || pulled[image] {
+			return
+		}
+		pulled[image] = true
+		chkCmd := exec.CommandContext(ctx, "podman", "image", "exists", image)
+		d.setupCmdEnv(chkCmd)
+		if err := chkCmd.Run(); err != nil {
+			logLine(fmt.Sprintf("📦 Pulling container image '%s'...", image))
+			pullCmd := exec.CommandContext(ctx, "podman", "pull", image)
+			d.setupCmdEnv(pullCmd)
+			pStdout, _ := pullCmd.StdoutPipe()
+			pStderr, _ := pullCmd.StderrPipe()
+			if err := pullCmd.Start(); err == nil {
+				d.streamPipes(pStdout, pStderr, logLine)
+				_ = pullCmd.Wait()
+			}
+		}
+	}
+
+	for _, fname := range names {
+		if !strings.HasSuffix(fname, ".container") {
+			continue
+		}
+		content := files[fname]
+		parsed := ParseQuadlet(content)
+		if parsed.Image == "" {
+			return fmt.Errorf("unit '%s' has no Image directive", fname)
+		}
+		cName := parsed.ContainerName
+		if cName == "" {
+			cName = strings.TrimSuffix(filepath.Base(fname), ".container")
+		}
+		ensureImage(parsed.Image)
+
+		targetPod := ""
+		var ports []string
+		network := parsed.Network
+		if network == "" {
+			network = "gopod-net"
+		}
+		if strings.TrimSpace(parsed.Pod) != "" {
+			targetPod = strings.TrimSuffix(strings.TrimSpace(parsed.Pod), ".pod")
+			if _, err := d.podmanClient.InspectPod(ctx, targetPod); err != nil {
+				if err := ensurePod(targetPod, quadletPublishPorts(content)); err != nil {
+					return err
+				}
+			}
+			ports = nil
+			network = ""
+		} else {
+			ports = quadletPublishPorts(content)
+		}
+
+		var cmdArgs []string
+		if strings.TrimSpace(parsed.Command) != "" {
+			cmdArgs = strings.Fields(parsed.Command)
+		}
+		envMap := map[string]string{}
+		for k, v := range parsed.Env {
+			envMap[k] = v
+		}
+		restart := ""
+		if r := strings.ToLower(strings.TrimSpace(parsed.RestartPolicy)); r == "always" || r == "no" || r == "unless-stopped" || strings.HasPrefix(r, "on-failure") {
+			restart = r
+		}
+		logLine(fmt.Sprintf("🚀 Starting fallback container '%s' (image: %s)...", cName, parsed.Image))
+		fallbackOpts := podman.RunContainerOptions{
+			Name:    cName,
+			Image:   parsed.Image,
+			Command: cmdArgs,
+			Pod:     targetPod,
+			Ports:   ports,
+			Env:     envMap,
+			Network: network,
+			Labels: map[string]string{
+				"io.gopod.service": s.ID,
+				"io.gopod.project": s.ProjectID,
+				"io.gopod.name":    s.Name,
+			},
+			RestartPolicy: restart,
+			Volumes:       parsed.Volumes,
+		}
+		logLine(fmt.Sprintf("🧾 Equivalent: %s", sanitizedPodmanRunArgs(fallbackOpts)))
+		if _, err := d.podmanClient.RunContainer(ctx, fallbackOpts); err != nil {
+			logLine(fmt.Sprintf("❌ Fallback container '%s' run failed: %v", cName, err))
+			d.enrichRunFailure(ctx, cName, err, logLine)
+			emitEngineEventSafe(ctx, "error", "service", s.ID, s.ProjectID, "engine", "quadlet.fallback_container_failed",
+				fmt.Sprintf("Fallback container '%s' failed: %v", cName, err), map[string]any{"container": cName, "image": parsed.Image, "pod": targetPod})
+			return fmt.Errorf("fallback container '%s': %w", cName, err)
+		}
+		logLine(fmt.Sprintf("✅ Fallback container '%s' is up.", cName))
+		logLine(fmt.Sprintf("✅ Fallback start result: container='%s' image='%s' pod='%s' network='%s' ports=%v.", cName, parsed.Image, targetPod, network, ports))
+	}
+	return nil
+}
+
+// DescribeQuadletSupervision reports the primary systemd unit for a service,
+// where its file was written, and whether the host user manager has it active.
+func (d *Deployer) DescribeQuadletSupervision(s Service) (unitService, unitFile string, active bool) {
+	cleanName := QuadletUnitName(s)
+	content := d.prepareQuadletContent(s, cleanName)
+	files := SplitQuadletUnits(content, cleanName)
+	if len(files) == 0 {
+		return "", "", false
+	}
+	ordered := make([]string, 0, len(files))
+	for fname := range files {
+		ordered = append(ordered, fname)
+	}
+	sort.Strings(ordered)
+	primaryFile := ""
+	for _, fname := range ordered {
+		if strings.HasSuffix(fname, ".pod") {
+			primaryFile = fname
+			break
+		}
+	}
+	if primaryFile == "" {
+		for _, fname := range ordered {
+			if strings.HasSuffix(fname, ".container") {
+				primaryFile = fname
+				break
+			}
+		}
+	}
+	if primaryFile == "" {
+		primaryFile = ordered[0]
+	}
+	stem := strings.TrimSuffix(primaryFile, filepath.Ext(primaryFile))
+	if strings.HasSuffix(primaryFile, ".pod") {
+		unitService = fmt.Sprintf("%s-pod.service", stem)
+	} else {
+		unitService = fmt.Sprintf("%s.service", stem)
+	}
+
+	systemdDir := os.Getenv("QUADLET_DIR")
+	if systemdDir == "" {
+		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+			systemdDir = filepath.Join(homeDir, ".config", "containers", "systemd")
+		}
+	}
+	if systemdDir != "" {
+		unitFile = filepath.Join(systemdDir, primaryFile)
+		// Present host-style (~/...) instead of the engine-container home:
+		// the systemd dir is bind-mounted to the host user systemd dir.
+		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
+			if rel, err := filepath.Rel(homeDir, unitFile); err == nil && !strings.HasPrefix(rel, "..") {
+				unitFile = filepath.Join("~", rel)
+			}
+		}
+	}
+	return unitService, unitFile, d.isUnitActive(context.Background(), unitService)
 }
 
 // GetServiceJournal fetches systemd journalctl entries for the service unit.

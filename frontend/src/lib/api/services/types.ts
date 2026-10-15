@@ -111,6 +111,8 @@ export interface Service {
 	domain?: string;
 	port?: number;
 	hostPort?: number;
+	/** Bind address for the published host port: '0.0.0.0' (all interfaces) or '127.0.0.1' (loopback only). Undefined = 0.0.0.0. */
+	hostIp?: string;
 	cpu: number;
 	memory: number;
 	cpuLimit?: number;
@@ -127,6 +129,9 @@ export interface Service {
 	composeYaml?: string;
 	k8sYaml?: string;
 	quadletConfig?: string;
+	quadletUnit?: string;
+	quadletFile?: string;
+	quadletActive?: boolean;
 	secretMounts?: ServiceSecretMount[];
 	advanced?: ServiceAdvancedConfig;
 	autoDeploy?: boolean;

@@ -13,9 +13,9 @@ import (
 func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 	unitName := QuadletUnitName(s)
 
-	// 1. Quadlet Unit via systemd
+	// 1. Quadlet Unit via systemd (binary or D-Bus user bus)
 	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
-		if _, err := exec.LookPath("systemctl"); err == nil {
+		if d.hasUserManager() {
 			candidates := getQuadletCandidateUnitNames(s, unitName)
 			units := d.querySystemdUnits(ctx, candidates...)
 			for _, cand := range candidates {
@@ -78,11 +78,17 @@ func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 		// 3. Podman Pods (if runtimeTarget == 'pod' or InPod)
 		pods, err := d.podmanClient.GetPods(ctx)
 		if err == nil {
+			podSlug := SanitizeQuadletSlug(strings.TrimPrefix(strings.TrimSpace(s.PodID), "pod_"))
+			expectedPod := ""
+			if podSlug != "" {
+				expectedPod = fmt.Sprintf("pod_%s", podSlug)
+			}
 			for _, p := range pods {
 				pName := p.Name
 				if pName == s.ID || pName == s.Name || pName == fmt.Sprintf("pod_%s", s.ID) ||
 					pName == fmt.Sprintf("pod_%s", s.Name) || pName == fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)) ||
 					pName == fmt.Sprintf("%s-%s", s.ProjectID, s.Name) ||
+					(expectedPod != "" && pName == expectedPod) ||
 					(s.PodID != "" && (pName == s.PodID || pName == fmt.Sprintf("pod_%s", s.PodID))) {
 					pSt := strings.ToLower(p.Status)
 					if pSt == "running" || pSt == "degraded" {
@@ -91,6 +97,15 @@ func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 					return "stopped"
 				}
 			}
+		}
+	}
+
+	// 4. No systemd manager reachable and no matching container running:
+	// report stopped, never "ready". A compiled unit file alone supervises
+	// nothing; claiming ready while the port is dead is misinformation.
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
+		if _, err := exec.LookPath("systemctl"); err != nil {
+			return "stopped"
 		}
 	}
 
@@ -114,14 +129,11 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 		pods, _ = d.podmanClient.GetPods(ctx)
 	}
 
-	hasSystemctl := false
-	if _, err := exec.LookPath("systemctl"); err == nil {
-		hasSystemctl = true
-	}
+	hasUserManager := d.hasUserManager()
 
 	var allUnitCandidates []string
 	serviceCandMap := make(map[string][]string)
-	if hasSystemctl {
+	if hasUserManager {
 		for _, s := range svcs {
 			if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
 				uName := QuadletUnitName(s)
@@ -138,11 +150,6 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 	}
 
 	for _, s := range svcs {
-		if s.Status == "deploying" || s.Status == "building" {
-			result[s.ID] = s.Status
-			continue
-		}
-
 		// 1. Quadlet Unit
 		if cands, ok := serviceCandMap[s.ID]; ok && len(systemdUnitMap) > 0 {
 			matched := false
@@ -156,6 +163,9 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 			if matched {
 				continue
 			}
+		} else if (s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "") && !hasUserManager {
+			result[s.ID] = "stopped"
+			continue
 		}
 
 		// 2. Match Containers
@@ -206,11 +216,17 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 
 		// 3. Match Pods
 		podRunning := false
+		podSlug := SanitizeQuadletSlug(strings.TrimPrefix(strings.TrimSpace(s.PodID), "pod_"))
+		expectedPod := ""
+		if podSlug != "" {
+			expectedPod = fmt.Sprintf("pod_%s", podSlug)
+		}
 		for _, p := range pods {
 			pName := p.Name
 			if pName == s.ID || pName == s.Name || pName == fmt.Sprintf("pod_%s", s.ID) ||
 				pName == fmt.Sprintf("pod_%s", s.Name) || pName == fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)) ||
 				pName == fmt.Sprintf("%s-%s", s.ProjectID, s.Name) ||
+				(expectedPod != "" && pName == expectedPod) ||
 				(s.PodID != "" && (pName == s.PodID || pName == fmt.Sprintf("pod_%s", s.PodID))) {
 				pSt := strings.ToLower(p.Status)
 				if pSt == "running" || pSt == "degraded" {
@@ -221,6 +237,11 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 		}
 		if podRunning {
 			result[s.ID] = "running"
+			continue
+		}
+
+		if s.Status == "deploying" || s.Status == "building" {
+			result[s.ID] = s.Status
 			continue
 		}
 

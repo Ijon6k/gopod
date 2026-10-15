@@ -11,22 +11,68 @@
 	let { service }: Props = $props();
 
 	let workloads = $derived.by<Workload[]>(() => {
-		// 1. Live containers matching this service/project
+		// 1. Podman Pod: populate all member containers in the Pod (excluding infra pause container)
+		if (service.type === 'pod') {
+			const podKey = service.id;
+			const podNameKey = service.name;
+			const podPrefixedKey = `pod_${service.name}`;
+
+			const memberSvcs = dataStore.services.filter(
+				(s) =>
+					s.projectId === service.projectId &&
+					s.id !== service.id &&
+					(s.podId === podKey ||
+						s.podId === podNameKey ||
+						s.podId === podPrefixedKey ||
+						(s.inPod && s.type !== 'pod'))
+			);
+			const memberServiceIds = new Set(memberSvcs.map((m) => m.id));
+
+			const podContainers = dataStore.containers.filter(
+				(c) =>
+					!c.name.endsWith('-infra') &&
+					(c.pod === podPrefixedKey ||
+						c.pod === podNameKey ||
+						c.pod === podKey ||
+						memberServiceIds.has(c.serviceId) ||
+						(c.labels && c.labels['io.gopod.service'] && memberServiceIds.has(c.labels['io.gopod.service'])) ||
+						(c.name.includes(service.name) && !c.name.endsWith('-infra')))
+			);
+
+			if (podContainers.length > 0) {
+				return podContainers.map((c) => ({
+					name: c.name,
+					image: c.image || '—',
+					status: c.status || 'running'
+				}));
+			}
+
+			if (memberSvcs.length > 0) {
+				return memberSvcs.map((m) => ({
+					name: m.name,
+					image: m.image || '—',
+					status: m.status || 'running'
+				}));
+			}
+		}
+
+		// 2. Live containers matching this service/project
 		const matchContainers = dataStore.containers
 			.filter(
 				(c) =>
-					c.name === service.name ||
-					c.name === service.id ||
-					(c.labels &&
-						(c.labels['io.gopod.service'] === service.id ||
-							c.labels['io.gopod.name'] === service.name ||
-							c.labels['com.docker.compose.project'] === service.id ||
-							c.labels['io.podman.compose.project'] === service.id ||
-							c.labels['com.docker.compose.service'] === service.name ||
-							c.labels['io.podman.compose.service'] === service.name)) ||
-					(service.id &&
-						(c.name.startsWith(`${service.id}-`) || c.name.startsWith(`${service.id}_`))) ||
-					(service.name && c.name.includes(service.name))
+					!c.name.endsWith('-infra') &&
+					(c.name === service.name ||
+						c.name === service.id ||
+						(c.labels &&
+							(c.labels['io.gopod.service'] === service.id ||
+								c.labels['io.gopod.name'] === service.name ||
+								c.labels['com.docker.compose.project'] === service.id ||
+								c.labels['io.podman.compose.project'] === service.id ||
+								c.labels['com.docker.compose.service'] === service.name ||
+								c.labels['io.podman.compose.service'] === service.name)) ||
+						(service.id &&
+							(c.name.startsWith(`${service.id}-`) || c.name.startsWith(`${service.id}_`))) ||
+						(service.name && c.name.includes(service.name)))
 			)
 			.map((c) => ({
 				name: c.name,

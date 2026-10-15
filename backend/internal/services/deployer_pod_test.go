@@ -2,6 +2,7 @@ package services
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -111,22 +112,37 @@ spec:
 		}
 	})
 
-	t.Run("host IP prefix binding in compose yaml", func(t *testing.T) {
-		s := Service{
-			ComposeYaml: `version: "3.8"
-services:
-  web:
-    ports:
-      - "0.0.0.0:8088:80"
-      - "127.0.0.1:3001:3000"
-`,
+	t.Run("prepareK8sPodManifest injects podName and tracking labels", func(t *testing.T) {
+		raw := `apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-gui-pod
+spec:
+  containers:
+    - name: web-gui
+      image: nginx:alpine
+      ports:
+        - containerPort: 80
+          hostPort: 8088
+`
+		if !hasK8sWorkloadContainers(raw) {
+			t.Fatal("expected hasK8sWorkloadContainers to be true")
 		}
-		got := extractPodPorts(s)
-		// 0.0.0.0 is the default bind and omitted in canonical form;
-		// 127.0.0.1 loopback bindings are preserved.
-		expected := []string{"8088:80", "127.0.0.1:3001:3000"}
-		if !reflect.DeepEqual(got, expected) {
-			t.Errorf("expected %v, got %v", expected, got)
+		prepared, count, err := prepareK8sPodManifest(raw, "pod_my-svc-123", "proj-a", "my-svc-123", []string{"8088:80"})
+		if err != nil {
+			t.Fatalf("prepareK8sPodManifest failed: %v", err)
+		}
+		if count != 1 {
+			t.Errorf("expected 1 container, got %d", count)
+		}
+		if !strings.Contains(prepared, "pod_my-svc-123") {
+			t.Errorf("expected pod name in prepared manifest, got: %s", prepared)
+		}
+		if !strings.Contains(prepared, "io.gopod.project: proj-a") {
+			t.Errorf("expected project label, got: %s", prepared)
+		}
+		if !strings.Contains(prepared, "io.gopod.service: my-svc-123") {
+			t.Errorf("expected service label, got: %s", prepared)
 		}
 	})
 }

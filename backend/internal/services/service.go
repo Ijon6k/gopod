@@ -40,6 +40,9 @@ type WorkloadService struct {
 
 // NewWorkloadService creates a new services domain service.
 func NewWorkloadService(repo Repository, deployer *Deployer, logMgr *LogManager) *WorkloadService {
+	if deployer != nil && repo != nil {
+		deployer.SetServiceRepo(repo)
+	}
 	return &WorkloadService{
 		repo:       repo,
 		deployer:   deployer,

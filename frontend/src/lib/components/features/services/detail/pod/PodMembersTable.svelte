@@ -13,17 +13,40 @@
 		TableBody,
 		useKumoToastManager
 	} from 'kumo-svelte';
-	import { Package, ArrowsClockwise, Stop, Terminal, Plus } from 'phosphor-svelte';
+	import { Package, ArrowsClockwise, Stop, Play, Terminal, Plus, FileCode } from 'phosphor-svelte';
+	import { parseDocument } from 'yaml';
 	import { dataStore } from '$lib/data';
 	import { parseComposeServices } from '$lib/parsers/compose';
+	import { parseKubernetesPodManifest } from '$lib/parsers/manifest-engine';
 
 	interface Props {
+		service?: Service;
+		podName?: string;
 		memberServices: Service[];
 		onOpenAddModal: () => void;
 		onmemberchange?: () => void;
 	}
 
-	let { memberServices, onOpenAddModal, onmemberchange }: Props = $props();
+	let { service, podName, memberServices, onOpenAddModal, onmemberchange }: Props = $props();
+
+	// Manifest workloads extracted from Kubernetes YAML (e.g. sidecars / main containers)
+	let manifestWorkloads = $derived.by(() => {
+		if (!service?.k8sYaml || !service.k8sYaml.trim()) return [];
+		const res = parseKubernetesPodManifest(service.k8sYaml);
+		if (!res.valid || res.workloads.length === 0) return [];
+		const memberNames = new Set(memberServices.map((m) => m.name.toLowerCase()));
+		return res.workloads.filter((w) => !memberNames.has(w.name.toLowerCase()));
+	});
+
+	// Find live container for a given workload name
+	function findLiveContainer(workloadName: string) {
+		const targetPod = podName || service?.podId || service?.id;
+		return dataStore.containers.find(
+			(c) =>
+				(c.pod === targetPod || (targetPod && c.name.includes(targetPod))) &&
+				c.name.toLowerCase().includes(workloadName.toLowerCase())
+		);
+	}
 
 	const toast = useKumoToastManager();
 
@@ -82,6 +105,89 @@
 			});
 		}
 	}
+
+	async function handleRestartLiveContainer(container: any, name: string) {
+		try {
+			await dataStore.restartContainer(container.id);
+			toast.add({
+				title: 'Container Restarted',
+				description: `Restarted container '${name}'`,
+				variant: 'info'
+			});
+		} catch (err: any) {
+			toast.add({
+				title: 'Restart Failed',
+				description: err?.message || 'Error restarting container',
+				variant: 'error'
+			});
+		}
+	}
+
+	async function handleStopLiveContainer(container: any, name: string) {
+		try {
+			await dataStore.stopContainer(container.id);
+			container.status = 'stopped';
+			toast.add({
+				title: 'Container Stopped',
+				description: `Stopped container '${name}'`,
+				variant: 'info'
+			});
+		} catch (err: any) {
+			toast.add({
+				title: 'Stop Failed',
+				description: err?.message || 'Error stopping container',
+				variant: 'error'
+			});
+		}
+	}
+
+	async function handleStartLiveContainer(container: any, name: string) {
+		try {
+			await dataStore.startContainer(container.id);
+			container.status = 'running';
+			toast.add({
+				title: 'Container Started',
+				description: `Started container '${name}'`,
+				variant: 'success'
+			});
+		} catch (err: any) {
+			toast.add({
+				title: 'Start Failed',
+				description: err?.message || 'Error starting container',
+				variant: 'error'
+			});
+		}
+	}
+
+	async function handleRemoveManifestWorkload(workloadName: string) {
+		if (!service?.k8sYaml) return;
+		try {
+			const doc = parseDocument(service.k8sYaml);
+			const containers = doc.getIn(['spec', 'containers']) as any;
+			if (containers && containers.items) {
+				const idx = containers.items.findIndex(
+					(c: any) => c.get('name')?.toLowerCase() === workloadName.toLowerCase()
+				);
+				if (idx !== -1) {
+					containers.items.splice(idx, 1);
+					service.k8sYaml = doc.toString();
+					await dataStore.updateService(service);
+					toast.add({
+						title: 'Removed from Manifest',
+						description: `Removed container '${workloadName}' from pod manifest. Re-deploy pod to apply.`,
+						variant: 'info'
+					});
+					onmemberchange?.();
+				}
+			}
+		} catch (err: any) {
+			toast.add({
+				title: 'Detach Failed',
+				description: err?.message || 'Error removing container from manifest',
+				variant: 'error'
+			});
+		}
+	}
 </script>
 
 <LayerCard class="overflow-hidden p-0 shadow-xs">
@@ -94,8 +200,8 @@
 				Pod Member Containers
 			</h3>
 			<Badge variant="neutral" class="font-mono text-xs">
-				{memberServices.length}
-				{memberServices.length === 1 ? 'container' : 'containers'}
+				{memberServices.length + manifestWorkloads.length}
+				{memberServices.length + manifestWorkloads.length === 1 ? 'container' : 'containers'}
 			</Badge>
 		</div>
 
@@ -140,15 +246,15 @@
 				</TableRow>
 			</TableHeader>
 			<TableBody class="divide-y divide-[var(--border-subtle)]">
-				{#if memberServices.length === 0}
+				{#if memberServices.length === 0 && manifestWorkloads.length === 0}
 					<TableRow>
 						<TableCell colspan={5} class="py-12 text-center text-xs text-[var(--text-tertiary)]">
 							<div class="flex flex-col items-center justify-center gap-2">
 								<Package size={32} class="opacity-40" />
 								<span class="font-medium">No containers attached to this pod yet.</span>
 								<span class="text-[11px]">
-									Click "Add / Attach Container" above to attach an existing workload or deploy a
-									new image.
+									Click "Add / Attach Container" above to attach an existing workload or declare
+									containers in the Kubernetes Manifest tab.
 								</span>
 							</div>
 						</TableCell>
@@ -264,6 +370,132 @@
 										<Terminal size={13} />
 									</Button>
 								</div>
+							</TableCell>
+						</TableRow>
+					{/each}
+
+					{#each manifestWorkloads as mw (mw.name)}
+						{@const live = findLiveContainer(mw.name)}
+						<TableRow class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
+							<!-- Container Name -->
+							<TableCell class="px-4 py-3 text-[13px] font-medium text-[var(--text-primary)]">
+								<div class="flex items-center gap-2">
+									<span class="font-semibold text-[var(--text-primary)]">
+										{mw.name}
+									</span>
+									<span
+										class="rounded bg-[var(--bg-table-row-alt)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--accent)] border border-[var(--border-subtle)] uppercase"
+									>
+										{mw.role}
+									</span>
+								</div>
+							</TableCell>
+
+							<!-- Image -->
+							<TableCell class="px-3 py-3 font-mono text-xs text-[var(--text-secondary)]">
+								{mw.image || '(none)'}
+							</TableCell>
+
+							<!-- Status -->
+							<TableCell class="px-3 py-3">
+								{#if live}
+									<Badge
+										variant={live.status === 'running' ? 'success' : 'neutral'}
+										class="text-[11px] capitalize"
+									>
+										{live.status}
+									</Badge>
+								{:else}
+									<span
+										class="inline-flex items-center rounded bg-[var(--bg-table-row-alt)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-tertiary)] border border-[var(--border-subtle)]"
+									>
+										Previewed
+									</span>
+								{/if}
+							</TableCell>
+
+							<!-- Internal Port -->
+							<TableCell class="px-3 py-3 font-mono text-xs text-[var(--text-secondary)]">
+								{#if mw.ports.length > 0}
+									localhost:{mw.ports.map((p) => p.containerPort).join(', localhost:')}
+								{:else}
+									<span class="text-[var(--text-muted)]">-</span>
+								{/if}
+							</TableCell>
+
+							<!-- Actions -->
+							<TableCell class="px-4 py-3 text-right">
+								{#if live}
+									<div class="flex items-center justify-end gap-1.5">
+										<!-- Restart -->
+										<Button
+											variant="secondary"
+											size="sm"
+											onclick={() => handleRestartLiveContainer(live, mw.name)}
+											aria-label={`Restart ${mw.name}`}
+										>
+											<ArrowsClockwise size={13} />
+										</Button>
+
+										<!-- Stop / Start -->
+										{#if live.status === 'running'}
+											<Button
+												variant="secondary-destructive"
+												size="sm"
+												onclick={() => handleStopLiveContainer(live, mw.name)}
+												aria-label={`Stop ${mw.name}`}
+											>
+												<Stop size={13} weight="fill" />
+											</Button>
+										{:else}
+											<Button
+												variant="secondary"
+												size="sm"
+												onclick={() => handleStartLiveContainer(live, mw.name)}
+												aria-label={`Start ${mw.name}`}
+											>
+												<Play size={13} weight="fill" />
+											</Button>
+										{/if}
+
+										<!-- Detach from Pod Manifest -->
+										<Button
+											variant="secondary"
+											size="sm"
+											onclick={() => handleRemoveManifestWorkload(mw.name)}
+											aria-label={`Detach ${mw.name} from Pod`}
+										>
+											<span class="text-xs">Detach</span>
+										</Button>
+
+										<!-- Open Terminal -->
+										{#if service}
+											<Button
+												variant="secondary"
+												size="sm"
+												onclick={() =>
+													goto(`/projects/${service.projectId}/services/${service.id}?tab=terminal`)}
+												aria-label={`Terminal for ${mw.name}`}
+											>
+												<Terminal size={13} />
+											</Button>
+										{/if}
+									</div>
+								{:else}
+									<div class="flex items-center justify-end gap-1.5">
+										<span class="text-[11px] text-[var(--text-tertiary)] italic mr-1">
+											Previewed in manifest
+										</span>
+										<Button
+											variant="secondary"
+											size="sm"
+											onclick={() => handleRemoveManifestWorkload(mw.name)}
+											aria-label={`Remove ${mw.name} from Manifest`}
+										>
+											<span class="text-xs">Remove</span>
+										</Button>
+									</div>
+								{/if}
 							</TableCell>
 						</TableRow>
 					{/each}

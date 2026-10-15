@@ -44,6 +44,7 @@ type Deployer struct {
 	registryProvider RegistryProvider
 	logManager       *LogManager
 	dataDir          string
+	repo             Repository
 }
 
 // NewDeployer creates a new container deployer.
@@ -66,6 +67,11 @@ func NewDeployer(client *podman.Client, keyProvider SSHKeyProvider, logMgr *LogM
 // SetRegistryProvider configures private registry credential resolution.
 func (d *Deployer) SetRegistryProvider(rp RegistryProvider) {
 	d.registryProvider = rp
+}
+
+// SetServiceRepo configures the service repository for member introspection.
+func (d *Deployer) SetServiceRepo(repo Repository) {
+	d.repo = repo
 }
 
 // setupCmdEnv configures environment variables so that subprocesses (podman CLI, podman-compose) connect to the host Podman socket.

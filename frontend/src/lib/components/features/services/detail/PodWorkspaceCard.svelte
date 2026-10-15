@@ -391,6 +391,8 @@
 
 		<!-- Card 2: Pod Member Containers Table -->
 		<PodMembersTable
+			{service}
+			{podName}
 			{memberServices}
 			onOpenAddModal={() => (isAddingContainer = true)}
 			onmemberchange={handleVisualChanged}

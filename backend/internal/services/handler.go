@@ -57,6 +57,8 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/services/{id}/group-pod", h.middleware.RequireAuth(h.handleGroupIntoPod))
 	mux.HandleFunc("POST /api/services/{id}/ungroup-pod", h.middleware.RequireAuth(h.handleUngroupFromPod))
 	mux.HandleFunc("POST /api/services/{id}/drop-upload", h.middleware.RequireAuth(h.handleDropUpload))
+	mux.HandleFunc("POST /api/services/validate-manifest", h.middleware.RequireAuth(h.handleValidateManifest))
+	mux.HandleFunc("POST /api/services/{id}/validate-manifest", h.middleware.RequireAuth(h.handleValidateManifest))
 	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAuth(h.handleGetLinger))
 }
 
@@ -407,6 +409,44 @@ func (h *Handler) handleValidateQuadletGlobal(w http.ResponseWriter, r *http.Req
 		resp["error"] = err.Error()
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+func (h *Handler) handleValidateManifest(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Type string `json:"type"` // "kubernetes" | "compose"
+		Yaml string `json:"yaml"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+		return
+	}
+
+	content := req.Yaml
+	manifestType := strings.ToLower(strings.TrimSpace(req.Type))
+
+	// If payload body was empty, try fetching service yaml if {id} was given
+	id := r.PathValue("id")
+	if strings.TrimSpace(content) == "" && id != "" {
+		svc, err := h.service.GetService(r.Context(), id)
+		if err == nil && svc != nil {
+			if manifestType == "compose" || svc.Type == "compose" {
+				content = svc.ComposeYaml
+				manifestType = "compose"
+			} else {
+				content = svc.K8sYaml
+				manifestType = "kubernetes"
+			}
+		}
+	}
+
+	var res ManifestValidationResult
+	if manifestType == "compose" {
+		res = ValidateComposeManifest(r.Context(), content)
+	} else {
+		res = ValidateKubernetesPodManifest(r.Context(), content)
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, res)
 }
 
 func (h *Handler) handleDemoteQuadlet(w http.ResponseWriter, r *http.Request) {

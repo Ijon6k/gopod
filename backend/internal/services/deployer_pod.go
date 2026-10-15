@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -253,8 +254,303 @@ func extractPodPorts(s Service) []string {
 	return result
 }
 
+// hasAttachedMemberServices checks if other services in the project are attached to this pod.
+func (d *Deployer) hasAttachedMemberServices(ctx context.Context, s Service) bool {
+	if d.repo == nil {
+		return false
+	}
+	allSvcs, err := d.repo.List(ctx, s.ProjectID)
+	if err != nil {
+		return false
+	}
+	expectedPod := PodNameForService(s)
+	legacyNames := legacyPodCandidates(s)
+	for _, m := range allSvcs {
+		if m.ID == s.ID {
+			continue
+		}
+		isMember := m.InPod && (m.PodID == s.ID || m.PodID == s.Name || m.PodID == expectedPod ||
+			(strings.TrimSpace(m.PodID) != "" && PodNameFor(m.PodID) == PodNameFor(expectedPod)))
+		if !isMember && m.InPod {
+			for _, leg := range legacyNames {
+				if m.PodID == leg {
+					isMember = true
+					break
+				}
+			}
+		}
+		if isMember {
+			return true
+		}
+	}
+	return false
+}
+
+// hasK8sWorkloadContainers checks whether the Kubernetes manifest defines at least one non-infra workload container.
+func hasK8sWorkloadContainers(k8sYaml string) bool {
+	trimmed := strings.TrimSpace(k8sYaml)
+	if trimmed == "" {
+		return false
+	}
+	var doc struct {
+		Spec struct {
+			Containers []struct {
+				Name  string `yaml:"name"`
+				Image string `yaml:"image"`
+			} `yaml:"containers"`
+		} `yaml:"spec"`
+	}
+	if err := yaml.Unmarshal([]byte(trimmed), &doc); err != nil {
+		return false
+	}
+	for _, c := range doc.Spec.Containers {
+		name := strings.ToLower(strings.TrimSpace(c.Name))
+		img := strings.ToLower(strings.TrimSpace(c.Image))
+		if name == "infra" || strings.Contains(img, "pause") || (img == "" && name == "") {
+			continue
+		}
+		return true
+	}
+	return false
+}
+
+// prepareK8sPodManifest injects canonical pod name, GOPOD tracing labels, and synchronizes desired ports into a K8s Pod manifest.
+func prepareK8sPodManifest(raw string, podName, projectID, serviceID string, desiredPorts []string) (string, int, error) {
+	var doc struct {
+		APIVersion string `yaml:"apiVersion"`
+		Kind       string `yaml:"kind"`
+		Metadata   struct {
+			Name   string            `yaml:"name"`
+			Labels map[string]string `yaml:"labels"`
+		} `yaml:"metadata"`
+		Spec struct {
+			Containers []struct {
+				Name string `yaml:"name"`
+			} `yaml:"containers"`
+		} `yaml:"spec"`
+	}
+
+	if err := yaml.Unmarshal([]byte(raw), &doc); err != nil {
+		return "", 0, fmt.Errorf("invalid Kubernetes YAML: %w", err)
+	}
+
+	containerCount := len(doc.Spec.Containers)
+	if containerCount == 0 {
+		return "", 0, fmt.Errorf("no containers declared in spec.containers")
+	}
+
+	var generic map[string]interface{}
+	if err := yaml.Unmarshal([]byte(raw), &generic); err == nil {
+		meta, _ := generic["metadata"].(map[string]interface{})
+		if meta == nil {
+			meta = make(map[string]interface{})
+		}
+		meta["name"] = podName
+		labels, _ := meta["labels"].(map[string]interface{})
+		if labels == nil {
+			labels = make(map[string]interface{})
+		}
+		labels["io.gopod.project"] = projectID
+		labels["io.gopod.service"] = serviceID
+		meta["labels"] = labels
+		generic["metadata"] = meta
+
+		// Synchronize desired ports (from compose/visual view) into the primary container if not already declared
+		if specMap, ok := generic["spec"].(map[string]interface{}); ok {
+			if containersList, ok := specMap["containers"].([]interface{}); ok && len(containersList) > 0 {
+				existingPortKeys := make(map[string]bool)
+				for _, cRaw := range containersList {
+					if cMap, ok := cRaw.(map[string]interface{}); ok {
+						if portsRaw, ok := cMap["ports"].([]interface{}); ok {
+							for _, pItem := range portsRaw {
+								if pMap, ok := pItem.(map[string]interface{}); ok {
+									cp, _ := pMap["containerPort"].(int)
+									hp, _ := pMap["hostPort"].(int)
+									ip, _ := pMap["hostIP"].(string)
+									if ip == "" {
+										ip = "0.0.0.0"
+									}
+									proto, _ := pMap["protocol"].(string)
+									if strings.ToLower(proto) == "udp" {
+										existingPortKeys[fmt.Sprintf("%s:%d:%d/udp", ip, hp, cp)] = true
+									} else {
+										existingPortKeys[fmt.Sprintf("%s:%d:%d", ip, hp, cp)] = true
+									}
+								}
+							}
+						}
+					}
+				}
+
+				if primaryMap, ok := containersList[0].(map[string]interface{}); ok {
+					var pList []interface{}
+					if rawPorts, ok := primaryMap["ports"].([]interface{}); ok {
+						pList = rawPorts
+					}
+					for _, dp := range desiredPorts {
+						ip, hp, cp, udp, ok := parsePortBinding(dp)
+						if !ok {
+							continue
+						}
+						normIp := ip
+						if normIp == "" {
+							normIp = "0.0.0.0"
+						}
+						protoStr := ""
+						if udp {
+							protoStr = "/udp"
+						}
+						key := fmt.Sprintf("%s:%d:%d%s", normIp, hp, cp, protoStr)
+						if !existingPortKeys[key] {
+							newBinding := map[string]interface{}{
+								"containerPort": cp,
+								"hostPort":      hp,
+							}
+							if udp {
+								newBinding["protocol"] = "UDP"
+							}
+							if ip != "" && ip != "0.0.0.0" {
+								newBinding["hostIP"] = ip
+							}
+							pList = append(pList, newBinding)
+							existingPortKeys[key] = true
+						}
+					}
+					primaryMap["ports"] = pList
+					containersList[0] = primaryMap
+					specMap["containers"] = containersList
+					generic["spec"] = specMap
+				}
+			}
+		}
+
+		out, err := yaml.Marshal(generic)
+		if err == nil {
+			return string(out), containerCount, nil
+		}
+	}
+
+	doc.Metadata.Name = podName
+	if doc.Metadata.Labels == nil {
+		doc.Metadata.Labels = make(map[string]string)
+	}
+	doc.Metadata.Labels["io.gopod.project"] = projectID
+	doc.Metadata.Labels["io.gopod.service"] = serviceID
+
+	out, err := yaml.Marshal(&doc)
+	return string(out), containerCount, err
+}
+
+// deployPodKube deploys a declarative multi-container Kubernetes manifest directly using podman play kube.
+func (d *Deployer) deployPodKube(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
+	podName := PodNameForService(s)
+	logLine(fmt.Sprintf("Reconciling Kubernetes Pod Manifest for '%s' (service: %s)...", podName, s.Name))
+
+	ports := extractPodPorts(s)
+	content, containerCount, err := prepareK8sPodManifest(s.K8sYaml, podName, s.ProjectID, s.ID, ports)
+	if err != nil {
+		logLine(fmt.Sprintf("❌ Failed to parse Kubernetes manifest: %v", err))
+		return nil, err
+	}
+
+	// Pre-flight validation & collision check
+	valRes := ValidateKubernetesPodManifest(ctx, content)
+	if !valRes.Valid {
+		errMsg := strings.Join(valRes.Errors, "; ")
+		logLine(fmt.Sprintf("❌ Manifest validation failed: %s", errMsg))
+		return nil, fmt.Errorf("manifest validation failed: %s", errMsg)
+	}
+	for _, w := range valRes.Warnings {
+		logLine(fmt.Sprintf("⚠️ %s", w))
+	}
+
+	kubeDir := filepath.Join(d.dataDir, "kube", s.ProjectID, podName)
+	if err := os.MkdirAll(kubeDir, 0755); err != nil {
+		logLine(fmt.Sprintf("❌ Failed to create kube directory: %v", err))
+		return nil, err
+	}
+
+	kubeFile := filepath.Join(kubeDir, "manifest.yaml")
+	if err := os.WriteFile(kubeFile, []byte(content), 0644); err != nil {
+		logLine(fmt.Sprintf("❌ Failed to write manifest: %v", err))
+		return nil, err
+	}
+
+	if d.podmanClient != nil {
+		_ = d.podmanClient.EnsureNetwork(ctx, "gopod-net")
+	}
+
+	args := []string{"play", "kube", "--network", "gopod-net", "--replace", kubeFile}
+	logLine(fmt.Sprintf("⏳ Executing: podman %s...", strings.Join(args, " ")))
+
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	d.setupCmdEnv(cmd)
+
+	stdout, _ := cmd.StdoutPipe()
+	stderr, _ := cmd.StderrPipe()
+	if err := cmd.Start(); err != nil {
+		logLine(fmt.Sprintf("❌ podman play kube start failed: %v", err))
+		return nil, err
+	}
+
+	errLines := d.streamPipes(stdout, stderr, logLine)
+	if err := cmd.Wait(); err != nil {
+		errMsg := fmt.Sprintf("podman play kube failed: %v", err)
+		if len(errLines) > 0 {
+			errMsg = fmt.Sprintf("podman play kube failed: %s", strings.Join(errLines, " "))
+		}
+		logLine(fmt.Sprintf("❌ %s", errMsg))
+		return nil, errors.New(errMsg)
+	}
+
+	// Verify outcome
+	hasFatal := false
+	var sampleErr string
+	for _, l := range errLines {
+		lower := strings.ToLower(l)
+		if strings.HasPrefix(l, "Error:") || strings.Contains(lower, "failed to start") || strings.Contains(lower, "address already in use") {
+			hasFatal = true
+			if sampleErr == "" {
+				sampleErr = l
+			}
+		}
+	}
+
+	if hasFatal {
+		errMsg := fmt.Sprintf("Kubernetes deployment failed: %s", sampleErr)
+		logLine(fmt.Sprintf("❌ %s", errMsg))
+		return nil, errors.New(errMsg)
+	}
+
+	logLine(fmt.Sprintf("✅ Kubernetes Pod '%s' played successfully (%d workload containers running).", podName, containerCount))
+
+	// Clean up legacy naming pods
+	if d.podmanClient != nil {
+		for _, legacy := range legacyPodCandidates(s) {
+			if legacy == "" || legacy == podName {
+				continue
+			}
+			if _, err := d.podmanClient.InspectPod(ctx, legacy); err == nil {
+				_ = d.podmanClient.DeletePod(ctx, legacy, true)
+				logLine(fmt.Sprintf("🧹 Legacy pod cleanup: removed '%s'.", legacy))
+			}
+		}
+	}
+	d.removeLegacyPodQuadlets(s, podName)
+
+	return &DeployResult{
+		ContainerName: podName,
+		CommitMessage: fmt.Sprintf("Kubernetes Pod active: %s (%d containers)", podName, containerCount),
+		Version:       "kube",
+	}, nil
+}
+
 // deployPod manages Podman Pod lifecycle, infra container creation, and port publishing.
 func (d *Deployer) deployPod(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
+	if !d.hasAttachedMemberServices(ctx, s) && hasK8sWorkloadContainers(s.K8sYaml) {
+		return d.deployPodKube(ctx, s, depID, logLine)
+	}
+
 	podName := PodNameForService(s)
 	logLine(fmt.Sprintf("Reconciling Podman Pod '%s' (service: %s)...", podName, s.Name))
 
@@ -410,7 +706,9 @@ func (d *Deployer) deployPod(ctx context.Context, s Service, depID string, logLi
 	}
 	d.removeLegacyPodQuadlets(s, podName)
 
-	d.writePodQuadletArtifacts(s, podName, ports, logLine)
+	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" {
+		d.writePodQuadletArtifacts(s, podName, ports, logLine)
+	}
 
 	return &DeployResult{
 		ContainerName: podName,

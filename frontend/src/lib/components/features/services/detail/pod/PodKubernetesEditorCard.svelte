@@ -12,6 +12,8 @@
 		portBindingId,
 		normalizePortHostIp
 	} from '$lib/parsers/pod-ports';
+	import { parseKubernetesPodManifest } from '$lib/parsers/manifest-engine';
+	import ArchitecturePreviewBar from '../manifests/ArchitecturePreviewBar.svelte';
 
 	interface Props {
 		service: Service;
@@ -28,6 +30,9 @@
 	let isSaving = $state(false);
 	let saveStatus = $state<'idle' | 'saved'>('idle');
 	let initializedFor = $state('');
+	let previewExpanded = $state(false);
+
+	let parseResult = $derived.by(() => parseKubernetesPodManifest(k8sYaml));
 
 	// Initialize YAML once per service version; never clobber in-progress edits
 	$effect(() => {
@@ -55,11 +60,20 @@
 				image: m.image,
 				port: m.port
 			}));
-			k8sYaml = serializePodK8sYaml(service.name, existingPorts, membersDef);
+			k8sYaml = serializePodK8sYaml(service.name, existingPorts, membersDef, service.k8sYaml);
 		}
 	});
 
 	async function handleSaveManifest() {
+		if (!parseResult.valid) {
+			toast.add({
+				title: 'Invalid Manifest Syntax',
+				description: parseResult.errors[0] || 'Please resolve syntax errors before saving manifest.',
+				variant: 'error'
+			});
+			return;
+		}
+
 		isSaving = true;
 		try {
 			service.k8sYaml = k8sYaml;
@@ -152,7 +166,10 @@
 	</div>
 
 	<!-- CodeMirror Monospace YAML Editor -->
-	<div class="p-4">
+	<div class="flex flex-col gap-3 p-4">
+		<!-- Compact Architecture Preview Bar directly above Editor -->
+		<ArchitecturePreviewBar {parseResult} bind:expanded={previewExpanded} />
+
 		<div class="overflow-hidden rounded-md border border-[var(--border)] shadow-inner">
 			<CodeEditor bind:value={k8sYaml} language="yaml" height="auto" />
 		</div>

@@ -6,11 +6,8 @@
 	import { Stack, Eye, Check } from 'phosphor-svelte';
 	import { getDefaultComposeYaml } from '../manifests/defaults';
 	import ComposeSourceSelector from './compose/ComposeSourceSelector.svelte';
-	import ComposeServicesPreview, {
-		type ParsedComposeStack,
-		type ParsedServiceItem,
-		type ParsedNetworkItem
-	} from './compose/ComposeServicesPreview.svelte';
+	import { parseComposeManifest } from '$lib/parsers/manifest-engine';
+	import ArchitecturePreviewBar from './manifests/ArchitecturePreviewBar.svelte';
 
 	interface Props {
 		service: Service;
@@ -63,155 +60,18 @@
 		});
 	}
 
-	// Declarative parser for inspecting Compose architecture (workloads, networks, volumes)
-	let parsedStack = $derived.by<ParsedComposeStack>(() => {
-		try {
-			const lines = composeYaml.split('\n');
-			const services: ParsedServiceItem[] = [];
-			const networks: ParsedNetworkItem[] = [];
-			const volumes: string[] = [];
-
-			let currentSection: 'services' | 'networks' | 'volumes' | null = null;
-			let currentSvc: ParsedServiceItem | null = null;
-			let currentNet: ParsedNetworkItem | null = null;
-			let subArrayField: 'ports' | 'networks' | 'depends_on' | null = null;
-
-			for (const rawLine of lines) {
-				const trimmed = rawLine.trim();
-				if (!trimmed || trimmed.startsWith('#')) continue;
-
-				if (!rawLine.startsWith(' ') && !rawLine.startsWith('\t')) {
-					if (currentSvc) {
-						services.push(currentSvc);
-						currentSvc = null;
-					}
-					if (currentNet) {
-						networks.push(currentNet);
-						currentNet = null;
-					}
-					subArrayField = null;
-
-					if (trimmed.startsWith('services:')) {
-						currentSection = 'services';
-					} else if (trimmed.startsWith('networks:')) {
-						currentSection = 'networks';
-					} else if (trimmed.startsWith('volumes:')) {
-						currentSection = 'volumes';
-					} else {
-						currentSection = null;
-					}
-					continue;
-				}
-
-				if (currentSection === 'services') {
-					const svcMatch = rawLine.match(/^ {2}([a-zA-Z0-9_.-]+):/);
-					if (svcMatch) {
-						if (currentSvc) services.push(currentSvc);
-						currentSvc = {
-							name: svcMatch[1],
-							ports: [],
-							networks: [],
-							dependsOn: []
-						};
-						subArrayField = null;
-						continue;
-					}
-
-					if (currentSvc) {
-						const imgMatch = trimmed.match(/^image:\s*([^\s#]+)/);
-						if (imgMatch) {
-							currentSvc.image = imgMatch[1];
-							subArrayField = null;
-							continue;
-						}
-
-						if (trimmed.startsWith('ports:')) {
-							subArrayField = 'ports';
-							continue;
-						}
-						if (trimmed.startsWith('networks:')) {
-							subArrayField = 'networks';
-							continue;
-						}
-						if (trimmed.startsWith('depends_on:')) {
-							subArrayField = 'depends_on';
-							continue;
-						}
-
-						const itemMatch = trimmed.match(/^-\s+["']?([^"'#]+)["']?/);
-						if (itemMatch && subArrayField) {
-							const val = itemMatch[1].trim();
-							if (subArrayField === 'ports') currentSvc.ports.push(val);
-							else if (subArrayField === 'networks') currentSvc.networks.push(val);
-							else if (subArrayField === 'depends_on') currentSvc.dependsOn.push(val);
-							continue;
-						}
-
-						if (!trimmed.startsWith('-')) {
-							subArrayField = null;
-						}
-					}
-				} else if (currentSection === 'networks') {
-					const netMatch = rawLine.match(/^ {2}([a-zA-Z0-9_.-]+):/);
-					if (netMatch) {
-						if (currentNet) networks.push(currentNet);
-						currentNet = { name: netMatch[1] };
-						continue;
-					}
-					if (currentNet) {
-						const driverMatch = trimmed.match(/^driver:\s*([^\s#]+)/);
-						if (driverMatch) currentNet.driver = driverMatch[1];
-						const extMatch = trimmed.match(/^external:\s*(true|false)/);
-						if (extMatch) currentNet.external = extMatch[1] === 'true';
-					}
-				} else if (currentSection === 'volumes') {
-					const volMatch = rawLine.match(/^ {2}([a-zA-Z0-9_.-]+):?/);
-					if (volMatch && volMatch[1]) {
-						const volName = volMatch[1];
-						if (!volumes.includes(volName)) {
-							volumes.push(volName);
-						}
-					}
-				}
-			}
-
-			if (currentSvc) services.push(currentSvc);
-			if (currentNet) networks.push(currentNet);
-
-			return {
-				services:
-					services.length > 0
-						? services
-						: [
-								{
-									name: service.name,
-									image: service.image || 'nginx:alpine',
-									ports: [`${service.port || 8080}:80`],
-									networks: [],
-									dependsOn: []
-								}
-							],
-				networks,
-				volumes
-			};
-		} catch {
-			return {
-				services: [
-					{
-						name: service.name,
-						image: service.image || 'nginx:alpine',
-						ports: [`${service.port || 8080}:80`],
-						networks: [],
-						dependsOn: []
-					}
-				],
-				networks: [],
-				volumes: []
-			};
-		}
-	});
+	let composeParseResult = $derived.by(() => parseComposeManifest(composeYaml));
 
 	async function handleSave() {
+		if (!composeParseResult.valid) {
+			toast.add({
+				title: 'Invalid Compose Syntax',
+				description: composeParseResult.errors[0] || 'Please resolve syntax errors before saving.',
+				variant: 'error'
+			});
+			return;
+		}
+
 		saveStatus = 'saving';
 		if (service.type === 'kubernetes') {
 			service.k8sYaml = composeYaml;
@@ -313,7 +173,7 @@
 				<span
 					class="py-0.2 ml-1 inline-flex items-center rounded bg-kumo-recessed px-1.5 font-mono text-[11px] text-kumo-subtle"
 				>
-					{parsedStack.services.length}
+					{composeParseResult.workloads.length}
 				</span>
 			</Button>
 		</div>
@@ -358,15 +218,13 @@
 			</span>
 		</div>
 
+		<!-- Compact Architecture Preview Bar directly above Editor -->
+		<ArchitecturePreviewBar parseResult={composeParseResult} bind:expanded={previewOpen} />
+
 		<!-- Monospace Code Editor -->
 		<div class="overflow-hidden rounded-md ring ring-kumo-line">
 			<CodeEditor bind:value={composeYaml} language="yaml" height="auto" />
 		</div>
-
-		<!-- Workload & Architecture Inspection Drawer -->
-		{#if previewOpen}
-			<ComposeServicesPreview {parsedStack} />
-		{/if}
 
 		<!-- Footer with Save CTA -->
 		<div class="flex items-center justify-between border-t border-kumo-hairline pt-3">

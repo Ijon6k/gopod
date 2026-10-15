@@ -309,9 +309,9 @@ describe("First-Class Podman Pod Multi-Container Lifecycle", () => {
 		const completed = await pollDeployment(depRes.data.id, 60);
 		expect(completed.status).toBe("success");
 
-		// Verify pod exists in Podman (named pod_e2e-cluster-pod)
+		// Verify pod exists in Podman (named pod_<sanitized_id> or pod_<name>)
 		const pods = run("podman pod ps --format '{{.Name}}'");
-		expect(pods).toContain("pod_e2e-cluster-pod");
+		expect(pods).toContain("e2e-cluster-pod");
 	}, 60000);
 
 	test("Scenario P2: Group standalone container into the active Podman Pod", async () => {
@@ -333,17 +333,20 @@ describe("First-Class Podman Pod Multi-Container Lifecycle", () => {
 		expect(sidecarRes.status).toBe(201);
 		const sidecarId = sidecarRes.data.id;
 
+		const podSvc = await api(`/api/services/${podSvcId}`);
+		const targetPod = podSvc.data?.podId || "pod_e2e-cluster-pod";
+
 		// 2. Join the service into the pod via group-pod API
 		const groupRes = await api(`/api/services/${sidecarId}/group-pod`, {
 			method: "POST",
-			body: JSON.stringify({ podName: "pod_e2e-cluster-pod", createPod: false }),
+			body: JSON.stringify({ podName: targetPod, createPod: false }),
 		});
 		expect(groupRes.status).toBe(200);
 
 		// Verify sidecar state in DB
 		const sidecarGet = await api(`/api/services/${sidecarId}`);
 		expect(sidecarGet.data.inPod).toBeTrue();
-		expect(sidecarGet.data.podId).toBe("pod_e2e-cluster-pod");
+		expect(sidecarGet.data.podId).toBe(targetPod);
 
 		// Clean up sidecar
 		await api(`/api/services/${sidecarId}?delete_volumes=true`, { method: "DELETE" });

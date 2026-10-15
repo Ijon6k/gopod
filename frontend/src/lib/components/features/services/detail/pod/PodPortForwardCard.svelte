@@ -106,7 +106,7 @@
 			}));
 
 			service.composeYaml = serializePodComposeYaml(service.name, updated, service.composeYaml);
-			service.k8sYaml = serializePodK8sYaml(service.name, updated, membersDef);
+			service.k8sYaml = serializePodK8sYaml(service.name, updated, membersDef, service.k8sYaml);
 
 			await dataStore.updateService(service);
 			portsList = updated;

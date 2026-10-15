@@ -3,6 +3,8 @@
 // Manages declarative YAML synchronization between visual UI and Compose/Kube specs
 // ──────────────────────────────────────────────
 
+import { parseDocument } from 'yaml';
+
 export type PortHostIp = '0.0.0.0' | '127.0.0.1';
 
 export const DEFAULT_PORT_HOST_IP: PortHostIp = '0.0.0.0';
@@ -228,13 +230,96 @@ export interface PodMemberDef {
 }
 
 /**
+ * Updates port bindings inline in an existing Kubernetes Pod YAML manifest,
+ * preserving all comments, indentation, sidecars, volumes, volumeMounts, resources, and commands.
+ */
+export function syncPortsToK8sYaml(rawYaml: string, ports: PortBindingItem[]): string | null {
+	if (!rawYaml || !rawYaml.trim()) return null;
+	try {
+		const doc = parseDocument(rawYaml);
+		if (!doc || !doc.contents) return null;
+		const containers = doc.getIn(['spec', 'containers']) as any;
+		if (!containers || !containers.items || containers.items.length === 0) return null;
+
+		if (ports.length === 0) {
+			for (const c of containers.items) {
+				c.delete('ports');
+			}
+			return doc.toString();
+		}
+
+		const portsToAssign = [...ports];
+		for (const c of containers.items) {
+			const cPorts = c.get('ports') as any;
+			if (cPorts && cPorts.items) {
+				const toKeep = [];
+				for (const pNode of cPorts.items) {
+					const cp = pNode.get('containerPort');
+					const idx = portsToAssign.findIndex((p) => p.podPort === cp);
+					if (idx !== -1) {
+						const desired = portsToAssign[idx];
+						pNode.set('hostPort', desired.hostPort);
+						if (desired.protocol && desired.protocol.toUpperCase() === 'UDP') {
+							pNode.set('protocol', 'UDP');
+						} else {
+							pNode.delete('protocol');
+						}
+						if (desired.hostIp && desired.hostIp !== '0.0.0.0') {
+							pNode.set('hostIP', desired.hostIp);
+						} else {
+							pNode.delete('hostIP');
+						}
+						toKeep.push(pNode);
+						portsToAssign.splice(idx, 1);
+					}
+				}
+				if (toKeep.length > 0) {
+					cPorts.items = toKeep;
+				} else {
+					c.delete('ports');
+				}
+			}
+		}
+
+		if (portsToAssign.length > 0 && containers.items.length > 0) {
+			const primary = containers.items[0];
+			let cPorts = primary.get('ports') as any;
+			if (!cPorts) {
+				primary.set('ports', []);
+				cPorts = primary.get('ports');
+			}
+			for (const rem of portsToAssign) {
+				const entry: any = {
+					containerPort: rem.podPort,
+					hostPort: rem.hostPort
+				};
+				if (rem.protocol && rem.protocol.toUpperCase() === 'UDP') entry.protocol = 'UDP';
+				if (rem.hostIp && rem.hostIp !== '0.0.0.0') entry.hostIP = rem.hostIp;
+				cPorts.add(entry);
+			}
+		}
+
+		return doc.toString();
+	} catch {
+		return null;
+	}
+}
+
+/**
  * Generates Kubernetes Pod YAML manifest with member containers and hostPort bindings.
+ * If existingYaml is provided, updates matching ports inline without destroying custom workloads/volumes.
  */
 export function serializePodK8sYaml(
 	serviceName: string,
 	ports: PortBindingItem[],
-	members?: PodMemberDef[]
+	members?: PodMemberDef[],
+	existingYaml?: string
 ): string {
+	if (existingYaml && existingYaml.trim()) {
+		const synced = syncPortsToK8sYaml(existingYaml, ports);
+		if (synced) return synced;
+	}
+
 	const cleanName =
 		serviceName
 			.trim()

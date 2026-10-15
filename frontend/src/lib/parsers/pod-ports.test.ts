@@ -324,4 +324,66 @@ services:
 		};
 		expect(normalizePortKey(udpLoopback)).toBe('127.0.0.1:18402:5230/udp');
 	});
+
+	it('serializePodK8sYaml preserves sidecars, volumes, and script comments when updating port', () => {
+		const customManifest = `apiVersion: v1
+kind: Pod
+metadata:
+  name: demo-gui-pod
+  labels:
+    app: demo-gui
+spec:
+  volumes:
+    # Shared volume antar Main & Sidecar
+    - name: shared-html
+      emptyDir: {}
+  containers:
+    # 1. MAIN CONTAINER
+    - name: web-gui
+      image: docker.io/library/nginx:alpine
+      ports:
+        - containerPort: 80
+          hostPort: 8080
+      volumeMounts:
+        - name: shared-html
+          mountPath: /usr/share/nginx/html
+    # 2. SIDECAR CONTAINER
+    - name: worker-sidecar
+      image: docker.io/library/alpine:latest
+      command: ["/bin/sh", "-c"]
+      args:
+        - |
+          COUNT=1
+          while true; do
+            echo "Tick: $COUNT"
+            sleep 2
+          done
+      volumeMounts:
+        - name: shared-html
+          mountPath: /usr/share/nginx/html
+`;
+		const updatedPorts = [
+			{
+				id: 'port-0.0.0.0-8083-80-tcp',
+				hostPort: 8083,
+				podPort: 80,
+				protocol: 'tcp' as const,
+				hostIp: '0.0.0.0' as const
+			}
+		];
+
+		const result = serializePodK8sYaml('demo-gui-pod', updatedPorts, [], customManifest);
+
+		// hostPort must be updated
+		expect(result).toContain('hostPort: 8083');
+		expect(result).not.toContain('hostPort: 8080');
+
+		// All sidecars, volumes, and comments must remain intact!
+		expect(result).toContain('worker-sidecar');
+		expect(result).toContain('shared-html');
+		expect(result).toContain('# Shared volume antar Main & Sidecar');
+		expect(result).toContain('# 1. MAIN CONTAINER');
+		expect(result).toContain('Tick: $COUNT');
+		expect(result).not.toContain('registry.k8s.io/pause:3.9');
+	});
 });

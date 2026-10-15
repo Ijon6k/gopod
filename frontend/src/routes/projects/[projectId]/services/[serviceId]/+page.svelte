@@ -163,6 +163,40 @@
 						dataStore.services[idx].status = freshSvc.status;
 					}
 				}
+
+				// Full manifest sync (not just status): another tab/device may
+				// have saved ports or manifests. Skipped while transitional or
+				// while the user is typing, so local edits and in-progress
+				// editors are never clobbered.
+				const cur = dataStore.services.find((s) => s.id === freshSvc.id);
+				const transitionalNow =
+					cur?.status === 'deploying' ||
+					cur?.status === 'building' ||
+					cur?.status === 'stopping' ||
+					cur?.status === 'starting';
+				const ae = typeof document !== 'undefined' ? document.activeElement : null;
+				const typing =
+					!!ae &&
+					(ae.tagName === 'INPUT' ||
+						ae.tagName === 'TEXTAREA' ||
+						ae.tagName === 'SELECT' ||
+						ae.getAttribute?.('contenteditable') === 'true' ||
+						!!ae.closest?.('.cm-editor'));
+				if (!transitionalNow && !typing) {
+					if (directService && directService.id === freshSvc.id) {
+						directService = {
+							...freshSvc,
+							deployments: directService.deployments ?? freshSvc.deployments ?? []
+						};
+					}
+					if (idx >= 0) {
+						dataStore.services[idx] = {
+							...freshSvc,
+							deployments:
+								dataStore.services[idx].deployments ?? freshSvc.deployments ?? []
+						};
+					}
+				}
 			} catch {}
 		};
 

@@ -55,6 +55,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadletGlobal))
 	mux.HandleFunc("POST /api/services/{id}/quadlet/demote", h.middleware.RequireAuth(h.handleDemoteQuadlet))
 	mux.HandleFunc("POST /api/services/{id}/group-pod", h.middleware.RequireAuth(h.handleGroupIntoPod))
+	mux.HandleFunc("POST /api/services/{id}/ungroup-pod", h.middleware.RequireAuth(h.handleUngroupFromPod))
 	mux.HandleFunc("POST /api/services/{id}/drop-upload", h.middleware.RequireAuth(h.handleDropUpload))
 	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAuth(h.handleGetLinger))
 }
@@ -94,6 +95,12 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	if s == nil {
 		httputil.WriteError(w, http.StatusNotFound, "Service not found")
 		return
+	}
+	if (s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "") && h.service.deployer != nil {
+		unit, file, active := h.service.deployer.DescribeQuadletSupervision(*s)
+		s.QuadletUnit = unit
+		s.QuadletFile = file
+		s.QuadletActive = active
 	}
 	httputil.WriteJSON(w, http.StatusOK, s)
 }
@@ -424,6 +431,16 @@ func (h *Handler) handleGroupIntoPod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	svc, err := h.service.GroupIntoPod(r.Context(), id, req.PodName, req.CreatePod, req.Ports)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, svc)
+}
+
+func (h *Handler) handleUngroupFromPod(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	svc, err := h.service.UngroupFromPod(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return

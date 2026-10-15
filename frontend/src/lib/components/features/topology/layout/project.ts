@@ -1,6 +1,20 @@
 import type { Project, Service, Container, Pod, Domain, Volume, Network, Server } from '$lib/types';
 import type { TopologyNode, TopologyRegion, TopologyEdge, TopologyGraph } from '../types';
 import { createCurvedBezierPath, computeBounds } from './path';
+import { podServiceNames } from '../pod-naming';
+import {
+	ownerServiceId,
+	buildContainerPodMap,
+	runtimePodService,
+	type PodAssignment
+} from './project/ownership';
+import {
+	buildPodGroups,
+	buildOrphanPodGroups,
+	buildServiceGroups,
+	buildUnmanagedGroup,
+	type GroupBuilderContext
+} from './project/groups';
 
 // ──────────────────────────────────────────────
 // REALISTIC TOPOLOGY ENGINE — HIERARCHICAL SERVICE INGRESS & DRAGGABLE GROUPS
@@ -32,8 +46,21 @@ export function computeProjectFocusLayout({
 }): TopologyGraph {
 	const project = projects.find((p) => p.id === projectId) || projects[0];
 	const projServices = services.filter((s) => s.projectId === project.id);
-	const projContainers = containers.filter((c) => c.projectId === project.id);
-	const projPods = pods.filter((p) => p.projectId === project.id);
+	// Container pool: metadata project link OR labels pointing into this
+	// project (metadata attribution is fuzzy, labels are truth).
+	const projServiceIds = new Set(projServices.map((s) => s.id));
+	const projContainers = containers.filter(
+		(c) =>
+			c.projectId === project.id ||
+			(c.labels &&
+				(c.labels['io.gopod.project'] === project.id ||
+					projServiceIds.has(c.labels['io.gopod.service']) ||
+					projServiceIds.has(c.labels['com.docker.compose.project']) ||
+					projServiceIds.has(c.labels['io.podman.compose.project'])))
+	);
+	// Pods are global daemon objects; matched to services by canonical
+	// unique name below, never by substring.
+	const allPods = pods;
 	const projDomains = domains.filter((d) => d.projectId === project.id);
 	const projVolumes = volumes.filter((v) => v.projectId === project.id);
 
@@ -49,181 +76,97 @@ export function computeProjectFocusLayout({
 
 	const startY = 60;
 
-	// ── 1. Map Workload Groups & Child Containers ──
-	let currentWorkloadY = startY;
-	const containerIdMap = new Map<string, string>(); // name/id -> flowNodeId
-	const serviceToFirstContainerMap = new Map<string, string>(); // serviceId -> primaryContainerId
-	const serviceGroupMap = new Map<string, TopologyNode>();
-	const serviceYMap = new Map<string, { y: number; height: number; centerY: number }>();
-
-	// Roomy & balanced card dimensions (not cramped, not oversized)
-	const groupWidth = 360;
-	const childWidth = 328;
-	const childHeight = 62;
-	const childGap = 10;
-	const groupPaddingTop = 50;
-	const groupPaddingBottom = 16;
-
-	projServices.forEach((svc) => {
-		// Find physical containers belonging to this service
-		const matchedContainers = projContainers.filter(
-			(c) =>
-				c.serviceId === svc.id ||
-				c.name === svc.name ||
-				c.name.startsWith(`${svc.id}-`) ||
-				c.name.startsWith(`${svc.id}_`) ||
-				(c.labels &&
-					(c.labels['io.gopod.service'] === svc.id ||
-						c.labels['io.gopod.name'] === svc.name ||
-						c.labels['com.docker.compose.service'] === svc.name ||
-						c.labels['io.podman.compose.service'] === svc.name))
-		);
-
-		type WorkloadItem = {
-			id: string;
-			name: string;
-			image: string;
-			status: string;
-			cpu?: number;
-			memory?: number;
-			raw: any;
-		};
-
-		const workloadItems: WorkloadItem[] = [];
-
-		if (matchedContainers.length > 0) {
-			matchedContainers.forEach((c) => {
-				workloadItems.push({
-					id: `container-${c.id}`,
-					name: c.name,
-					image: c.image.split('/').pop() || c.image,
-					status: c.status,
-					cpu: c.cpu,
-					memory: c.memory,
-					raw: c
-				});
-			});
-		} else if (svc.workloads && svc.workloads.length > 0) {
-			svc.workloads.forEach((wl: any) => {
-				workloadItems.push({
-					id: `workload-${svc.id}-${wl.name}`,
-					name: wl.name,
-					image: wl.image || 'container:latest',
-					status: wl.status || svc.status,
-					cpu: wl.cpu,
-					memory: wl.memory,
-					raw: wl
-				});
-			});
-		} else {
-			// Single container fallback
-			workloadItems.push({
-				id: `container-${svc.id}`,
-				name: svc.type === 'quadlet' ? `${svc.name}.service` : svc.name,
-				image: svc.image ? svc.image.split('/').pop() || svc.image : 'container:latest',
-				status: svc.status,
-				cpu: svc.cpu,
-				memory: svc.memory,
-				raw: svc
+	// ── 1. Assign every container to exactly one owner (no double rendering) ──
+	const containerPodMap = buildContainerPodMap(allPods);
+	const containerAssignment = new Map<string, PodAssignment>();
+	for (const c of projContainers) {
+		const podName = containerPodMap.get(c.name);
+		if (podName) {
+			const owner = runtimePodService(podName, projServices);
+			containerAssignment.set(c.id, {
+				kind: 'pod',
+				podName,
+				podServiceId: owner ? owner.id : null
 			});
 		}
+	}
 
-		// Calculate Workload Dimensions
-		const childCount = workloadItems.length;
-		const groupHeight = Math.max(
-			105,
-			groupPaddingTop + childCount * (childHeight + childGap) - childGap + groupPaddingBottom
-		);
+	const ctx: GroupBuilderContext = {
+		projectId: project.id,
+		nodes,
+		containerIdMap: new Map<string, string>(),
+		serviceToFirstContainerMap: new Map<string, string>(),
+		serviceGroupMap: new Map<string, TopologyNode>(),
+		serviceYMap: new Map<string, { y: number; height: number; centerY: number }>(),
+		currentWorkloadY: startY,
+		groupWidth: 360,
+		childWidth: 328,
+		childHeight: 62,
+		childGap: 10,
+		groupPaddingTop: 50,
+		groupPaddingBottom: 16,
+		colWorkloadsX
+	};
+	const assignedContainerIds = new Set<string>();
 
-		const isPod =
-			svc.runtimeTarget === 'pod' ||
-			svc.type === 'pod' ||
-			projPods.some((p) => p.name.includes(svc.name) || p.id === svc.id);
-
-		const groupType = isPod
-			? 'pod'
-			: svc.type === 'compose'
-				? 'compose'
-				: svc.type === 'quadlet'
-					? 'quadlet'
-					: 'service';
-
-		const totalCpu = workloadItems.reduce((acc, curr) => acc + (curr.cpu || 0), 0);
-
-		// 1A. Create Native Svelte Flow Parent Group Node (High contrast & draggable)
-		const groupNode: TopologyNode = {
-			id: `group-${svc.id}`,
-			type: 'group',
-			isGroup: true,
-			groupType,
-			title: svc.name,
-			subtitle: `${childCount} container${childCount > 1 ? 's' : ''} · ${totalCpu.toFixed(1)}% CPU`,
-			status: svc.status,
-			x: colWorkloadsX,
-			y: currentWorkloadY,
-			width: groupWidth,
-			height: groupHeight,
-			monoDetail: svc.port ? `:${svc.port}` : '',
-			badge:
-				groupType === 'compose'
-					? 'Compose Stack'
-					: groupType === 'quadlet'
-						? 'Quadlet Unit'
-						: groupType === 'pod'
-							? 'Podman Pod'
-							: 'Service',
-			projectId: project.id,
-			serviceId: svc.id,
-			raw: svc
-		};
-		nodes.push(groupNode);
-		serviceGroupMap.set(svc.id, groupNode);
-
-		const svcCenterY = currentWorkloadY + Math.min(groupHeight / 2, 45);
-		serviceYMap.set(svc.id, {
-			y: currentWorkloadY,
-			height: groupHeight,
-			centerY: svcCenterY
-		});
-
-		// 1B. Create Child Container Nodes (Relative positioning within parent group)
-		workloadItems.forEach((w, idx) => {
-			const childNode: TopologyNode = {
-				id: w.id,
-				type: 'container',
-				parentId: groupNode.id,
-				title: w.name,
-				subtitle: w.image,
-				status: w.status,
-				x: 16,
-				y: groupPaddingTop + idx * (childHeight + childGap),
-				width: childWidth,
-				height: childHeight,
-				monoDetail: `${(w.cpu || 0).toFixed(1)}% · ${w.memory || 0}MB`,
-				badge:
-					groupType === 'compose'
-						? 'Compose'
-						: groupType === 'quadlet'
-							? 'Quadlet'
-							: groupType === 'pod'
-								? 'Pod Member'
-								: 'Container',
-				projectId: project.id,
-				serviceId: svc.id,
-				raw: w.raw
-			};
-			nodes.push(childNode);
-			containerIdMap.set(w.name, childNode.id);
-			containerIdMap.set(w.id, childNode.id);
-
-			if (idx === 0) {
-				serviceToFirstContainerMap.set(svc.id, childNode.id);
-			}
-		});
-
-		// 22px spacing between service groups (comfortable, not spread out)
-		currentWorkloadY += groupHeight + 24;
+	// One group per runtime pod (daemon truth), never one per member.
+	const podServices = projServices.filter((s) => s.type === 'pod' || s.type === 'kubernetes');
+	const renderedPodNames = buildPodGroups(ctx, {
+		podServices,
+		allPods,
+		projContainers,
+		projServices,
+		projServiceIds,
+		containerAssignment,
+		assignedContainerIds
 	});
+	buildOrphanPodGroups(ctx, {
+		allPods,
+		projContainers,
+		projServices,
+		projServiceIds,
+		projectId: project.id,
+		containerAssignment,
+		assignedContainerIds,
+		renderedPodNames
+	});
+	buildServiceGroups(ctx, {
+		projServices,
+		projContainers,
+		projServiceIds,
+		assignedContainerIds
+	});
+	buildUnmanagedGroup(ctx, projContainers, assignedContainerIds);
+
+	const { containerIdMap, serviceToFirstContainerMap, serviceYMap } = ctx;
+	let currentWorkloadY = ctx.currentWorkloadY;
+
+	// ── 1C. Localhost edges: pod members <-> infra (in-namespace traffic) ──
+	const podInfraNodeId = new Map<string, string>(); // pod group id -> infra child id
+	for (const n of nodes) {
+		if (n.type === 'container' && n.badge === 'Pod Infra' && n.parentId) {
+			if (!podInfraNodeId.has(n.parentId)) podInfraNodeId.set(n.parentId, n.id);
+		}
+	}
+	for (const n of nodes) {
+		if (n.type === 'container' && n.badge === 'Pod Member' && n.parentId) {
+			const infraId = podInfraNodeId.get(n.parentId);
+			if (!infraId) continue;
+			edges.push({
+				id: `edge-localhost-${n.id}`,
+				sourceId: n.id,
+				targetId: infraId,
+				sourceX: 0,
+				sourceY: 0,
+				targetX: 0,
+				targetY: 0,
+				path: '',
+				label: 'localhost',
+				kind: 'localhost',
+				dashed: true
+			});
+		}
+	}
 
 	// ── 2. Discover Direct Host Ports (Non-Caddy / Standalone Ports) ──
 	type DiscoveredPort = {
@@ -238,47 +181,60 @@ export function computeProjectFocusLayout({
 	const directPorts: DiscoveredPort[] = [];
 	const seenPortKeys = new Set<string>();
 
-	// Inspect containers for published ports
+	const validPort = (p: number) => Number.isInteger(p) && p >= 1 && p <= 65535;
+
+	// Inspect containers for published ports. The runtime reports one
+	// comma-joined string ("18401:80/tcp, 18403:6379/tcp"): split into
+	// tokens first, otherwise only the first binding ever renders.
 	projContainers.forEach((c) => {
 		const targetNodeId = containerIdMap.get(c.id) || containerIdMap.get(c.name);
 		if (!targetNodeId) return;
 
 		if (c.ports) {
-			const portDefs = Array.isArray(c.ports) ? c.ports : [c.ports];
+			const portDefs = (
+				Array.isArray(c.ports) ? c.ports.flatMap((p) => String(p).split(',')) : [c.ports]
+			).flatMap((p) => String(p).split(/[\s,]+/));
 			portDefs.forEach((pStr: string) => {
-				const match = pStr.match(/(?:([0-9.]+):)?([0-9]+)(?:->|:)([0-9]+)/);
-				if (match) {
-					const hostIp = match[1] || '0.0.0.0';
-					const hostPort = parseInt(match[2], 10);
-					const containerPort = parseInt(match[3], 10);
-					const key = `${hostIp}:${hostPort}`;
+				const token = pStr.trim();
+				if (!token) return;
+				const match = token.match(
+					/(?:([0-9a-fA-F.:\[\]]+):)?([0-9]+)(?:->|:)([0-9]+)(?:\/(tcp|udp))?/i
+				);
+				if (!match) return;
+				const hostIp = match[1] || '0.0.0.0';
+				const hostPort = parseInt(match[2], 10);
+				const containerPort = parseInt(match[3], 10);
+				if (!validPort(hostPort) || !validPort(containerPort)) return;
+				const key = `${hostIp}:${hostPort}`;
 
-					// Check if this port is exclusively managed by a Domain in Caddy
-					const isDomainPort = projDomains.some(
-						(d) =>
-							d.serviceId === c.serviceId &&
-							(d.containerPort === containerPort || d.containerPort === hostPort)
-					);
+				// Check if this port is exclusively managed by a Domain in Caddy
+				const isDomainPort = projDomains.some(
+					(d) =>
+						d.serviceId === c.serviceId &&
+						(d.containerPort === containerPort || d.containerPort === hostPort)
+				);
 
-					if (!seenPortKeys.has(key) && !isDomainPort && hostPort > 0) {
-						seenPortKeys.add(key);
-						directPorts.push({
-							id: `port-${hostIp.replace(/\./g, '_')}-${hostPort}`,
-							hostPort,
-							containerPort,
-							hostIp,
-							targetContainerId: targetNodeId,
-							serviceId: c.serviceId || ''
-						});
-					}
+				if (!seenPortKeys.has(key) && !isDomainPort && hostPort > 0) {
+					seenPortKeys.add(key);
+					directPorts.push({
+						id: `port-${hostIp.replace(/[^a-zA-Z0-9]/g, '_')}-${hostPort}`,
+						hostPort,
+						containerPort,
+						hostIp,
+						targetContainerId: targetNodeId,
+						serviceId: c.serviceId || ''
+					});
 				}
 			});
 		}
 	});
 
-	// Also check services with explicit hostPort
+	// Service-level hostPort fallback: only when the runtime reported NO
+	// ports for this service. Otherwise stale service.port values (e.g. an
+	// 8080 default) would render phantom port nodes.
 	projServices.forEach((svc) => {
-		if (svc.hostPort && svc.hostPort > 0) {
+		if (svc.hostPort && svc.hostPort > 0 && validPort(svc.hostPort)) {
+			if (directPorts.some((p) => p.serviceId === svc.id)) return;
 			const key = `0.0.0.0:${svc.hostPort}`;
 			const isDomainPort = projDomains.some((d) => d.serviceId === svc.id);
 			if (!seenPortKeys.has(key) && !isDomainPort) {
@@ -332,12 +288,17 @@ export function computeProjectFocusLayout({
 		let curDomY = Math.max(startY, Math.round(caddyCenterY + 28 - totalDomSpan / 2));
 
 		projDomains.forEach((dom) => {
+			// A domain whose target service/container no longer exists is
+			// degraded, not silently unconnected.
+			const targetContainerId = serviceToFirstContainerMap.get(dom.serviceId);
+			const targetExists =
+				!!targetContainerId || serviceYMap.has(dom.serviceId);
 			const domNode: TopologyNode = {
 				id: `dom-${dom.id}`,
 				type: 'domain',
 				title: dom.hostname,
 				subtitle: dom.tls ? 'Let’s Encrypt TLS' : 'HTTP Only',
-				status: dom.status === 'active' ? 'running' : 'degraded',
+				status: dom.status === 'active' && targetExists ? 'running' : 'degraded',
 				x: colIngressX,
 				y: curDomY,
 				width: 200,
@@ -370,16 +331,23 @@ export function computeProjectFocusLayout({
 				kind: 'ingress'
 			});
 
-			// Connect Caddy Ingress (Col 2) -> Target Service Workload (Col 3)
-			const targetContainerId = serviceToFirstContainerMap.get(dom.serviceId);
+			// Connect Caddy Ingress (Col 2) -> Target Service Workload (Col 3).
+			// Prefer the live container; fall back to the service/pod group
+			// node so the cable always exists (a member with no live
+			// container still shows a cable to its pod group).
+			let caddyTargetId = targetContainerId;
+			if (!caddyTargetId) {
+				const fallbackGroup = ctx.serviceGroupMap.get(dom.serviceId);
+				if (fallbackGroup) caddyTargetId = fallbackGroup.id;
+			}
 			const targetServiceMetrics = serviceYMap.get(dom.serviceId);
 			const targetConnectY = targetServiceMetrics ? targetServiceMetrics.centerY : caddyNode.y + 28;
 
-			if (targetContainerId) {
+			if (caddyTargetId) {
 				edges.push({
-					id: `edge-caddy-target-${dom.id}-${targetContainerId}`,
+					id: `edge-caddy-target-${dom.id}-${caddyTargetId}`,
 					sourceId: caddyNode.id,
-					targetId: targetContainerId,
+					targetId: caddyTargetId,
 					sourceX: caddyNode.x + caddyNode.width,
 					sourceY: caddyNode.y + caddyNode.height / 2,
 					targetX: colWorkloadsX,
@@ -550,10 +518,12 @@ export function computeProjectFocusLayout({
 			};
 			nodes.push(volNode);
 
-			// Connect containers using this volume
+			// Connect containers using this volume (strict owner match +
+			// explicit mount reference; never bare-name guessing).
 			projContainers.forEach((c) => {
+				const ownerId = ownerServiceId(c, projServices, projServiceIds);
 				const hasVol =
-					c.serviceId === v.serviceId ||
+					(v.serviceId && ownerId === v.serviceId) ||
 					(c as any).mounts?.some((m: any) => m?.name === v.name || m?.source?.includes(v.name));
 				const contNodeId = containerIdMap.get(c.id);
 				if (hasVol && contNodeId) {
@@ -561,12 +531,12 @@ export function computeProjectFocusLayout({
 						id: `edge-${contNodeId}-${volNode.id}`,
 						sourceId: contNodeId,
 						targetId: volNode.id,
-						sourceX: colWorkloadsX + groupWidth,
+						sourceX: colWorkloadsX + 360,
 						sourceY: targetVolY + 26,
 						targetX: volNode.x,
 						targetY: targetVolY + 26,
 						path: createCurvedBezierPath(
-							colWorkloadsX + groupWidth,
+							colWorkloadsX + 360,
 							targetVolY + 26,
 							volNode.x,
 							targetVolY + 26
@@ -579,6 +549,30 @@ export function computeProjectFocusLayout({
 
 			volY += 52 + 14;
 		});
+	}
+
+	// Merge ingress cables sharing identical endpoints (e.g. two domains
+	// targeting one pod): physically one cable, so render one edge labeled
+	// with both hostnames instead of two perfectly overlapping lines that
+	// look like a single missing cable.
+	const ingressGroups = new Map<string, TopologyEdge[]>();
+	for (const e of edges) {
+		if (e.kind !== 'ingress') continue;
+		const k = `${e.sourceId}->${e.targetId}`;
+		const g = ingressGroups.get(k);
+		if (g) g.push(e);
+		else ingressGroups.set(k, [e]);
+	}
+	for (const g of ingressGroups.values()) {
+		if (g.length < 2) continue;
+		const [first, ...rest] = g;
+		const labels = [first.label, ...rest.map((e) => e.label)].filter(Boolean);
+		const uniqueLabels = [...new Set(labels)];
+		first.label = uniqueLabels.join(' + ');
+		for (const e of rest) {
+			const idx = edges.indexOf(e);
+			if (idx >= 0) edges.splice(idx, 1);
+		}
 	}
 
 	const bounds = computeBounds(nodes, regions);

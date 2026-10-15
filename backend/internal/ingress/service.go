@@ -10,6 +10,8 @@ import (
 	"net"
 	"strings"
 	"time"
+
+	"gopod/internal/activity"
 )
 
 // Service encapsulates ingress routing and telemetry business logic.
@@ -134,6 +136,8 @@ func (s *Service) CreateDomain(ctx context.Context, d Domain) (*Domain, error) {
 		return nil, err
 	}
 
+	activity.RecordActivity(ctx, "operator", "domain.create", "domain", d.ID, d.ProjectID, d.ServiceID, "success",
+		fmt.Sprintf("Domain '%s' created -> service '%s' port %d", d.Hostname, d.ServiceID, d.ContainerPort), "")
 	s.asyncReconcile(ctx)
 	return &d, nil
 }
@@ -156,9 +160,17 @@ func (s *Service) DeleteDomain(ctx context.Context, id string) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}
+	existing, _ := s.repo.Get(ctx, id)
 	if err := s.repo.Delete(ctx, id); err != nil {
 		return err
 	}
+
+	hostname, projectID, serviceID := id, "", ""
+	if existing != nil {
+		hostname, projectID, serviceID = existing.Hostname, existing.ProjectID, existing.ServiceID
+	}
+	activity.RecordActivity(ctx, "operator", "domain.delete", "domain", id, projectID, serviceID, "success",
+		fmt.Sprintf("Domain '%s' deleted", hostname), "")
 
 	s.asyncReconcile(ctx)
 	return nil

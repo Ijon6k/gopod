@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"gopod/internal/activity"
 	"gopod/internal/podman"
 	"gopkg.in/yaml.v3"
 )
@@ -170,6 +172,10 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.create", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
+	activity.RecordActivity(ctx, "operator", "service.create", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' created (type=%s)", svc.Name, svc.Type), "127.0.0.1")
+	activity.EmitEngineEvent(ctx, "info", "service", svc.ID, svc.ProjectID, "operator", "service.create",
+		fmt.Sprintf("Service '%s' created (type=%s)", svc.Name, svc.Type), map[string]any{"service": svc.Name, "type": svc.Type})
 	return &svc, nil
 }
 
@@ -197,6 +203,18 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 		if err := yaml.Unmarshal([]byte(svc.ComposeYaml), &raw); err != nil {
 			return fmt.Errorf("invalid Compose YAML syntax: %w", err)
 		}
+	}
+
+	if !svc.InPod && svc.RuntimeTarget != "pod" && svc.Type != "pod" {
+		svc.PodID = ""
+	} else if svc.Type == "pod" {
+		svc.PodID = PodNameForService(svc)
+	} else if svc.InPod || svc.RuntimeTarget == "pod" {
+		rawPod := strings.TrimSpace(svc.PodID)
+		if rawPod == "" {
+			rawPod = svc.Name
+		}
+		svc.PodID = PodNameFor(rawPod)
 	}
 
 	if err := s.repo.Update(ctx, svc); err != nil {
@@ -229,8 +247,8 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 			}
 		}
 
-		if _, err := exec.LookPath("systemctl"); err == nil {
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "daemon-reload").Run()
+		if s.deployer != nil && s.deployer.hasUserManager() {
+			_, _ = s.deployer.systemctlUser(ctx, "daemon-reload")
 			if svc.Status == "running" {
 				targetSvc := fmt.Sprintf("%s.service", cleanName)
 				for fname := range files {
@@ -239,7 +257,7 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 						break
 					}
 				}
-				_ = exec.CommandContext(ctx, "systemctl", "--user", "restart", targetSvc).Run()
+				_, _ = s.deployer.systemctlUser(ctx, "restart", targetSvc)
 			}
 		}
 	}
@@ -247,6 +265,8 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.update", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
+	activity.RecordActivity(ctx, "operator", "service.update", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' updated (type=%s)", svc.Name, svc.Type), "127.0.0.1")
 
 	return nil
 }
@@ -278,6 +298,17 @@ func (s *WorkloadService) DeleteService(ctx context.Context, id string, deleteVo
 	if err == nil && s.audit != nil {
 		_ = s.audit.Record(ctx, "service.delete", "operator", id, "runtime", "127.0.0.1", "success")
 	}
+	if err == nil {
+		projectID, serviceName := "", id
+		if svc != nil {
+			projectID = svc.ProjectID
+			serviceName = svc.Name
+		}
+		activity.RecordActivity(ctx, "operator", "service.delete", "service", id, projectID, id, "success",
+			fmt.Sprintf("Service '%s' deleted (deleteVolumes=%v)", serviceName, deleteVolumes), "127.0.0.1")
+		activity.EmitEngineEvent(ctx, "info", "service", id, projectID, "operator", "service.teardown",
+			fmt.Sprintf("Service '%s' torn down (deleteVolumes=%v)", serviceName, deleteVolumes), map[string]any{"service": serviceName, "deleteVolumes": deleteVolumes})
+	}
 	return err
 }
 
@@ -295,6 +326,10 @@ func (s *WorkloadService) StartService(ctx context.Context, id string) (*Service
 		if err := s.deployer.StartService(ctx, *svc); err != nil {
 			svc.Status = "failed"
 			_ = s.repo.Update(ctx, *svc)
+			activity.RecordActivity(ctx, "operator", "service.start", "service", svc.ID, svc.ProjectID, svc.ID, "failed",
+				fmt.Sprintf("Service '%s' start failed: %v", svc.Name, err), "127.0.0.1")
+			activity.EmitEngineEvent(ctx, "error", "service", svc.ID, svc.ProjectID, "operator", "lifecycle.start",
+				fmt.Sprintf("Service '%s' start failed: %v", svc.Name, err), map[string]any{"service": svc.Name})
 			return nil, err
 		}
 		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
@@ -309,6 +344,10 @@ func (s *WorkloadService) StartService(ctx context.Context, id string) (*Service
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.start", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
+	activity.RecordActivity(ctx, "operator", "service.start", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' started (status=%s)", svc.Name, svc.Status), "127.0.0.1")
+	activity.EmitEngineEvent(ctx, "info", "service", svc.ID, svc.ProjectID, "operator", "lifecycle.start",
+		fmt.Sprintf("Service '%s' started (status=%s)", svc.Name, svc.Status), map[string]any{"service": svc.Name, "status": svc.Status})
 	return svc, nil
 }
 
@@ -324,6 +363,10 @@ func (s *WorkloadService) StopService(ctx context.Context, id string) (*Service,
 
 	if s.deployer != nil {
 		if err := s.deployer.StopService(ctx, *svc); err != nil {
+			activity.RecordActivity(ctx, "operator", "service.stop", "service", svc.ID, svc.ProjectID, svc.ID, "failed",
+				fmt.Sprintf("Service '%s' stop failed: %v", svc.Name, err), "127.0.0.1")
+			activity.EmitEngineEvent(ctx, "error", "service", svc.ID, svc.ProjectID, "operator", "lifecycle.stop",
+				fmt.Sprintf("Service '%s' stop failed: %v", svc.Name, err), map[string]any{"service": svc.Name})
 			return nil, err
 		}
 		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
@@ -338,6 +381,10 @@ func (s *WorkloadService) StopService(ctx context.Context, id string) (*Service,
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.stop", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
+	activity.RecordActivity(ctx, "operator", "service.stop", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' stopped (status=%s)", svc.Name, svc.Status), "127.0.0.1")
+	activity.EmitEngineEvent(ctx, "info", "service", svc.ID, svc.ProjectID, "operator", "lifecycle.stop",
+		fmt.Sprintf("Service '%s' stopped (status=%s)", svc.Name, svc.Status), map[string]any{"service": svc.Name, "status": svc.Status})
 	return svc, nil
 }
 
@@ -353,6 +400,10 @@ func (s *WorkloadService) RestartService(ctx context.Context, id string) (*Servi
 
 	if s.deployer != nil {
 		if err := s.deployer.RestartService(ctx, *svc); err != nil {
+			activity.RecordActivity(ctx, "operator", "service.restart", "service", svc.ID, svc.ProjectID, svc.ID, "failed",
+				fmt.Sprintf("Service '%s' restart failed: %v", svc.Name, err), "127.0.0.1")
+			activity.EmitEngineEvent(ctx, "error", "service", svc.ID, svc.ProjectID, "operator", "lifecycle.restart",
+				fmt.Sprintf("Service '%s' restart failed: %v", svc.Name, err), map[string]any{"service": svc.Name})
 			return nil, err
 		}
 		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
@@ -366,6 +417,10 @@ func (s *WorkloadService) RestartService(ctx context.Context, id string) (*Servi
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.restart", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
+	activity.RecordActivity(ctx, "operator", "service.restart", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' restarted (status=%s)", svc.Name, svc.Status), "127.0.0.1")
+	activity.EmitEngineEvent(ctx, "info", "service", svc.ID, svc.ProjectID, "operator", "lifecycle.restart",
+		fmt.Sprintf("Service '%s' restarted (status=%s)", svc.Name, svc.Status), map[string]any{"service": svc.Name, "status": svc.Status})
 	return svc, nil
 }
 
@@ -420,12 +475,12 @@ func (s *WorkloadService) DemoteQuadlet(ctx context.Context, id string) (*Servic
 	}
 
 	// 2. Stop and disable all candidate systemd services
-	if _, err := exec.LookPath("systemctl"); err == nil {
+	if s.deployer != nil && s.deployer.hasUserManager() {
 		for _, cand := range cands {
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "stop", cand).Run()
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "kill", "--kill-who=all", "--signal=SIGKILL", cand).Run()
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "disable", cand).Run()
-			_ = exec.CommandContext(ctx, "systemctl", "--user", "reset-failed", cand).Run()
+			_, _ = s.deployer.systemctlUser(ctx, "stop", cand)
+			_, _ = s.deployer.systemctlUser(ctx, "kill", "--kill-who=all", "--signal=SIGKILL", cand)
+			_, _ = s.deployer.systemctlUser(ctx, "disable", cand)
+			_, _ = s.deployer.systemctlUser(ctx, "reset-failed", cand)
 		}
 	}
 
@@ -524,6 +579,8 @@ func (s *WorkloadService) DemoteQuadlet(ctx context.Context, id string) (*Servic
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.demote", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
+	activity.RecordActivity(ctx, "operator", "service.demote", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' demoted from quadlet (type=%s)", svc.Name, svc.Type), "127.0.0.1")
 
 	return svc, nil
 }
@@ -538,22 +595,48 @@ func (s *WorkloadService) GroupIntoPod(ctx context.Context, id, podName string, 
 		return nil, errors.New("service not found")
 	}
 
-	cleanPodName := strings.TrimSpace(podName)
-	if cleanPodName == "" {
+	podSlug := SanitizeQuadletSlug(strings.TrimPrefix(strings.TrimSpace(podName), "pod_"))
+	if podSlug == "" {
 		return nil, errors.New("pod name cannot be empty")
 	}
+	// Resolve to the owning pod service's canonical runtime name when possible
+	// so members always reference the unique pod_<project>-<service>-<rand> name.
+	cleanPodName := PodNameFor(podName)
+	if allSvcs, err := s.repo.List(ctx, svc.ProjectID); err == nil {
+		want := PodNameFor(podName)
+		for _, cand := range allSvcs {
+			if cand.Type != "pod" {
+				continue
+			}
+			if PodNameForService(cand) == want ||
+				cand.ID == strings.TrimSpace(podName) ||
+				cand.Name == strings.TrimSpace(podName) ||
+				cand.PodID == strings.TrimSpace(podName) {
+				cleanPodName = PodNameForService(cand)
+				break
+			}
+		}
+	}
 
-	if createPod && s.deployer != nil && s.deployer.podmanClient != nil {
-		_, err := s.deployer.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
-			Name:    cleanPodName,
-			Ports:   podPorts,
-			Network: "gopod-net",
-			Labels: map[string]string{
-				"io.gopod.project": svc.ProjectID,
-			},
-		})
-		if err != nil && !strings.Contains(err.Error(), "already exists") {
-			return nil, fmt.Errorf("failed to create pod: %w", err)
+	if s.deployer != nil && s.deployer.podmanClient != nil {
+		// Ensure pod exists before placing container inside it
+		if _, err := s.deployer.podmanClient.InspectPod(ctx, cleanPodName); err != nil {
+			log.Printf("[GroupPod] Resolved target pod '%s' for service '%s' (requested %q); auto-creating with ports %v...", cleanPodName, svc.Name, podName, podPorts)
+			_, err := s.deployer.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
+				Name:    cleanPodName,
+				Ports:   podPorts,
+				Network: "gopod-net",
+				Labels: map[string]string{
+					"io.gopod.project": svc.ProjectID,
+				},
+			})
+			if err != nil && !strings.Contains(err.Error(), "already exists") {
+				return nil, fmt.Errorf("failed to create pod: %w", err)
+			}
+			activity.EmitEngineEvent(ctx, "info", "service", svc.ID, svc.ProjectID, "operator", "pod.autocreate",
+				fmt.Sprintf("Pod '%s' auto-created with ports %v for group-pod of '%s'", cleanPodName, podPorts, svc.Name), map[string]any{"pod": cleanPodName, "ports": podPorts, "service": svc.Name})
+		} else {
+			log.Printf("[GroupPod] Resolved target pod '%s' for service '%s' (requested %q); pod exists, joining.", cleanPodName, svc.Name, podName)
 		}
 	}
 
@@ -566,7 +649,11 @@ func (s *WorkloadService) GroupIntoPod(ctx context.Context, id, podName string, 
 	}
 
 	if s.deployer != nil {
-		_, _ = s.deployer.DeployService(ctx, *svc, fmt.Sprintf("group-pod-%d", time.Now().Unix()), "group-pod")
+		groupDepID := fmt.Sprintf("group-pod-%d", time.Now().Unix())
+		if s.logManager != nil {
+			s.logManager.LogLine(groupDepID, fmt.Sprintf("🔗 Group-into-pod: service '%s' resolved target pod '%s' (requested %q, ports %v).", svc.Name, cleanPodName, podName, podPorts))
+		}
+		_, _ = s.deployer.DeployService(ctx, *svc, groupDepID, "group-pod")
 		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
 		_ = s.repo.Update(ctx, *svc)
 	}
@@ -574,6 +661,59 @@ func (s *WorkloadService) GroupIntoPod(ctx context.Context, id, podName string, 
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.group_pod", "operator", svc.Name, "runtime", "127.0.0.1", "success")
 	}
+	activity.RecordActivity(ctx, "operator", "service.group_pod", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' grouped into pod '%s' (ports %v)", svc.Name, cleanPodName, podPorts), "127.0.0.1")
+	activity.EmitEngineEvent(ctx, "info", "service", svc.ID, svc.ProjectID, "operator", "pod.group",
+		fmt.Sprintf("Service '%s' grouped into pod '%s'", svc.Name, cleanPodName), map[string]any{"service": svc.Name, "pod": cleanPodName, "ports": podPorts})
+
+	return svc, nil
+}
+
+// UngroupFromPod detaches a member service from its pod in BOTH database and
+// runtime: the container is removed from the pod's localhost namespace and
+// redeployed as a standalone container. Detach previously only flipped DB
+// flags, leaving the old container alive inside the pod serving stale traffic.
+func (s *WorkloadService) UngroupFromPod(ctx context.Context, id string) (*Service, error) {
+	svc, err := s.GetService(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return nil, errors.New("service not found")
+	}
+
+	svc.InPod = false
+	svc.PodID = ""
+	if svc.RuntimeTarget == "pod" {
+		svc.RuntimeTarget = "standalone"
+	}
+	if err := s.repo.Update(ctx, *svc); err != nil {
+		return nil, err
+	}
+
+	// Remove the stale copy from the pod before starting the standalone one.
+	// deployImage's preflight cleanup targets the same candidate names, so a
+	// plain redeploy relocates the container; do an explicit best-effort
+	// removal first for immediate truthfulness.
+	if s.deployer != nil {
+		s.deployer.cleanPreflightConflicts(ctx, *svc, nil)
+		ungroupDepID := fmt.Sprintf("ungroup-pod-%d", time.Now().Unix())
+		if s.logManager != nil {
+			s.logManager.LogLine(ungroupDepID, fmt.Sprintf("🔗 Ungroup-from-pod: service '%s' detached to standalone; redeploying outside pod.", svc.Name))
+		}
+		log.Printf("[UngroupPod] Service '%s' detached from pod; redeploying as standalone...", svc.Name)
+		_, _ = s.deployer.DeployService(ctx, *svc, ungroupDepID, "ungroup-pod")
+		svc.Status = s.deployer.GetRuntimeStatus(ctx, *svc)
+		_ = s.repo.Update(ctx, *svc)
+	}
+
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.ungroup_pod", "operator", svc.Name, "runtime", "127.0.0.1", "success")
+	}
+	activity.RecordActivity(ctx, "operator", "service.ungroup_pod", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Service '%s' ungrouped from pod to standalone", svc.Name), "127.0.0.1")
+	activity.EmitEngineEvent(ctx, "info", "service", svc.ID, svc.ProjectID, "operator", "pod.ungroup",
+		fmt.Sprintf("Service '%s' ungrouped from pod to standalone", svc.Name), map[string]any{"service": svc.Name})
 
 	return svc, nil
 }

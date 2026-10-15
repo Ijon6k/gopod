@@ -243,6 +243,9 @@ export class DataStore {
 	groupIntoPod(serviceId: string, podName: string, createPod = true, ports?: string[]) {
 		return this.projectsStore.groupIntoPod(serviceId, podName, createPod, ports);
 	}
+	ungroupFromPod(serviceId: string) {
+		return this.projectsStore.ungroupFromPod(serviceId);
+	}
 	addDomain(domain: Domain) {
 		this.projectsStore.addDomain(domain);
 	}
@@ -430,6 +433,11 @@ export class DataStore {
 		} catch (e) {
 			// Silently ignore
 		}
+	}
+
+	/** Refresh pods + containers from live runtime so drift banners reflect reality. */
+	async refreshRuntime() {
+		await Promise.allSettled([this.fetchLiveStats(), this.runtimeStore.fetchRuntimeData()]);
 	}
 
 	resolveContainerMetadata(

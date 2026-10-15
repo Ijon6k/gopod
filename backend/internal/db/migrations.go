@@ -145,6 +145,33 @@ func (d *DB) migrate() error {
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
+	CREATE TABLE IF NOT EXISTS engine_events (
+		id TEXT PRIMARY KEY,
+		ts DATETIME DEFAULT CURRENT_TIMESTAMP,
+		level TEXT DEFAULT 'info',
+		scope TEXT DEFAULT 'system',
+		service_id TEXT DEFAULT '',
+		project_id TEXT DEFAULT '',
+		actor TEXT DEFAULT '',
+		action TEXT DEFAULT '',
+		message TEXT DEFAULT '',
+		data TEXT DEFAULT ''
+	);
+
+	CREATE TABLE IF NOT EXISTS activity_log (
+		id TEXT PRIMARY KEY,
+		ts DATETIME DEFAULT CURRENT_TIMESTAMP,
+		actor TEXT DEFAULT '',
+		action TEXT NOT NULL,
+		entity TEXT DEFAULT '',
+		entity_id TEXT DEFAULT '',
+		project_id TEXT DEFAULT '',
+		service_id TEXT DEFAULT '',
+		status TEXT DEFAULT 'success',
+		detail TEXT DEFAULT '',
+		ip TEXT DEFAULT ''
+	);
+
 	CREATE INDEX IF NOT EXISTS idx_services_project ON services(project_id);
 	CREATE INDEX IF NOT EXISTS idx_domains_project ON domains(project_id);
 	CREATE INDEX IF NOT EXISTS idx_deployments_service ON deployments(service_id);
@@ -152,6 +179,14 @@ func (d *DB) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 	CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 	CREATE INDEX IF NOT EXISTS idx_audit_category ON audit_logs(category);
+	CREATE INDEX IF NOT EXISTS idx_engine_events_service ON engine_events(service_id);
+	CREATE INDEX IF NOT EXISTS idx_engine_events_project ON engine_events(project_id);
+	CREATE INDEX IF NOT EXISTS idx_engine_events_level ON engine_events(level);
+	CREATE INDEX IF NOT EXISTS idx_engine_events_ts ON engine_events(ts);
+	CREATE INDEX IF NOT EXISTS idx_activity_project ON activity_log(project_id);
+	CREATE INDEX IF NOT EXISTS idx_activity_service ON activity_log(service_id);
+	CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action);
+	CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log(ts);
 	`
 
 	if _, err := d.Exec(schema); err != nil {
@@ -172,6 +207,7 @@ func (d *DB) migrate() error {
 		"ALTER TABLE services ADD COLUMN runtime_target TEXT DEFAULT '';",
 		"ALTER TABLE services ADD COLUMN in_pod BOOLEAN DEFAULT 0;",
 		"ALTER TABLE services ADD COLUMN host_port INTEGER DEFAULT 0;",
+		"ALTER TABLE services ADD COLUMN host_ip TEXT DEFAULT '';",
 		"ALTER TABLE services ADD COLUMN advanced TEXT DEFAULT '{}';",
 		"ALTER TABLE services ADD COLUMN source_type TEXT DEFAULT 'git';",
 		"ALTER TABLE services ADD COLUMN build_type TEXT DEFAULT 'dockerfile';",

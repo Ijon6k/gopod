@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"gopod/internal/activity"
 	"gopod/internal/audit"
 	"gopod/internal/auth"
 	"gopod/internal/credentials"
@@ -95,6 +96,35 @@ func NewServer(cfg Config) http.Handler {
 	if cfg.Port != "" {
 		caddyReconciler.SetControlPort(cfg.Port)
 	}
+	caddyReconciler.SetServiceResolver(func(ctx context.Context, idOrName string) (*ingress.ServiceMeta, error) {
+		svc, err := serviceRepo.Get(ctx, idOrName)
+		if err == nil && svc != nil {
+			return &ingress.ServiceMeta{
+				ID:        svc.ID,
+				Name:      svc.Name,
+				Type:      svc.Type,
+				InPod:     svc.InPod,
+				PodID:     svc.PodID,
+				ProjectID: svc.ProjectID,
+			}, nil
+		}
+		svcs, listErr := serviceRepo.List(ctx, "")
+		if listErr == nil {
+			for _, s := range svcs {
+				if s.Name == idOrName || s.ID == idOrName {
+					return &ingress.ServiceMeta{
+						ID:        s.ID,
+						Name:      s.Name,
+						Type:      s.Type,
+						InPod:     s.InPod,
+						PodID:     s.PodID,
+						ProjectID: s.ProjectID,
+					}, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("service not found: %s", idOrName)
+	})
 	ingressRepo := ingress.NewSQLiteRepository(sqlDB)
 	ingressService := ingress.NewService(ingressRepo, caddyReconciler)
 	ingressHandler := ingress.NewHandler(ingressService, authMiddleware)
@@ -117,6 +147,10 @@ func NewServer(cfg Config) http.Handler {
 	auditRepo := audit.NewSQLiteRepository(sqlDB)
 	auditService := audit.NewService(auditRepo)
 	auditHandler := audit.NewHandler(auditService, authMiddleware)
+
+	activity.Init(sqlDB)
+	activityStore := activity.NewStore(sqlDB)
+	activityHandler := activity.NewHandler(activityStore, authMiddleware)
 
 	authService.SetAuditRecorder(auditService)
 	workloadService.SetAuditRecorder(auditService)
@@ -180,6 +214,7 @@ func NewServer(cfg Config) http.Handler {
 	credentialsHandler.RegisterRoutes(mux)
 	storageHandler.RegisterRoutes(mux)
 	auditHandler.RegisterRoutes(mux)
+	activityHandler.RegisterRoutes(mux)
 
 	// ── SPA & Static Files Handler ──
 	if cfg.DistFS != nil {

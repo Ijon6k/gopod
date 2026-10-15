@@ -14,43 +14,51 @@ type EnvVar struct {
 
 // Service represents a workload inside a project.
 type Service struct {
-	ID             string    `json:"id"`
-	ProjectID      string    `json:"projectId"`
-	Name           string    `json:"name"`
-	Type           string    `json:"type"`
-	Status         string    `json:"status"`
-	Source         string    `json:"source"`
-	Branch         string    `json:"branch"`
-	Image          string    `json:"image"`
-	Port           int       `json:"port"`
-	HostPort       int       `json:"hostPort"`
-	CPULimit       float64   `json:"cpuLimit"`
-	MemoryLimit    int       `json:"memoryLimit"`
-	RestartPolicy  string    `json:"restartPolicy"`
-	Description    string    `json:"description,omitempty"`
-	QuadletConfig  string    `json:"quadletConfig,omitempty"`
-	ComposeYaml    string    `json:"composeYaml,omitempty"`
-	K8sYaml        string    `json:"k8sYaml,omitempty"`
-	RuntimeTarget  string    `json:"runtimeTarget,omitempty"`
-	InPod          bool      `json:"inPod"`
-	WebhookToken   string    `json:"webhookToken,omitempty"`
-	GitRepo        string    `json:"gitRepo,omitempty"`
-	GitBranch      string    `json:"gitBranch,omitempty"`
-	DockerfilePath string    `json:"dockerfilePath,omitempty"`
-	SSHKeyID       string    `json:"sshKeyId,omitempty"`
-	SourceType     string    `json:"sourceType,omitempty"`
-	BuildType      string    `json:"buildType,omitempty"`
-	BuildPath      string    `json:"buildPath,omitempty"`
-	PublishDir     string    `json:"publishDir,omitempty"`
-	PodID          string    `json:"podId,omitempty"`
-	RegistryID     string    `json:"registryId,omitempty"`
-	AutoDeploy     bool      `json:"autoDeploy"`
-	WatchPaths     string    `json:"watchPaths,omitempty"`
-	Command        string    `json:"command,omitempty"`
-	Entrypoint     string    `json:"entrypoint,omitempty"`
+	ID             string                 `json:"id"`
+	ProjectID      string                 `json:"projectId"`
+	Name           string                 `json:"name"`
+	Type           string                 `json:"type"`
+	Status         string                 `json:"status"`
+	Source         string                 `json:"source"`
+	Branch         string                 `json:"branch"`
+	Image          string                 `json:"image"`
+	Port           int                    `json:"port"`
+	HostPort       int                    `json:"hostPort"`
+	HostIP         string                 `json:"hostIp,omitempty"`
+	CPULimit       float64                `json:"cpuLimit"`
+	MemoryLimit    int                    `json:"memoryLimit"`
+	RestartPolicy  string                 `json:"restartPolicy"`
+	Description    string                 `json:"description,omitempty"`
+	QuadletConfig  string                 `json:"quadletConfig,omitempty"`
+	ComposeYaml    string                 `json:"composeYaml,omitempty"`
+	K8sYaml        string                 `json:"k8sYaml,omitempty"`
+	RuntimeTarget  string                 `json:"runtimeTarget,omitempty"`
+	InPod          bool                   `json:"inPod"`
+	WebhookToken   string                 `json:"webhookToken,omitempty"`
+	GitRepo        string                 `json:"gitRepo,omitempty"`
+	GitBranch      string                 `json:"gitBranch,omitempty"`
+	DockerfilePath string                 `json:"dockerfilePath,omitempty"`
+	SSHKeyID       string                 `json:"sshKeyId,omitempty"`
+	SourceType     string                 `json:"sourceType,omitempty"`
+	BuildType      string                 `json:"buildType,omitempty"`
+	BuildPath      string                 `json:"buildPath,omitempty"`
+	PublishDir     string                 `json:"publishDir,omitempty"`
+	PodID          string                 `json:"podId,omitempty"`
+	RegistryID     string                 `json:"registryId,omitempty"`
+	AutoDeploy     bool                   `json:"autoDeploy"`
+	WatchPaths     string                 `json:"watchPaths,omitempty"`
+	Command        string                 `json:"command,omitempty"`
+	Entrypoint     string                 `json:"entrypoint,omitempty"`
 	EnvVars        []EnvVar               `json:"envVars"`
 	Advanced       *ServiceAdvancedConfig `json:"advanced,omitempty"`
 	CreatedAt      time.Time              `json:"createdAt"`
+	// Quadlet supervision snapshot (populated on single-service GET only):
+	// the primary systemd unit name, the unit file path, and whether the
+	// host user manager reports it active. Lets the UI distinguish
+	// "supervised by systemd" from "served by a direct container".
+	QuadletUnit   string `json:"quadletUnit,omitempty"`
+	QuadletFile   string `json:"quadletFile,omitempty"`
+	QuadletActive bool   `json:"quadletActive,omitempty"`
 }
 
 // VolumeMountConfig defines a container volume mount.

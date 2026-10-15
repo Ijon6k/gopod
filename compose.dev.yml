@@ -15,11 +15,15 @@ services:
       - GOPOD_DB_PATH=/app/data/gopod.db
       - CADDY_ADMIN_URL=http://caddy:2019
       - HOST_DATA_DIR=${HOST_DATA_DIR:-${PWD}/data}
+      # Host systemd user-manager bus: lets the containerized engine run
+      # `systemctl --user` equivalents (daemon-reload/start/stop) via D-Bus.
+      - GOPOD_USER_BUS=/run/host-run/bus
     volumes:
       - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:z"
       - "./data:/app/data:Z"
       - "./caddy/logs:/var/log/caddy:Z"
       - "${HOME}/.config/containers/systemd:/root/.config/containers/systemd:z"
+      - "${XDG_RUNTIME_DIR:-/run/user/1000}/bus:/run/host-run/bus"
     networks:
       - gopod-net
     security_opt:

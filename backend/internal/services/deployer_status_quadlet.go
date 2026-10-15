@@ -58,6 +58,11 @@ func (d *Deployer) querySystemdUnits(ctx context.Context, unitNames ...string) m
 	if len(unitNames) == 0 {
 		return nil
 	}
+	// Prefer the native binary; fall back to the D-Bus user bus when the
+	// engine runs containerized with the host bus mounted.
+	if _, err := exec.LookPath("systemctl"); err != nil {
+		return querySystemdUnitsViaBus(ctx, unitNames...)
+	}
 	args := append([]string{"--user", "show"}, unitNames...)
 	args = append(args, "--property=Id,LoadState,ActiveState,SubState,Result,NRestarts")
 	cmd := exec.CommandContext(ctx, "systemctl", args...)
@@ -476,9 +481,15 @@ func (d *Deployer) findServiceUnitFilesAndCandidates(s Service) (candidateUnits 
 		// 6. Runtime Pod Discovery
 		if pods, err := d.podmanClient.GetPods(context.Background()); err == nil {
 			for _, p := range pods {
+				podSlug := SanitizeQuadletSlug(strings.TrimPrefix(strings.TrimSpace(s.PodID), "pod_"))
+				expectedPod := ""
+				if podSlug != "" {
+					expectedPod = fmt.Sprintf("pod_%s", podSlug)
+				}
 				isMatch := false
 				if p.Name == s.ID || p.Name == s.Name || p.Name == cleanName ||
 					p.Name == fmt.Sprintf("pod_%s", cleanName) || p.Name == fmt.Sprintf("pod_%s", s.Name) ||
+					(expectedPod != "" && p.Name == expectedPod) ||
 					(s.PodID != "" && (p.Name == s.PodID || p.Name == fmt.Sprintf("pod_%s", s.PodID))) ||
 					strings.HasPrefix(p.Name, cleanPrefix) || (s.ID != "" && strings.HasPrefix(p.Name, s.ID)) ||
 					seenContainers[p.Name] {

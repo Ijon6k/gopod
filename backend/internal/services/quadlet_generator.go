@@ -47,7 +47,7 @@ func (d *Deployer) generateDefaultQuadletContent(s Service, cleanName string) st
 			}
 
 			// 1. Pod unit
-			podUnit := fmt.Sprintf("# File: %s.pod\n[Unit]\nDescription=GoPod %s Pod\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Pod]\nPodName=%s\nNetwork=gopod-net\n%s[Install]\nWantedBy=default.target\n",
+			podUnit := fmt.Sprintf("# File: %s.pod\n[Unit]\nDescription=GoPod %s Pod\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Pod]\nPodName=%s\nNetwork=gopod-net\nInfraImage=registry.k8s.io/pause:3.9\nShare=net,uts,ipc\n%s[Install]\nWantedBy=default.target\n",
 				podName, cleanName, podName, podPublishes.String())
 			chunks = append(chunks, podUnit)
 
@@ -118,11 +118,11 @@ func (d *Deployer) generateDefaultQuadletContent(s Service, cleanName string) st
 			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%s\n", p))
 		}
 	} else if s.Type != "compose" && s.ComposeYaml == "" {
-		// Only non-compose services fall back to service.hostPort/port
+		// Only non-compose services fall back to service.hostIp/hostPort/port
 		if s.HostPort > 0 && s.Port > 0 {
-			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%d:%d\n", s.HostPort, s.Port))
+			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%s\n", servicePortBinding(s.HostIP, s.HostPort, s.Port)))
 		} else if s.HostPort > 0 {
-			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%d:80\n", s.HostPort))
+			publishDirectives.WriteString(fmt.Sprintf("PublishPort=%s\n", servicePortBinding(s.HostIP, s.HostPort, 80)))
 		}
 	}
 
@@ -269,6 +269,14 @@ func (d *Deployer) prepareSingleQuadletContent(s Service, cleanName string, rawC
 		if inContainer && strings.HasPrefix(trimmed, "Restart=") {
 			containerRestart = strings.TrimPrefix(trimmed, "Restart=")
 			continue
+		}
+
+		// Pod members must not publish ports or declare their own network:
+		// PublishPort/Network belong on the .pod unit only.
+		if inContainer && hasPodDirective {
+			if strings.HasPrefix(trimmed, "PublishPort=") || strings.HasPrefix(trimmed, "Port=") || strings.HasPrefix(trimmed, "Network=") {
+				continue
+			}
 		}
 
 		// Sanitize invalid systemd Restart= directives (e.g. unless-stopped -> always)

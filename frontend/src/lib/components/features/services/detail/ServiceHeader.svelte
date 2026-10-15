@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { StatusBadge, ConfirmDialog, Checkbox } from '$lib/components/ui';
+	import { findPodMembers } from './pod/pod-membership';
 	import type { Service, Project } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { Trash, HardDrives, Package } from 'phosphor-svelte';
@@ -20,15 +21,7 @@
 
 	let podMemberCount = $derived.by(() => {
 		if (service.type !== 'pod' && service.runtimeTarget !== 'pod') return 0;
-		const count = dataStore.services.filter(
-			(s) =>
-				s.projectId === service.projectId &&
-				s.id !== service.id &&
-				(s.podId === service.id ||
-					s.podId === service.name ||
-					s.podId === `pod_${service.name}` ||
-					(s.inPod && s.type !== 'pod'))
-		).length;
+		const count = findPodMembers(service, dataStore.services).length;
 		return count || service.workloads?.length || 0;
 	});
 
@@ -86,16 +79,16 @@
 			<StatusBadge status={service.status} size="sm" />
 		</div>
 		<div
-			class="flex items-center gap-2 text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]"
+			class="flex min-w-0 items-center gap-2 text-xs font-[var(--font-mono)] text-[var(--text-tertiary)]"
 		>
-			<span>{service.id}</span>
-			<span>·</span>
-			<span>{workloadSubtitle}</span>
+			<span class="truncate">{service.id}</span>
+			<span class="shrink-0">·</span>
+			<span class="truncate">{workloadSubtitle}</span>
 		</div>
 	</div>
 
 	<!-- Right Badges & Controls -->
-	<div class="flex items-center gap-2.5">
+	<div class="flex flex-wrap items-center gap-2.5">
 		{#if service.type === 'pod' || service.runtimeTarget === 'pod'}
 			<div
 				class="inline-flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-1.5 text-xs font-medium text-[var(--text-primary)]"

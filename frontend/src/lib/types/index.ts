@@ -12,5 +12,7 @@ export * from '$lib/api/credentials/types';
 export * from '$lib/api/domains/types';
 export * from '$lib/api/storage/types';
 export * from '$lib/api/audit/types';
+export * from '$lib/api/activity/types';
+export * from '$lib/api/engine/types';
 export * from '$lib/api/traffic/types';
 export * from '$lib/api/auth/types';

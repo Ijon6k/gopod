@@ -69,6 +69,7 @@ type PodItem struct {
 	Containers []string `json:"containers"`
 	Network    string   `json:"network"`
 	Created    string   `json:"created"`
+	InfraID    string   `json:"infraId,omitempty"`
 }
 
 // ImageItem represents a container image in local storage.

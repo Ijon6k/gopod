@@ -71,7 +71,72 @@
 			}
 		}
 
-		// 2. Pod or multi-container runtime: live containers belonging to this service
+		// 2. Podman Pod Workload: member services and member containers in this pod
+		if (service.type === 'pod') {
+			const podKey = service.id;
+			const podNameKey = service.name;
+			const podPrefixedKey = `pod_${service.name}`;
+
+			// A. Member services in dataStore
+			const memberSvcs = dataStore.services.filter(
+				(s) =>
+					s.projectId === service.projectId &&
+					s.id !== service.id &&
+					(s.podId === podKey ||
+						s.podId === podNameKey ||
+						s.podId === podPrefixedKey ||
+						(s.inPod && s.type !== 'pod'))
+			);
+
+			for (const m of memberSvcs) {
+				const val = m.name;
+				if (!seen.has(val)) {
+					seen.add(val);
+					list.push({
+						value: val,
+						label: `${m.name} (member container · :${m.port || 80})`,
+						badge: 'Pod Member',
+						ports: m.port ? [m.port] : [80]
+					});
+				}
+			}
+
+			// B. Live containers running in this pod (excluding infra pause container)
+			const podContainers = dataStore.containers.filter(
+				(c) =>
+					(c.pod === podPrefixedKey ||
+						c.pod === podNameKey ||
+						c.pod === podKey ||
+						(c.labels && c.labels['io.gopod.project'] === service.projectId)) &&
+					!c.name.endsWith('-infra')
+			);
+
+			for (const c of podContainers) {
+				if (!seen.has(c.name)) {
+					seen.add(c.name);
+					const ports: number[] = [];
+					if (c.ports) {
+						const parts = c.ports.split(/[,;\s]+/);
+						for (const p of parts) {
+							const num = extractPortNumber(p);
+							if (num && !ports.includes(num)) ports.push(num);
+						}
+					}
+					list.push({
+						value: c.name,
+						label: `${c.name} (live container)`,
+						badge: 'Pod Container',
+						ports: ports.length > 0 ? ports : [80]
+					});
+				}
+			}
+
+			if (list.length > 0) {
+				return list;
+			}
+		}
+
+		// 3. Fallback live containers belonging to this service
 		const matchingContainers = dataStore.containers.filter(
 			(c) =>
 				(c.serviceId && c.serviceId === service.id) ||
@@ -442,6 +507,26 @@
 				</div>
 			</div>
 		{/if}
+	</div>
+
+	<!-- Caddy Ingress Upstream Preview -->
+	<div class="rounded-md border border-[var(--color-kumo-line)] bg-[var(--color-kumo-elevated)] p-3 text-xs">
+		<div class="flex items-center gap-2 text-[var(--color-kumo-subtle)]">
+			<Globe size={14} class="text-[var(--accent)]" />
+			<span class="font-semibold text-[var(--color-kumo-default)]">Caddy Ingress Route Preview:</span>
+		</div>
+		<div class="mt-1.5 font-mono text-[11px] text-[var(--color-kumo-default)]">
+			{domainName.trim() || 'your-domain.com'}{pathPrefix !== '/' ? pathPrefix : ''} ➔
+			{#if service.type === 'pod'}
+				<span class="text-[var(--accent)] font-semibold">pod_{service.name.replace(/^pod_/, '')}:{targetPort || '3000'}</span>
+				<span class="text-[var(--color-kumo-subtle)] font-sans ml-1">
+					(internal Netavark bridge route to member container)
+				</span>
+			{:else}
+				<span class="text-[var(--accent)] font-semibold">{isCustomTarget ? customTargetName : targetContainer || service.name}:{targetPort || '3000'}</span>
+				<span class="text-[var(--color-kumo-subtle)] font-sans ml-1">(direct container upstream)</span>
+			{/if}
+		</div>
 	</div>
 
 	<div class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-3">

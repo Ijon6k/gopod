@@ -66,7 +66,7 @@ export interface TopologyEdge {
 	path: string; // SVG path
 	label?: string;
 	dashed?: boolean;
-	kind?: 'ingress' | 'direct-port' | 'localhost-port' | 'database' | 'storage' | 'workload';
+	kind?: 'ingress' | 'direct-port' | 'localhost-port' | 'localhost' | 'database' | 'storage' | 'workload';
 }
 
 export interface TopologyGraph {

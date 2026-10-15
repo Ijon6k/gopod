@@ -15,13 +15,15 @@
 	} from 'kumo-svelte';
 	import { Package, ArrowsClockwise, Stop, Terminal, Plus } from 'phosphor-svelte';
 	import { dataStore } from '$lib/data';
+	import { parseComposeServices } from '$lib/parsers/compose';
 
 	interface Props {
 		memberServices: Service[];
 		onOpenAddModal: () => void;
+		onmemberchange?: () => void;
 	}
 
-	let { memberServices, onOpenAddModal }: Props = $props();
+	let { memberServices, onOpenAddModal, onmemberchange }: Props = $props();
 
 	const toast = useKumoToastManager();
 
@@ -44,8 +46,8 @@
 
 	async function handleStopMember(member: Service) {
 		try {
-			await dataStore.stopService(member.id);
-			member.status = 'stopped';
+			const updated = await dataStore.stopService(member.id);
+			member.status = (updated as Service)?.status || 'stopped';
 			toast.add({
 				title: 'Container Stopped',
 				description: `${member.name} has been stopped`,
@@ -61,17 +63,17 @@
 	}
 
 	async function handleRemoveMember(member: Service) {
-		member.inPod = false;
-		member.podId = '';
-		member.runtimeTarget = 'standalone';
-
 		try {
-			await dataStore.updateService(member);
+			// Server-side ungroup removes the live container from the pod's
+			// localhost namespace and redeploys it standalone. A DB-only flag
+			// flip would leave the ghost container serving stale traffic.
+			await dataStore.ungroupFromPod(member.id);
 			toast.add({
 				title: 'Removed from Pod',
 				description: `${member.name} detached to standalone mode`,
 				variant: 'success'
 			});
+			onmemberchange?.();
 		} catch (err: any) {
 			toast.add({
 				title: 'Removal Failed',
@@ -105,7 +107,7 @@
 
 	<!-- Member Containers Table -->
 	<div class="w-full overflow-x-auto md:overflow-x-visible">
-		<Table class="w-full text-left text-xs">
+		<Table class="w-full min-w-[660px] text-left text-xs">
 			<TableHeader
 				class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
 			>
@@ -155,7 +157,7 @@
 					{#each memberServices as member (member.id)}
 						<TableRow class="transition-colors hover:bg-[var(--bg-table-row-alt)]">
 							<!-- Container Name -->
-							<TableCell class="px-4 py-3 font-medium text-[var(--text-primary)]">
+							<TableCell class="px-4 py-3 text-[13px] font-medium text-[var(--text-primary)]">
 								<div class="flex items-center gap-2">
 									<button
 										type="button"
@@ -171,8 +173,21 @@
 							</TableCell>
 
 							<!-- Image -->
-							<TableCell class="px-3 py-3 font-mono text-[11px] text-[var(--text-secondary)]">
-								{member.image || member.source || 'image:latest'}
+							<TableCell class="px-3 py-3 font-mono text-xs text-[var(--text-secondary)]">
+								{#if member.composeYaml}
+									{@const csList = parseComposeServices(member.composeYaml)}
+									{#if csList.length > 0}
+										<div class="flex flex-col gap-0.5">
+											{#each csList as cs}
+												<span>{cs.name}: {cs.image || 'compose'}</span>
+											{/each}
+										</div>
+									{:else}
+										{member.image || 'compose.yaml'}
+									{/if}
+								{:else}
+									{member.image || member.source || 'image:latest'}
+								{/if}
 							</TableCell>
 
 							<!-- Status -->
@@ -186,8 +201,21 @@
 							</TableCell>
 
 							<!-- Internal Port -->
-							<TableCell class="px-3 py-3 font-mono text-[11px] text-[var(--text-secondary)]">
-								localhost:{member.port || 80}
+							<TableCell class="px-3 py-3 font-mono text-xs text-[var(--text-secondary)]">
+								{#if member.composeYaml}
+									{@const csList = parseComposeServices(member.composeYaml)}
+									{#if csList.length > 0}
+										<div class="flex flex-col gap-0.5">
+											{#each csList as cs}
+												<span>{cs.name}: localhost:{cs.ports.length > 0 ? cs.ports.join(', localhost:') : (member.port || 80)}</span>
+											{/each}
+										</div>
+									{:else}
+										localhost:{member.port || 80}
+									{/if}
+								{:else}
+									localhost:{member.port || 80}
+								{/if}
 							</TableCell>
 
 							<!-- Actions -->

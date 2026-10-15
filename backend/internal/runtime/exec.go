@@ -152,7 +152,7 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		status = strings.TrimSpace(string(out))
 	}
 
-	// 2. If not found or not running, try finding via container filters
+	// 2. If not found or not running, try finding via container filters (including Podman Pods)
 	if status != "running" {
 		filters := []string{
 			fmt.Sprintf("name=%s", id),
@@ -160,6 +160,9 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 			fmt.Sprintf("label=io.podman.compose.service=%s", id),
 			fmt.Sprintf("label=com.docker.compose.project=%s", id),
 			fmt.Sprintf("label=io.podman.compose.project=%s", id),
+			fmt.Sprintf("label=io.gopod.service=%s", id),
+			fmt.Sprintf("pod=%s", id),
+			fmt.Sprintf("pod=pod_%s", id),
 		}
 
 		for _, filter := range filters {
@@ -169,7 +172,11 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 				for _, line := range lines {
 					parts := strings.Split(line, "\t")
 					if len(parts) > 0 && parts[0] != "" {
-						targetID = parts[0]
+						cName := parts[0]
+						if strings.HasSuffix(cName, "-infra") {
+							continue
+						}
+						targetID = cName
 						if len(parts) > 1 {
 							status = parts[1]
 						}

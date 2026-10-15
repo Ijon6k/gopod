@@ -19,7 +19,7 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 	return &SQLiteRepository{db: db}
 }
 
-const serviceSelectCols = "id, project_id, name, type, status, source, branch, image, port, COALESCE(host_port, 0), cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, COALESCE(source_type, 'git'), COALESCE(build_type, 'dockerfile'), COALESCE(build_path, '/'), COALESCE(publish_dir, 'dist'), COALESCE(pod_id, ''), COALESCE(registry_id, ''), COALESCE(auto_deploy, 1), COALESCE(watch_paths, ''), COALESCE(command, ''), COALESCE(entrypoint, ''), env_vars, COALESCE(advanced, '{}'), created_at"
+const serviceSelectCols = "id, project_id, name, type, status, source, branch, image, port, COALESCE(host_port, 0), COALESCE(host_ip, ''), cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, COALESCE(source_type, 'git'), COALESCE(build_type, 'dockerfile'), COALESCE(build_path, '/'), COALESCE(publish_dir, 'dist'), COALESCE(pod_id, ''), COALESCE(registry_id, ''), COALESCE(auto_deploy, 1), COALESCE(watch_paths, ''), COALESCE(command, ''), COALESCE(entrypoint, ''), env_vars, COALESCE(advanced, '{}'), created_at"
 
 func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Service, error) {
 	var query string
@@ -43,7 +43,7 @@ func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Servic
 		var envJSON, advJSON string
 		if err := rows.Scan(
 			&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image,
-			&s.Port, &s.HostPort, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
+			&s.Port, &s.HostPort, &s.HostIP, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
 			&s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken,
 			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.SourceType, &s.BuildType,
 			&s.BuildPath, &s.PublishDir, &s.PodID, &s.RegistryID, &s.AutoDeploy, &s.WatchPaths,
@@ -74,7 +74,7 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error)
 		"SELECT "+serviceSelectCols+" FROM services WHERE id = ?", id).
 		Scan(
 			&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image,
-			&s.Port, &s.HostPort, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
+			&s.Port, &s.HostPort, &s.HostIP, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
 			&s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken,
 			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.SourceType, &s.BuildType,
 			&s.BuildPath, &s.PublishDir, &s.PodID, &s.RegistryID, &s.AutoDeploy, &s.WatchPaths,
@@ -110,12 +110,12 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 		}
 	}
 	if s.SourceType == "" {
-		if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
+		if s.Type == "pod" {
+			s.SourceType = "pod"
+		} else if s.Type == "compose" || (s.Type != "quadlet" && s.Type != "pod" && strings.TrimSpace(s.ComposeYaml) != "") {
 			s.SourceType = "compose"
 		} else if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
 			s.SourceType = "kubernetes"
-		} else if s.Type == "pod" {
-			s.SourceType = "pod"
 		} else if s.Type == "image" {
 			s.SourceType = "image"
 		} else if s.Type == "quadlet" {
@@ -136,13 +136,13 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 
 	_, err := r.db.ExecContext(ctx,
 		`INSERT INTO services (
-			id, project_id, name, type, status, source, branch, image, port, host_port,
+			id, project_id, name, type, status, source, branch, image, port, host_port, host_ip,
 			cpu_limit, memory_limit, restart_policy, description, quadlet_config,
 			compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo,
 			git_branch, dockerfile_path, ssh_key_id, source_type, build_type, build_path,
 			publish_dir, pod_id, registry_id, auto_deploy, watch_paths, command, entrypoint, env_vars, advanced, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.HostPort,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.HostPort, s.HostIP,
 		s.CPULimit, s.MemoryLimit, s.RestartPolicy, s.Description, s.QuadletConfig,
 		s.ComposeYaml, s.K8sYaml, s.RuntimeTarget, s.InPod, s.WebhookToken, s.GitRepo,
 		s.GitBranch, s.DockerfilePath, s.SSHKeyID, s.SourceType, s.BuildType, s.BuildPath,
@@ -164,12 +164,12 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 		}
 	}
 	if s.SourceType == "" {
-		if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
+		if s.Type == "pod" {
+			s.SourceType = "pod"
+		} else if s.Type == "compose" || (s.Type != "quadlet" && s.Type != "pod" && strings.TrimSpace(s.ComposeYaml) != "") {
 			s.SourceType = "compose"
 		} else if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && s.Type != "pod" && s.Type != "image" && strings.TrimSpace(s.K8sYaml) != "") {
 			s.SourceType = "kubernetes"
-		} else if s.Type == "pod" {
-			s.SourceType = "pod"
 		} else if s.Type == "image" {
 			s.SourceType = "image"
 		} else if s.Type == "quadlet" {
@@ -191,7 +191,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE services SET
 			name = ?, type = ?, status = ?, source = ?, branch = ?, image = ?,
-			port = ?, host_port = ?, cpu_limit = ?, memory_limit = ?, restart_policy = ?,
+			port = ?, host_port = ?, host_ip = ?, cpu_limit = ?, memory_limit = ?, restart_policy = ?,
 			description = ?, quadlet_config = ?, compose_yaml = ?, k8s_yaml = ?,
 			runtime_target = ?, in_pod = ?, webhook_token = COALESCE(NULLIF(webhook_token, ''), ?),
 			git_repo = ?, git_branch = ?, dockerfile_path = ?, ssh_key_id = ?,
@@ -200,7 +200,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 			env_vars = ?, advanced = ?
 		WHERE id = ?`,
 		s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image,
-		s.Port, s.HostPort, s.CPULimit, s.MemoryLimit, s.RestartPolicy,
+		s.Port, s.HostPort, s.HostIP, s.CPULimit, s.MemoryLimit, s.RestartPolicy,
 		s.Description, s.QuadletConfig, s.ComposeYaml, s.K8sYaml,
 		s.RuntimeTarget, s.InPod, s.WebhookToken, s.GitRepo, s.GitBranch,
 		s.DockerfilePath, s.SSHKeyID, s.SourceType, s.BuildType, s.BuildPath,
@@ -222,7 +222,7 @@ func (r *SQLiteRepository) GetByWebhookToken(ctx context.Context, token string) 
 		"SELECT "+serviceSelectCols+" FROM services WHERE webhook_token = ?", token).
 		Scan(
 			&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image,
-			&s.Port, &s.HostPort, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
+			&s.Port, &s.HostPort, &s.HostIP, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
 			&s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken,
 			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.SourceType, &s.BuildType,
 			&s.BuildPath, &s.PublishDir, &s.PodID, &s.RegistryID, &s.AutoDeploy, &s.WatchPaths,

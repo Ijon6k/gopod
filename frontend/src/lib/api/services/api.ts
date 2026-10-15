@@ -151,6 +151,11 @@ export const servicesApi = {
 	async groupIntoPod(id: string, data: GroupPodRequest): Promise<Service> {
 		const res = await apiClient.post<Service>(`/services/${id}/group-pod`, data);
 		return res.data;
+	},
+
+	async ungroupFromPod(id: string): Promise<Service> {
+		const res = await apiClient.post<Service>(`/services/${id}/ungroup-pod`);
+		return res.data;
 	}
 };
 

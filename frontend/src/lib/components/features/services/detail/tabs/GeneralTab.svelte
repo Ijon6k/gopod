@@ -35,13 +35,13 @@
 	{/if}
 
 	<!-- 2. Main Workload Body depending on Type -->
-	{#if service.type === 'pod'}
-		<!-- First-Class Pod Multi-Container Workspace -->
+	{#if service.type === 'pod' || service.type === 'kubernetes'}
+		<!-- First-Class Pod Multi-Container Workspace (Visual Studio & Kubernetes Manifest) -->
 		<PodWorkspaceCard {service} />
 	{:else if service.type === 'quadlet'}
 		<!-- First-Class Quadlet Systemd Editor -->
 		<QuadletEditorCard {service} />
-	{:else if service.type === 'compose' || service.type === 'kubernetes'}
+	{:else if service.type === 'compose'}
 		<!-- First-Class Docker / Podman Compose Manifest -->
 		<ComposeEditorCard {service} />
 	{:else if service.type === 'database'}

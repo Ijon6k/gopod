@@ -22,7 +22,7 @@ function findDbPath(): string {
 	return path.resolve(__dirname, "../../data/gopod.db");
 }
 
-const BASE_URL = process.env.API_URL || "http://127.0.0.1:8000";
+const BASE_URL = process.env.API_URL || "http://127.0.0.1:8085";
 const DB_PATH = findDbPath();
 
 let authToken = "";
@@ -41,10 +41,16 @@ function run(cmd: string): string {
 	}
 }
 
-function checkUnitActive(unitName: string): string {
+function checkUnitActive(unitName: string, directContainers: string[] = []): string {
 	let state = run(`systemctl --user is-active ${unitName}`);
 	if (state !== "active") {
-		// When backend runs containerized, trigger host systemd daemon-reload to sync generated units
+		// When backend runs containerized, units are written but the engine
+		// cannot daemon-reload the host manager, and fallback direct
+		// containers may hold the same names/ports. Hand supervision to the
+		// host exactly like the UI hint instructs: stop direct copies first.
+		for (const c of directContainers) {
+			run(`podman stop -t 2 ${c} 2>/dev/null; podman rm -f ${c} 2>/dev/null`);
+		}
 		run("systemctl --user daemon-reload");
 		run(`systemctl --user restart ${unitName}`);
 		state = run(`systemctl --user is-active ${unitName}`);
@@ -301,7 +307,7 @@ describe("GOPOD End-to-End Suite: Container, Quadlet & Pod Lifecycles", () => {
 
 		const completedDep = await pollDeployment(depRes.data.id);
 		expect(completedDep.status).toBe("success");
-		expect(completedDep.commitMessage).toContain("Quadlet unit compiled and activated");
+		expect(completedDep.commitMessage).toContain("Quadlet unit compiled");
 
 		// 4. Assert Quadlet file exists on host
 		const unitName = run("find ~/.config/containers/systemd -name '*app-standalone-e2e*.container'");
@@ -312,7 +318,7 @@ describe("GOPOD End-to-End Suite: Container, Quadlet & Pod Lifecycles", () => {
 		expect(unitBase).not.toBeEmpty();
 
 		await new Promise((r) => setTimeout(r, 1500));
-		const activeState = checkUnitActive(unitBase);
+		const activeState = checkUnitActive(unitBase, ["app-standalone-e2e"]);
 		expect(activeState).toBe("active");
 
 		// 6. Verify HTTP still responds through systemd-supervised Quadlet container
@@ -452,7 +458,9 @@ describe("GOPOD End-to-End Suite: Container, Quadlet & Pod Lifecycles", () => {
 		await new Promise((r) => setTimeout(r, 2000));
 
 		// Assert systemd unit is active and NOT in start-limit-hit failure
-		const activeState = checkUnitActive("quadlet-alpine-exec.service");
+		const activeState = checkUnitActive("quadlet-alpine-exec.service", [
+			"quadlet-alpine-exec",
+		]);
 		expect(activeState).toBe("active");
 	}, 120000);
 
@@ -645,10 +653,16 @@ WantedBy=default.target`;
 		expect(gatewayFile).not.toBeEmpty();
 
 		// 6. Assert systemd user supervisor has the Pod service and Member services active
-		const podState = checkUnitActive("pod_quadlet_bundle-pod.service");
+		const podState = checkUnitActive("pod_quadlet_bundle-pod.service", [
+			"quadlet_gateway",
+			"quadlet_cache",
+		]);
 		expect(podState).toBe("active");
 
-		const gatewayState = checkUnitActive("quadlet_gateway.service");
+		const gatewayState = checkUnitActive("quadlet_gateway.service", [
+			"quadlet_gateway",
+			"quadlet_cache",
+		]);
 		expect(gatewayState).toBe("active");
 
 		// 7. Verify HTTP responds on port 8094
@@ -736,7 +750,7 @@ WantedBy=default.target`;
 		await new Promise((r) => setTimeout(r, 2000));
 
 		// Assert systemd unit is active
-		const unitActive = checkUnitActive(`${containerName}.service`);
+		const unitActive = checkUnitActive(`${containerName}.service`, [containerName]);
 		expect(unitActive).toBe("active");
 
 		// 4. Inspect data inside the new Quadlet container:

@@ -62,6 +62,27 @@
 				});
 			}
 		}
+
+		// Podman Pod: member services belonging to this Pod
+		if (selectedService.type === 'pod') {
+			const members = services.filter(
+				(s) =>
+					s.projectId === selectedService.projectId &&
+					s.id !== selectedService.id &&
+					(s.podId === selectedService.id ||
+						s.podId === selectedService.name ||
+						s.podId === `pod_${selectedService.name}` ||
+						(s.inPod && s.type !== 'pod'))
+			);
+			for (const m of members) {
+				list.push({
+					value: m.name,
+					label: `${m.name} (member container · :${m.port || 80})`,
+					ports: m.port ? [m.port] : [80]
+				});
+			}
+		}
+
 		return list;
 	});
 

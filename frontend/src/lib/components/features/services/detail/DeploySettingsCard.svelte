@@ -85,6 +85,9 @@
 		if (service.type !== 'quadlet') {
 			service.runtimeTarget = inPod ? 'pod' : 'standalone';
 		}
+		if (!inPod) {
+			service.podId = '';
+		}
 		dataStore.updateService(service);
 		showFeedback(
 			inPod
@@ -114,6 +117,8 @@
 				return 'Compose';
 			case 'kubernetes':
 				return 'Kubernetes';
+			case 'pod':
+				return 'Pod';
 			case 'database':
 				return 'Database';
 			case 'image':
@@ -131,6 +136,8 @@
 				return 'Create a compose file to deploy your multi-container compose stack';
 			case 'kubernetes':
 				return 'Execute declarative Kubernetes manifests via podman kube play';
+			case 'pod':
+				return 'Manage Podman pod infra, host port forwarding, and member containers';
 			case 'database':
 				return 'Manage containerized database engine with dedicated volume mounts';
 			case 'image':

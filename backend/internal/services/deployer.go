@@ -174,24 +174,24 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 
 	logLine(fmt.Sprintf("🚀 Starting deployment for service '%s' (type: %s, trigger: %s)", s.Name, s.Type, trig))
 
-	// ── 1. KUBERNETES MANIFEST WORKLOAD ──
-	if s.Type == "kubernetes" || s.Type == "k8s" || (s.Type != "compose" && s.Type != "quadlet" && strings.TrimSpace(s.K8sYaml) != "") {
+	// ── 1. POD WORKLOAD (Must precede k8s/compose to prevent interception) ──
+	if s.Type == "pod" || s.SourceType == "pod" || (s.RuntimeTarget == "pod" && s.Image == "" && s.GitRepo == "") {
+		return d.deployPod(ctx, s, depID, logLine)
+	}
+
+	// ── 2. KUBERNETES MANIFEST WORKLOAD ──
+	if (s.Type == "kubernetes" || s.Type == "k8s" || strings.TrimSpace(s.K8sYaml) != "") && s.Type != "pod" && s.SourceType != "pod" && s.Type != "compose" && s.Type != "quadlet" {
 		return d.deployKube(ctx, s, depID, trig, logLine)
 	}
 
-	// ── 2. COMPOSE WORKLOAD ──
-	if s.Type == "compose" || (s.Type != "quadlet" && strings.TrimSpace(s.ComposeYaml) != "") {
+	// ── 3. COMPOSE WORKLOAD ──
+	if (s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "") && s.Type != "pod" && s.SourceType != "pod" && s.Type != "quadlet" {
 		return d.deployCompose(ctx, s, depID, trig, logLine)
 	}
 
-	// ── 3. QUADLET WORKLOAD ──
+	// ── 4. QUADLET WORKLOAD ──
 	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "" {
 		return d.deployQuadlet(ctx, s, depID, trig, logLine)
-	}
-
-	// ── 4. POD WORKLOAD ──
-	if s.Type == "pod" || (s.RuntimeTarget == "pod" && s.Image == "" && s.GitRepo == "") {
-		return d.deployPod(ctx, s, depID, logLine)
 	}
 
 	// ── 5. STATIC DROP WORKLOAD ──
@@ -210,57 +210,6 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 
 	// ── 7. DIRECT IMAGE WORKLOAD ──
 	return d.deployImage(ctx, s, depID, trig, logLine)
-}
-
-func (d *Deployer) deployPod(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
-	cleanName := QuadletUnitName(s)
-	podName := fmt.Sprintf("pod_%s", cleanName)
-	if s.PodID != "" {
-		podName = s.PodID
-	}
-	logLine(fmt.Sprintf("📦 Reconciling Podman Pod '%s' (service: %s)...", podName, s.Name))
-
-	var ports []string
-	if s.Port > 0 {
-		hPort := s.HostPort
-		if hPort <= 0 {
-			hPort = s.Port
-		}
-		ports = append(ports, fmt.Sprintf("%d:%d", hPort, s.Port))
-	}
-
-	if d.podmanClient != nil {
-		_ = d.podmanClient.EnsureNetwork(ctx, "gopod-net")
-
-		existing, err := d.podmanClient.InspectPod(ctx, podName)
-		if err != nil || existing == nil {
-			logLine(fmt.Sprintf("🚀 Creating Podman Pod '%s' on network 'gopod-net'...", podName))
-			_, err = d.podmanClient.CreatePod(ctx, podman.CreatePodOptions{
-				Name:    podName,
-				Ports:   ports,
-				Network: "gopod-net",
-				Labels: map[string]string{
-					"io.gopod.service": s.ID,
-					"io.gopod.project": s.ProjectID,
-				},
-			})
-			if err != nil && !strings.Contains(err.Error(), "already exists") {
-				logLine(fmt.Sprintf("❌ Failed to create pod '%s': %v", podName, err))
-				return nil, err
-			}
-		} else {
-			logLine(fmt.Sprintf("⚙️ Starting existing Podman Pod '%s'...", podName))
-			_ = d.podmanClient.StartPod(ctx, podName)
-		}
-	}
-
-	logLine(fmt.Sprintf("✅ Podman Pod '%s' is active and running on network 'gopod-net'.", podName))
-
-	return &DeployResult{
-		ContainerName: podName,
-		CommitMessage: fmt.Sprintf("Pod active: %s", podName),
-		Version:       "pod",
-	}, nil
 }
 
 func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) []string {

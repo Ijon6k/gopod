@@ -9,6 +9,8 @@ import (
 	"log"
 	"strings"
 	"time"
+
+	"gopod/internal/activity"
 )
 
 // StartDeploy initiates an asynchronous container deployment with optional commit/image overrides.
@@ -44,6 +46,15 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 
 	pastDeps, _ := s.repo.ListDeployments(ctx, serviceID)
 	nextNumber := len(pastDeps) + 1
+
+	// Canonicalize pod runtime name before deploying so UI, ingress, and
+	// members always reference the unique pod_<project>-<service>-<rand> name.
+	if svc.Type == "pod" && s.repo != nil {
+		if canonical := PodNameForService(*svc); svc.PodID != canonical {
+			svc.PodID = canonical
+			_ = s.repo.Update(ctx, *svc)
+		}
+	}
 
 	start := time.Now()
 	b := make([]byte, 4)
@@ -82,6 +93,9 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 	svc.Status = "deploying"
 	_ = s.repo.Update(ctx, *svc)
 
+	activity.RecordActivity(ctx, "operator", "service.deploy_start", "deployment", depRecord.ID, svc.ProjectID, svc.ID, "building",
+		fmt.Sprintf("Deploy #%d started for service '%s' (trigger=%s)", nextNumber, svc.Name, trigger), "127.0.0.1")
+
 	bgCtx, cancel := context.WithTimeout(context.Background(), 25*time.Minute)
 	s.activeCancels.Store(depRecord.ID, cancel)
 	s.activeServiceDeps.Store(svc.ID, depRecord.ID)
@@ -115,6 +129,14 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 	pastDeps, _ := s.repo.ListDeployments(ctx, serviceID)
 	nextNumber := len(pastDeps) + 1
 
+	// Canonicalize pod runtime name (see StartDeploy).
+	if svc.Type == "pod" && s.repo != nil {
+		if canonical := PodNameForService(*svc); svc.PodID != canonical {
+			svc.PodID = canonical
+			_ = s.repo.Update(ctx, *svc)
+		}
+	}
+
 	start := time.Now()
 	b := make([]byte, 4)
 	_, _ = rand.Read(b)
@@ -136,6 +158,9 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 	_ = s.repo.CreateDeployment(ctx, depRecord)
 	svc.Status = "deploying"
 	_ = s.repo.Update(ctx, *svc)
+
+	activity.RecordActivity(ctx, "operator", "service.deploy_start", "deployment", depRecord.ID, svc.ProjectID, svc.ID, "building",
+		fmt.Sprintf("Deploy #%d started for service '%s' (trigger=%s)", nextNumber, svc.Name, trigger), "127.0.0.1")
 
 	s.executeDeployment(ctx, svc, depRecord, start)
 	return &depRecord, nil
@@ -193,8 +218,10 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 		svc.Status = "failed"
 	} else if s.deployer != nil {
 		realStatus := s.deployer.GetRuntimeStatus(ctx, *svc)
-		if realStatus != "" {
+		if realStatus != "" && realStatus != "deploying" && realStatus != "building" {
 			svc.Status = realStatus
+		} else if svc.Type == "quadlet" || svc.RuntimeTarget == "quadlet" || strings.TrimSpace(svc.QuadletConfig) != "" {
+			svc.Status = "ready"
 		} else {
 			svc.Status = "running"
 		}
@@ -202,6 +229,69 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 		svc.Status = "running"
 	}
 	_ = s.repo.Update(ctx, *svc)
+
+	// When a Pod is recreated or deployed, automatically redeploy any attached member services into the pod
+	if status == "success" && (svc.Type == "pod" || (svc.RuntimeTarget == "pod" && svc.Image == "" && svc.GitRepo == "")) && s.repo != nil {
+		allSvcs, err := s.repo.List(ctx, svc.ProjectID)
+		if err == nil {
+			expectedPod := PodNameForService(*svc)
+			legacyNames := legacyPodCandidates(*svc)
+
+			var members []Service
+			for _, m := range allSvcs {
+				if m.ID == svc.ID {
+					continue
+				}
+				isMember := m.InPod && (m.PodID == svc.ID || m.PodID == svc.Name || m.PodID == expectedPod ||
+					(strings.TrimSpace(m.PodID) != "" && PodNameFor(m.PodID) == PodNameFor(expectedPod)))
+				if !isMember && m.InPod {
+					for _, leg := range legacyNames {
+						if m.PodID == leg {
+							isMember = true
+							break
+						}
+					}
+				}
+				if isMember {
+					members = append(members, m)
+				}
+			}
+			if s.logManager != nil {
+				if len(members) == 0 {
+					s.logManager.LogLine(depRecord.ID, fmt.Sprintf("🔍 Pod member auto-recovery: no attached members found for pod '%s'.", expectedPod))
+				} else {
+					s.logManager.LogLine(depRecord.ID, fmt.Sprintf("🔍 Pod member auto-recovery: %d member(s) attached to pod '%s':", len(members), expectedPod))
+					for _, m := range members {
+						img := strings.TrimSpace(m.Image)
+						if img == "" {
+							img = "(image from git/compose/quadlet)"
+						}
+						s.logManager.LogLine(depRecord.ID, fmt.Sprintf("   ├─ member '%s' (id=%s image=%s)", m.Name, m.ID, img))
+					}
+				}
+			}
+			for _, m := range members {
+				{
+					memberDepID := fmt.Sprintf("member-sync-%d", time.Now().UnixNano())
+					log.Printf("[Deploy] Auto-redeploying pod member service '%s' into %s...", m.Name, expectedPod)
+					if _, err := s.deployer.DeployService(ctx, m, memberDepID, "pod-sync"); err != nil {
+						log.Printf("[Deploy] Error redeploying member '%s': %v", m.Name, err)
+						if s.logManager != nil {
+							s.logManager.LogLine(depRecord.ID, fmt.Sprintf("⚠️ Member auto-recovery: '%s' redeploy failed: %v", m.Name, err))
+						}
+						activity.EmitEngineEvent(ctx, "warn", "service", m.ID, m.ProjectID, "engine", "pod.member_recovery_failed",
+							fmt.Sprintf("Member '%s' recovery into pod '%s' failed: %v", m.Name, expectedPod, err), map[string]any{"member": m.Name, "pod": expectedPod, "image": m.Image})
+					} else {
+						if s.logManager != nil {
+							s.logManager.LogLine(depRecord.ID, fmt.Sprintf("✅ Member auto-recovery: '%s' redeployed into pod '%s'.", m.Name, expectedPod))
+						}
+						activity.EmitEngineEvent(ctx, "info", "service", m.ID, m.ProjectID, "engine", "pod.member_recovery",
+							fmt.Sprintf("Member '%s' redeployed into pod '%s' (image %s)", m.Name, expectedPod, m.Image), map[string]any{"member": m.Name, "pod": expectedPod, "image": m.Image})
+					}
+				}
+			}
+		}
+	}
 
 	depRecord.Status = status
 	depRecord.Duration = duration
@@ -217,6 +307,11 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 			action = "service.promote_quadlet"
 		}
 		_ = s.audit.Record(ctx, action, "operator", svc.Name, "deployment", "127.0.0.1", status)
+		activity.RecordActivity(ctx, "operator", action, "deployment", depRecord.ID, svc.ProjectID, svc.ID, status,
+			fmt.Sprintf("Deploy #%d finished for service '%s' (trigger=%s)", depRecord.Number, svc.Name, depRecord.Trigger), "127.0.0.1")
+		activity.EmitEngineEvent(ctx, engineLevelForStatus(status), "service", svc.ID, svc.ProjectID, "engine", "service.deploy_finish",
+			fmt.Sprintf("Deploy %s finished for service '%s' with status %s", depRecord.ID, svc.Name, status),
+			map[string]any{"deployment": depRecord.ID, "trigger": depRecord.Trigger, "status": status})
 	}
 }
 
@@ -276,6 +371,8 @@ func (s *WorkloadService) CancelDeployment(ctx context.Context, depID string) (*
 		if s.audit != nil {
 			_ = s.audit.Record(ctx, "service.cancel_deployment", "operator", svc.Name, "deployment", "127.0.0.1", "cancelled")
 		}
+		activity.RecordActivity(ctx, "operator", "service.cancel_deployment", "deployment", dep.ID, dep.ProjectID, dep.ServiceID, "cancelled",
+			fmt.Sprintf("Deployment %s cancelled for service '%s'", dep.ID, svc.Name), "127.0.0.1")
 	}
 
 	return dep, nil
@@ -333,6 +430,8 @@ func (s *WorkloadService) CancelServiceDeployment(ctx context.Context, serviceID
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.cancel_deployment", "operator", svc.Name, "deployment", "127.0.0.1", "cancelled")
 	}
+	activity.RecordActivity(ctx, "operator", "service.cancel_deployment", "service", svc.ID, svc.ProjectID, svc.ID, "cancelled",
+		fmt.Sprintf("Active deployment cancelled for service '%s'", svc.Name), "127.0.0.1")
 
 	return svc, nil
 }
@@ -393,6 +492,8 @@ func (s *WorkloadService) DeployByWebhook(ctx context.Context, token string) (*S
 		bgCtx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 		defer cancel()
 		log.Printf("🔔 Webhook deploy triggered for service '%s' (%s)", svc.Name, svc.ID)
+		activity.RecordActivity(context.Background(), "webhook", "service.webhook_deploy", "service", svc.ID, svc.ProjectID, svc.ID, "building",
+			fmt.Sprintf("Webhook deploy triggered for service '%s'", svc.Name), "")
 		_, err := s.Deploy(bgCtx, svc.ID, "webhook")
 		if err != nil {
 			log.Printf("❌ Webhook deploy failed for '%s': %v", svc.Name, err)

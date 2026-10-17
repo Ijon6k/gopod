@@ -145,6 +145,25 @@ func getString(m map[string]interface{}, key string) string {
 	return ""
 }
 
+// getLabels extracts a podman Labels object (map[string]interface{} from JSON
+// decode of the CLI --format json output) into a regular map.
+func getLabels(m map[string]interface{}, key string) map[string]string {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return nil
+	}
+	if labelMap, ok := v.(map[string]interface{}); ok {
+		out := make(map[string]string, len(labelMap))
+		for k, lv := range labelMap {
+			if s, ok := lv.(string); ok {
+				out[k] = s
+			}
+		}
+		return out
+	}
+	return nil
+}
+
 func getFloat(m map[string]interface{}, key string) float64 {
 	if v, ok := m[key]; ok && v != nil {
 		switch n := v.(type) {

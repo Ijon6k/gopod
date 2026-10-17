@@ -14,9 +14,9 @@ import (
 	"sync"
 	"time"
 
+	"gopkg.in/yaml.v3"
 	"gopod/internal/activity"
 	"gopod/internal/podman"
-	"gopkg.in/yaml.v3"
 )
 
 // AuditRecorder records workload actions.
@@ -36,6 +36,12 @@ type WorkloadService struct {
 	ingressCleaner    IngressCleaner
 	activeCancels     sync.Map // deploymentID string -> context.CancelFunc
 	activeServiceDeps sync.Map // serviceID string -> deploymentID string
+	// deployLocks is an atomic per-service deploy mutex: at most one StartDeploy
+	// or Deploy may run for a given service at a time. Key: serviceID,
+	// value: deploymentID of the current owner.
+	deployLocks   sync.Map
+	webhookSem    chan struct{} // caps concurrent webhook-spawned deploys (lazy)
+	webhookSemSet sync.Once
 }
 
 // NewWorkloadService creates a new services domain service.

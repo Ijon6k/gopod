@@ -200,7 +200,7 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 					c.Labels["io.podman.compose.project"] == projectName ||
 					c.Labels["io.gopod.service"] == s.ID) {
 					isMember = true
-				} else if len(c.Names) > 0 && (strings.HasPrefix(c.Names[0], projectName) || strings.Contains(c.Names[0], s.ID)) {
+				} else if len(c.Names) > 0 && (strings.HasPrefix(strings.TrimPrefix(c.Names[0], "/"), projectName+"_") || strings.HasPrefix(strings.TrimPrefix(c.Names[0], "/"), projectName+"-")) {
 					isMember = true
 				}
 				if isMember {
@@ -234,7 +234,7 @@ func (d *Deployer) deployCompose(ctx context.Context, s Service, depID, trigger 
 					c.Labels["io.podman.compose.project"] == projectName ||
 					c.Labels["io.gopod.service"] == s.ID) {
 					isMember = true
-				} else if len(c.Names) > 0 && (strings.HasPrefix(c.Names[0], projectName) || strings.Contains(c.Names[0], s.ID)) {
+				} else if len(c.Names) > 0 && (strings.HasPrefix(strings.TrimPrefix(c.Names[0], "/"), projectName+"_") || strings.HasPrefix(strings.TrimPrefix(c.Names[0], "/"), projectName+"-")) {
 					isMember = true
 				}
 				if isMember {

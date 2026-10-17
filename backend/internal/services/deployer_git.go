@@ -100,11 +100,21 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 	}
 	logLine(fmt.Sprintf("✅ Built image %s successfully", imageTag))
 
-	// Stop previous container and conflicting systemd units right before starting new one
-	d.cleanPreflightConflicts(ctx, s, logLine)
+	// Pick the redeploy ordering (start-first when safe, stop-then-create
+	// otherwise) before reconciling preflight state.
+	plan := d.planContainerRedeploy(ctx, s, containerName, logLine)
+	if plan.mode == redeployStartFirst {
+		d.cleanPreflightForStartFirst(ctx, s, plan.predecessorID, logLine)
+	} else {
+		d.cleanPreflightConflicts(ctx, s, logLine)
+	}
 
-	if err := d.runContainer(ctx, s, containerName, imageTag, logLine); err != nil {
+	if err := d.runContainer(ctx, s, plan.runName, imageTag, logLine); err != nil {
 		return nil, err
+	}
+
+	if plan.mode == redeployStartFirst {
+		containerName = d.retirePredecessor(ctx, plan.predecessorID, containerName, plan.runName, logLine)
 	}
 
 	return &DeployResult{

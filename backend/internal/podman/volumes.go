@@ -51,10 +51,11 @@ func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 		}
 
 		var raw []struct {
-			Name       string `json:"Name"`
-			Driver     string `json:"Driver"`
-			Mountpoint string `json:"Mountpoint"`
-			CreatedAt  string `json:"CreatedAt"`
+			Name       string            `json:"Name"`
+			Driver     string            `json:"Driver"`
+			Mountpoint string            `json:"Mountpoint"`
+			CreatedAt  string            `json:"CreatedAt"`
+			Labels     map[string]string `json:"Labels"`
 		}
 		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 			return nil, err
@@ -67,6 +68,7 @@ func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 				Driver:     item.Driver,
 				MountPoint: item.Mountpoint,
 				Size:       getVolumeSize(item.Mountpoint),
+				Labels:     item.Labels,
 			})
 		}
 		return vols, nil
@@ -92,6 +94,7 @@ func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 			Driver:     getString(item, "Driver"),
 			MountPoint: mountPoint,
 			Size:       getVolumeSize(mountPoint),
+			Labels:     getLabels(item, "Labels"),
 		})
 	}
 	return vols, nil

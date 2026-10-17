@@ -88,24 +88,20 @@ func (d *Deployer) stopComposeService(ctx context.Context, s Service) error {
 	if d.podmanClient != nil {
 		containers, _ := d.podmanClient.GetContainers(ctx)
 		for _, c := range containers {
-			isMatch := false
-			if c.Labels != nil {
-				if c.Labels["io.gopod.service"] == s.ID ||
-					c.Labels["com.docker.compose.project"] == s.ID ||
-					c.Labels["io.podman.compose.project"] == s.ID ||
-					c.Labels["com.docker.compose.project"] == projectName ||
-					c.Labels["io.podman.compose.project"] == projectName ||
-					c.Labels["com.docker.compose.project"] == s.Name ||
-					c.Labels["io.podman.compose.project"] == s.Name {
+			// Label-only matching: compose stacks are identified by their
+			// project label (projectName = service ID, globally unique). Only
+			// the podman-compose auto-naming convention (<project>_<svc>_N)
+			// remains as an anchored, project-scoped name fallback.
+			isMatch := containerOwnedBy(c, s)
+			if !isMatch && c.Labels != nil {
+				if c.Labels["com.docker.compose.project"] == projectName ||
+					c.Labels["io.podman.compose.project"] == projectName {
 					isMatch = true
 				}
 			}
 			if !isMatch && len(c.Names) > 0 {
 				firstName := strings.TrimPrefix(c.Names[0], "/")
-				if strings.HasPrefix(firstName, projectName+"_") ||
-					strings.HasPrefix(firstName, s.ID+"_") ||
-					strings.HasPrefix(firstName, s.Name+"_") ||
-					strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) {
+				if strings.HasPrefix(firstName, projectName+"_") {
 					isMatch = true
 				}
 			}

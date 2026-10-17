@@ -29,11 +29,12 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 		}
 
 		var raw []struct {
-			ID         string `json:"Id"`
-			Name       string `json:"Name"`
-			Status     string `json:"Status"`
-			Created    string `json:"Created"`
-			InfraID    string `json:"InfraId"`
+			ID         string            `json:"Id"`
+			Name       string            `json:"Name"`
+			Status     string            `json:"Status"`
+			Created    string            `json:"Created"`
+			InfraID    string            `json:"InfraId"`
+			Labels     map[string]string `json:"Labels"`
 			Containers []struct {
 				ID    string      `json:"Id"`
 				Names interface{} `json:"Names"`
@@ -84,6 +85,7 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 				Containers: cNames,
 				Created:    p.Created,
 				InfraID:    p.InfraID,
+				Labels:     p.Labels,
 			})
 		}
 		return result, nil
@@ -113,6 +115,7 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 			Status:  getString(item, "Status"),
 			Created: getString(item, "Created"),
 			InfraID: getString(item, "InfraId"),
+			Labels:  getLabels(item, "Labels"),
 		})
 	}
 	return pods, nil

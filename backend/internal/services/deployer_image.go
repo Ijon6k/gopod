@@ -4,10 +4,156 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"gopod/internal/podman"
 )
+
+// Redeploy ordering strategies. start-first mirrors dokploy's deploy
+// semantics: the replacement container starts while the previous one keeps
+// serving, and the previous container is only removed once the replacement is
+// confirmed up — a failed run therefore never takes the healthy service down.
+// When that is impossible (pod membership, or the replacement needs a host
+// port the predecessor still holds) we keep the classic stop-then-create
+// ordering.
+const (
+	redeployStartFirst     = "start-first"
+	redeployStopThenCreate = "stop-then-create"
+)
+
+type containerRedeployPlan struct {
+	mode          string
+	predecessorID string // live previous container (short id) when start-first
+	runName       string // name under which the new container runs
+}
+
+// planContainerRedeploy inspects the runtime and selects the redeploy
+// strategy plus the run name for a plain container service (image/git deploys).
+// Fresh deploys (no live predecessor) keep the canonical name and the classic
+// preflight; unknown or unlabeled runtimes always fall back to the previous
+// behavior, which keeps old data safe.
+func (d *Deployer) planContainerRedeploy(ctx context.Context, s Service, desiredName string, logLine func(string)) containerRedeployPlan {
+	plan := containerRedeployPlan{mode: redeployStopThenCreate, runName: desiredName}
+	if d.podmanClient == nil || desiredName == "" {
+		return plan
+	}
+	if s.InPod || s.RuntimeTarget == "pod" {
+		// Pod members are replaced within their pod; start-first cannot
+		// express two slots for the same member.
+		return plan
+	}
+
+	containers, err := d.podmanClient.GetContainers(ctx)
+	if err != nil {
+		return plan
+	}
+	return selectRedeployPlan(s, containers, desiredName, logLine)
+}
+
+// selectRedeployPlan maps the live container list to a redeploy strategy.
+// Purity note: no I/O here — the same mapping is unit-testable offline.
+func selectRedeployPlan(s Service, containers []podman.ContainerItem, desiredName string, logLine func(string)) containerRedeployPlan {
+	plan := containerRedeployPlan{mode: redeployStopThenCreate, runName: desiredName}
+
+	var predecessor *podman.ContainerItem
+	for i := range containers {
+		c := containers[i]
+		if c.Labels == nil || c.Labels["io.gopod.service"] != s.ID {
+			continue
+		}
+		state := strings.ToLower(c.State)
+		if state != "running" && state != "paused" {
+			continue // only a LIVE container is a start-first predecessor
+		}
+		predecessor = &containers[i]
+		break
+	}
+	if predecessor == nil {
+		return plan
+	}
+
+	if s.HostPort > 0 && containerBindsHostPort(*predecessor, s.HostPort) {
+		if logLine != nil {
+			logLine(fmt.Sprintf("🔁 Redeploy strategy: stop-then-create (host port %d is currently bound by the previous container).", s.HostPort))
+		}
+		return plan
+	}
+
+	if logLine != nil {
+		logLine("🟦 Redeploy strategy: start-first — replacement starts while the previous container keeps serving; it is removed only after the replacement is confirmed up.")
+	}
+	plan.mode = redeployStartFirst
+	plan.predecessorID = predecessor.ID
+	plan.runName = GenerateContainerName(s.ProjectID, s.Name)
+	return plan
+}
+
+// containerBindsHostPort reports whether a listed container currently holds
+// the given host-side port binding (Ports format: "hostPort:containerPort/proto").
+func containerBindsHostPort(c podman.ContainerItem, hostPort int) bool {
+	for _, entry := range strings.Split(c.Ports, ", ") {
+		hostPart, _, ok := strings.Cut(entry, ":")
+		if ok && hostPart == strconv.Itoa(hostPort) {
+			return true
+		}
+	}
+	return false
+}
+
+// cleanPreflightForStartFirst is the start-first counterpart of
+// cleanPreflightConflicts: candidate systemd units are still stopped (they can
+// restart under systemd supervision) and ghost containers from aborted
+// previous deploys are removed, but the live predecessor container survives
+// until the replacement is confirmed up.
+func (d *Deployer) cleanPreflightForStartFirst(ctx context.Context, s Service, predecessorID string, logLine func(string)) {
+	candUnits, _, _ := d.findServiceUnitFilesAndCandidates(s)
+	if d.hasUserManager() {
+		for _, u := range candUnits {
+			_, _ = d.systemctlUser(ctx, "stop", u)
+			_, _ = d.systemctlUser(ctx, "kill", "--kill-who=all", "--signal=SIGKILL", u)
+			_, _ = d.systemctlUser(ctx, "reset-failed", u)
+		}
+	}
+	if d.podmanClient != nil {
+		if containers, err := d.podmanClient.GetContainers(ctx); err == nil {
+			for _, c := range containers {
+				if c.Labels == nil || c.Labels["io.gopod.service"] != s.ID || c.ID == predecessorID {
+					continue
+				}
+				// Ghost from an interrupted previous deploy — safe to remove now.
+				_ = d.podmanClient.StopContainer(ctx, c.ID)
+				_ = d.podmanClient.DeleteContainer(ctx, c.ID, true)
+			}
+		}
+	}
+	if logLine != nil {
+		logLine("🧹 Start-first preflight: reconciled unit ghosts; live predecessor kept serving.")
+	}
+}
+
+// retirePredecessor stops and removes the previous container now that the
+// replacement is confirmed up, then reclaims the canonical container name so
+// name-based consumers (default ingress target, exec/terminal lookups, shell
+// scripts) keep resolving as before. Returns the final container name.
+func (d *Deployer) retirePredecessor(ctx context.Context, predecessorID, canonicalName, replacementName string, logLine func(string)) string {
+	finalName := replacementName
+	logLine(fmt.Sprintf("🔄 Start-first: replacement is up — retiring previous container '%s'...", predecessorID))
+	_ = d.podmanClient.StopContainer(ctx, predecessorID)
+	_ = d.podmanClient.DeleteContainer(ctx, predecessorID, true)
+	if canonicalName == "" || replacementName == "" || replacementName == canonicalName {
+		return finalName
+	}
+	cmdRename := exec.CommandContext(ctx, "podman", "rename", replacementName, canonicalName)
+	d.setupCmdEnv(cmdRename)
+	if _, err := cmdRename.CombinedOutput(); err != nil {
+		logLine(fmt.Sprintf("⚠️ Could not reclaim canonical container name '%s' (replacement keeps '%s'): %v", canonicalName, replacementName, err))
+	} else {
+		finalName = canonicalName
+		logLine(fmt.Sprintf("✏️ Reclaimed canonical container name '%s' for the replacement container.", canonicalName))
+	}
+	return finalName
+}
 
 // deployImage pulls container image and starts container.
 func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger string, logLine func(string)) (*DeployResult, error) {
@@ -53,10 +199,22 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger st
 	if containerName == "" {
 		containerName = GenerateContainerName(s.ProjectID, s.Name)
 	}
-	d.cleanPreflightConflicts(ctx, s, logLine)
 
-	if err := d.runContainer(ctx, s, containerName, imageToRun, logLine); err != nil {
+	// Pick the redeploy ordering (start-first when safe, stop-then-create
+	// otherwise) before reconciling preflight state.
+	plan := d.planContainerRedeploy(ctx, s, containerName, logLine)
+	if plan.mode == redeployStartFirst {
+		d.cleanPreflightForStartFirst(ctx, s, plan.predecessorID, logLine)
+	} else {
+		d.cleanPreflightConflicts(ctx, s, logLine)
+	}
+
+	if err := d.runContainer(ctx, s, plan.runName, imageToRun, logLine); err != nil {
 		return nil, err
+	}
+
+	if plan.mode == redeployStartFirst {
+		containerName = d.retirePredecessor(ctx, plan.predecessorID, containerName, plan.runName, logLine)
 	}
 
 	tag := "latest"
@@ -151,6 +309,7 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 	logLine(fmt.Sprintf("🚀 Starting container '%s' (image: %s)...", containerName, imageToRun))
 	if d.podmanClient != nil {
 		var targetPod string
+		var createdPodHere bool
 		if s.InPod || s.RuntimeTarget == "pod" {
 			rawPod := strings.TrimSpace(s.PodID)
 			if rawPod == "" {
@@ -190,6 +349,10 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 						fmt.Sprintf("Pod auto-create '%s' failed: %v", targetPod, err), map[string]any{"pod": targetPod, "service": s.Name})
 					return fmt.Errorf("failed to create pod '%s': %w", targetPod, err)
 				}
+				// The pod was freshly created by us only when CreatePod returned
+				// nil. ("already exists" means someone else owns it — never roll
+				// back a pod we did not create.)
+				createdPodHere = err == nil
 				emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "pod.autocreate",
 					fmt.Sprintf("Pod '%s' auto-created with ports %v for service '%s'", targetPod, podPorts, s.Name), map[string]any{"pod": targetPod, "ports": podPorts, "service": s.Name})
 			} else {
@@ -227,6 +390,19 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 		_, err := d.podmanClient.RunContainer(ctx, runOpts)
 		if err != nil {
 			logLine(fmt.Sprintf("❌ Container run failed: %v", err))
+			// A pod that was auto-created just for this failed run would keep
+			// holding its host ports forever. Roll it back so the next deploy
+			// is not blocked with 'address already in use'.
+			if createdPodHere {
+				if delErr := d.podmanClient.DeletePod(ctx, targetPod, true); delErr != nil {
+					logLine(fmt.Sprintf("⚠️ Failed to roll back auto-created pod '%s': %v", targetPod, delErr))
+				} else {
+					logLine(fmt.Sprintf("🧹 Rolled back auto-created pod '%s' after failed container start (port release).", targetPod))
+					emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "pod.rollback",
+						fmt.Sprintf("Rolled back auto-created pod '%s' after failed container start for '%s'", targetPod, s.Name),
+						map[string]any{"pod": targetPod, "service": s.Name, "container": containerName})
+				}
+			}
 			d.enrichRunFailure(ctx, containerName, err, logLine)
 			emitEngineEventSafe(ctx, "error", "service", s.ID, s.ProjectID, "engine", "container.run_failed",
 				fmt.Sprintf("Container '%s' run failed: %v", containerName, err), map[string]any{"container": containerName, "image": imageToRun, "pod": targetPod})
@@ -237,24 +413,4 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 	}
 	logLine(fmt.Sprintf("✅ Container '%s' is up and healthy.", containerName))
 	return nil
-}
-
-func (d *Deployer) stopPreviousContainer(ctx context.Context, s Service, logLine func(string)) {
-	if d.podmanClient == nil {
-		return
-	}
-	existing, _ := d.podmanClient.GetContainers(ctx)
-	for _, c := range existing {
-		isSameService := false
-		if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID) {
-			isSameService = true
-		} else if len(c.Names) > 0 && (strings.HasPrefix(c.Names[0], s.ID) || strings.HasPrefix(c.Names[0], fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) || c.Names[0] == s.Name) {
-			isSameService = true
-		}
-		if isSameService {
-			logLine(fmt.Sprintf("🔄 Stopping previous container '%s'...", c.ID))
-			_ = d.podmanClient.StopContainer(ctx, c.ID)
-			_ = d.podmanClient.DeleteContainer(ctx, c.ID, true)
-		}
-	}
 }

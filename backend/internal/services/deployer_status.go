@@ -26,34 +26,14 @@ func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 		}
 	}
 
-	// 2. Podman Containers
+	// 2. Podman Containers — label-only matching: unlabeled containers
+	// belong to other tools/users and are never counted.
 	if d.podmanClient != nil {
 		containers, err := d.podmanClient.GetContainers(ctx)
 		if err == nil {
 			var matched []podman.ContainerItem
 			for _, c := range containers {
-				isMatch := false
-				if c.Labels != nil {
-					if c.Labels["io.gopod.service"] == s.ID ||
-						c.Labels["com.docker.compose.project"] == s.ID ||
-						c.Labels["io.podman.compose.project"] == s.ID ||
-						c.Labels["com.docker.compose.project"] == s.Name {
-						isMatch = true
-					}
-				}
-				if !isMatch && len(c.Names) > 0 {
-					firstName := strings.TrimPrefix(c.Names[0], "/")
-					if firstName == s.ID ||
-						firstName == s.Name ||
-						firstName == unitName ||
-						firstName == fmt.Sprintf("systemd-%s", unitName) ||
-						strings.HasPrefix(firstName, s.ID) ||
-						strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) ||
-						strings.HasPrefix(firstName, fmt.Sprintf("pod_%s", s.ID)) {
-						isMatch = true
-					}
-				}
-				if isMatch {
+				if containerOwnedBy(c, s) {
 					matched = append(matched, c)
 				}
 			}
@@ -168,40 +148,20 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 			continue
 		}
 
-		// 2. Match Containers
+		// 2. Match Containers — label-only matching: unlabeled
+		// containers are never counted.
 		matchedRunning := false
 		matchedFound := false
-		unitName := QuadletUnitName(s)
 		for _, c := range containers {
-			isMatch := false
-			if c.Labels != nil {
-				if c.Labels["io.gopod.service"] == s.ID ||
-					c.Labels["com.docker.compose.project"] == s.ID ||
-					c.Labels["io.podman.compose.project"] == s.ID ||
-					c.Labels["com.docker.compose.project"] == s.Name {
-					isMatch = true
-				}
+			if !containerOwnedBy(c, s) {
+				continue
 			}
-			if !isMatch && len(c.Names) > 0 {
-				firstName := strings.TrimPrefix(c.Names[0], "/")
-				if firstName == s.ID ||
-					firstName == s.Name ||
-					firstName == unitName ||
-					firstName == fmt.Sprintf("systemd-%s", unitName) ||
-					strings.HasPrefix(firstName, s.ID) ||
-					strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) ||
-					strings.HasPrefix(firstName, fmt.Sprintf("pod_%s", s.ID)) {
-					isMatch = true
-				}
-			}
-			if isMatch {
-				matchedFound = true
-				st := strings.ToLower(c.State)
-				rawSt := strings.ToLower(c.Status)
-				if st == "running" || strings.HasPrefix(rawSt, "up") {
-					matchedRunning = true
-					break
-				}
+			matchedFound = true
+			st := strings.ToLower(c.State)
+			rawSt := strings.ToLower(c.Status)
+			if st == "running" || strings.HasPrefix(rawSt, "up") {
+				matchedRunning = true
+				break
 			}
 		}
 

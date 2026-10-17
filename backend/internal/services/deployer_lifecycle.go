@@ -65,18 +65,24 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 	// 3. Container / Git / Direct Image / Pod Workload
 	if d.podmanClient != nil {
 		if s.Type == "pod" || s.RuntimeTarget == "pod" || s.InPod {
-			_ = d.podmanClient.StartPod(ctx, s.ID)
-			_ = d.podmanClient.StartPod(ctx, s.Name)
-			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", s.ID))
-			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", s.Name))
-			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)))
-			_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("%s-%s", s.ProjectID, s.Name))
+			// Label-only pod resolution: only pods gopod owns — plus the
+			// canonical pod name, which is globally unique — are ever started.
+			pods, _ := d.podmanClient.GetPods(ctx)
+			for _, p := range pods {
+				if !podOwnedBy(p, s) && p.Name != PodNameForService(s) {
+					continue
+				}
+				_ = d.podmanClient.StartPod(ctx, p.Name)
+			}
 			if s.PodID != "" {
-				_ = d.podmanClient.StartPod(ctx, s.PodID)
-				_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", s.PodID))
-				podSlug := SanitizeQuadletSlug(strings.TrimPrefix(s.PodID, "pod_"))
-				if podSlug != "" {
-					_ = d.podmanClient.StartPod(ctx, fmt.Sprintf("pod_%s", podSlug))
+				_ = d.podmanClient.StartPod(ctx, PodNameFor(s.PodID))
+			}
+			for _, leg := range legacyPodCandidates(s) {
+				for _, p := range pods {
+					if p.Name == leg && podLegacyCandidateOwned(p, s) {
+						_ = d.podmanClient.StartPod(ctx, p.Name)
+						break
+					}
 				}
 			}
 		}
@@ -85,20 +91,12 @@ func (d *Deployer) StartService(ctx context.Context, s Service) error {
 		found := false
 		var startErr error
 		for _, c := range containers {
-			isMatch := false
-			if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID) {
-				isMatch = true
-			} else if len(c.Names) > 0 {
-				firstName := strings.TrimPrefix(c.Names[0], "/")
-				if strings.HasPrefix(firstName, s.ID) || firstName == s.Name || strings.HasPrefix(firstName, fmt.Sprintf("%s-%s-", s.ProjectID, s.Name)) {
-					isMatch = true
-				}
+			if !containerOwnedBy(c, s) {
+				continue
 			}
-			if isMatch {
-				found = true
-				if err := d.podmanClient.StartContainer(ctx, c.ID); err != nil {
-					startErr = err
-				}
+			found = true
+			if err := d.podmanClient.StartContainer(ctx, c.ID); err != nil {
+				startErr = err
 			}
 		}
 		if found {
@@ -156,62 +154,33 @@ func (d *Deployer) StopService(ctx context.Context, s Service) error {
 	// 3. Container / Git / Direct Image / Pod Workload
 	if d.podmanClient != nil {
 		if s.Type == "pod" || s.RuntimeTarget == "pod" || s.InPod {
-			_ = d.podmanClient.StopPod(ctx, PodNameForService(s))
-			_ = d.podmanClient.StopPod(ctx, s.ID)
-			_ = d.podmanClient.StopPod(ctx, s.Name)
-			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.ID))
-			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.Name))
-			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)))
-			_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("%s-%s", s.ProjectID, s.Name))
-			if s.PodID != "" {
-				_ = d.podmanClient.StopPod(ctx, s.PodID)
-				_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", s.PodID))
-				podSlug := SanitizeQuadletSlug(strings.TrimPrefix(s.PodID, "pod_"))
-				if podSlug != "" {
-					_ = d.podmanClient.StopPod(ctx, fmt.Sprintf("pod_%s", podSlug))
+			// Label-only pod resolution: never stop another project's
+			// pod because of a name collision.
+			pods, _ := d.podmanClient.GetPods(ctx)
+			for _, p := range pods {
+				if !podOwnedBy(p, s) && p.Name != PodNameForService(s) {
+					continue
 				}
+				_ = d.podmanClient.StopPod(ctx, p.Name)
+			}
+			if s.PodID != "" {
+				_ = d.podmanClient.StopPod(ctx, PodNameFor(s.PodID))
 			}
 			for _, leg := range legacyPodCandidates(s) {
-				_ = d.podmanClient.StopPod(ctx, leg)
-			}
-		}
-
-		containers, _ := d.podmanClient.GetContainers(ctx)
-		cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
-		candUnits := getQuadletCandidateUnitNames(s, QuadletUnitName(s))
-
-		for _, c := range containers {
-			isMatch := false
-			if c.Labels != nil {
-				if c.Labels["io.gopod.service"] == s.ID ||
-					c.Labels["com.docker.compose.project"] == s.ID ||
-					c.Labels["io.podman.compose.project"] == s.ID ||
-					c.Labels["com.docker.compose.project"] == s.Name {
-					isMatch = true
-				}
-				for _, cand := range candUnits {
-					baseUnit := strings.TrimSuffix(cand, ".service")
-					if c.Labels["io.podman.quadlet.unit"] == fmt.Sprintf("%s.container", baseUnit) ||
-						c.Labels["io.podman.quadlet.unit"] == fmt.Sprintf("%s.pod", baseUnit) {
-						isMatch = true
+				for _, p := range pods {
+					if p.Name == leg && podLegacyCandidateOwned(p, s) {
+						_ = d.podmanClient.StopPod(ctx, p.Name)
+						break
 					}
 				}
 			}
-			if !isMatch && len(c.Names) > 0 {
-				firstName := strings.TrimPrefix(c.Names[0], "/")
-				if strings.HasPrefix(firstName, s.ID) ||
-					firstName == s.Name ||
-					firstName == QuadletUnitName(s) ||
-					strings.HasPrefix(firstName, cleanPrefix) ||
-					firstName == fmt.Sprintf("systemd-%s", QuadletUnitName(s)) {
-					isMatch = true
-				}
-				parsed := ParseQuadlet(s.QuadletConfig)
-				if parsed.ContainerName != "" && firstName == parsed.ContainerName {
-					isMatch = true
-				}
-			}
-			if isMatch {
+		}
+
+		// Label-only container matching: unlabeled containers belong to
+		// other tools/users and are never touched.
+		containers, _ := d.podmanClient.GetContainers(ctx)
+		for _, c := range containers {
+			if containerOwnedBy(c, s) {
 				_ = d.podmanClient.StopContainer(ctx, c.ID)
 			}
 		}
@@ -251,15 +220,46 @@ func (d *Deployer) cleanPreflightConflicts(ctx context.Context, s Service, logLi
 	}
 
 	if d.podmanClient != nil {
-		for _, name := range candContainers {
-			_ = d.podmanClient.StopContainer(ctx, name)
-			_ = d.podmanClient.DeleteContainer(ctx, name, true)
+		// Ownership guard: candidate names are unit-identity derived, so
+		// a foreign container may exist with the same name. Only containers
+		// that exist AND carry our ownership labels are removed.
+		if ownedByName, err := d.ownedContainersByName(ctx, s); err == nil {
+			for _, name := range candContainers {
+				c, exists := ownedByName[name]
+				if !exists || !containerOwnedBy(c, s) {
+					continue
+				}
+				_ = d.podmanClient.StopContainer(ctx, name)
+				if delErr := d.podmanClient.DeleteContainer(ctx, name, true); delErr != nil {
+					cmdRm := exec.CommandContext(ctx, "podman", "rm", "-f", name)
+					d.setupCmdEnv(cmdRm)
+					_ = cmdRm.Run()
+				}
+			}
 		}
-	}
-	for _, name := range candContainers {
-		cmdRm := exec.CommandContext(ctx, "podman", "rm", "-f", name)
-		d.setupCmdEnv(cmdRm)
-		_ = cmdRm.Run()
+	} else {
+		// CLI-only path (no REST client): verify ownership through the label
+		// filter before any rm, then delete only the intersection.
+		labelArgs := []string{"ps", "-a", "--filter", "label=io.gopod.service=" + s.ID, "--format", "{{.Names}}"}
+		out, err := exec.CommandContext(ctx, "podman", labelArgs...).CombinedOutput()
+		if err != nil {
+			out = nil
+		}
+		owned := map[string]bool{}
+		for _, line := range strings.Split(string(out), "\n") {
+			n := strings.TrimSpace(line)
+			if n != "" {
+				owned[strings.TrimPrefix(n, "/")] = true
+			}
+		}
+		for _, name := range candContainers {
+			if !owned[name] {
+				continue
+			}
+			cmdRm := exec.CommandContext(ctx, "podman", "rm", "-f", name)
+			d.setupCmdEnv(cmdRm)
+			_ = cmdRm.Run()
+		}
 	}
 	if logLine != nil && len(candContainers) > 0 {
 		logLine(fmt.Sprintf("🧹 Pre-flight cleanup: reconciled %d candidate targets (%s)", len(candContainers), strings.Join(candContainers, ", ")))
@@ -321,38 +321,36 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 
 	// Phase 4: Force Remove Containers & Pods (Systemd is now dead, so Restart=always cannot respawn)
 	if d.podmanClient != nil {
-		for _, cName := range candContainers {
-			_ = d.podmanClient.StopContainer(teardownCtx, cName)
-			_ = d.podmanClient.DeleteContainer(teardownCtx, cName, true)
-			cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", cName)
-			d.setupCmdEnv(cmdRm)
-			_ = cmdRm.Run()
+		// Ownership guard: candidate container names are unit-identity
+		// derived (systemd unit names collide across projects), so a NAME match
+		// alone must never delete a foreign container. Resolve the name to an
+		// actual container and require our ownership labels first.
+		ownedByName, err := d.ownedContainersByName(teardownCtx, s)
+		if err == nil {
+			for _, cName := range candContainers {
+				c, ok := ownedByName[cName]
+				if !ok || !containerOwnedBy(c, s) {
+					continue
+				}
+				_ = d.podmanClient.StopContainer(teardownCtx, cName)
+				// CLI fork only as fallback when the REST delete fails.
+				if delErr := d.podmanClient.DeleteContainer(teardownCtx, cName, true); delErr != nil {
+					cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", cName)
+					d.setupCmdEnv(cmdRm)
+					_ = cmdRm.Run()
+				}
+			}
 		}
 
 		if containers, err := d.podmanClient.GetContainers(teardownCtx); err == nil {
-			cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
+			// Label-only matching: unlabeled containers are not ours;
+			// owned-name resolution above already handled exact candidates.
 			for _, c := range containers {
-				isMatch := false
-				if c.Labels != nil && (c.Labels["io.gopod.service"] == s.ID || c.Labels["com.docker.compose.project"] == s.ID || c.Labels["io.podman.compose.project"] == s.ID) {
-					isMatch = true
-				} else {
-					for _, n := range c.Names {
-						trimmed := strings.TrimPrefix(n, "/")
-						if trimmed == s.ID || trimmed == s.Name || strings.HasPrefix(trimmed, cleanPrefix) || strings.HasPrefix(trimmed, s.ID) {
-							isMatch = true
-							break
-						}
-						for _, candC := range candContainers {
-							if trimmed == candC {
-								isMatch = true
-								break
-							}
-						}
-					}
+				if !containerOwnedBy(c, s) {
+					continue
 				}
-				if isMatch {
-					_ = d.podmanClient.StopContainer(teardownCtx, c.ID)
-					_ = d.podmanClient.DeleteContainer(teardownCtx, c.ID, true)
+				_ = d.podmanClient.StopContainer(teardownCtx, c.ID)
+				if delErr := d.podmanClient.DeleteContainer(teardownCtx, c.ID, true); delErr != nil {
 					cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", c.ID)
 					d.setupCmdEnv(cmdRm)
 					_ = cmdRm.Run()
@@ -360,19 +358,21 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 			}
 		}
 
-		// Force-delete pods
-		for _, podCand := range candContainers {
-			_ = d.podmanClient.DeletePod(teardownCtx, podCand, true)
-			_ = d.podmanClient.DeletePod(teardownCtx, "pod_"+podCand, true)
-			cmdPodRm := exec.CommandContext(teardownCtx, "podman", "pod", "rm", "-f", podCand)
-			d.setupCmdEnv(cmdPodRm)
-			_ = cmdPodRm.Run()
-		}
-		_ = d.podmanClient.DeletePod(teardownCtx, fmt.Sprintf("pod_%s", s.Name), true)
-		_ = d.podmanClient.DeletePod(teardownCtx, fmt.Sprintf("pod_%s", SanitizeQuadletSlug(s.Name)), true)
-		if s.PodID != "" {
-			_ = d.podmanClient.DeletePod(teardownCtx, s.PodID, true)
-			_ = d.podmanClient.DeletePod(teardownCtx, fmt.Sprintf("pod_%s", s.PodID), true)
+		// Force-delete pods, strictly ownership-checked: only pods
+		// labeled io.gopod.service==s.ID or named exactly the canonical pod
+		// are removed. Cross-project pods are never touched.
+		if pods, err := d.podmanClient.GetPods(teardownCtx); err == nil {
+			canonicalPod := PodNameForService(s)
+			for _, p := range pods {
+				if !podOwnedBy(p, s) && p.Name != canonicalPod {
+					continue
+				}
+				if delErr := d.podmanClient.DeletePod(teardownCtx, p.Name, true); delErr != nil {
+					cmdPodRm := exec.CommandContext(teardownCtx, "podman", "pod", "rm", "-f", p.Name)
+					d.setupCmdEnv(cmdPodRm)
+					_ = cmdPodRm.Run()
+				}
+			}
 		}
 	}
 
@@ -389,15 +389,21 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	// Phase 7: Persistent Volume Cleanup (Only if explicitly requested)
 	if deleteVolumes && d.podmanClient != nil {
 		vols, _ := d.podmanClient.GetVolumes(teardownCtx)
-		cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
 		for _, v := range vols {
-			if strings.HasPrefix(v.Name, s.ID) || strings.HasPrefix(v.Name, cleanPrefix) || strings.HasPrefix(v.Name, s.Name) {
-				_ = d.podmanClient.DeleteVolume(teardownCtx, v.Name, true)
-			}
-			for _, cand := range candContainers {
-				if v.Name == cand || strings.HasPrefix(v.Name, cand+"_") {
-					_ = d.podmanClient.DeleteVolume(teardownCtx, v.Name, true)
+			// Label-only ownership: bare name prefixes could delete a
+			// sibling service's volumes (web vs web2). Unlabeled volumes are
+			// only removed when they carry an exact unit-file candidate name.
+			owned := volumeOwnedBy(v, s)
+			if !owned {
+				for _, cand := range candContainers {
+					if v.Name == cand || strings.HasPrefix(v.Name, cand+"_") {
+						owned = true
+						break
+					}
 				}
+			}
+			if owned {
+				_ = d.podmanClient.DeleteVolume(teardownCtx, v.Name, true)
 			}
 		}
 

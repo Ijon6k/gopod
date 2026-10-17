@@ -208,21 +208,23 @@ func getQuadletCandidateUnitNames(s Service, unitName string) []string {
 			}
 			stem := strings.TrimSuffix(fname, ext)
 			fullPath := filepath.Join(dir, fname)
-			isMatch := false
-			cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
-			if stem == cleanName || stem == s.Name || stem == s.ID || strings.HasPrefix(stem, s.ID) || (cleanPrefix != "" && strings.HasPrefix(stem, cleanPrefix)) {
-				isMatch = true
-			} else if data, err := os.ReadFile(fullPath); err == nil {
-				dataStr := string(data)
-				if (s.ID != "" && strings.Contains(dataStr, "io.gopod.service="+s.ID)) ||
-					(cleanPrefix != "" && strings.Contains(dataStr, "io.gopod.service="+cleanPrefix+"-")) ||
-					(cleanPrefix != "" && strings.Contains(dataStr, "io.gopod.service="+cleanPrefix)) ||
-					(s.Name != "" && strings.Contains(dataStr, "Label=io.gopod.service="+s.Name)) ||
-					(s.ProjectID != "" && s.Name != "" && strings.Contains(dataStr, fmt.Sprintf("io.gopod.project=%s", s.ProjectID)) && strings.Contains(dataStr, s.Name)) {
-					isMatch = true
-				}
-				if cName := extractDirective(dataStr, "ContainerName"); cName != "" && (cName == cleanName || cName == s.Name || (s.ID != "" && strings.HasPrefix(cName, s.ID))) {
-					isMatch = true
+			// Unit-file identity is name-based by necessity (systemd), so
+			// discovery is content-scoped instead: only an exact service
+			// ID stem or an exact ownership-label declaration claims a unit
+			// file. Name-similarity heuristics are gone — cross-project
+			// same-named services can never claim each other's units.
+			isMatch := stem == s.ID
+			if !isMatch {
+				if data, err := os.ReadFile(fullPath); err == nil {
+					dataStr := string(data)
+					if s.ID != "" && strings.Contains(dataStr, "io.gopod.service="+s.ID) {
+						isMatch = true
+					}
+					if !isMatch && s.ID != "" {
+						if cName := extractDirective(dataStr, "ContainerName"); cName == s.ID {
+							isMatch = true
+						}
+					}
 				}
 			}
 			if isMatch {
@@ -304,16 +306,16 @@ func (d *Deployer) findServiceUnitFilesAndCandidates(s Service) (candidateUnits 
 		filesToDelete = append(filesToDelete, path)
 	}
 
-	// 1. Base names
+	// 1. Base names — unit-identity anchored only: bare s.Name and
+	// "<project>-<name>" aliases are removed as deletion candidates because
+	// they are similarity-derived and can hit sibling services' identical
+	// names. The systemd unit name (cleanName) stays: the unit name IS the
+	// systemd identity, and unit-file scans below are content-scoped.
 	cleanName := QuadletUnitName(s)
-	cleanPrefix := fmt.Sprintf("%s-%s", s.ProjectID, s.Name)
 	addContainer(s.ID)
-	addContainer(s.Name)
 	addContainer(cleanName)
-	addContainer(cleanPrefix)
 	addContainer(fmt.Sprintf("systemd-%s", cleanName))
 	addUnit(s.ID)
-	addUnit(s.Name)
 	addUnit(cleanName)
 
 	// 2. Parsed Quadlet
@@ -379,28 +381,26 @@ func (d *Deployer) findServiceUnitFilesAndCandidates(s Service) (candidateUnits 
 			stem := strings.TrimSuffix(fname, ext)
 			fullPath := filepath.Join(dir, fname)
 
-			isMatch := false
-			if seenContainers[stem] || seenContainers[SanitizeQuadletSlug(stem)] || seenUnits[fmt.Sprintf("%s.service", stem)] || seenUnits[fmt.Sprintf("%s-pod.service", stem)] {
-				isMatch = true
-			} else if data, err := os.ReadFile(fullPath); err == nil {
-				dataStr := string(data)
-				if (s.ID != "" && strings.Contains(dataStr, "io.gopod.service="+s.ID)) ||
-					(cleanPrefix != "" && strings.Contains(dataStr, "io.gopod.service="+cleanPrefix+"-")) ||
-					(cleanPrefix != "" && strings.Contains(dataStr, "io.gopod.service="+cleanPrefix)) ||
-					(s.Name != "" && strings.Contains(dataStr, "Label=io.gopod.service="+s.Name)) ||
-					(s.ProjectID != "" && s.Name != "" && strings.Contains(dataStr, fmt.Sprintf("io.gopod.project=%s", s.ProjectID)) && strings.Contains(dataStr, s.Name)) {
-					isMatch = true
-				}
-				cName := extractDirective(dataStr, "ContainerName")
-				if cName != "" && (seenContainers[cName] || seenContainers[SanitizeQuadletSlug(cName)]) {
-					isMatch = true
-				}
-				pName := extractDirective(dataStr, "Pod")
-				if pName == "" {
-					pName = extractDirective(dataStr, "PodName")
-				}
-				if pName != "" && (seenContainers[pName] || seenContainers[SanitizeQuadletSlug(pName)]) {
-					isMatch = true
+			// Content-scoped discovery: seen-set (exact, already-derived)
+			// or exact ownership-label content. Name-similarity decls removed.
+			isMatch := seenContainers[stem] || seenContainers[SanitizeQuadletSlug(stem)] || seenUnits[fmt.Sprintf("%s.service", stem)] || seenUnits[fmt.Sprintf("%s-pod.service", stem)]
+			if !isMatch {
+				if data, err := os.ReadFile(fullPath); err == nil {
+					dataStr := string(data)
+					if s.ID != "" && strings.Contains(dataStr, "io.gopod.service="+s.ID) {
+						isMatch = true
+					}
+					cName := extractDirective(dataStr, "ContainerName")
+					if cName != "" && (seenContainers[cName] || seenContainers[SanitizeQuadletSlug(cName)]) {
+						isMatch = true
+					}
+					pName := extractDirective(dataStr, "Pod")
+					if pName == "" {
+						pName = extractDirective(dataStr, "PodName")
+					}
+					if pName != "" && (seenContainers[pName] || seenContainers[SanitizeQuadletSlug(pName)]) {
+						isMatch = true
+					}
 				}
 			}
 
@@ -437,22 +437,13 @@ func (d *Deployer) findServiceUnitFilesAndCandidates(s Service) (candidateUnits 
 	if d.podmanClient != nil {
 		if containers, err := d.podmanClient.GetContainers(context.Background()); err == nil {
 			for _, c := range containers {
-				isMatch := false
-				if c.Labels != nil {
-					if (s.ID != "" && c.Labels["io.gopod.service"] == s.ID) ||
-						(cleanPrefix != "" && strings.HasPrefix(c.Labels["io.gopod.service"], cleanPrefix)) ||
-						(s.ID != "" && c.Labels["com.docker.compose.project"] == s.ID) ||
-						(s.ID != "" && c.Labels["io.podman.compose.project"] == s.ID) ||
-						(cleanPrefix != "" && strings.HasPrefix(c.Labels["com.docker.compose.project"], cleanPrefix)) ||
-						(cleanPrefix != "" && strings.HasPrefix(c.Labels["io.podman.compose.project"], cleanPrefix)) ||
-						(s.Name != "" && (c.Labels["com.docker.compose.project"] == s.Name || c.Labels["io.podman.compose.project"] == s.Name)) {
-						isMatch = true
-					}
-				}
+				// Label-only matching: ownership labels first; the only
+				// name fallback is the exact unit-file candidate name set.
+				isMatch := containerOwnedBy(c, s)
 				if !isMatch {
 					for _, name := range c.Names {
 						trimmed := strings.TrimPrefix(name, "/")
-						if trimmed == s.ID || trimmed == s.Name || strings.HasPrefix(trimmed, cleanPrefix) || (s.ID != "" && strings.HasPrefix(trimmed, s.ID)) || seenContainers[trimmed] {
+						if trimmed == s.ID || seenContainers[trimmed] {
 							isMatch = true
 							break
 						}
@@ -486,15 +477,10 @@ func (d *Deployer) findServiceUnitFilesAndCandidates(s Service) (candidateUnits 
 				if podSlug != "" {
 					expectedPod = fmt.Sprintf("pod_%s", podSlug)
 				}
-				isMatch := false
-				if p.Name == s.ID || p.Name == s.Name || p.Name == cleanName ||
-					p.Name == fmt.Sprintf("pod_%s", cleanName) || p.Name == fmt.Sprintf("pod_%s", s.Name) ||
+				isMatch := podOwnedBy(p, s) || // label-based ownership
 					(expectedPod != "" && p.Name == expectedPod) ||
 					(s.PodID != "" && (p.Name == s.PodID || p.Name == fmt.Sprintf("pod_%s", s.PodID))) ||
-					strings.HasPrefix(p.Name, cleanPrefix) || (s.ID != "" && strings.HasPrefix(p.Name, s.ID)) ||
-					seenContainers[p.Name] {
-					isMatch = true
-				}
+					seenContainers[p.Name]
 				if isMatch {
 					addContainer(p.Name)
 					addUnit(fmt.Sprintf("%s-pod.service", strings.TrimSuffix(p.Name, ".pod")))

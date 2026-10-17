@@ -152,17 +152,17 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		status = strings.TrimSpace(string(out))
 	}
 
-	// 2. If not found or not running, try finding via container filters (including Podman Pods)
+	// 2. If not found or not running, try finding via container filters.
+	// Strict ownership order: ownership label first (exact label
+	// equality semantics), then per-container compose SERVICE labels. Name
+	// substring (`name=web` also matches `webhook`), compose-PROJECT labels
+	// (they match every member) and `pod=` filters are NOT used — they attach
+	// the terminal to a cousin container. An exact-name pass runs last.
 	if status != "running" {
 		filters := []string{
-			fmt.Sprintf("name=%s", id),
+			fmt.Sprintf("label=io.gopod.service=%s", id),
 			fmt.Sprintf("label=com.docker.compose.service=%s", id),
 			fmt.Sprintf("label=io.podman.compose.service=%s", id),
-			fmt.Sprintf("label=com.docker.compose.project=%s", id),
-			fmt.Sprintf("label=io.podman.compose.project=%s", id),
-			fmt.Sprintf("label=io.gopod.service=%s", id),
-			fmt.Sprintf("pod=%s", id),
-			fmt.Sprintf("pod=pod_%s", id),
 		}
 
 		for _, filter := range filters {
@@ -187,6 +187,28 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 				}
 				if status == "running" {
 					break
+				}
+			}
+		}
+
+		// Exact-name fallback: only a container whose name equals the id is a
+		// match — never partial/substring names.
+		if status != "running" {
+			listCmd := exec.CommandContext(ctx, "podman", "ps", "-a", "--format", "{{.Names}}\t{{.State}}")
+			if listOut, listErr := listCmd.CombinedOutput(); listErr == nil && len(listOut) > 0 {
+				lines := strings.Split(strings.TrimSpace(string(listOut)), "\n")
+				for _, line := range lines {
+					parts := strings.Split(line, "\t")
+					if len(parts) > 0 && parts[0] != "" {
+						if strings.TrimPrefix(parts[0], "/") != id {
+							continue
+						}
+						targetID = id
+						if len(parts) > 1 {
+							status = parts[1]
+						}
+						break
+					}
 				}
 			}
 		}

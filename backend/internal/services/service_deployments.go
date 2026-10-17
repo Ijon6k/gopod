@@ -13,6 +13,36 @@ import (
 	"gopod/internal/activity"
 )
 
+// ErrDeployInProgress is returned when a service already has a deployment
+// running. Handlers map it to HTTP 409 Conflict.
+var ErrDeployInProgress = errors.New("deployment already in progress")
+
+// tryAcquireDeploy atomically claims the service for one deployment. It returns
+// the deploymentID currently holding the lock; an empty string means acquired.
+func (s *WorkloadService) tryAcquireDeploy(serviceID, depID string) string {
+	if actual, loaded := s.deployLocks.LoadOrStore(serviceID, depID); loaded {
+		if holder, ok := actual.(string); ok && holder != "" {
+			return holder
+		}
+		return depID // unknown holder shape: reject defensively
+	}
+	return ""
+}
+
+// releaseDeploy releases the per-service deploy lock, but only when the caller
+// is still the current owner (so a stale release never steals a newer
+// deployment's lock).
+func (s *WorkloadService) releaseDeploy(serviceID, depID string) {
+	s.deployLocks.CompareAndDelete(serviceID, depID)
+}
+
+// webhookSlot returns the lazily-created semaphore that caps concurrent
+// webhook-spawned deployments. Kept lazy so zero-value structs (tests) behave.
+func (s *WorkloadService) webhookSlot() chan struct{} {
+	s.webhookSemSet.Do(func() { s.webhookSem = make(chan struct{}, 4) })
+	return s.webhookSem
+}
+
 // StartDeploy initiates an asynchronous container deployment with optional commit/image overrides.
 func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger string, overrides ...string) (*Deployment, error) {
 	svc, err := s.GetService(ctx, serviceID)
@@ -61,6 +91,12 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 	_, _ = rand.Read(b)
 	depID := fmt.Sprintf("dep-%d-%s", start.Unix(), hex.EncodeToString(b))
 
+	// Reject a second concurrent deployment for the same service instead of
+	// letting parallel deploys interleave and tear each other's work down.
+	if holder := s.tryAcquireDeploy(svc.ID, depID); holder != "" {
+		return nil, fmt.Errorf("%w: deployment %s is still running for this service; cancel it or wait before redeploying", ErrDeployInProgress, holder)
+	}
+
 	commitMsg := "Deployment initiated"
 	if trigger == "rollback" {
 		if commitOverride != "" {
@@ -103,6 +139,7 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 	go func() {
 		defer func() {
 			cancel()
+			s.releaseDeploy(svc.ID, depRecord.ID)
 			s.activeCancels.Delete(depRecord.ID)
 			s.activeServiceDeps.Delete(svc.ID)
 		}()
@@ -142,6 +179,11 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 	_, _ = rand.Read(b)
 	depID := fmt.Sprintf("dep-%d-%s", start.Unix(), hex.EncodeToString(b))
 
+	// Same per-service deploy mutex as StartDeploy.
+	if holder := s.tryAcquireDeploy(svc.ID, depID); holder != "" {
+		return nil, fmt.Errorf("%w: deployment %s is still running for this service; cancel it or wait before redeploying", ErrDeployInProgress, holder)
+	}
+
 	depRecord := Deployment{
 		ID:            depID,
 		ProjectID:     svc.ProjectID,
@@ -162,7 +204,20 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 	activity.RecordActivity(ctx, "operator", "service.deploy_start", "deployment", depRecord.ID, svc.ProjectID, svc.ID, "building",
 		fmt.Sprintf("Deploy #%d started for service '%s' (trigger=%s)", nextNumber, svc.Name, trigger), "127.0.0.1")
 
-	s.executeDeployment(ctx, svc, depRecord, start)
+	// Track the synchronous deployment like StartDeploy does so cancel and
+	// reconcile paths can see and stop it, and so the deploy lock is held until
+	// executeDeployment returns.
+	depCtx, cancel := context.WithTimeout(ctx, 25*time.Minute)
+	s.activeCancels.Store(depRecord.ID, cancel)
+	s.activeServiceDeps.Store(svc.ID, depRecord.ID)
+	defer func() {
+		cancel()
+		s.releaseDeploy(svc.ID, depID)
+		s.activeCancels.Delete(depRecord.ID)
+		s.activeServiceDeps.Delete(svc.ID)
+	}()
+
+	s.executeDeployment(depCtx, svc, depRecord, start)
 	return &depRecord, nil
 }
 
@@ -489,6 +544,19 @@ func (s *WorkloadService) DeployByWebhook(ctx context.Context, token string) (*S
 	}
 
 	go func() {
+		// Cap concurrent webhook-spawned deployments (4). Webhook
+		// bursts for the same service are already merged by the per-service
+		// deploy lock inside Deploy.
+		select {
+		case s.webhookSlot() <- struct{}{}:
+			defer func() { <-s.webhookSlot() }()
+		default:
+			log.Printf("⏭️ Webhook deploy skipped for service '%s' (%s): webhook deploy limit (4 concurrent) reached", svc.Name, svc.ID)
+			emitEngineEventSafe(context.Background(), "warn", "service", svc.ID, svc.ProjectID, "webhook", "deploy.webhook_busy",
+				fmt.Sprintf("Webhook deploy for service '%s' skipped: webhook deploy limit (4 concurrent) reached", svc.Name),
+				map[string]any{"service": svc.Name})
+			return
+		}
 		bgCtx, cancel := context.WithTimeout(context.Background(), 20*time.Minute)
 		defer cancel()
 		log.Printf("🔔 Webhook deploy triggered for service '%s' (%s)", svc.Name, svc.ID)

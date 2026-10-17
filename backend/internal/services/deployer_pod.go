@@ -526,13 +526,19 @@ func (d *Deployer) deployPodKube(ctx context.Context, s Service, depID string, l
 
 	// Clean up legacy naming pods
 	if d.podmanClient != nil {
-		for _, legacy := range legacyPodCandidates(s) {
-			if legacy == "" || legacy == podName {
-				continue
-			}
-			if _, err := d.podmanClient.InspectPod(ctx, legacy); err == nil {
-				_ = d.podmanClient.DeletePod(ctx, legacy, true)
-				logLine(fmt.Sprintf("🧹 Legacy pod cleanup: removed '%s'.", legacy))
+		if pods, err := d.podmanClient.GetPods(ctx); err == nil {
+			for _, legacy := range legacyPodCandidates(s) {
+				if legacy == "" || legacy == podName {
+					continue
+				}
+				for _, p := range pods {
+					if p.Name != legacy || !podLegacyCandidateOwned(p, s) {
+						continue
+					}
+					_ = d.podmanClient.DeletePod(ctx, legacy, true)
+					logLine(fmt.Sprintf("🧹 Legacy pod cleanup: removed '%s'.", legacy))
+					break
+				}
 			}
 		}
 	}
@@ -687,19 +693,27 @@ func (d *Deployer) deployPod(ctx context.Context, s Service, depID string, logLi
 
 	// Migrate away from legacy name-scheme pods (pod_<name>): they would hold
 	// the same host ports and shadow the canonical pod. Remove them now that
-	// the canonical pod owns the bindings.
+	// the canonical pod owns the bindings. Ownership-checked: a legacy
+	// pod is only removed when it provably belongs to this gopod project, so
+	// same-named services across projects can never delete each other's pods.
 	if d.podmanClient != nil {
-		for _, legacy := range legacyPodCandidates(s) {
-			if legacy == "" || legacy == podName {
-				continue
-			}
-			if _, err := d.podmanClient.InspectPod(ctx, legacy); err == nil {
-				logLine(fmt.Sprintf("Removing legacy pod '%s' (renamed to '%s')...", legacy, podName))
-				delErr := d.podmanClient.DeletePod(ctx, legacy, true)
-				if delErr == nil {
-					logLine(fmt.Sprintf("🧹 Legacy pod cleanup: removed '%s' (superseded by '%s').", legacy, podName))
-				} else {
-					logLine(fmt.Sprintf("🧹 Legacy pod cleanup: '%s' removal attempted (superseded by '%s'): %v", legacy, podName, delErr))
+		if pods, err := d.podmanClient.GetPods(ctx); err == nil {
+			for _, legacy := range legacyPodCandidates(s) {
+				if legacy == "" || legacy == podName {
+					continue
+				}
+				for _, p := range pods {
+					if p.Name != legacy || !podLegacyCandidateOwned(p, s) {
+						continue
+					}
+					logLine(fmt.Sprintf("Removing legacy pod '%s' (renamed to '%s')...", legacy, podName))
+					delErr := d.podmanClient.DeletePod(ctx, legacy, true)
+					if delErr == nil {
+						logLine(fmt.Sprintf("🧹 Legacy pod cleanup: removed '%s' (superseded by '%s').", legacy, podName))
+					} else {
+						logLine(fmt.Sprintf("🧹 Legacy pod cleanup: '%s' removal attempted (superseded by '%s'): %v", legacy, podName, delErr))
+					}
+					break
 				}
 			}
 		}

@@ -63,13 +63,14 @@ type ContainerItem struct {
 
 // PodItem represents a Podman pod.
 type PodItem struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	Status     string   `json:"status"`
-	Containers []string `json:"containers"`
-	Network    string   `json:"network"`
-	Created    string   `json:"created"`
-	InfraID    string   `json:"infraId,omitempty"`
+	ID         string            `json:"id"`
+	Name       string            `json:"name"`
+	Status     string            `json:"status"`
+	Containers []string          `json:"containers"`
+	Network    string            `json:"network"`
+	Created    string            `json:"created"`
+	InfraID    string            `json:"infraId,omitempty"`
+	Labels     map[string]string `json:"labels,omitempty"`
 }
 
 // ImageItem represents a container image in local storage.
@@ -83,10 +84,11 @@ type ImageItem struct {
 
 // VolumeItem represents a local named volume.
 type VolumeItem struct {
-	Name       string `json:"name"`
-	Driver     string `json:"driver"`
-	MountPoint string `json:"mount"`
-	Size       string `json:"size"`
+	Name       string            `json:"name"`
+	Driver     string            `json:"driver"`
+	MountPoint string            `json:"mount"`
+	Size       string            `json:"size"`
+	Labels     map[string]string `json:"labels,omitempty"`
 }
 
 // NetworkItem represents a container network.
@@ -139,4 +141,3 @@ type SystemDiskUsage struct {
 	Size           string `json:"size"`
 	Reclaimable    string `json:"reclaimable"`
 }
-

@@ -2,6 +2,7 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -148,6 +149,10 @@ func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	dep, err := h.service.StartDeploy(r.Context(), id, trigger, body.Commit, body.Image)
 	if err != nil {
+		if errors.Is(err, ErrDeployInProgress) {
+			httputil.WriteError(w, http.StatusConflict, err.Error())
+			return
+		}
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -495,4 +500,3 @@ func (h *Handler) handleGetLinger(w http.ResponseWriter, r *http.Request) {
 		"user":   user,
 	})
 }
-

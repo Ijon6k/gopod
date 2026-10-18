@@ -42,6 +42,9 @@ type WorkloadService struct {
 	deployLocks   sync.Map
 	webhookSem    chan struct{} // caps concurrent webhook-spawned deploys (lazy)
 	webhookSemSet sync.Once
+	// gcRuntimeOverride lets tests substitute a fake engine for the cleanup
+	// engine; nil means "use the deployer's podman client".
+	gcRuntimeOverride gcRuntime
 }
 
 // NewWorkloadService creates a new services domain service.

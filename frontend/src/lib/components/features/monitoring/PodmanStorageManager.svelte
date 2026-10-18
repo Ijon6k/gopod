@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { dataStore } from '$lib/stores/data.svelte';
-	import { ConfirmDialog } from '$lib/components/ui';
+	import { ConfirmDialog, Button } from '$lib/components/ui';
 	import PruneStorageModal from './PruneStorageModal.svelte';
 	import StorageHeaderDeck from './StorageHeaderDeck.svelte';
 	import StorageDonutView from './StorageDonutView.svelte';
@@ -8,9 +8,17 @@
 	import StorageSubsystemTable from './StorageSubsystemTable.svelte';
 	import StorageConsumersTable from './StorageConsumersTable.svelte';
 	import { api } from '$lib/api';
-	import type { SystemDiskUsage } from '$lib/types';
+	import type { SystemDiskUsage, GCPreview } from '$lib/types';
 	import { onMount } from 'svelte';
-	import { ImageSquare, Cube, Database, CheckCircle } from 'phosphor-svelte';
+	import {
+		ImageSquare,
+		Cube,
+		Database,
+		CheckCircle,
+		Broom,
+		ArrowClockwise,
+		CircleNotch
+	} from 'phosphor-svelte';
 	import { bytesToGB, formatBytes } from '$lib/utils/format';
 
 	// Prune modal and confirmation states
@@ -21,6 +29,11 @@
 	let isLoadingDf = $state(false);
 	let chartMode = $state<'donut' | 'bar'>('donut');
 	let pruningTarget = $state<string | null>(null);
+
+	// Cleanup engine (scheduled nightly; never touches named volumes)
+	let gcPreview = $state<GCPreview | null>(null);
+	let gcRunning = $state(false);
+	let isLoadingGcPreview = $state(false);
 
 	let images = $derived(dataStore.images);
 	let volumes = $derived(dataStore.volumes);
@@ -42,7 +55,44 @@
 
 	onMount(() => {
 		loadDiskUsage();
+		loadGCPreview();
 	});
+
+	async function loadGCPreview() {
+		try {
+			isLoadingGcPreview = true;
+			gcPreview = await api.system.gcPreview();
+		} catch (err) {
+			console.error('Failed to load cleanup engine preview:', err);
+		} finally {
+			isLoadingGcPreview = false;
+		}
+	}
+
+	async function runEngineCleanup() {
+		try {
+			gcRunning = true;
+			const prevBytes = totalRawSize;
+			const result = await api.system.runGC('all');
+			await loadDiskUsage();
+			await loadGCPreview();
+			const reclaimed = Math.max(0, prevBytes - totalRawSize);
+			if (result.skipped) {
+				recentReclaimedText = null;
+			} else {
+				recentReclaimedText = reclaimed > 0 ? formatBytes(reclaimed) : 'storage cache';
+			}
+		} catch (err) {
+			console.error('Cleanup engine run failed:', err);
+		} finally {
+			gcRunning = false;
+			if (recentReclaimedText) {
+				setTimeout(() => {
+					recentReclaimedText = null;
+				}, 6000);
+			}
+		}
+	}
 
 	let runningContainers = $derived(containers.filter((c) => c.status === 'running').length);
 	let stoppedContainers = $derived(containers.filter((c) => c.status !== 'running').length);
@@ -326,7 +376,86 @@
 		/>
 	</div>
 
-	<!-- 2. Largest Disk Consumers -->
+	<!-- 2. Cleanup engine: scheduled nightly, label-safe, never removes volumes -->
+	<div
+		class="relative overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-5"
+	>
+		<div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+			<div class="flex flex-col gap-1.5">
+				<div class="flex flex-wrap items-center gap-2.5">
+					<h3 class="text-sm font-semibold text-[var(--text-primary)]">Cleanup engine</h3>
+					<span
+						class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-tertiary)]"
+					>
+						nightly 23:50
+					</span>
+					{#if gcPreview?.busy}
+						<span
+							class="rounded border border-[var(--status-amber)] bg-[var(--status-amber-muted)] px-2 py-0.5 text-[11px] text-[var(--status-amber)]"
+						>
+							deployment in progress — cleanup waits
+						</span>
+					{/if}
+				</div>
+				<p class="text-xs text-[var(--text-tertiary)]">
+					Reclaims dangling image layers, stopped containers, build cache, and quadlet units left
+					by deleted services. Named volumes are never removed automatically.
+				</p>
+				{#if gcPreview}
+					<div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
+						<span class="rounded bg-[var(--bg-surface)] px-2 py-0.5 font-mono"
+							>{gcPreview.danglingImages} dangling image{gcPreview.danglingImages === 1 ? '' : 's'}</span
+						>
+						<span class="rounded bg-[var(--bg-surface)] px-2 py-0.5 font-mono"
+							>{gcPreview.stoppedContainers} stopped container{gcPreview.stoppedContainers === 1
+								? ''
+								: 's'}</span
+						>
+						<span class="rounded bg-[var(--bg-surface)] px-2 py-0.5 font-mono"
+							>{gcPreview.staleUnitFiles?.length ?? 0} stale unit file{(gcPreview.staleUnitFiles
+								?.length ?? 0) === 1
+								? ''
+								: 's'}</span
+						>
+						<span class="rounded bg-[var(--bg-surface)] px-2 py-0.5 font-mono"
+							>{gcPreview.orphanVolumes?.length ?? 0} orphan volume{(gcPreview.orphanVolumes
+								?.length ?? 0) === 1
+								? ''
+								: 's'}</span
+						>
+					</div>
+				{/if}
+			</div>
+			<div class="flex flex-wrap items-center gap-2">
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={loadGCPreview}
+					disabled={isLoadingGcPreview || gcRunning}
+					aria-label="Refresh cleanup preview"
+				>
+					<ArrowClockwise size={13} class={isLoadingGcPreview ? 'animate-spin' : ''} />
+				</Button>
+				<Button
+					variant="primary"
+					size="sm"
+					onclick={runEngineCleanup}
+					disabled={gcRunning || gcPreview?.busy === true}
+					aria-label="Run cleanup engine now"
+				>
+					{#if gcRunning}
+						<CircleNotch size={14} class="animate-spin" />
+						<span>Cleaning...</span>
+					{:else}
+						<Broom size={14} />
+						<span>Run cleanup now</span>
+					{/if}
+				</Button>
+			</div>
+		</div>
+	</div>
+
+	<!-- 3. Largest Disk Consumers -->
 	<StorageConsumersTable {topConsumers} />
 </div>
 

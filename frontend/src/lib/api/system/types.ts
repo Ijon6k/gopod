@@ -86,3 +86,24 @@ export interface SystemLingerResponse {
 	linger: boolean;
 	user: string;
 }
+
+export interface GCPreview {
+	busy: boolean;
+	danglingImages: number;
+	danglingImageBytes: number;
+	stoppedContainers: number;
+	reclaimableBytes: number;
+	staleUnitFiles: string[] | null;
+	orphanVolumes: string[] | null;
+}
+
+export interface GCResult {
+	scope: string;
+	skipped: boolean;
+	reason?: string;
+	danglingImagesRemoved: number;
+	reclaimedBytes: number;
+	unitFilesRemoved?: string[] | null;
+	volumesRemoved?: string[] | null;
+	errors?: string[] | null;
+}

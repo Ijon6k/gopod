@@ -360,6 +360,23 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 			}
 		}
 
+		// Attach ownership labels to explicitly named volumes before the
+		// container claims them. Podman would otherwise create the volume
+		// implicitly and leave it unlabeled, which makes ownership impossible to
+		// prove at teardown. Best-effort: a labeling failure never blocks deploy.
+		for _, spec := range vols {
+			src := volumeSourceOf(spec)
+			if !isNamedVolumeSource(src) {
+				continue
+			}
+			if err := d.podmanClient.CreateVolume(ctx, src, map[string]string{
+				"io.gopod.service": s.ID,
+				"io.gopod.project": s.ProjectID,
+			}); err != nil {
+				logLine(fmt.Sprintf("⚠️ Could not label named volume '%s': %v", src, err))
+			}
+		}
+
 		var cmdArgs []string
 		if strings.TrimSpace(s.Command) != "" {
 			cmdArgs = strings.Fields(s.Command)
@@ -413,4 +430,25 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 	}
 	logLine(fmt.Sprintf("✅ Container '%s' is up and healthy.", containerName))
 	return nil
+}
+
+// volumeSourceOf extracts the source segment of a "<source>:<target>[:opts]"
+// volume specification.
+func volumeSourceOf(spec string) string {
+	parts := strings.SplitN(spec, ":", 2)
+	return strings.TrimSpace(parts[0])
+}
+
+// isNamedVolumeSource reports whether a volume source names a managed volume
+// rather than a host path. Host binds (absolute, relative, ~-prefixed, or any
+// source containing a path separator) are left untouched — they are not
+// volumes gopod created.
+func isNamedVolumeSource(src string) bool {
+	if src == "" {
+		return false
+	}
+	if strings.HasPrefix(src, "/") || strings.HasPrefix(src, ".") || strings.HasPrefix(src, "~") {
+		return false
+	}
+	return !strings.Contains(src, "/")
 }

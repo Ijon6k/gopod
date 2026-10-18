@@ -78,16 +78,16 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 				defer resp.Body.Close()
 				var raw struct {
 					Host struct {
-						CPUs           int    `json:"cpus"`
-						Hostname       string `json:"hostname"`
-						Kernel         string `json:"kernel"`
-						MemTotal       int64  `json:"memTotal"`
-						MemFree        int64  `json:"memFree"`
-						SwapTotal      int64  `json:"swapTotal"`
-						SwapFree       int64  `json:"swapFree"`
-						CgroupVersion  string `json:"cgroupVersion"`
-						Uptime         string `json:"uptime"`
-						Security struct {
+						CPUs          int    `json:"cpus"`
+						Hostname      string `json:"hostname"`
+						Kernel        string `json:"kernel"`
+						MemTotal      int64  `json:"memTotal"`
+						MemFree       int64  `json:"memFree"`
+						SwapTotal     int64  `json:"swapTotal"`
+						SwapFree      int64  `json:"swapFree"`
+						CgroupVersion string `json:"cgroupVersion"`
+						Uptime        string `json:"uptime"`
+						Security      struct {
 							Rootless        bool `json:"rootless"`
 							SELinuxEnabled  bool `json:"selinuxEnabled"`
 							AppArmorEnabled bool `json:"apparmorEnabled"`
@@ -327,6 +327,25 @@ func (c *Client) PruneSystem(ctx context.Context) error {
 	return exec.CommandContext(ctx, "podman", "system", "prune", "-f").Run()
 }
 
+// PruneBuilds removes dangling images and build cache left behind by image
+// builds. Podman exposes no dedicated libpod builder-prune REST endpoint, so
+// the CLI verb is used; when it is unavailable it degrades to a plain
+// dangling-image prune so a cleanup run never hard-fails on this step.
+func (c *Client) PruneBuilds(ctx context.Context) error {
+	if _, err := exec.LookPath("podman"); err != nil {
+		return c.PruneImages(ctx, false)
+	}
+	cmd := exec.CommandContext(ctx, "podman", "builder", "prune", "-f")
+	c.SetupCmdEnv(cmd)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if fallbackErr := c.PruneImages(ctx, false); fallbackErr == nil {
+			return nil
+		}
+		return fmt.Errorf("podman builder prune failed: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
 // GetDiskUsage queries Podman disk usage across images, containers, and volumes.
 func (c *Client) GetDiskUsage(ctx context.Context) ([]SystemDiskUsage, error) {
 	cmd := exec.CommandContext(ctx, "podman", "system", "df", "--format", "json")
@@ -344,4 +363,3 @@ func (c *Client) GetDiskUsage(ctx context.Context) ([]SystemDiskUsage, error) {
 	}
 	return rawList, nil
 }
-

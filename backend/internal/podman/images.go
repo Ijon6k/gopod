@@ -130,6 +130,68 @@ func (c *Client) GetImages(ctx context.Context) ([]ImageItem, error) {
 	return images, nil
 }
 
+// DanglingImageStat summarises untagged (dangling) images: the intermediate
+// build layers that accumulate during image builds and are unreachable by any
+// reference.
+type DanglingImageStat struct {
+	Count int   `json:"count"`
+	Bytes int64 `json:"bytes"`
+}
+
+// GetDanglingImages counts untagged images and their total byte size.
+func (c *Client) GetDanglingImages(ctx context.Context) (*DanglingImageStat, error) {
+	if c.httpClient != nil {
+		url := `http://d/v5.0.0/libpod/images/json?filters={"dangling":{"true":true}}`
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			return nil, fmt.Errorf("podman dangling images request failed: %w", err)
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("podman dangling images returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		var raw []struct {
+			ID   string `json:"Id"`
+			Size int64  `json:"Size"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+			return nil, err
+		}
+		stat := &DanglingImageStat{Count: len(raw)}
+		for _, item := range raw {
+			if item.Size > 0 {
+				stat.Bytes += item.Size
+			}
+		}
+		return stat, nil
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "images", "--filter", "dangling=true", "--format", "json")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return nil, err
+	}
+	var raw []map[string]interface{}
+	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+		return nil, err
+	}
+	stat := &DanglingImageStat{Count: len(raw)}
+	for _, item := range raw {
+		if size, ok := item["Size"].(float64); ok && size > 0 {
+			stat.Bytes += int64(size)
+		} else if size, ok := item["Size"].(int64); ok && size > 0 {
+			stat.Bytes += size
+		}
+	}
+	return stat, nil
+}
+
 // PruneImages cleans up unused container images.
 func (c *Client) PruneImages(ctx context.Context, all bool) error {
 	if c.httpClient != nil {

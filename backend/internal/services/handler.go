@@ -61,6 +61,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/services/validate-manifest", h.middleware.RequireAuth(h.handleValidateManifest))
 	mux.HandleFunc("POST /api/services/{id}/validate-manifest", h.middleware.RequireAuth(h.handleValidateManifest))
 	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAuth(h.handleGetLinger))
+
+	// Cleanup engine: inventory + manual run (nightly job runs unattended).
+	mux.HandleFunc("GET /api/system/gc/preview", h.middleware.RequireAuth(h.handleGCPreview))
+	mux.HandleFunc("POST /api/system/gc", h.middleware.RequireAuth(h.handleRunGC))
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
@@ -499,4 +503,44 @@ func (h *Handler) handleGetLinger(w http.ResponseWriter, r *http.Request) {
 		"linger": enabled,
 		"user":   user,
 	})
+}
+
+// handleGCPreview returns a read-only inventory of reclaimable artifacts.
+func (h *Handler) handleGCPreview(w http.ResponseWriter, r *http.Request) {
+	preview, err := h.service.GCPreview(r.Context())
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, preview)
+}
+
+type gcRunRequest struct {
+	Scope          string   `json:"scope"`
+	IncludeVolumes bool     `json:"includeVolumes"`
+	Volumes        []string `json:"volumes"`
+}
+
+// handleRunGC executes one cleanup pass. A run that finds a deployment in
+// flight returns 200 with skipped=true rather than an error: skipping is the
+// correct, safe outcome.
+func (h *Handler) handleRunGC(w http.ResponseWriter, r *http.Request) {
+	var req gcRunRequest
+	if r.Body != nil {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
+			httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+			return
+		}
+	}
+	scope, err := ParseGCScope(req.Scope)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	result, err := h.service.RunGC(r.Context(), scope, req.IncludeVolumes, req.Volumes)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, result)
 }

@@ -805,7 +805,18 @@ func buildPodQuadletBundle(s Service, podName string, ports []string) string {
 			publishes.WriteString(fmt.Sprintf("PublishPort=%s\n", n))
 		}
 	}
-	podUnit := fmt.Sprintf("# File: %s.pod\n[Unit]\nDescription=GoPod %s Pod\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Pod]\nPodName=%s\nNetwork=gopod-net\nInfraImage=registry.k8s.io/pause:3.9\nShare=net,uts,ipc\n%s[Install]\nWantedBy=default.target\n",
-		podName, podName, podName, publishes.String())
+	var podLabels strings.Builder
+	if s.ID != "" {
+		podLabels.WriteString(fmt.Sprintf("Label=io.gopod.service=%s\n", s.ID))
+		if s.ProjectID != "" {
+			podLabels.WriteString(fmt.Sprintf("Label=io.gopod.project=%s\n", s.ProjectID))
+		}
+	}
+	// NOTE: [Pod] has no InfraImage=/Share= keys in the Quadlet generator; an
+	// unknown key aborts conversion of the whole unit. podman's builtin infra
+	// image (registry.k8s.io/pause) is used implicitly, and namespace sharing is
+	// requested explicitly via PodmanArgs so the pod keeps sharing net/uts/ipc.
+	podUnit := fmt.Sprintf("# File: %s.pod\n[Unit]\nDescription=GoPod %s Pod\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Pod]\nPodName=%s\nNetwork=gopod-net\nPodmanArgs=--share=net,uts,ipc\n%s%s[Install]\nWantedBy=default.target\n",
+		podName, podName, podName, podLabels.String(), publishes.String())
 	return podUnit
 }

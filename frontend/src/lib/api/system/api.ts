@@ -3,7 +3,9 @@ import type {
 	SystemInfoResponse,
 	ContainerStatResponse,
 	SystemDiskUsage,
-	SystemLingerResponse
+	SystemLingerResponse,
+	GCPreview,
+	GCResult
 } from './types';
 
 export const systemApi = {
@@ -39,6 +41,20 @@ export const systemApi = {
 
 	async df(): Promise<SystemDiskUsage[]> {
 		const res = await apiClient.get<SystemDiskUsage[]>('/system/df');
+		return res.data;
+	},
+
+	async gcPreview(): Promise<GCPreview> {
+		const res = await apiClient.get<GCPreview>('/system/gc/preview');
+		return res.data;
+	},
+
+	async runGC(
+		scope: string,
+		includeVolumes = false,
+		volumes: string[] = []
+	): Promise<GCResult> {
+		const res = await apiClient.post<GCResult>('/system/gc', { scope, includeVolumes, volumes });
 		return res.data;
 	},
 

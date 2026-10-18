@@ -8,6 +8,8 @@
 		updateServiceWithDatabaseConfig,
 		generateDatabasePassword,
 		validateDatabasePassword,
+		revealMaskedEnvValues,
+		ENV_SECRET_MASK,
 		DATABASE_ENGINES,
 		type DatabaseConfig,
 		type DatabaseEngine,
@@ -67,26 +69,34 @@
 	let saveError = $state<string | null>(null);
 
 	$effect(() => {
-		if (open) {
-			const c = extractDatabaseCredentials(service);
-			serviceName = service.name;
-			serviceDescription = service.description || '';
-			activeImage = c.image;
-			isCustomImage = !currentEngine.popularTags.includes(c.image);
-
-			dbName = c.databaseName;
-			dbUser = c.user;
-			dbPassword = c.password;
-			dbRootPassword = c.rootPassword || '';
-
-			internalPortInput = String(c.port);
-			hostPortInput = c.hostPort ? String(c.hostPort) : '';
-
-			volumeNameInput = c.volumeName;
-			storagePathInput = c.volumeMountPath;
-			saveError = null;
-		}
+		if (open) void loadForOpen();
 	});
+
+	// The password arrives masked from the API; reveal it so the form (and the
+	// Redis command rebuild on save) works on the real value. When the reveal
+	// fails the form keeps the mask and the save path treats it as unchanged.
+	async function loadForOpen() {
+		const id = service.id;
+		const overrides = await revealMaskedEnvValues(service);
+		if (!open || service.id !== id) return;
+		const c = extractDatabaseCredentials(service, overrides);
+		serviceName = service.name;
+		serviceDescription = service.description || '';
+		activeImage = c.image;
+		isCustomImage = !currentEngine.popularTags.includes(c.image);
+
+		dbName = c.databaseName;
+		dbUser = c.user;
+		dbPassword = c.password;
+		dbRootPassword = c.rootPassword || '';
+
+		internalPortInput = String(c.port);
+		hostPortInput = c.hostPort ? String(c.hostPort) : '';
+
+		volumeNameInput = c.volumeName;
+		storagePathInput = c.volumeMountPath;
+		saveError = null;
+	}
 
 	let passwordValidation = $derived(validateDatabasePassword(dbPassword));
 	let isFormValid = $derived(

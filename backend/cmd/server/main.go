@@ -81,13 +81,16 @@ func main() {
 		}
 	}
 
-	srvHandler := server.NewServer(server.Config{
+	srvHandler, err := server.NewServer(server.Config{
 		Port:         *port,
 		PodmanSocket: *socket,
 		DBPath:       *dbPath,
 		CaddyAdmin:   *caddyAdmin,
 		DistFS:       distFS,
 	})
+	if err != nil {
+		log.Fatalf("Refusing to start: %v", err)
+	}
 
 	srv := &http.Server{
 		Addr:         ":" + *port,

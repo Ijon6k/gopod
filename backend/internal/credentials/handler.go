@@ -1,7 +1,6 @@
 package credentials
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"gopod/internal/auth"
@@ -51,8 +50,8 @@ func (h *Handler) handleListSSHKeys(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCreateSSHKey(w http.ResponseWriter, r *http.Request) {
 	var k SSHKey
-	if err := json.NewDecoder(r.Body).Decode(&k); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &k, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -68,7 +67,7 @@ func (h *Handler) handleGenerateSSHKey(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Name string `json:"name"`
 	}
-	_ = json.NewDecoder(r.Body).Decode(&req)
+	_ = httputil.DecodeJSONBody(w, r, &req, 0)
 	key, err := h.service.GenerateSSHKeyPair(r.Context(), req.Name)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -99,8 +98,8 @@ func (h *Handler) handleListRegistries(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCreateRegistry(w http.ResponseWriter, r *http.Request) {
 	var reg ContainerRegistry
-	if err := json.NewDecoder(r.Body).Decode(&reg); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &reg, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -134,8 +133,8 @@ func (h *Handler) handleListSecrets(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCreateSecret(w http.ResponseWriter, r *http.Request) {
 	var sec Secret
-	if err := json.NewDecoder(r.Body).Decode(&sec); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &sec, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 

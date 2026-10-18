@@ -8,6 +8,8 @@
 		updateServiceWithDatabaseConfig,
 		generateDatabasePassword,
 		validateDatabasePassword,
+		revealMaskedEnvValues,
+		ENV_SECRET_MASK,
 		DATABASE_ENGINES
 	} from '../../database/database-utils';
 	import {
@@ -41,11 +43,20 @@
 	);
 
 	$effect(() => {
-		if (open) {
-			newPassword = creds.password || generateDatabasePassword();
-			saveError = null;
-		}
+		if (open) void loadForOpen();
 	});
+
+	// Prefill with the stored password via an explicit reveal. If the reveal
+	// fails, offer a generated replacement rather than the mask so the env var
+	// and the Redis command stay consistent on save.
+	async function loadForOpen() {
+		const id = service.id;
+		const overrides = await revealMaskedEnvValues(service);
+		if (!open || service.id !== id) return;
+		const c = extractDatabaseCredentials(service, overrides);
+		newPassword = c.password && c.password !== ENV_SECRET_MASK ? c.password : generateDatabasePassword();
+		saveError = null;
+	}
 
 	let validation = $derived(validateDatabasePassword(newPassword));
 

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os/exec"
 	"sort"
 	"strings"
@@ -57,8 +58,10 @@ func redactSecretValue(key, value string) string {
 }
 
 // sanitizedPodmanRunArgs renders the `podman run` equivalent for logging with
-// secret env values redacted. Mirrors podman.Client.RunContainer arg order.
-func sanitizedPodmanRunArgs(opts podman.RunContainerOptions) string {
+// secret env values redacted. Keys the service stores as secret (exact match)
+// are always masked; the name heuristic remains as a fallback for
+// compose-derived values. Mirrors podman.Client.RunContainer arg order.
+func sanitizedPodmanRunArgs(opts podman.RunContainerOptions, secretKeys map[string]bool) string {
 	var args []string
 	args = append(args, "podman", "run", "-d", "--name", opts.Name)
 	if opts.Pod != "" {
@@ -131,12 +134,29 @@ func sanitizedPodmanRunArgs(opts podman.RunContainerOptions) string {
 	sort.Strings(envKeys)
 	for _, k := range envKeys {
 		if k != "" {
-			args = append(args, "-e", fmt.Sprintf("%s=%s", k, redactSecretValue(k, opts.Env[k])))
+			value := opts.Env[k]
+			if secretKeys[k] {
+				value = "***redacted***"
+			} else {
+				value = redactSecretValue(k, value)
+			}
+			args = append(args, "-e", fmt.Sprintf("%s=%s", k, value))
 		}
 	}
 	args = append(args, opts.Image)
 	args = append(args, opts.Command...)
 	return strings.Join(args, " ")
+}
+
+// redactCloneURL strips credentials embedded in a clone URL
+// (https://user:token@host/repo) so they never reach the deployment log.
+func redactCloneURL(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil || u.User == nil {
+		return raw
+	}
+	u.User = nil
+	return u.String()
 }
 
 // detectRunExitCode best-effort extracts a podman/OCI exit code (125/126/127)

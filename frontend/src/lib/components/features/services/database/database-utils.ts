@@ -1,4 +1,28 @@
 import type { Service, EnvVar } from '$lib/types';
+import { api } from '$lib/api';
+
+/**
+ * Sentinel the backend substitutes for encrypted env values on read. It always
+ * means "keep the stored value" when written back (see services.EnvSecretMask).
+ */
+export const ENV_SECRET_MASK = '••••••';
+
+/**
+ * Reveals env values the API returned masked. Best effort: a failed reveal
+ * returns no overrides so callers fall back to a keep-unchanged path.
+ */
+export async function revealMaskedEnvValues(service: Service): Promise<Record<string, string>> {
+	const keys = (service.envVars ?? [])
+		.filter((v) => v.secret && v.value === ENV_SECRET_MASK)
+		.map((v) => v.key)
+		.filter((k) => k !== '');
+	if (keys.length === 0 || !service.id) return {};
+	try {
+		return await api.services.revealEnv(service.id, keys);
+	} catch {
+		return {};
+	}
+}
 
 export type DatabaseEngine =
 	'postgres' | 'mysql' | 'mariadb' | 'redis' | 'mongodb' | 'clickhouse' | 'libsql' | 'custom';
@@ -315,8 +339,12 @@ export function buildDatabaseEnvVars(config: DatabaseConfig): EnvVar[] {
 
 /**
  * Extracts database credentials, connection parameters, and volume configuration from an existing Service.
+ * `overrides` supplies revealed values for env entries the API masked.
  */
-export function extractDatabaseCredentials(service: Service) {
+export function extractDatabaseCredentials(
+	service: Service,
+	overrides: Record<string, string> = {}
+) {
 	const engine = detectDatabaseEngine(service);
 	const def = DATABASE_ENGINES.find((e) => e.id === engine) ?? DATABASE_ENGINES[0];
 
@@ -329,7 +357,7 @@ export function extractDatabaseCredentials(service: Service) {
 
 	for (const env of envs) {
 		const k = env.key;
-		const v = env.value;
+		const v = overrides[k] ?? env.value;
 
 		if (
 			k === 'POSTGRES_PASSWORD' ||
@@ -526,10 +554,15 @@ export function updateServiceWithDatabaseConfig(
 
 	const mergedEnvVars: EnvVar[] = [...newEnvVars, ...existingCustom];
 
-	// Command update for Redis
+	// Command update for Redis. The mask sentinel means "unchanged": writing it
+	// into the command would start the instance with a literal "••••••"
+	// password, so the stored command is kept instead (env vars are protected
+	// by the backend's keep-by-key rule).
 	let command = service.command;
 	if (newConfig.engine === 'redis') {
-		command = `redis-server --requirepass ${newConfig.password}`;
+		if (newConfig.password && newConfig.password !== ENV_SECRET_MASK) {
+			command = `redis-server --requirepass ${newConfig.password}`;
+		}
 	} else if (newConfig.command !== undefined) {
 		command = newConfig.command;
 	}

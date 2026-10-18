@@ -288,7 +288,7 @@ export function computeProjectFocusLayout({
 		let curDomY = Math.max(startY, Math.round(caddyCenterY + 28 - totalDomSpan / 2));
 
 		projDomains.forEach((dom) => {
-			// A domain whose target service/container no longer exists is
+			// A domain whose target service/container does not exist is
 			// degraded, not silently unconnected.
 			const targetContainerId = serviceToFirstContainerMap.get(dom.serviceId);
 			const targetExists =

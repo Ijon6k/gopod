@@ -1,7 +1,6 @@
 package projects
 
 import (
-	"encoding/json"
 	"net/http"
 
 	"gopod/internal/auth"
@@ -38,8 +37,8 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	var input CreateProjectInput
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &input, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 

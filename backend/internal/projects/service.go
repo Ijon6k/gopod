@@ -108,6 +108,12 @@ func (s *Service) enrichProject(ctx context.Context, p *Project) {
 	} else {
 		p.Status = "healthy"
 	}
+
+	// Serialization boundary: project responses embed full service objects, so
+	// the same redaction the services API applies must run here too (secret env
+	// values masked, webhook token removed). Metrics above only need
+	// status/limits, which are untouched.
+	p.Services = services.RedactServices(p.Services)
 }
 
 // ListProjects retrieves all projects with rich pre-computed telemetry and child items.

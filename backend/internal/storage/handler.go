@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -63,8 +62,8 @@ func (h *Handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
 	var snap VolumeSnapshot
-	if err := json.NewDecoder(r.Body).Decode(&snap); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &snap, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -119,8 +118,8 @@ func (h *Handler) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 	var sched VolumeSchedule
-	if err := json.NewDecoder(r.Body).Decode(&sched); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &sched, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 

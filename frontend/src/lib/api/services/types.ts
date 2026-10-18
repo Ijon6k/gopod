@@ -136,7 +136,10 @@ export interface Service {
 	advanced?: ServiceAdvancedConfig;
 	autoDeploy?: boolean;
 	watchPaths?: string;
-	webhookToken?: string;
+	/** True when the backend holds a webhook token for this service. The token itself is never serialized; fetch it via /services/{id}/webhook. */
+	hasWebhook?: boolean;
+	/** True when the encrypted env blob could not be decrypted with the current master key. */
+	envDecryptionError?: boolean;
 	publishDir?: string;
 }
 
@@ -156,6 +159,15 @@ export interface QuadletValidationResponse {
 	valid: boolean;
 	output: string;
 	error?: string;
+}
+
+export interface WebhookTokenResponse {
+	webhookToken: string;
+	hasWebhook: boolean;
+}
+
+export interface RevealEnvResponse {
+	values: Record<string, string>;
 }
 
 export interface GroupPodRequest {

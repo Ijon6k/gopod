@@ -12,6 +12,11 @@ type EnvVar struct {
 	Secret bool   `json:"secret"`
 }
 
+// EnvSecretMask is the placeholder for a secret env value in API responses.
+// UpdateService treats it (and an empty value) for secret vars as "keep the
+// existing value", so a UI roundtrip can never persist the mask literally.
+const EnvSecretMask = "••••••"
+
 // Service represents a workload inside a project.
 type Service struct {
 	ID             string                 `json:"id"`
@@ -34,7 +39,7 @@ type Service struct {
 	K8sYaml        string                 `json:"k8sYaml,omitempty"`
 	RuntimeTarget  string                 `json:"runtimeTarget,omitempty"`
 	InPod          bool                   `json:"inPod"`
-	WebhookToken   string                 `json:"webhookToken,omitempty"`
+	WebhookToken   string                 `json:"-"` // secret: only via the reveal/rotate endpoints
 	GitRepo        string                 `json:"gitRepo,omitempty"`
 	GitBranch      string                 `json:"gitBranch,omitempty"`
 	DockerfilePath string                 `json:"dockerfilePath,omitempty"`
@@ -52,6 +57,14 @@ type Service struct {
 	EnvVars        []EnvVar               `json:"envVars"`
 	Advanced       *ServiceAdvancedConfig `json:"advanced,omitempty"`
 	CreatedAt      time.Time              `json:"createdAt"`
+	// HasWebhook reports whether a webhook token exists for this service.
+	// The token itself is never serialized (json:"-") and is only handed out
+	// by the explicit reveal/rotate endpoints.
+	HasWebhook bool `json:"hasWebhook,omitempty"`
+	// EnvDecryptionError is set when the stored env blob could not be decrypted
+	// (for example a wiped/replaced master key). The UI shows a warning instead
+	// of silently losing the variables.
+	EnvDecryptionError bool `json:"envDecryptionError,omitempty"`
 	// Quadlet supervision snapshot (populated on single-service GET only):
 	// the primary systemd unit name, the unit file path, and whether the
 	// host user manager reports it active. Lets the UI distinguish

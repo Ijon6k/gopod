@@ -70,7 +70,25 @@
 		return clean;
 	});
 
-	let webhookUrl = $derived(api.services.getWebhookUrl(service.webhookToken || service.id));
+	let webhookToken = $state('');
+	let activeWebhookServiceId = $state<string | null>(null);
+
+	let webhookUrl = $derived(webhookToken ? api.services.getWebhookUrl(webhookToken) : '');
+
+	// The webhook token is never serialized alongside the service; fetch it on
+	// demand so the displayed URL carries the real token.
+	$effect(() => {
+		if (service.id === activeWebhookServiceId) return;
+		activeWebhookServiceId = service.id;
+		const id = service.id;
+		webhookToken = '';
+		api.services
+			.getWebhookToken(id)
+			.then((res) => {
+				if (activeWebhookServiceId === id) webhookToken = res.webhookToken ?? '';
+			})
+			.catch((err) => console.warn('Failed to fetch webhook token', err));
+	});
 
 	// Synchronize on service prop change
 	$effect(() => {

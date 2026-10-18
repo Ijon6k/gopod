@@ -102,6 +102,11 @@ func (m *LogManager) LogLine(deploymentID, line string) {
 
 // GetLogs reads complete recorded logs for a given deployment.
 func (m *LogManager) GetLogs(deploymentID string) (string, error) {
+	// Backstop: the handler validates ids too, but the file path must never be
+	// reachable with a crafted id even if a new caller forgets.
+	if !ValidDeploymentLogID(deploymentID) {
+		return "", fmt.Errorf("invalid deployment id")
+	}
 	logFilePath := filepath.Join(m.baseDir, fmt.Sprintf("%s.log", deploymentID))
 	data, err := os.ReadFile(logFilePath)
 	if err != nil {

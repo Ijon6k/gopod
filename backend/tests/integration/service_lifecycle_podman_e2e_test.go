@@ -24,12 +24,12 @@ import (
 // This suite exercises the REAL service lifecycle HTTP API of the REAL working
 // tree against the REAL (rootless) podman socket — deploy, status polling,
 // stop/start, redeploy, token-authenticated webhook deploy, delete, and the
-// deploy-in-progress conflict response — while an adversarial set of UNLABELED
-// foreign containers exists whose names collide with every name the OLD
-// matching code would have destroyed:
+// deploy-in-progress conflict response — with unlabeled foreign containers
+// present whose names collide with every name a label-free matcher would
+// target:
 //
-//   - "<svc.Name>"                  (old rules matched "name == s.Name")
-//   - "<svc.ProjectID>-<svc.Name>"  (old rules matched "name prefix")
+//   - "<svc.Name>"                  (name equality)
+//   - "<svc.ProjectID>-<svc.Name>"  (name prefix)
 //
 // The matching rules under test are strictly label-based; the decoys must
 // survive every lifecycle operation untouched.
@@ -56,13 +56,16 @@ func newIntegrationServer(t *testing.T, dbPath, caddyAdmin string) http.Handler 
 	// touch the developer's real ~/.config/gopod/caddy/Caddyfile.
 	realHome := os.Getenv("HOME")
 	t.Setenv("HOME", t.TempDir())
-	handler := server.NewServer(server.Config{
+	handler, err := server.NewServer(server.Config{
 		Port:         "0",
 		PodmanSocket: "", // podman client selects its default rootless socket
 		DBPath:       dbPath,
 		CaddyAdmin:   caddyAdmin, // unreachable: never contacts a live Caddy
 		DistFS:       fstest.MapFS{},
 	})
+	if err != nil {
+		t.Fatalf("failed to create integration server: %v", err)
+	}
 	if realHome != "" {
 		_ = os.Setenv("HOME", realHome)
 	}
@@ -232,7 +235,7 @@ func runDecoy(t *testing.T, name, image string) {
 	if containerExists(t, name) {
 		_, _ = podmanCLI(t, 10*time.Second, "rm", "-f", name)
 	}
-	// Deliberately UNLABELED — that is the whole point of this adversarial set.
+	// Intentionally unlabeled: ownership checks must ignore unlabeled containers.
 	out, err := podmanCLI(t, 40*time.Second,
 		"run", "-d",
 		"--entrypoint", "/bin/sh",
@@ -410,9 +413,9 @@ func TestServiceLifecyclePodmanE2E(t *testing.T) {
 		}
 	})
 
-	// ── Adversarial decoys (the OLD matcher destroyed these names) ──────────
-	decoyOne := e2eSvcName                    // old rule: name == s.Name
-	decoyTwo := project.ID + "-" + e2eSvcName // old rule: HasPrefix(cleanPrefix)
+	// ── Decoys (names a label-free matcher would target) ────────────────────
+	decoyOne := e2eSvcName                    // collides on exact name
+	decoyTwo := project.ID + "-" + e2eSvcName // collides on name prefix
 	runDecoy(t, decoyOne, "docker.io/library/alpine:latest")
 	runDecoy(t, decoyTwo, "docker.io/library/alpine:latest")
 

@@ -15,11 +15,30 @@ type Service struct {
 	statsMu     sync.RWMutex
 	cachedStats []podman.ContainerStat
 	statsTime   time.Time
+
+	// envSecretKeys reports env var keys GOPOD stores encrypted. Quadlet API
+	// responses mask their values; the unit files on disk keep the real value
+	// because systemd needs it.
+	envSecretKeys func() map[string]bool
 }
 
 // NewService creates a new runtime domain service.
 func NewService(client *podman.Client) *Service {
 	return &Service{client: client}
+}
+
+// SetEnvSecretKeyProvider installs the callback that returns env var keys
+// stored encrypted. Without it, Quadlet responses are returned verbatim.
+func (s *Service) SetEnvSecretKeyProvider(fn func() map[string]bool) {
+	s.envSecretKeys = fn
+}
+
+// secretEnvKeys returns the current secret key set (nil when unset).
+func (s *Service) secretEnvKeys() map[string]bool {
+	if s.envSecretKeys == nil {
+		return nil
+	}
+	return s.envSecretKeys()
 }
 
 // SetupCmdEnv configures subprocess environment with active Podman socket.

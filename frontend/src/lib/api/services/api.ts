@@ -5,7 +5,9 @@ import type {
 	DeployResponse,
 	JournalResponse,
 	QuadletValidationResponse,
-	GroupPodRequest
+	GroupPodRequest,
+	WebhookTokenResponse,
+	RevealEnvResponse
 } from './types';
 
 export const servicesApi = {
@@ -97,6 +99,24 @@ export const servicesApi = {
 	getWebhookUrl(token: string): string {
 		if (typeof window === 'undefined') return `/api/deploy/webhook/${token}`;
 		return `${window.location.protocol}//${window.location.host}/api/deploy/webhook/${token}`;
+	},
+
+	/** Fetches the webhook token on demand. Never part of service list/get payloads. */
+	async getWebhookToken(id: string): Promise<WebhookTokenResponse> {
+		const res = await apiClient.get<WebhookTokenResponse>(`/services/${id}/webhook`);
+		return res.data;
+	},
+
+	/** Issues a fresh webhook token; the previous URL stops working immediately. */
+	async rotateWebhookToken(id: string): Promise<WebhookTokenResponse> {
+		const res = await apiClient.post<WebhookTokenResponse>(`/services/${id}/webhook/rotate`);
+		return res.data;
+	},
+
+	/** Reveals the decrypted value of the requested env keys (explicit operator action). */
+	async revealEnv(id: string, keys: string[]): Promise<Record<string, string>> {
+		const res = await apiClient.post<RevealEnvResponse>(`/services/${id}/env/reveal`, { keys });
+		return res.data.values ?? {};
 	},
 
 	streamDeploymentLogs(

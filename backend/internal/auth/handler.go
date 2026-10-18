@@ -59,8 +59,8 @@ func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 	var req SetupRequest
-	if err := httputil.ParseJSON(r, &req); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request body")
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -113,8 +113,8 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req LoginRequest
-	if err := httputil.ParseJSON(r, &req); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request body")
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 

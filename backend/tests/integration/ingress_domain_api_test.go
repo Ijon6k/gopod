@@ -40,13 +40,16 @@ func newDomainAPITestServer(t *testing.T) (http.Handler, string) {
 	t.Setenv("CADDY_ADMIN_HOST", "")
 	t.Setenv("HOME", home)
 
-	handler := server.NewServer(server.Config{
+	handler, err := server.NewServer(server.Config{
 		Port:         "0",
 		PodmanSocket: "", // podman client selects its default rootless socket; unused here
 		DBPath:       filepath.Join(t.TempDir(), "gopod.db"),
 		CaddyAdmin:   "http://127.0.0.1:9", // unreachable: never contacts a live Caddy
 		DistFS:       fstest.MapFS{},
 	})
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
 
 	return handler, filepath.Join(home, ".config", "gopod", "caddy", "Caddyfile")
 }

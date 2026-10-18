@@ -66,7 +66,7 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 	// 3. Pre-flight Ghost Container & Unit cleanup (prevent conflict exit code 125 and systemd auto-restart races)
 	d.cleanPreflightConflicts(ctx, s, logLine)
 
-	// 4. Determine systemd user quadlet search path and purge legacy space-polluted unit files
+	// 4. Determine the systemd user quadlet search path and purge space-polluted unit files
 	systemdQuadletDir := os.Getenv("QUADLET_DIR")
 	if systemdQuadletDir == "" {
 		if homeDir, err := os.UserHomeDir(); err == nil && homeDir != "" {
@@ -97,18 +97,21 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 	var podMemberServices []string
 
 	for fname, uContent := range files {
-		// Local data backup
+		// Local data backup. Unit files embed real env values, so they stay
+		// owner-only; chmod also fixes files written by older builds.
 		backupPath := filepath.Join(quadletDir, fname)
-		_ = os.WriteFile(backupPath, []byte(uContent), 0644)
+		_ = os.WriteFile(backupPath, []byte(uContent), 0600)
+		_ = os.Chmod(backupPath, 0600)
 		logLine(fmt.Sprintf("📄 Quadlet artifact staged: %s", backupPath))
 
 		if systemdQuadletDir != "" {
 			_ = os.MkdirAll(systemdQuadletDir, 0755)
 			userFile := filepath.Join(systemdQuadletDir, fname)
-			if err := os.WriteFile(userFile, []byte(uContent), 0644); err != nil {
+			if err := os.WriteFile(userFile, []byte(uContent), 0600); err != nil {
 				logLine(fmt.Sprintf("❌ Failed to write unit '%s': %v", fname, err))
 				return nil, err
 			}
+			_ = os.Chmod(userFile, 0600)
 			logLine(fmt.Sprintf("📄 Written unit to %s", userFile))
 		}
 
@@ -157,22 +160,12 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 	shouldPull := !hasImage || trigger == "pull" || trigger == "force-pull" || trigger == "update"
 	if shouldPull {
 		logLine(fmt.Sprintf("📦 Pulling container image '%s'...", mainImage))
-		var pullArgs []string
-		if s.RegistryID != "" && d.registryProvider != nil {
-			if reg, err := d.registryProvider.GetRegistry(ctx, s.RegistryID); err == nil && reg != nil && reg.Username != "" {
-				logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
-				pullArgs = append(pullArgs, "--creds", fmt.Sprintf("%s:%s", reg.Username, reg.Token))
-			}
+		reg := d.resolveRegistry(ctx, s)
+		if reg != nil {
+			logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
 		}
-		pullArgs = append(pullArgs, "pull", mainImage)
-		pullCmd := exec.CommandContext(ctx, "podman", pullArgs...)
-		d.setupCmdEnv(pullCmd)
-		pStdout, _ := pullCmd.StdoutPipe()
-		pStderr, _ := pullCmd.StderrPipe()
-		if err := pullCmd.Start(); err == nil {
-			d.streamPipes(pStdout, pStderr, logLine)
-			_ = pullCmd.Wait()
-		}
+		// Pull failures are non-fatal: a locally cached image can still run.
+		_ = d.pullImage(ctx, mainImage, reg, logLine)
 	} else {
 		logLine(fmt.Sprintf("⚡ Container image '%s' is cached locally. Reusing existing image.", mainImage))
 	}
@@ -349,14 +342,7 @@ func (d *Deployer) runQuadletUnitsDirectly(ctx context.Context, s Service, files
 		d.setupCmdEnv(chkCmd)
 		if err := chkCmd.Run(); err != nil {
 			logLine(fmt.Sprintf("📦 Pulling container image '%s'...", image))
-			pullCmd := exec.CommandContext(ctx, "podman", "pull", image)
-			d.setupCmdEnv(pullCmd)
-			pStdout, _ := pullCmd.StdoutPipe()
-			pStderr, _ := pullCmd.StderrPipe()
-			if err := pullCmd.Start(); err == nil {
-				d.streamPipes(pStdout, pStderr, logLine)
-				_ = pullCmd.Wait()
-			}
+			_ = d.pullImage(ctx, image, nil, logLine)
 		}
 	}
 
@@ -423,7 +409,7 @@ func (d *Deployer) runQuadletUnitsDirectly(ctx context.Context, s Service, files
 			RestartPolicy: restart,
 			Volumes:       parsed.Volumes,
 		}
-		logLine(fmt.Sprintf("🧾 Equivalent: %s", sanitizedPodmanRunArgs(fallbackOpts)))
+		logLine(fmt.Sprintf("🧾 Equivalent: %s", sanitizedPodmanRunArgs(fallbackOpts, SecretEnvKeySet(s))))
 		if _, err := d.podmanClient.RunContainer(ctx, fallbackOpts); err != nil {
 			logLine(fmt.Sprintf("❌ Fallback container '%s' run failed: %v", cName, err))
 			d.enrichRunFailure(ctx, cName, err, logLine)

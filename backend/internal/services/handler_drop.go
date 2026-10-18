@@ -2,11 +2,13 @@ package services
 
 import (
 	"archive/zip"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"gopod/pkg/httputil"
@@ -21,8 +23,24 @@ func (h *Handler) handleDropUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Limit zip upload size to 100 MB
-	_ = r.ParseMultipartForm(100 << 20)
+	// Cap the request body at the configured upload limit: ParseMultipartForm
+	// only bounds in-memory buffering, not the body size.
+	maxUploadMB := 100
+	if raw := strings.TrimSpace(os.Getenv("GOPOD_MAX_UPLOAD_MB")); raw != "" {
+		if v, convErr := strconv.Atoi(raw); convErr == nil && v > 0 && v <= 4096 {
+			maxUploadMB = v
+		}
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, int64(maxUploadMB)<<20+(1<<20))
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		var maxErr *http.MaxBytesError
+		if errors.As(err, &maxErr) {
+			httputil.WriteError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Upload exceeds the %d MB limit", maxUploadMB))
+			return
+		}
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid multipart upload: "+err.Error())
+		return
+	}
 
 	file, header, err := r.FormFile("file")
 	if err != nil {

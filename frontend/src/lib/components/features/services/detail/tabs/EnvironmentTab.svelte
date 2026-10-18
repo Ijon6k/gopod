@@ -3,6 +3,7 @@
 	import { Input, Select, Radio } from '$lib/components/ui';
 	import { CodeEditor } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
+	import { api } from '$lib/api';
 	import { Button } from 'kumo-svelte';
 	import {
 		Lock,
@@ -14,7 +15,8 @@
 		MagicWand,
 		Eye,
 		EyeSlash,
-		Copy
+		Copy,
+		WarningCircle
 	} from 'phosphor-svelte';
 
 	const defaultPlaceholder =
@@ -43,12 +45,19 @@
 			.join('\n');
 	}
 
+	// Server-side redaction replaces every secret value with this sentinel; the
+	// backend treats it as "keep the stored value" on save, so an editor
+	// round-trip never destroys secrets.
+	const ENV_SECRET_MASK = '••••••';
+
 	let envText = $state('');
 	let initialText = $state('');
 	let isDirty = $derived(envText !== initialText);
 	let isMasked = $state(false);
 	let saveFeedback = $state(false);
 	let copyFeedback = $state(false);
+	let isRevealing = $state(false);
+	let revealError = $state<string | null>(null);
 	let fileInputRef = $state<HTMLInputElement | null>(null);
 	let activeServiceId = $state<string | null>(null);
 
@@ -59,8 +68,56 @@
 			envText = txt;
 			initialText = txt;
 			isMasked = txt.trim().length > 0;
+			revealError = null;
 		}
 	});
+
+	function maskedKeys(): string[] {
+		return (service.envVars ?? [])
+			.filter((v) => v.secret && v.value === ENV_SECRET_MASK)
+			.map((v) => v.key)
+			.filter((k) => k !== '');
+	}
+
+	// Reveal swaps real values in for sentinel lines in both the editor text and
+	// its dirty baseline, so revealing never marks the editor dirty by itself.
+	async function revealValues() {
+		const keys = maskedKeys();
+		if (keys.length === 0) return;
+		isRevealing = true;
+		revealError = null;
+		try {
+			const values = await api.services.revealEnv(service.id, keys);
+			const swap = (text: string) =>
+				text
+					.split('\n')
+					.map((line) => {
+						const eq = line.indexOf('=');
+						if (eq === -1) return line;
+						const key = line.slice(0, eq).trim();
+						if (line.slice(eq + 1) === ENV_SECRET_MASK && values[key] !== undefined) {
+							return `${line.slice(0, eq)}=${values[key]}`;
+						}
+						return line;
+					})
+					.join('\n');
+			envText = swap(envText);
+			initialText = swap(initialText);
+		} catch (err: any) {
+			revealError = err?.message || 'Failed to reveal secret values';
+		} finally {
+			isRevealing = false;
+		}
+	}
+
+	async function toggleMask() {
+		if (isMasked) {
+			await revealValues();
+			isMasked = false;
+		} else {
+			isMasked = true;
+		}
+	}
 
 	let variableCount = $derived.by(() => {
 		return envText
@@ -139,7 +196,10 @@
 		target.value = '';
 	}
 
-	function handleExportFile() {
+	async function handleExportFile() {
+		// The editor holds sentinel values until revealed; an export is an
+		// explicit request for the real content, so reveal first.
+		await revealValues();
 		const blob = new Blob([envText], { type: 'text/plain' });
 		const url = URL.createObjectURL(blob);
 		const a = document.createElement('a');
@@ -150,6 +210,7 @@
 	}
 
 	async function handleCopyAll() {
+		await revealValues();
 		try {
 			await navigator.clipboard.writeText(envText);
 			copyFeedback = true;
@@ -221,6 +282,29 @@
 	     1. ENVIRONMENT VARIABLES (Dokploy-Style Text Editor with Mask)
 	     ══════════════════════════════════════════════════════════════ -->
 	<section class="flex flex-col gap-3">
+		{#if service.envDecryptionError}
+			<div
+				class="flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-kumo-warning/10 p-3"
+			>
+				<WarningCircle size={16} weight="fill" class="mt-0.5 shrink-0 text-kumo-warning" />
+				<div class="flex flex-col gap-0.5">
+					<span class="text-xs font-medium text-kumo-warning">
+						Stored environment values cannot be decrypted
+					</span>
+					<span class="text-[11px] text-[var(--text-tertiary)]">
+						The current master encryption key does not match the one that stored these values. Saving with
+						the editor left unchanged is refused to protect the ciphertext — type a full replacement list to
+						overwrite them.
+					</span>
+				</div>
+			</div>
+		{/if}
+		{#if revealError}
+			<div class="flex items-center gap-2 text-[11px] text-kumo-warning">
+				<WarningCircle size={13} weight="fill" />
+				<span>{revealError}</span>
+			</div>
+		{/if}
 		<div class="flex flex-col justify-between gap-3 sm:flex-row sm:items-center">
 			<div class="flex items-center gap-3">
 				<h2 class="m-0 text-sm font-medium text-[var(--text-primary)]">Environment Variables</h2>
@@ -236,12 +320,13 @@
 				<Button
 					variant="secondary"
 					size="sm"
-					onclick={() => (isMasked = !isMasked)}
+					onclick={toggleMask}
+					disabled={isRevealing}
 					class="gap-1.5"
 				>
 					{#if isMasked}
 						<Eye size={14} />
-						<span>Show Values</span>
+						<span>{isRevealing ? 'Revealing…' : 'Show Values'}</span>
 					{:else}
 						<EyeSlash size={14} />
 						<span>Hide Values</span>
@@ -325,7 +410,7 @@
 				>
 					<button
 						type="button"
-						onclick={() => (isMasked = false)}
+						onclick={toggleMask}
 						class="flex cursor-pointer items-center gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-4 py-2.5 text-xs font-medium text-[var(--text-primary)] shadow-md transition-all hover:border-[var(--accent)] hover:bg-[var(--bg-surface)]"
 					>
 						<Eye size={15} class="text-[var(--accent)]" />

@@ -15,6 +15,10 @@ services:
       - GOPOD_DB_PATH=/app/data/gopod.db
       - CADDY_ADMIN_URL=http://caddy:2019
       - HOST_DATA_DIR=${HOST_DATA_DIR:-${PWD}/data}
+      # Vite dev server (bun run dev on the host) proxies /api here; the browser
+      # sends Origin http://localhost:5173, so that origin is explicitly
+      # allow-listed. Credentialed CORS is limited to allow-listed origins.
+      - ALLOWED_ORIGIN=${ALLOWED_ORIGIN:-http://localhost:5173}
       # Host systemd user-manager bus: lets the containerized engine run
       # `systemctl --user` equivalents (daemon-reload/start/stop) via D-Bus.
       - GOPOD_USER_BUS=/run/host-run/bus

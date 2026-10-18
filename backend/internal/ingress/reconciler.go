@@ -301,10 +301,13 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 			lastErr = err
 			continue
 		}
-		defer resp.Body.Close()
+		// Close explicitly per iteration instead of deferring inside the loop
+		// (defer would hold every response body until the loop exits).
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4<<10))
+		_ = resp.Body.Close()
 
 		if resp.StatusCode >= 400 {
-			lastErr = fmt.Errorf("caddy API reload returned status %d", resp.StatusCode)
+			lastErr = fmt.Errorf("caddy API reload returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 			continue
 		}
 
@@ -330,7 +333,7 @@ type domainRoute struct {
 // buildDomainRoute cleans and validates a stored domain rule for Caddyfile
 // generation. It fails for entries that must not be interpolated into the file
 // (invalid hostname, target or port) as defense-in-depth behind the API write
-// boundaries, so a legacy row can never inject configuration.
+// boundaries, so a stored row can never inject configuration.
 func (r *Reconciler) buildDomainRoute(d Domain) (domainRoute, error) {
 	host := cleanHostname(d.Hostname)
 	if host == "" {

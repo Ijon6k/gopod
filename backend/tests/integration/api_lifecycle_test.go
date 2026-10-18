@@ -17,15 +17,23 @@ func setupTestServer(t *testing.T) (http.Handler, string) {
 	tempDir := t.TempDir()
 	dbPath := filepath.Join(tempDir, "gopod_integration.db")
 
+	// Test servers must never touch the developer's real ~/.config Caddyfile
+	// nor a live Caddy admin endpoint: the reconciler resolves its paths from
+	// HOME and would otherwise reload the host's Caddy with this test's config.
+	t.Setenv("HOME", t.TempDir())
+
 	cfg := server.Config{
 		Port:         "0",
 		PodmanSocket: "",
 		DBPath:       dbPath,
-		CaddyAdmin:   "",
+		CaddyAdmin:   "http://127.0.0.1:9", // unreachable: never contacts a live Caddy
 		DistFS:       fstest.MapFS{},
 	}
 
-	handler := server.NewServer(cfg)
+	handler, err := server.NewServer(cfg)
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
 	return handler, dbPath
 }
 

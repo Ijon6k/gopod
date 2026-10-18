@@ -10,4 +10,5 @@ type Repository interface {
 	CreateSession(ctx context.Context, session Session) error
 	GetSession(ctx context.Context, token string) (*Session, *User, error)
 	DeleteSession(ctx context.Context, token string) error
+	PruneExpiredSessions(ctx context.Context) (int64, error)
 }

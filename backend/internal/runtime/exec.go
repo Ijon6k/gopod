@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"log"
 	"net/http"
-	"net/url"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -20,32 +18,30 @@ import (
 )
 
 var upgrader = websocket.Upgrader{
+	// Same predicate as the HTTP CORS middleware: same-host or an explicit
+	// ALLOWED_ORIGIN entry. Loopback is not special-cased — any local page
+	// could otherwise open an authenticated terminal session.
 	CheckOrigin: func(r *http.Request) bool {
 		origin := r.Header.Get("Origin")
 		if origin == "" {
-			return true
+			return true // non-browser client (curl, tests)
 		}
-		u, err := url.Parse(origin)
-		if err != nil {
-			return false
-		}
-		if u.Host == r.Host {
-			return true
-		}
-		if allowed := os.Getenv("ALLOWED_ORIGIN"); allowed != "" {
-			for _, a := range strings.Split(allowed, ",") {
-				trimmed := strings.TrimSpace(a)
-				if trimmed == origin || trimmed == u.Host {
-					return true
-				}
-			}
-		}
-		// Allow exact match with host port on localhost
-		if (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1") && (r.Host == u.Host || strings.HasPrefix(r.Host, u.Hostname()+":")) {
-			return true
-		}
-		return false
+		return httputil.IsOriginAllowed(origin, r.Host)
 	},
+}
+
+// wsWriter serializes writes to the terminal WebSocket. gorilla/websocket
+// permits only one concurrent writer, and both the PTY reader goroutine and
+// the session teardown write to the socket.
+type wsWriter struct {
+	conn *websocket.Conn
+	mu   sync.Mutex
+}
+
+func (w *wsWriter) message(msgType int, payload []byte) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.conn.WriteMessage(msgType, payload)
 }
 
 type resizeMessage struct {
@@ -122,6 +118,7 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer ws.Close()
+	writer := &wsWriter{conn: ws}
 
 	cmdName := r.URL.Query().Get("cmd")
 	if cmdName == "" {
@@ -215,12 +212,12 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if status == "" {
-		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m⚠️ Container '%s' was not found.\x1b[0m\r\n\x1b[90mPlease deploy this service first before opening an interactive terminal session.\x1b[0m\r\n", id))
+		_ = writer.message(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m⚠️ Container '%s' was not found.\x1b[0m\r\n\x1b[90mPlease deploy this service first before opening an interactive terminal session.\x1b[0m\r\n", id))
 		return
 	}
 
 	if status != "running" {
-		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m⚠️ Container '%s' is currently %s.\x1b[0m\r\n\x1b[90mPlease start or deploy this service to open an interactive terminal session.\x1b[0m\r\n", targetID, strings.ToUpper(status)))
+		_ = writer.message(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m⚠️ Container '%s' is currently %s.\x1b[0m\r\n\x1b[90mPlease start or deploy this service to open an interactive terminal session.\x1b[0m\r\n", targetID, strings.ToUpper(status)))
 		return
 	}
 
@@ -236,7 +233,7 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		Cols: uint16(cols),
 	})
 	if err != nil {
-		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[31m[ERROR] Failed to start pseudo-terminal: %v\x1b[0m\r\n", err))
+		_ = writer.message(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[31m[ERROR] Failed to start pseudo-terminal: %v\x1b[0m\r\n", err))
 		return
 	}
 
@@ -261,9 +258,9 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 			if n > 0 {
 				outStr := string(buf[:n])
 				if strings.Contains(outStr, "executable file not found in $PATH") || strings.Contains(outStr, "exec: \"sh\": not found") {
-					_ = ws.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m⚠️ Container image is built FROM scratch and contains no shell environment (/bin/sh).\x1b[0m\r\n\x1b[90m💡 Scratch containers (like traefik/whoami) only contain the compiled binary without a shell.\x1b[0m\r\n\x1b[90m💡 To test connectivity inside the pod network, use an adjacent container with a shell (e.g. redis:alpine or alpine).\x1b[0m\r\n"))
+					_ = writer.message(websocket.TextMessage, []byte("\r\n\x1b[33m⚠️ Container image is built FROM scratch and contains no shell environment (/bin/sh).\x1b[0m\r\n\x1b[90m💡 Scratch containers (like traefik/whoami) only contain the compiled binary without a shell.\x1b[0m\r\n\x1b[90m💡 To test connectivity inside the pod network, use an adjacent container with a shell (e.g. redis:alpine or alpine).\x1b[0m\r\n"))
 				}
-				if writeErr := ws.WriteMessage(websocket.BinaryMessage, buf[:n]); writeErr != nil {
+				if writeErr := writer.message(websocket.BinaryMessage, buf[:n]); writeErr != nil {
 					return
 				}
 			}
@@ -313,8 +310,8 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if exitCode == 127 {
-		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m[Container closed: '%s' not found in container]\x1b[0m\r\n\x1b[90m(If this image is a minimal scratch/distroless container, it does not include an interactive shell)\x1b[0m\r\n", cmdName))
+		_ = writer.message(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m[Container closed: '%s' not found in container]\x1b[0m\r\n\x1b[90m(If this image is a minimal scratch/distroless container, it does not include an interactive shell)\x1b[0m\r\n", cmdName))
 	} else {
-		_ = ws.WriteMessage(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m[Session closed with exit code %d]\x1b[0m\r\n", exitCode))
+		_ = writer.message(websocket.TextMessage, fmt.Appendf(nil, "\r\n\x1b[33m[Session closed with exit code %d]\x1b[0m\r\n", exitCode))
 	}
 }

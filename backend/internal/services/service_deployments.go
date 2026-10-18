@@ -517,16 +517,14 @@ func (s *WorkloadService) SubscribeLogs(deploymentID string) (<-chan string, fun
 	return s.logManager.Subscribe(deploymentID)
 }
 
-// GetServiceByWebhookToken finds a service by its secret webhook token or ID.
+// GetServiceByWebhookToken finds a service by its exact secret webhook token.
+// The service ID is never accepted as a token: IDs are guessable, while tokens
+// are randomly generated, so an ID must not pass the handler gate.
 func (s *WorkloadService) GetServiceByWebhookToken(ctx context.Context, token string) (*Service, error) {
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	svc, err := s.repo.GetByWebhookToken(ctx, token)
-	if err != nil || svc == nil {
-		return s.repo.Get(ctx, token)
-	}
-	return svc, nil
+	return s.repo.GetByWebhookToken(ctx, token)
 }
 
 // DeployByWebhook verifies webhook token and triggers deployment asynchronously.

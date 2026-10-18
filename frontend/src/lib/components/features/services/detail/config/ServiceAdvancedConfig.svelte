@@ -154,9 +154,12 @@
 						<Input
 							value={webhookUrl}
 							readonly
+							placeholder="Loading webhook token…"
 							class="h-8 flex-1 bg-kumo-base font-mono text-xs text-kumo-subtle"
 						/>
-						<CopyButton text={webhookUrl} />
+						{#if webhookUrl}
+							<CopyButton text={webhookUrl} />
+						{/if}
 					</div>
 				</div>
 			</div>

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -171,4 +172,30 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 		_ = s.audit.Record(ctx, "user.logout", "authenticated-user", "auth.session", "security", "", "success")
 	}
 	return s.repo.DeleteSession(ctx, token)
+}
+
+// StartSessionCleanup prunes expired sessions once at startup and then hourly.
+// It is meant to run in its own goroutine and exits with ctx.
+func (s *Service) StartSessionCleanup(ctx context.Context) {
+	if s.repo == nil {
+		return
+	}
+	prune := func() {
+		if n, err := s.repo.PruneExpiredSessions(ctx); err != nil {
+			log.Printf("[WARN] session prune failed: %v", err)
+		} else if n > 0 {
+			log.Printf("[auth] Pruned %d expired session(s)", n)
+		}
+	}
+	prune()
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			prune()
+		}
+	}
 }

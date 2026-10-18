@@ -42,6 +42,7 @@ func (s *Service) ListQuadlets(ctx context.Context) ([]QuadletUnit, error) {
 
 	seen := make(map[string]bool)
 	var units []QuadletUnit
+	secretKeys := s.secretEnvKeys()
 
 	for _, dir := range quadletSearchDirs() {
 		entries, err := os.ReadDir(dir)
@@ -82,7 +83,7 @@ func (s *Service) ListQuadlets(ctx context.Context) ([]QuadletUnit, error) {
 			serviceUnit := fmt.Sprintf("%s.service", baseName)
 
 			contentBytes, _ := os.ReadFile(fullPath)
-			content := string(contentBytes)
+			content := maskEnvironmentValues(string(contentBytes), secretKeys)
 
 			status := "unmanaged"
 			if hasSystemctl {
@@ -141,7 +142,7 @@ func (s *Service) GetQuadletContent(name string) (string, error) {
 	for _, dir := range quadletSearchDirs() {
 		p := filepath.Join(dir, name)
 		if data, err := os.ReadFile(p); err == nil {
-			return string(data), nil
+			return maskEnvironmentValues(string(data), s.secretEnvKeys()), nil
 		}
 	}
 	return "", fmt.Errorf("quadlet unit file not found: %s", name)

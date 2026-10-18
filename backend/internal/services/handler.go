@@ -1,7 +1,6 @@
 package services
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -62,6 +61,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/services/{id}/validate-manifest", h.middleware.RequireAuth(h.handleValidateManifest))
 	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAuth(h.handleGetLinger))
 
+	// On-demand secret access. List/get responses never carry secret env
+	// values or the webhook token; these endpoints hand them out explicitly.
+	mux.HandleFunc("POST /api/services/{id}/env/reveal", h.middleware.RequireAuth(h.handleRevealEnv))
+	mux.HandleFunc("GET /api/services/{id}/webhook", h.middleware.RequireAuth(h.handleRevealWebhook))
+	mux.HandleFunc("POST /api/services/{id}/webhook/rotate", h.middleware.RequireAuth(h.handleRotateWebhook))
+
 	// Cleanup engine: inventory + manual run (nightly job runs unattended).
 	mux.HandleFunc("GET /api/system/gc/preview", h.middleware.RequireAuth(h.handleGCPreview))
 	mux.HandleFunc("POST /api/system/gc", h.middleware.RequireAuth(h.handleRunGC))
@@ -74,13 +79,13 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, list)
+	httputil.WriteJSON(w, http.StatusOK, RedactServices(list))
 }
 
 func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	var s Service
-	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+	if err := httputil.DecodeJSONBody(w, r, &s, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -89,7 +94,7 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusCreated, created)
+	httputil.WriteJSON(w, http.StatusCreated, RedactService(*created))
 }
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
@@ -109,14 +114,14 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 		s.QuadletFile = file
 		s.QuadletActive = active
 	}
-	httputil.WriteJSON(w, http.StatusOK, s)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*s))
 }
 
 func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var s Service
-	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &s, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 	s.ID = id
@@ -125,7 +130,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, s)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(s))
 }
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
@@ -146,7 +151,7 @@ func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		Commit  string `json:"commit"`
 		Image   string `json:"image"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err == nil {
+	if err := httputil.DecodeJSONBody(w, r, &body, 0); err == nil {
 		if body.Trigger != "" {
 			trigger = body.Trigger
 		}
@@ -180,7 +185,7 @@ func (h *Handler) handleCancelServiceDeployment(w http.ResponseWriter, r *http.R
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, svc)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*svc))
 }
 
 func (h *Handler) handleGetDeployment(w http.ResponseWriter, r *http.Request) {
@@ -199,6 +204,10 @@ func (h *Handler) handleGetDeployment(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGetDeploymentLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !ValidDeploymentLogID(id) {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid deployment id")
+		return
+	}
 	logs, err := h.service.GetDeploymentLogs(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -212,6 +221,10 @@ func (h *Handler) handleGetDeploymentLogs(w http.ResponseWriter, r *http.Request
 
 func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !ValidDeploymentLogID(id) {
+		httputil.WriteError(w, http.StatusBadRequest, "Invalid deployment id")
+		return
+	}
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
@@ -274,7 +287,11 @@ func (h *Handler) handleWebhook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var payload WebhookPushPayload
-	_ = json.NewDecoder(r.Body).Decode(&payload)
+	// Body is attacker-controlled; cap it and only fail hard on oversize.
+	if err := httputil.DecodeJSONBody(w, r, &payload, 0); err != nil && errors.Is(err, httputil.ErrBodyTooLarge) {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
 
 	// Validate webhook token first
 	svc, err := h.service.GetServiceByWebhookToken(r.Context(), token)
@@ -328,7 +345,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, svc)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*svc))
 }
 
 func (h *Handler) handleStop(w http.ResponseWriter, r *http.Request) {
@@ -338,7 +355,7 @@ func (h *Handler) handleStop(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, svc)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*svc))
 }
 
 func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
@@ -348,7 +365,7 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, svc)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*svc))
 }
 
 func (h *Handler) handleGetJournal(w http.ResponseWriter, r *http.Request) {
@@ -358,6 +375,11 @@ func (h *Handler) handleGetJournal(w http.ResponseWriter, r *http.Request) {
 		if val, err := strconv.Atoi(lStr); err == nil && val > 0 {
 			lines = val
 		}
+	}
+	// Bound the work a single request can ask journalctl for.
+	const maxJournalLines = 5000
+	if lines > maxJournalLines {
+		lines = maxJournalLines
 	}
 	out, err := h.service.GetServiceJournal(r.Context(), id, lines)
 	if err != nil {
@@ -376,8 +398,8 @@ func (h *Handler) handleValidateQuadlet(w http.ResponseWriter, r *http.Request) 
 		Content string            `json:"content"`
 		Files   map[string]string `json:"files"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil && !errors.Is(err, io.EOF) {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -405,8 +427,8 @@ func (h *Handler) handleValidateQuadletGlobal(w http.ResponseWriter, r *http.Req
 		Content string            `json:"content"`
 		Files   map[string]string `json:"files"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 	valid, out, err := h.service.ValidateQuadlet(r.Context(), req.Content, req.Files)
@@ -425,8 +447,8 @@ func (h *Handler) handleValidateManifest(w http.ResponseWriter, r *http.Request)
 		Type string `json:"type"` // "kubernetes" | "compose"
 		Yaml string `json:"yaml"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil && !errors.Is(err, io.EOF) {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -465,7 +487,7 @@ func (h *Handler) handleDemoteQuadlet(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, svc)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*svc))
 }
 
 func (h *Handler) handleGroupIntoPod(w http.ResponseWriter, r *http.Request) {
@@ -475,8 +497,8 @@ func (h *Handler) handleGroupIntoPod(w http.ResponseWriter, r *http.Request) {
 		CreatePod bool     `json:"createPod"`
 		Ports     []string `json:"ports"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 	svc, err := h.service.GroupIntoPod(r.Context(), id, req.PodName, req.CreatePod, req.Ports)
@@ -484,7 +506,7 @@ func (h *Handler) handleGroupIntoPod(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, svc)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*svc))
 }
 
 func (h *Handler) handleUngroupFromPod(w http.ResponseWriter, r *http.Request) {
@@ -494,7 +516,75 @@ func (h *Handler) handleUngroupFromPod(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, svc)
+	httputil.WriteJSON(w, http.StatusOK, RedactService(*svc))
+}
+
+// handleRevealEnv returns decrypted values for the requested env keys. This is
+// the only read path that hands out secret values; list/get never do.
+func (h *Handler) handleRevealEnv(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var req struct {
+		Keys []string `json:"keys"`
+	}
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+	if len(req.Keys) == 0 {
+		httputil.WriteError(w, http.StatusBadRequest, "At least one key is required")
+		return
+	}
+	if len(req.Keys) > 100 {
+		httputil.WriteError(w, http.StatusBadRequest, "At most 100 keys can be revealed per request")
+		return
+	}
+	values, err := h.service.RevealEnvValues(r.Context(), id, req.Keys)
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "not found") {
+			status = http.StatusNotFound
+		}
+		httputil.WriteError(w, status, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"values": values})
+}
+
+// handleRevealWebhook returns the webhook token on demand. The token is never
+// part of list/get responses.
+func (h *Handler) handleRevealWebhook(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	token, err := h.service.WebhookTokenFor(r.Context(), id)
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "not found") {
+			status = http.StatusNotFound
+		}
+		httputil.WriteError(w, status, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"webhookToken": token,
+		"hasWebhook":   token != "",
+	})
+}
+
+// handleRotateWebhook issues a fresh webhook token; older tokens stop working.
+func (h *Handler) handleRotateWebhook(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	token, err := h.service.RotateWebhookToken(r.Context(), id)
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "not found") {
+			status = http.StatusNotFound
+		}
+		httputil.WriteError(w, status, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"webhookToken": token,
+		"hasWebhook":   true,
+	})
 }
 
 func (h *Handler) handleGetLinger(w http.ResponseWriter, r *http.Request) {
@@ -527,8 +617,8 @@ type gcRunRequest struct {
 func (h *Handler) handleRunGC(w http.ResponseWriter, r *http.Request) {
 	var req gcRunRequest
 	if r.Body != nil {
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil && !errors.Is(err, io.EOF) {
-			httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload: "+err.Error())
+		if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil && !errors.Is(err, io.EOF) {
+			httputil.WriteDecodeError(w, err)
 			return
 		}
 	}

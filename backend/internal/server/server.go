@@ -10,7 +10,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,6 +27,7 @@ import (
 	"gopod/internal/services"
 	"gopod/internal/storage"
 	"gopod/pkg/crypto"
+	"gopod/pkg/httputil"
 )
 
 // Config holds server configuration.
@@ -40,7 +40,10 @@ type Config struct {
 }
 
 // NewServer configures http.Handler with domain API routes and SPA fallback.
-func NewServer(cfg Config) http.Handler {
+// It returns an error when a hard prerequisite (the encryption master key)
+// cannot be established, so the caller can refuse to boot instead of running
+// with secrets that would silently become unreadable after a restart.
+func NewServer(cfg Config) (http.Handler, error) {
 	podmanClient := podman.NewClient(cfg.PodmanSocket)
 	if podmanClient != nil {
 		if err := podmanClient.EnsureNetwork(context.Background(), "gopod-net"); err != nil {
@@ -65,6 +68,16 @@ func NewServer(cfg Config) http.Handler {
 	authMiddleware := auth.NewMiddleware(authService)
 	authHandler := auth.NewHandler(authService)
 
+	// Rewrite plaintext session tokens at rest to hashed form (idempotent:
+	// rows already carrying the hash prefix are skipped).
+	if sqlDB != nil {
+		if n, err := authRepo.MigrateSessionTokens(context.Background()); err != nil {
+			log.Printf("[WARN] session token migration failed: %v", err)
+		} else if n > 0 {
+			log.Printf("[auth] Migrated %d stored session token(s) to hashed form", n)
+		}
+	}
+
 	projectRepo := projects.NewSQLiteRepository(sqlDB)
 	projectService := projects.NewService(projectRepo)
 	projectHandler := projects.NewHandler(projectService, authMiddleware)
@@ -78,7 +91,16 @@ func NewServer(cfg Config) http.Handler {
 		dataDir = "./data"
 	}
 	if err := crypto.InitMasterKey(dataDir); err != nil {
-		log.Printf("[ERROR] Failed to initialize AES master key: %v", err)
+		return nil, fmt.Errorf("initialize AES master key: %w", err)
+	}
+	// Start the hourly session prune only after the hard startup checks passed:
+	// a failed init must not leave a background goroutine holding the DB open.
+	go authService.StartSessionCleanup(context.Background())
+	keyOnDisk := crypto.KeyFromEnv()
+	if !keyOnDisk {
+		if _, statErr := os.Stat(crypto.KeyFilePath(dataDir)); statErr == nil {
+			keyOnDisk = true
+		}
 	}
 	logMgr := services.NewLogManager(dataDir)
 
@@ -93,6 +115,23 @@ func NewServer(cfg Config) http.Handler {
 
 	runtimeService := runtime.NewService(podmanClient)
 	runtimeHandler := runtime.NewHandler(runtimeService, authMiddleware)
+	// Quadlet API responses mask env values GOPOD stores encrypted; the unit
+	// files keep the real value because systemd needs it.
+	runtimeService.SetEnvSecretKeyProvider(func() map[string]bool {
+		list, err := serviceRepo.List(context.Background(), "")
+		if err != nil {
+			return nil
+		}
+		keys := map[string]bool{}
+		for _, svc := range list {
+			for _, v := range svc.EnvVars {
+				if v.Secret && strings.TrimSpace(v.Key) != "" {
+					keys[v.Key] = true
+				}
+			}
+		}
+		return keys
+	})
 
 	caddyReconciler := ingress.NewReconciler(cfg.CaddyAdmin, "")
 	if cfg.Port != "" {
@@ -137,7 +176,7 @@ func NewServer(cfg Config) http.Handler {
 		defer cancel()
 		domains, err := ingressRepo.List(bgCtx, "")
 		if err == nil {
-			// Upgrade legacy plaintext basic-auth passwords to bcrypt hashes at rest.
+			// Rewrite plaintext basic-auth passwords at rest to bcrypt hashes.
 			ingressService.MigrateBasicAuthHashes(bgCtx, domains)
 			_ = caddyReconciler.Reconcile(bgCtx, domains)
 		}
@@ -153,6 +192,10 @@ func NewServer(cfg Config) http.Handler {
 	auditHandler := audit.NewHandler(auditService, authMiddleware)
 
 	activity.Init(sqlDB)
+	if !keyOnDisk {
+		activity.EmitEngineEvent(context.Background(), "warn", "system", "", "", "engine", "system.encryption_key_missing",
+			"No persisted encryption key found: new secrets could not be decrypted after a restart.", nil)
+	}
 	activityStore := activity.NewStore(sqlDB)
 	activityHandler := activity.NewHandler(activityStore, authMiddleware)
 
@@ -285,33 +328,7 @@ func NewServer(cfg Config) http.Handler {
 		})
 	}
 
-	return withMiddleware(mux)
-}
-
-func isOriginAllowed(origin, host string) bool {
-	if origin == "" {
-		return false
-	}
-	u, err := url.Parse(origin)
-	if err != nil {
-		return false
-	}
-	if u.Host == host {
-		return true
-	}
-	hostname := u.Hostname()
-	if hostname == "localhost" || hostname == "127.0.0.1" || hostname == "::1" {
-		return true
-	}
-	if allowed := os.Getenv("ALLOWED_ORIGIN"); allowed != "" {
-		for _, a := range strings.Split(allowed, ",") {
-			trimmed := strings.TrimSpace(a)
-			if trimmed == origin || trimmed == u.Host {
-				return true
-			}
-		}
-	}
-	return false
+	return withMiddleware(mux), nil
 }
 
 func withMiddleware(next http.Handler) http.Handler {
@@ -319,7 +336,7 @@ func withMiddleware(next http.Handler) http.Handler {
 		start := time.Now()
 
 		origin := r.Header.Get("Origin")
-		if origin != "" && isOriginAllowed(origin, r.Host) {
+		if origin != "" && httputil.IsOriginAllowed(origin, r.Host) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 		} else if origin == "" {

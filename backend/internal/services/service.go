@@ -143,7 +143,7 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 	}
 
 	if svc.ID == "" {
-		randBytes := make([]byte, 3)
+		randBytes := make([]byte, 8)
 		_, _ = rand.Read(randBytes)
 		randomSuffix := hex.EncodeToString(randBytes)
 		cleanProj := strings.ToLower(strings.ReplaceAll(svc.ProjectID, " ", "-"))
@@ -191,10 +191,189 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 	return &svc, nil
 }
 
+// preserveRedactedEnvSecrets replaces masked/empty secret values with the
+// stored value for the same key. New keys keep whatever the client sent.
+//
+// When the stored blob is known to be undecryptable (master key replaced) an
+// update that would overwrite it with an empty list is refused outright:
+// keeping the ciphertext at least leaves a chance of recovery, silently
+// blanking the row does not.
+func (s *WorkloadService) preserveRedactedEnvSecrets(ctx context.Context, svc *Service) error {
+	// Entries with an empty key are editor noise (blank lines), not data: they
+	// must not defeat the emptiness check below.
+	effective := 0
+	needsLookup := false
+	for _, v := range svc.EnvVars {
+		if strings.TrimSpace(v.Key) != "" {
+			effective++
+		}
+		// The mask sentinel is unambiguous: it always means "keep the stored
+		// value", whatever the client claims about the secret flag. An empty
+		// value only means "keep" for entries flagged secret.
+		if v.Value == EnvSecretMask || (v.Secret && v.Value == "") {
+			needsLookup = true
+		}
+	}
+	if effective == 0 {
+		needsLookup = true
+	}
+	if !needsLookup {
+		return nil
+	}
+	existing, err := s.repo.Get(ctx, svc.ID)
+	if err != nil {
+		return err
+	}
+	if existing == nil {
+		return nil
+	}
+	if existing.EnvDecryptionError {
+		if effective == 0 {
+			return errors.New("stored environment variables cannot be decrypted with the current master key; refusing to overwrite them")
+		}
+		// A "keep" sentinel (mask or empty secret) cannot be resolved against
+		// an unreadable blob: persisting the literal mask would look like a
+		// saved secret. Force the caller to re-enter the value instead.
+		for _, v := range svc.EnvVars {
+			if v.Value == EnvSecretMask || (v.Secret && v.Value == "") {
+				return errors.New("stored environment variables cannot be decrypted with the current master key; masked or empty secret values cannot be preserved, re-enter them")
+			}
+		}
+		return nil
+	}
+	stored := make(map[string]EnvVar, len(existing.EnvVars))
+	for _, v := range existing.EnvVars {
+		stored[v.Key] = v
+	}
+	for i := range svc.EnvVars {
+		v := &svc.EnvVars[i]
+		if v.Value != EnvSecretMask && !(v.Secret && v.Value == "") {
+			continue
+		}
+		if prev, ok := stored[v.Key]; ok {
+			v.Value = prev.Value
+			// A lossy client that drops the secret flag must not downgrade a
+			// stored secret to a plain var.
+			if prev.Secret {
+				v.Secret = true
+			}
+		}
+	}
+	return nil
+}
+
+// RevealEnvValues returns the decrypted value of the requested env keys.
+// Only keys that actually exist on the service are returned; the caller is
+// an authenticated operator.
+func (s *WorkloadService) RevealEnvValues(ctx context.Context, id string, keys []string) (map[string]string, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	svc, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil {
+		return nil, errors.New("service not found")
+	}
+	if svc.EnvDecryptionError {
+		return nil, errors.New("stored environment variables cannot be decrypted with the current master key")
+	}
+	want := make(map[string]bool, len(keys))
+	for _, k := range keys {
+		want[k] = true
+	}
+	out := make(map[string]string)
+	for _, v := range svc.EnvVars {
+		if want[v.Key] {
+			out[v.Key] = v.Value
+		}
+	}
+	// Reading secrets is a security-relevant act: leave an audit trail (key
+	// count only, never values).
+	if len(out) > 0 {
+		if s.audit != nil {
+			_ = s.audit.Record(ctx, "service.env_reveal", "operator", svc.Name, "security", "127.0.0.1", "success")
+		}
+		activity.RecordActivity(ctx, "operator", "service.env_reveal", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+			fmt.Sprintf("Revealed %d environment value(s) for service '%s'", len(out), svc.Name), "127.0.0.1")
+	}
+	return out, nil
+}
+
+// WebhookTokenFor returns the current webhook token, generating and persisting
+// one when the service never had it (parity with GetService's lazy backfill),
+// for the explicit reveal endpoint.
+func (s *WorkloadService) WebhookTokenFor(ctx context.Context, id string) (string, error) {
+	if s.repo == nil {
+		return "", errors.New("repository not initialized")
+	}
+	svc, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if svc == nil {
+		return "", errors.New("service not found")
+	}
+	token := svc.WebhookToken
+	if token == "" {
+		b := make([]byte, 16)
+		if _, err := rand.Read(b); err != nil {
+			return "", err
+		}
+		token = "wh_" + hex.EncodeToString(b)
+		if err := s.repo.SetWebhookToken(ctx, id, token); err != nil {
+			return "", err
+		}
+	}
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.webhook_reveal", "operator", svc.Name, "security", "127.0.0.1", "success")
+	}
+	activity.RecordActivity(ctx, "operator", "service.webhook_reveal", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Webhook token revealed for service '%s'", svc.Name), "127.0.0.1")
+	return token, nil
+}
+
+// RotateWebhookToken generates and persists a fresh webhook token, returning
+// it once. Old tokens stop working immediately.
+func (s *WorkloadService) RotateWebhookToken(ctx context.Context, id string) (string, error) {
+	if s.repo == nil {
+		return "", errors.New("repository not initialized")
+	}
+	svc, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if svc == nil {
+		return "", errors.New("service not found")
+	}
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	token := "wh_" + hex.EncodeToString(b)
+	if err := s.repo.SetWebhookToken(ctx, id, token); err != nil {
+		return "", err
+	}
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.webhook_rotate", "operator", svc.Name, "security", "127.0.0.1", "success")
+	}
+	activity.RecordActivity(ctx, "operator", "service.webhook_rotate", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Webhook token rotated for service '%s'", svc.Name), "127.0.0.1")
+	return token, nil
+}
+
 // UpdateService modifies service configuration and syncs declarative units.
 func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
+	}
+
+	// Secret env vars redacted on read (mask or empty) must keep their stored
+	// value: the UI submits the whole env list on every save, so treating a
+	// mask as a literal value would silently overwrite real secrets.
+	if err := s.preserveRedactedEnvSecrets(ctx, &svc); err != nil {
+		return err
 	}
 
 	if (svc.Type == "quadlet" || svc.RuntimeTarget == "quadlet") && strings.TrimSpace(svc.QuadletConfig) != "" {
@@ -253,9 +432,15 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 		}
 
 		for fname, uContent := range files {
-			_ = os.WriteFile(filepath.Join(quadletDir, fname), []byte(uContent), 0644)
+			// Unit files embed real env values (systemd needs them): keep them
+			// owner-only, and fix the mode of files written by older builds.
+			unitPath := filepath.Join(quadletDir, fname)
+			_ = os.WriteFile(unitPath, []byte(uContent), 0600)
+			_ = os.Chmod(unitPath, 0600)
 			if systemdDir != "" {
-				_ = os.WriteFile(filepath.Join(systemdDir, fname), []byte(uContent), 0644)
+				userPath := filepath.Join(systemdDir, fname)
+				_ = os.WriteFile(userPath, []byte(uContent), 0600)
+				_ = os.Chmod(userPath, 0600)
 			}
 		}
 
@@ -683,8 +868,9 @@ func (s *WorkloadService) GroupIntoPod(ctx context.Context, id, podName string, 
 
 // UngroupFromPod detaches a member service from its pod in BOTH database and
 // runtime: the container is removed from the pod's localhost namespace and
-// redeployed as a standalone container. Detach previously only flipped DB
-// flags, leaving the old container alive inside the pod serving stale traffic.
+// redeployed as a standalone container. Flipping DB flags alone would leave
+// the container serving stale traffic inside the pod, so the runtime detach is
+// part of the operation.
 func (s *WorkloadService) UngroupFromPod(ctx context.Context, id string) (*Service, error) {
 	svc, err := s.GetService(ctx, id)
 	if err != nil {

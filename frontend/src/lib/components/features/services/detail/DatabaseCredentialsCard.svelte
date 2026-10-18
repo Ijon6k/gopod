@@ -7,6 +7,7 @@
 		extractDatabaseCredentials,
 		buildConnectionString,
 		buildCliCommand,
+		revealMaskedEnvValues,
 		DATABASE_ENGINES,
 		type DatabaseEngine
 	} from '../database/database-utils';
@@ -40,7 +41,27 @@
 	let passwordModalOpen = $state(false);
 	let isRedeploying = $state(false);
 
-	const creds = $derived(extractDatabaseCredentials(service));
+	// Secret env values arrive masked; this card reveals them so display, copy
+	// buttons and connection strings stay usable. The backend records each
+	// reveal in the audit trail.
+	let revealedEnv = $state<Record<string, string>>({});
+	let revealedFor = $state<string | null>(null);
+
+	async function refreshRevealed() {
+		const id = service.id;
+		revealedFor = id;
+		const values = await revealMaskedEnvValues(service);
+		if (revealedFor === id) revealedEnv = values;
+	}
+
+	$effect(() => {
+		if (service.id !== revealedFor) {
+			revealedEnv = {};
+			void refreshRevealed();
+		}
+	});
+
+	const creds = $derived(extractDatabaseCredentials(service, revealedEnv));
 	const currentEngine = $derived(
 		DATABASE_ENGINES.find((e) => e.id === creds.engine) ?? DATABASE_ENGINES[0]
 	);
@@ -389,6 +410,7 @@
 	bind:open={editModalOpen}
 	{service}
 	onredeploy={handleRedeploy}
+	onupdated={() => void refreshRevealed()}
 	onclose={() => (editModalOpen = false)}
 />
 
@@ -397,5 +419,6 @@
 	bind:open={passwordModalOpen}
 	{service}
 	onredeploy={handleRedeploy}
+	onupdated={() => void refreshRevealed()}
 	onclose={() => (passwordModalOpen = false)}
 />

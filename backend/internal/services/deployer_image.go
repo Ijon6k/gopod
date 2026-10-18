@@ -10,13 +10,12 @@ import (
 	"gopod/internal/podman"
 )
 
-// Redeploy ordering strategies. start-first mirrors dokploy's deploy
-// semantics: the replacement container starts while the previous one keeps
-// serving, and the previous container is only removed once the replacement is
-// confirmed up — a failed run therefore never takes the healthy service down.
-// When that is impossible (pod membership, or the replacement needs a host
-// port the predecessor still holds) we keep the classic stop-then-create
-// ordering.
+// Redeploy ordering strategies. start-first starts the replacement container
+// while the predecessor keeps serving, and removes the predecessor only once
+// the replacement is confirmed up, so a failed run never takes the healthy
+// service down. When that is impossible (pod membership, or the replacement
+// needs a host port the predecessor holds), the deploy uses the
+// stop-then-create ordering.
 const (
 	redeployStartFirst     = "start-first"
 	redeployStopThenCreate = "stop-then-create"
@@ -30,9 +29,8 @@ type containerRedeployPlan struct {
 
 // planContainerRedeploy inspects the runtime and selects the redeploy
 // strategy plus the run name for a plain container service (image/git deploys).
-// Fresh deploys (no live predecessor) keep the canonical name and the classic
-// preflight; unknown or unlabeled runtimes always fall back to the previous
-// behavior, which keeps old data safe.
+// Fresh deploys (no live predecessor) keep the canonical name and the standard
+// preflight; unknown or unlabeled runtimes use the stop-then-create ordering.
 func (d *Deployer) planContainerRedeploy(ctx context.Context, s Service, desiredName string, logLine func(string)) containerRedeployPlan {
 	plan := containerRedeployPlan{mode: redeployStopThenCreate, runName: desiredName}
 	if d.podmanClient == nil || desiredName == "" {
@@ -121,7 +119,7 @@ func (d *Deployer) cleanPreflightForStartFirst(ctx context.Context, s Service, p
 				if c.Labels == nil || c.Labels["io.gopod.service"] != s.ID || c.ID == predecessorID {
 					continue
 				}
-				// Ghost from an interrupted previous deploy — safe to remove now.
+				// Ghost left by an aborted deploy run: safe to remove.
 				_ = d.podmanClient.StopContainer(ctx, c.ID)
 				_ = d.podmanClient.DeleteContainer(ctx, c.ID, true)
 			}
@@ -132,10 +130,10 @@ func (d *Deployer) cleanPreflightForStartFirst(ctx context.Context, s Service, p
 	}
 }
 
-// retirePredecessor stops and removes the previous container now that the
+// retirePredecessor stops and removes the predecessor container once the
 // replacement is confirmed up, then reclaims the canonical container name so
 // name-based consumers (default ingress target, exec/terminal lookups, shell
-// scripts) keep resolving as before. Returns the final container name.
+// scripts) keep resolving. Returns the final container name.
 func (d *Deployer) retirePredecessor(ctx context.Context, predecessorID, canonicalName, replacementName string, logLine func(string)) string {
 	finalName := replacementName
 	logLine(fmt.Sprintf("🔄 Start-first: replacement is up — retiring previous container '%s'...", predecessorID))
@@ -175,22 +173,12 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger st
 	shouldPull := !hasImage || trigger == "pull" || trigger == "force-pull" || trigger == "update"
 	if shouldPull {
 		logLine(fmt.Sprintf("📦 Pulling container image '%s'...", imageToRun))
-		var pullArgs []string
-		if s.RegistryID != "" && d.registryProvider != nil {
-			if reg, err := d.registryProvider.GetRegistry(ctx, s.RegistryID); err == nil && reg != nil && reg.Username != "" {
-				logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
-				pullArgs = append(pullArgs, "--creds", fmt.Sprintf("%s:%s", reg.Username, reg.Token))
-			}
+		reg := d.resolveRegistry(ctx, s)
+		if reg != nil {
+			logLine(fmt.Sprintf("🔑 Authenticating with registry '%s' (%s)...", reg.Name, reg.Username))
 		}
-		pullArgs = append(pullArgs, "pull", imageToRun)
-		pullCmd := exec.CommandContext(ctx, "podman", pullArgs...)
-		d.setupCmdEnv(pullCmd)
-		pStdout, _ := pullCmd.StdoutPipe()
-		pStderr, _ := pullCmd.StderrPipe()
-		if err := pullCmd.Start(); err == nil {
-			d.streamPipes(pStdout, pStderr, logLine)
-			_ = pullCmd.Wait()
-		}
+		// Pull failures are non-fatal: a locally cached image can still run.
+		_ = d.pullImage(ctx, imageToRun, reg, logLine)
 	} else {
 		logLine(fmt.Sprintf("⚡ Container image '%s' is cached locally. Reusing existing image.", imageToRun))
 	}
@@ -349,9 +337,9 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 						fmt.Sprintf("Pod auto-create '%s' failed: %v", targetPod, err), map[string]any{"pod": targetPod, "service": s.Name})
 					return fmt.Errorf("failed to create pod '%s': %w", targetPod, err)
 				}
-				// The pod was freshly created by us only when CreatePod returned
-				// nil. ("already exists" means someone else owns it — never roll
-				// back a pod we did not create.)
+				// CreatePod returns nil only when this deploy created the pod;
+				// "already exists" means a different owner created it, so the
+				// rollback path must never delete it.
 				createdPodHere = err == nil
 				emitEngineEventSafe(ctx, "info", "service", s.ID, s.ProjectID, "engine", "pod.autocreate",
 					fmt.Sprintf("Pod '%s' auto-created with ports %v for service '%s'", targetPod, podPorts, s.Name), map[string]any{"pod": targetPod, "ports": podPorts, "service": s.Name})
@@ -403,7 +391,7 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 			PidsLimit:     pidsLimit,
 			SecurityOpt:   secOpts,
 		}
-		logLine(fmt.Sprintf("🧾 Equivalent: %s", sanitizedPodmanRunArgs(runOpts)))
+		logLine(fmt.Sprintf("🧾 Equivalent: %s", sanitizedPodmanRunArgs(runOpts, SecretEnvKeySet(s))))
 		_, err := d.podmanClient.RunContainer(ctx, runOpts)
 		if err != nil {
 			logLine(fmt.Sprintf("❌ Container run failed: %v", err))

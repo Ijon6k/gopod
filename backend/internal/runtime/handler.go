@@ -1,7 +1,6 @@
 package runtime
 
 import (
-	"encoding/json"
 	"net/http"
 	"strconv"
 	"strings"
@@ -187,8 +186,8 @@ type createPodRequest struct {
 
 func (h *Handler) handleCreatePod(w http.ResponseWriter, r *http.Request) {
 	var req createPodRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request body")
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 	if strings.TrimSpace(req.Name) == "" {

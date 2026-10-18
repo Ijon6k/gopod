@@ -1,7 +1,6 @@
 package ingress
 
 import (
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -63,8 +62,8 @@ func (h *Handler) handleListDomains(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCreateDomain(w http.ResponseWriter, r *http.Request) {
 	var p domainPayload
-	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &p, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 
@@ -79,8 +78,8 @@ func (h *Handler) handleCreateDomain(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleUpdateDomain(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	var p domainPayload
-	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
-		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
+	if err := httputil.DecodeJSONBody(w, r, &p, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
 		return
 	}
 	d := p.toDomain()

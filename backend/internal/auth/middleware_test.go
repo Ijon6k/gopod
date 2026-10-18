@@ -38,6 +38,9 @@ func (m *mockAuthRepo) GetSession(ctx context.Context, token string) (*Session, 
 func (m *mockAuthRepo) DeleteSession(ctx context.Context, token string) error {
 	return nil
 }
+func (m *mockAuthRepo) PruneExpiredSessions(ctx context.Context) (int64, error) {
+	return 0, nil
+}
 
 func TestRequireAuthMiddlewareCaching(t *testing.T) {
 	repo := &mockAuthRepo{

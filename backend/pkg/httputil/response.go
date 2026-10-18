@@ -16,9 +16,3 @@ func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
 func WriteError(w http.ResponseWriter, status int, message string) {
 	WriteJSON(w, status, map[string]string{"error": message})
 }
-
-// ParseJSON decodes JSON request body into target struct.
-func ParseJSON(r *http.Request, target interface{}) error {
-	defer r.Body.Close()
-	return json.NewDecoder(r.Body).Decode(target)
-}

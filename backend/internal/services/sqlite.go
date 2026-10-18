@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"fmt"
+	"log"
 	"strings"
 
 	"gopod/pkg/crypto"
@@ -54,8 +56,17 @@ func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Servic
 		}
 		if dec, err := crypto.Decrypt(envJSON); err == nil {
 			envJSON = dec
+		} else {
+			// The stored blob cannot be decrypted (e.g. the master key was
+			// replaced). Keep the row intact, flag it, and never present the
+			// ciphertext as if it were the value.
+			log.Printf("[WARN] failed to decrypt env vars for service %s: %v", s.ID, err)
+			s.EnvDecryptionError = true
+			envJSON = ""
 		}
-		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+		if envJSON != "" {
+			_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+		}
 		if advJSON != "" && advJSON != "{}" {
 			_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
 		}
@@ -89,8 +100,14 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error)
 	}
 	if dec, err := crypto.Decrypt(envJSON); err == nil {
 		envJSON = dec
+	} else {
+		log.Printf("[WARN] failed to decrypt env vars for service %s: %v", s.ID, err)
+		s.EnvDecryptionError = true
+		envJSON = ""
 	}
-	_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+	if envJSON != "" {
+		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+	}
 	if advJSON != "" && advJSON != "{}" {
 		_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
 	}
@@ -98,11 +115,15 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error)
 }
 
 func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
+	// Env blob encryption failure must abort the write: falling back to
+	// plaintext would silently store secrets unencrypted.
 	rawEnv, _ := json.Marshal(s.EnvVars)
 	envJSON := string(rawEnv)
-	if enc, err := crypto.Encrypt(envJSON); err == nil {
-		envJSON = enc
+	encEnv, err := crypto.Encrypt(envJSON)
+	if err != nil {
+		return fmt.Errorf("encrypt env vars: %w", err)
 	}
+	envJSON = encEnv
 	advJSON := []byte("{}")
 	if s.Advanced != nil {
 		if b, err := json.Marshal(s.Advanced); err == nil {
@@ -134,7 +155,7 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 		s.PublishDir = "dist"
 	}
 
-	_, err := r.db.ExecContext(ctx,
+	_, err = r.db.ExecContext(ctx,
 		`INSERT INTO services (
 			id, project_id, name, type, status, source, branch, image, port, host_port, host_ip,
 			cpu_limit, memory_limit, restart_policy, description, quadlet_config,
@@ -152,11 +173,15 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 }
 
 func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
+	// Env blob encryption failure must abort the write: falling back to
+	// plaintext would silently store secrets unencrypted.
 	rawEnv, _ := json.Marshal(s.EnvVars)
 	envJSON := string(rawEnv)
-	if enc, err := crypto.Encrypt(envJSON); err == nil {
-		envJSON = enc
+	encEnv, err := crypto.Encrypt(envJSON)
+	if err != nil {
+		return fmt.Errorf("encrypt env vars: %w", err)
 	}
+	envJSON = encEnv
 	advJSON := []byte("{}")
 	if s.Advanced != nil {
 		if b, err := json.Marshal(s.Advanced); err == nil {
@@ -188,7 +213,7 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 		s.PublishDir = "dist"
 	}
 
-	_, err := r.db.ExecContext(ctx,
+	_, err = r.db.ExecContext(ctx,
 		`UPDATE services SET
 			name = ?, type = ?, status = ?, source = ?, branch = ?, image = ?,
 			port = ?, host_port = ?, host_ip = ?, cpu_limit = ?, memory_limit = ?, restart_policy = ?,
@@ -215,6 +240,14 @@ func (r *SQLiteRepository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// SetWebhookToken replaces the webhook token of a service. Update cannot do
+// this (its SQL keeps an existing token via COALESCE), so rotation has an
+// explicit setter.
+func (r *SQLiteRepository) SetWebhookToken(ctx context.Context, id, token string) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE services SET webhook_token = ? WHERE id = ?", token, id)
+	return err
+}
+
 func (r *SQLiteRepository) GetByWebhookToken(ctx context.Context, token string) (*Service, error) {
 	var s Service
 	var envJSON, advJSON string
@@ -235,7 +268,16 @@ func (r *SQLiteRepository) GetByWebhookToken(ctx context.Context, token string) 
 	if err != nil {
 		return nil, err
 	}
-	_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+	if dec, err := crypto.Decrypt(envJSON); err == nil {
+		envJSON = dec
+	} else {
+		log.Printf("[WARN] failed to decrypt env vars for service %s: %v", s.ID, err)
+		s.EnvDecryptionError = true
+		envJSON = ""
+	}
+	if envJSON != "" {
+		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+	}
 	if advJSON != "" && advJSON != "{}" {
 		_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
 	}

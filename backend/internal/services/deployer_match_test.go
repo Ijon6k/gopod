@@ -88,7 +88,7 @@ func TestContainerOwnedBy_PrefixCollisionIsolation(t *testing.T) {
 }
 
 // TestContainerOwnedBy_UnlabeledNeverOwned documents the contract: gopod
-// never touches unlabeled containers even when they carry our exact name.
+// never touches unlabeled containers even when their names match exactly.
 func TestContainerOwnedBy_UnlabeledNeverOwned(t *testing.T) {
 	web, _, _, _ := collideFixture()
 	unlabeled := podman.ContainerItem{ID: "ccccccuser", Names: []string{"/web"}, Labels: nil}

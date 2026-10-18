@@ -222,7 +222,7 @@ func (d *Deployer) cleanPreflightConflicts(ctx context.Context, s Service, logLi
 	if d.podmanClient != nil {
 		// Ownership guard: candidate names are unit-identity derived, so
 		// a foreign container may exist with the same name. Only containers
-		// that exist AND carry our ownership labels are removed.
+		// that exist AND carry the gopod ownership labels are removed.
 		if ownedByName, err := d.ownedContainersByName(ctx, s); err == nil {
 			for _, name := range candContainers {
 				c, exists := ownedByName[name]
@@ -272,6 +272,15 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	teardownCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	// Teardown keeps going on individual failures, but a refused removal must
+	// leave a trail: a silent `_ =` makes "service won't die" cases
+	// undiagnosable.
+	removeFile := func(path string) {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			log.Printf("[teardown] failed to remove %s: %v", path, err)
+		}
+	}
+
 	// Phase 0: Discover ALL candidate units, containers, and unit files on disk
 	candUnits, candContainers, filesToDelete := d.findServiceUnitFilesAndCandidates(s)
 
@@ -286,7 +295,7 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 
 	// Phase 2: Purge ALL discovered unit files from disk
 	for _, fpath := range filesToDelete {
-		_ = os.Remove(fpath)
+		removeFile(fpath)
 	}
 
 	systemdQuadletDir := os.Getenv("QUADLET_DIR")
@@ -298,15 +307,15 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 	quadletDir := filepath.Join(d.dataDir, "quadlets")
 	for _, base := range candContainers {
 		if systemdQuadletDir != "" {
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.container", base)))
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.pod", base)))
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.volume", base)))
-			_ = os.Remove(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.network", base)))
+			removeFile(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.container", base)))
+			removeFile(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.pod", base)))
+			removeFile(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.volume", base)))
+			removeFile(filepath.Join(systemdQuadletDir, fmt.Sprintf("%s.network", base)))
 		}
-		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.container", base)))
-		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.pod", base)))
-		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.volume", base)))
-		_ = os.Remove(filepath.Join(quadletDir, fmt.Sprintf("%s.network", base)))
+		removeFile(filepath.Join(quadletDir, fmt.Sprintf("%s.container", base)))
+		removeFile(filepath.Join(quadletDir, fmt.Sprintf("%s.pod", base)))
+		removeFile(filepath.Join(quadletDir, fmt.Sprintf("%s.volume", base)))
+		removeFile(filepath.Join(quadletDir, fmt.Sprintf("%s.network", base)))
 	}
 
 	// Phase 3: Systemd Daemon-Reload so podman-system-generator purges generated services
@@ -319,12 +328,12 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 		_, _ = d.systemctlUser(teardownCtx, "reset-failed")
 	}
 
-	// Phase 4: Force Remove Containers & Pods (Systemd is now dead, so Restart=always cannot respawn)
+	// Phase 4: Force Remove Containers & Pods (systemd units are stopped, so Restart=always cannot respawn)
 	if d.podmanClient != nil {
 		// Ownership guard: candidate container names are unit-identity
 		// derived (systemd unit names collide across projects), so a NAME match
 		// alone must never delete a foreign container. Resolve the name to an
-		// actual container and require our ownership labels first.
+		// actual container and require the gopod ownership labels first.
 		ownedByName, err := d.ownedContainersByName(teardownCtx, s)
 		if err == nil {
 			for _, cName := range candContainers {
@@ -337,7 +346,9 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				if delErr := d.podmanClient.DeleteContainer(teardownCtx, cName, true); delErr != nil {
 					cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", cName)
 					d.setupCmdEnv(cmdRm)
-					_ = cmdRm.Run()
+					if rmErr := cmdRm.Run(); rmErr != nil {
+						log.Printf("[teardown] failed to remove container %s (REST: %v, CLI: %v)", cName, delErr, rmErr)
+					}
 				}
 			}
 		}
@@ -353,7 +364,9 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				if delErr := d.podmanClient.DeleteContainer(teardownCtx, c.ID, true); delErr != nil {
 					cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", c.ID)
 					d.setupCmdEnv(cmdRm)
-					_ = cmdRm.Run()
+					if rmErr := cmdRm.Run(); rmErr != nil {
+						log.Printf("[teardown] failed to remove container %s (REST: %v, CLI: %v)", c.ID, delErr, rmErr)
+					}
 				}
 			}
 		}
@@ -370,7 +383,9 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				if delErr := d.podmanClient.DeletePod(teardownCtx, p.Name, true); delErr != nil {
 					cmdPodRm := exec.CommandContext(teardownCtx, "podman", "pod", "rm", "-f", p.Name)
 					d.setupCmdEnv(cmdPodRm)
-					_ = cmdPodRm.Run()
+					if rmErr := cmdPodRm.Run(); rmErr != nil {
+						log.Printf("[teardown] failed to remove pod %s (REST: %v, CLI: %v)", p.Name, delErr, rmErr)
+					}
 				}
 			}
 		}
@@ -403,7 +418,9 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				}
 			}
 			if owned {
-				_ = d.podmanClient.DeleteVolume(teardownCtx, v.Name, true)
+				if err := d.podmanClient.DeleteVolume(teardownCtx, v.Name, true); err != nil {
+					log.Printf("[teardown] failed to remove volume %s: %v", v.Name, err)
+				}
 			}
 		}
 
@@ -412,7 +429,9 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 			for _, qv := range parsed.Volumes {
 				volName := strings.Split(qv, ":")[0]
 				if volName != "" && !strings.HasPrefix(volName, "/") && !strings.HasPrefix(volName, ".") {
-					_ = d.podmanClient.DeleteVolume(teardownCtx, volName, true)
+					if err := d.podmanClient.DeleteVolume(teardownCtx, volName, true); err != nil {
+						log.Printf("[teardown] failed to remove quadlet volume %s: %v", volName, err)
+					}
 				}
 			}
 		}

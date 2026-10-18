@@ -22,6 +22,9 @@ var (
 )
 
 // InitMasterKey initializes or loads the 256-bit AES master encryption key.
+// Initialization fails hard on an unusable key: a key that cannot be persisted
+// (or a corrupt key file) would silently make every stored secret undecryptable
+// after the next restart.
 func InitMasterKey(dataDir string) error {
 	keyMu.Lock()
 	defer keyMu.Unlock()
@@ -38,12 +41,19 @@ func InitMasterKey(dataDir string) error {
 		dataDir = "./data"
 	}
 	keyDir := filepath.Join(dataDir, "keys")
-	_ = os.MkdirAll(keyDir, 0700)
+	if err := os.MkdirAll(keyDir, 0700); err != nil {
+		return fmt.Errorf("create key directory %s: %w", keyDir, err)
+	}
 	keyFile := filepath.Join(keyDir, "master.key")
 
-	if data, err := os.ReadFile(keyFile); err == nil && len(data) >= 32 {
+	if data, err := os.ReadFile(keyFile); err == nil {
+		if len(data) < 32 {
+			return fmt.Errorf("master key file %s is corrupt (%d bytes, want at least 32); refusing to start with a key that cannot decrypt existing secrets", keyFile, len(data))
+		}
 		masterKey = data[:32]
 		return nil
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("read master key file %s: %w", keyFile, err)
 	}
 
 	// Generate new cryptographically secure 32-byte key
@@ -53,9 +63,7 @@ func InitMasterKey(dataDir string) error {
 	}
 
 	if err := os.WriteFile(keyFile, newKey, 0600); err != nil {
-		// If unable to persist to disk, fallback to memory key
-		masterKey = newKey
-		return nil
+		return fmt.Errorf("persist master key to %s: %w (secrets would be lost on restart, refusing to start)", keyFile, err)
 	}
 
 	masterKey = newKey
@@ -69,6 +77,21 @@ func getKey() ([]byte, error) {
 		return masterKey, nil
 	}
 	return nil, fmt.Errorf("master encryption key not initialized")
+}
+
+// KeyFilePath returns the on-disk location of the master key for a data
+// directory. Used by the startup doctor to report where secrets are anchored.
+func KeyFilePath(dataDir string) string {
+	if dataDir == "" {
+		dataDir = "./data"
+	}
+	return filepath.Join(dataDir, "keys", "master.key")
+}
+
+// KeyFromEnv reports whether the master key is supplied via
+// GOPOD_ENCRYPTION_KEY instead of the on-disk key file.
+func KeyFromEnv() bool {
+	return os.Getenv("GOPOD_ENCRYPTION_KEY") != ""
 }
 
 // Encrypt encrypts plaintext using AES-256-GCM.

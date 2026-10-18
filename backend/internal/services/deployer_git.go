@@ -19,12 +19,15 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 	if repoUrl == "" {
 		repoUrl = s.Source
 	}
-	branch := s.GitBranch
+	branch := strings.TrimSpace(s.GitBranch)
 	if branch == "" {
-		branch = s.Branch
+		branch = strings.TrimSpace(s.Branch)
 	}
 	if branch == "" {
 		branch = "main"
+	}
+	if err := ValidateGitBranch(branch); err != nil {
+		return nil, err
 	}
 
 	tmpDir := filepath.Join(os.TempDir(), "gopod-builds", fmt.Sprintf("%s-%s", s.ID, depID))
@@ -46,7 +49,8 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 		}
 	}
 
-	logLine(fmt.Sprintf("📥 Cloning %s (branch: %s)...", repoUrl, branch))
+	safeRepoURL := redactCloneURL(repoUrl)
+	logLine(fmt.Sprintf("📥 Cloning %s (branch: %s)...", safeRepoURL, branch))
 	cloneCmd := exec.CommandContext(ctx, "git", "clone", "--depth", "1", "-b", branch, "--", repoUrl, tmpDir)
 	cloneEnv := append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
 	if sshKeyFile != "" {
@@ -60,7 +64,15 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 		logLine(fmt.Sprintf("❌ Git clone start failed: %v", err))
 		return nil, err
 	}
-	d.streamPipes(stdout, stderr, logLine)
+	// git may echo the remote (including embedded credentials) on stderr; strip
+	// the raw URL from every streamed line before it reaches the deployment log.
+	streamLine := logLine
+	if safeRepoURL != repoUrl {
+		streamLine = func(line string) {
+			logLine(strings.ReplaceAll(line, repoUrl, safeRepoURL))
+		}
+	}
+	d.streamPipes(stdout, stderr, streamLine)
 	if err := cloneCmd.Wait(); err != nil {
 		logLine(fmt.Sprintf("❌ Git clone failed: %v", err))
 		return nil, err

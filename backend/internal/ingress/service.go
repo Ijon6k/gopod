@@ -154,8 +154,8 @@ func hashBasicAuthPass(pass string) (string, error) {
 	return string(h), nil
 }
 
-// MigrateBasicAuthHashes upgrades legacy plaintext basic-auth passwords to
-// bcrypt hashes stored at rest. Safe to call on every startup: rows that are
+// MigrateBasicAuthHashes rewrites plaintext basic-auth passwords as bcrypt
+// hashes stored at rest. Safe to call on every startup: rows that are
 // already hashed (or empty) are left untouched. The passed slice is updated in
 // place so a following reconcile renders fresh state.
 func (s *Service) MigrateBasicAuthHashes(ctx context.Context, domains []Domain) {

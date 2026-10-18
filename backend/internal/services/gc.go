@@ -159,7 +159,7 @@ func (s *WorkloadService) gcQuadletDirs() []string {
 var serviceLabelRe = regexp.MustCompile(`io\.gopod\.service=([^\s"']+)`)
 
 // findStaleUnitFiles returns quadlet unit files whose ownership label names a
-// service that no longer exists in the DB. Files without a gopod label are
+// service whose DB row does not exist. Files without a gopod label are
 // never considered: they were not written by gopod, so gopod leaves them alone.
 func (s *WorkloadService) findStaleUnitFiles(known map[string]bool) []string {
 	seen := make(map[string]bool)

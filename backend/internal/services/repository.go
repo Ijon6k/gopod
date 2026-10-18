@@ -10,6 +10,7 @@ type Repository interface {
 	Update(ctx context.Context, s Service) error
 	Delete(ctx context.Context, id string) error
 	GetByWebhookToken(ctx context.Context, token string) (*Service, error)
+	SetWebhookToken(ctx context.Context, id, token string) error
 	CreateDeployment(ctx context.Context, d Deployment) error
 	UpdateDeployment(ctx context.Context, d Deployment) error
 	GetDeployment(ctx context.Context, id string) (*Deployment, error)

@@ -524,7 +524,7 @@ func (d *Deployer) deployPodKube(ctx context.Context, s Service, depID string, l
 
 	logLine(fmt.Sprintf("✅ Kubernetes Pod '%s' played successfully (%d workload containers running).", podName, containerCount))
 
-	// Clean up legacy naming pods
+	// Remove leftover pods from the legacy naming scheme.
 	if d.podmanClient != nil {
 		if pods, err := d.podmanClient.GetPods(ctx); err == nil {
 			for _, legacy := range legacyPodCandidates(s) {
@@ -691,11 +691,11 @@ func (d *Deployer) deployPod(ctx context.Context, s Service, depID string, logLi
 
 	logLine(fmt.Sprintf("Podman Pod '%s' is active and running on network 'gopod-net'.", podName))
 
-	// Migrate away from legacy name-scheme pods (pod_<name>): they would hold
-	// the same host ports and shadow the canonical pod. Remove them now that
-	// the canonical pod owns the bindings. Ownership-checked: a legacy
-	// pod is only removed when it provably belongs to this gopod project, so
-	// same-named services across projects can never delete each other's pods.
+	// Sweep leftover pods from the legacy naming scheme (pod_<name>): they
+	// hold the same host ports as the canonical pod and would shadow its
+	// bindings. Ownership-checked: a candidate is removed only when its labels
+	// prove this gopod project owns it, so same-named services across projects
+	// can never delete each other's pods.
 	if d.podmanClient != nil {
 		if pods, err := d.podmanClient.GetPods(ctx); err == nil {
 			for _, legacy := range legacyPodCandidates(s) {

@@ -462,7 +462,7 @@ describe("GOPOD Podman Pods, Quadlet Lifecycle & Caddy Ingress E2E Suite", () =>
 
 		await new Promise((r) => setTimeout(r, 2000));
 
-		// 4. Assert: e2e-cache-db is NO LONGER inside pod_e2e-cluster-demo
+		// 4. Assert: e2e-cache-db is not a member of pod_e2e-cluster-demo
 		const psInPod = run(`podman ps --filter 'pod=${clusterPodName}' --format '{{.Names}}'`);
 		expect(psInPod).not.toContain("e2e-cache-db");
 		expect(psInPod).toContain("e2e-web-app");

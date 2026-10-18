@@ -27,7 +27,10 @@ export interface Domain {
 	hsts?: boolean;
 	basicAuth?: boolean;
 	basicAuthUser?: string;
+	/** Write-only: accepted on create/update, never returned by the API. */
 	basicAuthPass?: string;
+	/** Computed by the backend: a password hash is stored for this domain. */
+	hasBasicAuth?: boolean;
 	basicAuthUsers?: { username: string; hash: string }[];
 	customHeaders?: Record<string, string>;
 	rateLimitRps?: number;

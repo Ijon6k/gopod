@@ -289,10 +289,10 @@
 										{#if domain.hsts}
 											<Badge variant="neutral" class="font-mono text-[10.5px]">HSTS</Badge>
 										{/if}
-										{#if domain.basicAuth}
+										{#if domain.basicAuth && domain.hasBasicAuth}
 											<Badge variant="warning" class="font-mono text-[10.5px]">Basic auth</Badge>
 										{/if}
-										{#if !domain.websocket && !domain.cors && !domain.basicAuth && !domain.hsts}
+										{#if !domain.websocket && !domain.cors && !(domain.basicAuth && domain.hasBasicAuth) && !domain.hsts}
 											<span class="text-[11px] text-[var(--text-tertiary)]">Standard</span>
 										{/if}
 									</div>

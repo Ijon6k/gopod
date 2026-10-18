@@ -40,8 +40,15 @@
 	let hsts = $state(true);
 	let basicAuth = $state(false);
 	let basicAuthUser = $state('admin');
+	let basicAuthPass = $state('');
 
 	let selectedService = $derived(services.find((s) => s.id === selectedServiceId));
+	// Basic auth is only meaningful with a username and a password. On edit, an
+	// already stored hash allows leaving the password blank (empty = keep).
+	let basicAuthIncomplete = $derived(
+		basicAuth &&
+			(!basicAuthUser.trim() || (!domain?.hasBasicAuth && !basicAuthPass.trim()))
+	);
 	let detectedTargets = $derived.by(() => {
 		if (!selectedService) return [];
 		const list: { value: string; label: string; ports: number[] }[] = [];
@@ -106,6 +113,7 @@
 			hsts = domain.hsts !== false;
 			basicAuth = !!domain.basicAuth;
 			basicAuthUser = domain.basicAuthUser || 'admin';
+			basicAuthPass = '';
 			const isLocal =
 				domain.hostname.endsWith('.localhost') ||
 				domain.hostname.endsWith('.local') ||
@@ -126,6 +134,7 @@
 			hsts = true;
 			basicAuth = false;
 			basicAuthUser = 'admin';
+			basicAuthPass = '';
 			dnsVerified = false;
 		}
 	});
@@ -177,7 +186,7 @@
 	}
 
 	function handleSave() {
-		if (!hostname.trim() || !selectedServiceId) return;
+		if (!hostname.trim() || !selectedServiceId || basicAuthIncomplete) return;
 		const svc = services.find((s) => s.id === selectedServiceId);
 
 		let cleanHost = hostname.trim().toLowerCase();
@@ -212,7 +221,11 @@
 			cors,
 			hsts,
 			basicAuth,
-			basicAuthUser: basicAuth ? basicAuthUser : undefined
+			basicAuthUser: basicAuth ? basicAuthUser : undefined,
+			// Empty password on an existing domain keeps the stored hash (backend rule).
+			basicAuthPass: basicAuth && basicAuthPass.trim() ? basicAuthPass : undefined,
+			// Keep the optimistic UI state truthful until the next data refresh.
+			hasBasicAuth: basicAuth ? domain?.hasBasicAuth || !!basicAuthPass.trim() : undefined
 		};
 
 		onsave(updated);
@@ -494,9 +507,21 @@
 					</div>
 
 					{#if basicAuth}
-						<div class="grid grid-cols-2 gap-2 border-t border-[var(--border-subtle)] pt-2">
-							<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
-							<Input type="password" placeholder="Password" value="••••••••••••" class="text-xs" />
+						<div class="flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-2">
+							<div class="grid grid-cols-2 gap-2">
+								<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
+								<Input
+									type="password"
+									bind:value={basicAuthPass}
+									placeholder={domain?.hasBasicAuth ? 'Leave blank to keep current' : 'Password'}
+									class="text-xs"
+								/>
+							</div>
+							{#if basicAuthIncomplete}
+								<span class="text-[10.5px] text-[var(--status-amber)]">
+									Set a username and password to protect this route.
+								</span>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -511,7 +536,7 @@
 				<Button
 					variant="primary"
 					size="sm"
-					disabled={!hostname.trim() || !selectedServiceId}
+					disabled={!hostname.trim() || !selectedServiceId || basicAuthIncomplete}
 					onclick={handleSave}
 				>
 					Save Domain Configuration

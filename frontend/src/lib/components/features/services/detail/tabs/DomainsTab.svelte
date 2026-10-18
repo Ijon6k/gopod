@@ -318,7 +318,7 @@
 												>CORS</span
 											>
 										{/if}
-										{#if d.basicAuth}
+										{#if d.basicAuth && d.hasBasicAuth}
 											<span
 												class="rounded border border-[var(--border-subtle)] bg-[var(--bg-table-header)] px-1.5 py-0.5 text-[10px] font-[var(--font-mono)] text-[var(--status-amber)]"
 												>Auth</span
@@ -330,7 +330,7 @@
 												>HSTS</span
 											>
 										{/if}
-										{#if !d.websocket && !d.cors && !d.basicAuth && !d.hsts}
+										{#if !d.websocket && !d.cors && !(d.basicAuth && d.hasBasicAuth) && !d.hsts}
 											<span class="text-[11px] text-[var(--text-muted)]">—</span>
 										{/if}
 									</div>

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/crypto/bcrypt"
+
 	"gopod/internal/activity"
 )
 
@@ -45,6 +47,7 @@ func (s *Service) ListDomains(ctx context.Context, projectID string) ([]Domain, 
 				_ = s.repo.Update(ctx, domains[i])
 			}
 		}
+		domains[i].computeBasicAuthState()
 	}
 	return domains, nil
 }
@@ -54,7 +57,14 @@ func (s *Service) GetDomain(ctx context.Context, id string) (*Domain, error) {
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	return s.repo.Get(ctx, id)
+	d, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if d != nil {
+		d.computeBasicAuthState()
+	}
+	return d, nil
 }
 
 // RevalidateDomain re-checks DNS for a domain rule and updates the database.
@@ -98,7 +108,78 @@ func (s *Service) RevalidateDomain(ctx context.Context, id string) (*Domain, err
 		return nil, err
 	}
 
+	d.computeBasicAuthState()
 	return d, nil
+}
+
+// cleanHostname strips the scheme and the port from a user-supplied hostname.
+func cleanHostname(raw string) string {
+	clean := strings.TrimSpace(raw)
+	clean = strings.TrimPrefix(clean, "https://")
+	clean = strings.TrimPrefix(clean, "http://")
+	if idx := strings.Index(clean, ":"); idx != -1 {
+		clean = clean[:idx]
+	}
+	return clean
+}
+
+// validateUpstream validates every stored value that is interpolated as the
+// upstream of a generated Caddyfile route.
+func validateUpstream(d *Domain) error {
+	if strings.TrimSpace(d.TargetContainer) != "" {
+		if err := ValidateTargetContainer(d.TargetContainer); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(d.ServiceID) != "" {
+		if err := ValidateTargetContainer(d.ServiceID); err != nil {
+			return err
+		}
+	}
+	return ValidateContainerPort(d.ContainerPort)
+}
+
+// hashBasicAuthPass returns the bcrypt hash of a plaintext password for storage
+// at rest. Values that are already bcrypt hashes ($2a/$2b/$2y) pass through
+// unchanged; an empty password stays empty.
+func hashBasicAuthPass(pass string) (string, error) {
+	clean := strings.TrimSpace(pass)
+	if clean == "" || strings.HasPrefix(clean, "$2") {
+		return clean, nil
+	}
+	h, err := bcrypt.GenerateFromPassword([]byte(clean), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("%w: password cannot be hashed: %v", ErrValidation, err)
+	}
+	return string(h), nil
+}
+
+// MigrateBasicAuthHashes upgrades legacy plaintext basic-auth passwords to
+// bcrypt hashes stored at rest. Safe to call on every startup: rows that are
+// already hashed (or empty) are left untouched. The passed slice is updated in
+// place so a following reconcile renders fresh state.
+func (s *Service) MigrateBasicAuthHashes(ctx context.Context, domains []Domain) {
+	if s.repo == nil {
+		return
+	}
+	for i := range domains {
+		pass := strings.TrimSpace(domains[i].BasicAuthPass)
+		if pass == "" || strings.HasPrefix(pass, "$2") {
+			continue
+		}
+		hashed, err := hashBasicAuthPass(pass)
+		if err != nil {
+			log.Printf("[WARN] Cannot migrate basic-auth password for domain %q: %v", domains[i].Hostname, err)
+			continue
+		}
+		domains[i].BasicAuthPass = hashed
+		domains[i].computeBasicAuthState()
+		if err := s.repo.Update(ctx, domains[i]); err != nil {
+			log.Printf("[WARN] Failed to persist migrated basic-auth password for domain %q: %v", domains[i].Hostname, err)
+			continue
+		}
+		log.Printf("[ingress] Migrated plaintext basic-auth password for domain %q to bcrypt", domains[i].Hostname)
+	}
 }
 
 // CreateDomain validates and stores a new domain rule, then triggers Caddy reload.
@@ -106,17 +187,23 @@ func (s *Service) CreateDomain(ctx context.Context, d Domain) (*Domain, error) {
 	if s.repo == nil {
 		return nil, errors.New("repository not initialized")
 	}
-	if d.Hostname == "" {
-		return nil, errors.New("hostname is required")
-	}
 
-	cleanHost := strings.TrimSpace(d.Hostname)
-	cleanHost = strings.TrimPrefix(cleanHost, "https://")
-	cleanHost = strings.TrimPrefix(cleanHost, "http://")
-	if idx := strings.Index(cleanHost, ":"); idx != -1 {
-		cleanHost = cleanHost[:idx]
+	cleanHost := cleanHostname(d.Hostname)
+	if err := ValidateHostname(cleanHost); err != nil {
+		return nil, err
 	}
 	d.Hostname = cleanHost
+
+	if err := validateUpstream(&d); err != nil {
+		return nil, err
+	}
+
+	pass, err := hashBasicAuthPass(d.BasicAuthPass)
+	if err != nil {
+		return nil, err
+	}
+	d.BasicAuthPass = pass
+	d.computeBasicAuthState()
 
 	isLoopback := strings.HasSuffix(cleanHost, ".localhost") || strings.HasSuffix(cleanHost, ".local") || strings.Contains(cleanHost, "127.0.0.1") || cleanHost == "localhost"
 
@@ -142,17 +229,48 @@ func (s *Service) CreateDomain(ctx context.Context, d Domain) (*Domain, error) {
 	return &d, nil
 }
 
-// UpdateDomain updates an existing domain rule and refreshes Caddy.
-func (s *Service) UpdateDomain(ctx context.Context, d Domain) error {
+// UpdateDomain validates and updates an existing domain rule, then refreshes
+// Caddy. A missing/empty basic-auth password keeps the stored hash
+// (empty = keep); a new password is hashed before storage.
+func (s *Service) UpdateDomain(ctx context.Context, d Domain) (*Domain, error) {
 	if s.repo == nil {
-		return errors.New("repository not initialized")
+		return nil, errors.New("repository not initialized")
 	}
+
+	cleanHost := cleanHostname(d.Hostname)
+	if err := ValidateHostname(cleanHost); err != nil {
+		return nil, err
+	}
+	d.Hostname = cleanHost
+
+	if err := validateUpstream(&d); err != nil {
+		return nil, err
+	}
+
+	existing, err := s.repo.Get(ctx, d.ID)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(d.BasicAuthPass) == "" {
+		d.BasicAuthPass = ""
+		if existing != nil {
+			d.BasicAuthPass = existing.BasicAuthPass
+		}
+	} else {
+		pass, err := hashBasicAuthPass(d.BasicAuthPass)
+		if err != nil {
+			return nil, err
+		}
+		d.BasicAuthPass = pass
+	}
+	d.computeBasicAuthState()
+
 	if err := s.repo.Update(ctx, d); err != nil {
-		return err
+		return nil, err
 	}
 
 	s.asyncReconcile(ctx)
-	return nil
+	return &d, nil
 }
 
 // DeleteDomain deletes a domain rule and refreshes Caddy.

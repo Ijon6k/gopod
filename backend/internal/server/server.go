@@ -133,10 +133,12 @@ func NewServer(cfg Config) http.Handler {
 
 	// Reconcile Caddy on startup to establish reverse proxy and access logging
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		domains, err := ingressRepo.List(bgCtx, "")
 		if err == nil {
+			// Upgrade legacy plaintext basic-auth passwords to bcrypt hashes at rest.
+			ingressService.MigrateBasicAuthHashes(bgCtx, domains)
 			_ = caddyReconciler.Reconcile(bgCtx, domains)
 		}
 	}()

@@ -5,10 +5,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -35,16 +38,20 @@ type ServiceResolver func(ctx context.Context, idOrName string) (*ServiceMeta, e
 
 // Reconciler synchronizes database domain routes into Caddy reverse proxy.
 type Reconciler struct {
-	adminURL        string
-	caddyfilePath   string
-	logFilePath     string
-	controlPort     string
-	httpPort        int
-	httpsPort       int
-	httpClient      *http.Client
-	mu              sync.RWMutex
-	hostDomainMap   map[string]Domain
-	serviceResolver ServiceResolver
+	adminURL string
+	// configuredAdminURL is the admin endpoint as provided by configuration. At
+	// runtime adminURL may switch to a fallback endpoint; bind decisions in the
+	// generated Caddyfile must stay based on the configured value.
+	configuredAdminURL string
+	caddyfilePath      string
+	logFilePath        string
+	controlPort        string
+	httpPort           int
+	httpsPort          int
+	httpClient         *http.Client
+	mu                 sync.RWMutex
+	hostDomainMap      map[string]Domain
+	serviceResolver    ServiceResolver
 }
 
 // AccessLogItem represents a structured Caddy JSON access log.
@@ -114,11 +121,12 @@ func NewReconciler(adminURL, caddyfilePath string) *Reconciler {
 	}
 
 	return &Reconciler{
-		adminURL:      adminURL,
-		caddyfilePath: caddyfilePath,
-		logFilePath:   logPath,
-		controlPort:   ctrlPort,
-		httpClient:    &http.Client{Timeout: 5 * time.Second},
+		adminURL:           adminURL,
+		configuredAdminURL: adminURL,
+		caddyfilePath:      caddyfilePath,
+		logFilePath:        logPath,
+		controlPort:        ctrlPort,
+		httpClient:         &http.Client{Timeout: 5 * time.Second},
 	}
 }
 
@@ -240,58 +248,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 	content := r.GenerateCaddyfile(domains)
 
 	// Verbose per-route mapping log: hostname -> upstream host:port + flags.
+	validDomains := 0
+	skippedDomains := 0
 	for _, d := range domains {
-		cleanHost := strings.TrimSpace(d.Hostname)
-		cleanHost = strings.TrimPrefix(cleanHost, "https://")
-		cleanHost = strings.TrimPrefix(cleanHost, "http://")
-		if idx := strings.Index(cleanHost, ":"); idx != -1 {
-			cleanHost = cleanHost[:idx]
-		}
-		if cleanHost == "" {
+		route, err := r.buildDomainRoute(d)
+		if err != nil {
+			skippedDomains++
+			log.Printf("[WARN] Skipping invalid domain rule %q: %v", d.Hostname, err)
 			continue
 		}
-		upstreamHost := "127.0.0.1"
-		if d.TargetContainer != "" {
-			upstreamHost = strings.TrimSpace(d.TargetContainer)
-		} else if d.ServiceID != "" {
-			upstreamHost = strings.TrimSpace(d.ServiceID)
-		}
-		if r.serviceResolver != nil {
-			var targetSvc *ServiceMeta
-			if d.ServiceID != "" {
-				if s, err := r.serviceResolver(context.Background(), d.ServiceID); err == nil && s != nil {
-					targetSvc = s
-				}
-			}
-			if targetSvc == nil && d.TargetContainer != "" {
-				if s, err := r.serviceResolver(context.Background(), d.TargetContainer); err == nil && s != nil {
-					targetSvc = s
-				}
-			}
-			if targetSvc != nil {
-				if targetSvc.Type == "pod" {
-					podHost := canonicalPodHost(targetSvc.Name)
-					if strings.TrimSpace(targetSvc.PodID) != "" {
-						podHost = canonicalPodHost(targetSvc.PodID)
-					} else if strings.TrimSpace(targetSvc.ID) != "" && podHost == "pod_pod-service" {
-						podHost = canonicalPodHost(targetSvc.ID)
-					}
-					upstreamHost = podHost
-				} else if targetSvc.InPod || targetSvc.PodID != "" {
-					podHost := canonicalPodHost(targetSvc.Name)
-					if strings.TrimSpace(targetSvc.PodID) != "" {
-						podHost = canonicalPodHost(targetSvc.PodID)
-					}
-					upstreamHost = podHost
-				}
-			}
-		}
-		targetUpstream := fmt.Sprintf("%s:%d", upstreamHost, d.ContainerPort)
+		validDomains++
+		targetUpstream := fmt.Sprintf("%s:%d", route.Upstream, d.ContainerPort)
 		path := d.PathPrefix
 		if path == "" {
 			path = "/"
 		}
-		log.Printf("[ingress] route %s -> %s (tls=%v basicAuth=%v path=%s)", cleanHost, targetUpstream, d.TLS, d.BasicAuth, path)
+		log.Printf("[ingress] route %s -> %s (tls=%v basicAuth=%v path=%s)", route.Hostname, targetUpstream, d.TLS, d.BasicAuth, path)
+	}
+	if skippedDomains > 0 {
+		emitEngineEvent(ctx, "warn", "system", "", "", "engine", "ingress.domains_skipped",
+			fmt.Sprintf("Ingress skipped %d invalid domain rule(s)", skippedDomains),
+			map[string]any{"skipped": skippedDomains, "domains": len(domains)})
 	}
 
 	// 1. Write to disk for persistence
@@ -332,7 +309,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 		}
 
 		r.adminURL = endpoint
-		log.Printf("✅ Caddy ingress updated with %d domain rules via %s", len(domains), endpoint)
+		log.Printf("✅ Caddy ingress updated with %d domain rules via %s", validDomains, endpoint)
 		reloaded = true
 		break
 	}
@@ -340,16 +317,134 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 	if !reloaded && lastErr != nil {
 		log.Printf("[INFO] Caddy Admin API not reachable on any endpoint (%v). Caddyfile written to %s.", lastErr, r.caddyfilePath)
 	}
-	emitIngressReconcileEvent(ctx, len(domains), reloaded)
+	emitIngressReconcileEvent(ctx, validDomains, reloaded)
 	return nil
+}
+
+// domainRoute is the cleaned, render-ready form of a stored domain rule.
+type domainRoute struct {
+	Hostname string // scheme/port stripped
+	Upstream string // validated DNS host of the upstream, without port
+}
+
+// buildDomainRoute cleans and validates a stored domain rule for Caddyfile
+// generation. It fails for entries that must not be interpolated into the file
+// (invalid hostname, target or port) as defense-in-depth behind the API write
+// boundaries, so a legacy row can never inject configuration.
+func (r *Reconciler) buildDomainRoute(d Domain) (domainRoute, error) {
+	host := cleanHostname(d.Hostname)
+	if host == "" {
+		return domainRoute{}, errors.New("empty hostname")
+	}
+	if strings.ContainsAny(host, caddyfileMetachars) {
+		return domainRoute{}, fmt.Errorf("hostname %q contains invalid characters", host)
+	}
+
+	if err := ValidateContainerPort(d.ContainerPort); err != nil {
+		return domainRoute{}, err
+	}
+
+	upstreamHost := "127.0.0.1"
+	if target := strings.TrimSpace(d.TargetContainer); target != "" {
+		if err := ValidateTargetContainer(target); err != nil {
+			return domainRoute{}, err
+		}
+		upstreamHost = target
+	} else if svcID := strings.TrimSpace(d.ServiceID); svcID != "" {
+		if err := ValidateTargetContainer(svcID); err != nil {
+			return domainRoute{}, err
+		}
+		upstreamHost = svcID
+	}
+
+	// Intelligent Podman Pod DNS resolution:
+	// In Podman Netavark DNS, all containers in a Pod share the network namespace,
+	// and ONLY the Pod name (e.g. 'pod_cluster-demo') is registered in DNS.
+	// Dialing individual member container names yields 'bad address' (502 Bad Gateway).
+	if r.serviceResolver != nil {
+		var targetSvc *ServiceMeta
+		if d.ServiceID != "" {
+			if s, err := r.serviceResolver(context.Background(), d.ServiceID); err == nil && s != nil {
+				targetSvc = s
+			}
+		}
+		if targetSvc == nil && d.TargetContainer != "" {
+			if s, err := r.serviceResolver(context.Background(), d.TargetContainer); err == nil && s != nil {
+				targetSvc = s
+			}
+		}
+
+		if targetSvc != nil {
+			if targetSvc.Type == "pod" {
+				podHost := canonicalPodHost(targetSvc.Name)
+				if strings.TrimSpace(targetSvc.PodID) != "" {
+					podHost = canonicalPodHost(targetSvc.PodID)
+				} else if strings.TrimSpace(targetSvc.ID) != "" && podHost == "pod_pod-service" {
+					podHost = canonicalPodHost(targetSvc.ID)
+				}
+				upstreamHost = podHost
+			} else if targetSvc.InPod || targetSvc.PodID != "" {
+				podHost := canonicalPodHost(targetSvc.Name)
+				if strings.TrimSpace(targetSvc.PodID) != "" {
+					podHost = canonicalPodHost(targetSvc.PodID)
+				}
+				upstreamHost = podHost
+			}
+		}
+	}
+
+	return domainRoute{Hostname: host, Upstream: upstreamHost}, nil
+}
+
+// adminListenAddress derives the admin API bind address for the generated
+// Caddyfile.
+//
+// Host-mode installs (the default) run GOPOD and Caddy on the same machine, so
+// the admin API only needs the loopback interface. Containerized deployments
+// reach Caddy by its podman-network name (e.g. CADDY_ADMIN_URL is
+// http://caddy:2019) and therefore require a non-loopback bind inside the
+// container. The CADDY_ADMIN_HOST override may narrow the bind to localhost or
+// a specific IP address, never a wildcard.
+func (r *Reconciler) adminListenAddress() string {
+	address := "localhost:2019"
+	if !isLoopbackAdminURL(r.configuredAdminURL) {
+		address = "0.0.0.0:2019"
+	}
+	if override := strings.TrimSpace(os.Getenv("CADDY_ADMIN_HOST")); override != "" {
+		if parsed, ok := parseAdminBindOverride(override); ok {
+			address = parsed
+		} else {
+			log.Printf("[WARN] Ignoring invalid CADDY_ADMIN_HOST %q: only localhost or a specific IP address is allowed", override)
+		}
+	}
+	return address
+}
+
+// isLoopbackAdminURL reports whether the configured admin endpoint lives on the
+// same loopback interface as GOPOD (host-mode install or a shared pod network
+// namespace).
+func isLoopbackAdminURL(raw string) bool {
+	value := strings.TrimSpace(raw)
+	if value == "" || strings.HasPrefix(value, "unix:") || strings.HasPrefix(value, "unix/") {
+		return true
+	}
+	host := value
+	if u, err := url.Parse(value); err == nil && u.Hostname() != "" {
+		host = u.Hostname()
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 // GenerateCaddyfile constructs declarative Caddyfile configuration from domains while preserving the control plane.
 func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 	var b strings.Builder
 
-	// In containerized setup or dev port-forwarding, listen on 0.0.0.0:2019 so GOPOD can reload it
-	adminListen := "0.0.0.0:2019"
+	adminListen := r.adminListenAddress()
 
 	// Caddy's internal log file path inside container / daemon
 	caddyLogFile := "/var/log/caddy/access.log"
@@ -382,15 +477,12 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 `, adminListen, caddyLogFile, ctrlUpstream)
 
 	for _, d := range domains {
-		cleanHost := strings.TrimSpace(d.Hostname)
-		cleanHost = strings.TrimPrefix(cleanHost, "https://")
-		cleanHost = strings.TrimPrefix(cleanHost, "http://")
-		if idx := strings.Index(cleanHost, ":"); idx != -1 {
-			cleanHost = cleanHost[:idx]
-		}
-		if cleanHost == "" || strings.ContainsAny(cleanHost, " \t\r\n{}") {
+		route, err := r.buildDomainRoute(d)
+		if err != nil {
+			log.Printf("[WARN] Skipping invalid domain rule %q (not written to Caddyfile): %v", d.Hostname, err)
 			continue
 		}
+		cleanHost := route.Hostname
 
 		isLocal := strings.HasSuffix(cleanHost, ".localhost") || strings.HasSuffix(cleanHost, ".local") || strings.Contains(cleanHost, "127.0.0.1")
 
@@ -443,48 +535,7 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 			}
 		}
 
-		upstreamHost := "127.0.0.1"
-		if d.TargetContainer != "" {
-			upstreamHost = strings.TrimSpace(d.TargetContainer)
-		} else if d.ServiceID != "" {
-			upstreamHost = strings.TrimSpace(d.ServiceID)
-		}
-
-		// Intelligent Podman Pod DNS resolution:
-		// In Podman Netavark DNS, all containers in a Pod share the network namespace,
-		// and ONLY the Pod name (e.g. 'pod_cluster-demo') is registered in DNS.
-		// Dialing individual member container names yields 'bad address' (502 Bad Gateway).
-		if r.serviceResolver != nil {
-			var targetSvc *ServiceMeta
-			if d.ServiceID != "" {
-				if s, err := r.serviceResolver(context.Background(), d.ServiceID); err == nil && s != nil {
-					targetSvc = s
-				}
-			}
-			if targetSvc == nil && d.TargetContainer != "" {
-				if s, err := r.serviceResolver(context.Background(), d.TargetContainer); err == nil && s != nil {
-					targetSvc = s
-				}
-			}
-
-			if targetSvc != nil {
-				if targetSvc.Type == "pod" {
-					podHost := canonicalPodHost(targetSvc.Name)
-					if strings.TrimSpace(targetSvc.PodID) != "" {
-						podHost = canonicalPodHost(targetSvc.PodID)
-					} else if strings.TrimSpace(targetSvc.ID) != "" && podHost == "pod_pod-service" {
-						podHost = canonicalPodHost(targetSvc.ID)
-					}
-					upstreamHost = podHost
-				} else if targetSvc.InPod || targetSvc.PodID != "" {
-					podHost := canonicalPodHost(targetSvc.Name)
-					if strings.TrimSpace(targetSvc.PodID) != "" {
-						podHost = canonicalPodHost(targetSvc.PodID)
-					}
-					upstreamHost = podHost
-				}
-			}
-		}
+		upstreamHost := route.Upstream
 
 		targetUpstream := fmt.Sprintf("%s:%d", upstreamHost, d.ContainerPort)
 

@@ -41,6 +41,13 @@
 	let basicAuthUser = $state('');
 	let basicAuthPass = $state('');
 
+	// Basic auth needs a username and a password. On edit, an already stored hash
+	// allows leaving the password blank (empty = keep, enforced by the backend).
+	let basicAuthIncomplete = $derived(
+		basicAuthEnabled &&
+			(!basicAuthUser.trim() || (!editingDomain?.hasBasicAuth && !basicAuthPass.trim()))
+	);
+
 	// Extract candidate targets: member services of this workload
 	let detectedTargets = $derived.by<UpstreamTargetChoice[]>(() => {
 		const list: UpstreamTargetChoice[] = [];
@@ -243,7 +250,8 @@
 			hsts = editingDomain.hsts !== false;
 			basicAuthEnabled = !!editingDomain.basicAuth;
 			basicAuthUser = editingDomain.basicAuthUser || '';
-			basicAuthPass = editingDomain.basicAuthPass || '';
+			// The stored hash is write-only: never prefill, blank means keep.
+			basicAuthPass = '';
 		} else {
 			initFormDefaults();
 		}
@@ -264,7 +272,7 @@
 	}
 
 	function handleSave() {
-		if (!domainName.trim()) return;
+		if (!domainName.trim() || basicAuthIncomplete) return;
 
 		const portNum = parseInt(targetPort, 10) || service.port || 3000;
 		let cleanHost = domainName.trim().toLowerCase();
@@ -298,6 +306,10 @@
 			basicAuth: basicAuthEnabled,
 			basicAuthUser: basicAuthEnabled ? basicAuthUser : undefined,
 			basicAuthPass: basicAuthEnabled ? basicAuthPass : undefined,
+			// Keep the optimistic UI state truthful until the next data refresh.
+			hasBasicAuth: basicAuthEnabled
+				? editingDomain?.hasBasicAuth || !!basicAuthPass.trim()
+				: undefined,
 			dnsStatus: isLocal ? 'valid' : editingDomain?.dnsStatus || 'pending'
 		};
 
@@ -494,14 +506,23 @@
 					/>
 
 					{#if basicAuthEnabled}
-						<div class="grid grid-cols-2 gap-3 pt-1">
-							<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
-							<Input
-								type="password"
-								bind:value={basicAuthPass}
-								placeholder="Password"
-								class="text-xs"
-							/>
+						<div class="flex flex-col gap-1.5 pt-1">
+							<div class="grid grid-cols-2 gap-3">
+								<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
+								<Input
+									type="password"
+									bind:value={basicAuthPass}
+									placeholder={editingDomain?.hasBasicAuth
+										? 'Leave blank to keep current'
+										: 'Password'}
+									class="text-xs"
+								/>
+							</div>
+							{#if basicAuthIncomplete}
+								<span class="text-[10.5px] text-[var(--status-amber)]">
+									Set a username and password to protect this route.
+								</span>
+							{/if}
 						</div>
 					{/if}
 				</div>
@@ -534,7 +555,7 @@
 		<Button
 			variant="primary"
 			size="sm"
-			disabled={!domainName.trim() || (isCustomTarget && !customTargetName.trim())}
+			disabled={!domainName.trim() || (isCustomTarget && !customTargetName.trim()) || basicAuthIncomplete}
 			onclick={handleSave}
 		>
 			{editingDomain ? 'Update Route' : 'Save Domain Route'}

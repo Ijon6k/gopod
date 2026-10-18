@@ -2,6 +2,7 @@ package ingress
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -13,6 +14,20 @@ import (
 type Handler struct {
 	service    *Service
 	middleware *auth.Middleware
+}
+
+// domainPayload is the create/update request body. The basic-auth password is
+// write-only: it is accepted on input here and never serialized back in
+// responses (Domain.BasicAuthPass is tagged json:"-").
+type domainPayload struct {
+	Domain
+	BasicAuthPass string `json:"basicAuthPass"`
+}
+
+func (p domainPayload) toDomain() Domain {
+	d := p.Domain
+	d.BasicAuthPass = p.BasicAuthPass
+	return d
 }
 
 // NewHandler creates a new ingress domain handler.
@@ -47,13 +62,13 @@ func (h *Handler) handleListDomains(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleCreateDomain(w http.ResponseWriter, r *http.Request) {
-	var d Domain
-	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
+	var p domainPayload
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
 
-	created, err := h.service.CreateDomain(r.Context(), d)
+	created, err := h.service.CreateDomain(r.Context(), p.toDomain())
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
@@ -63,18 +78,24 @@ func (h *Handler) handleCreateDomain(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleUpdateDomain(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	var d Domain
-	if err := json.NewDecoder(r.Body).Decode(&d); err != nil {
+	var p domainPayload
+	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, "Invalid request payload")
 		return
 	}
+	d := p.toDomain()
 	d.ID = id
 
-	if err := h.service.UpdateDomain(r.Context(), d); err != nil {
+	updated, err := h.service.UpdateDomain(r.Context(), d)
+	if err != nil {
+		if errors.Is(err, ErrValidation) {
+			httputil.WriteError(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, d)
+	httputil.WriteJSON(w, http.StatusOK, updated)
 }
 
 func (h *Handler) handleDeleteDomain(w http.ResponseWriter, r *http.Request) {

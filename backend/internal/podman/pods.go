@@ -14,14 +14,15 @@ import (
 // GetPods returns list of pods.
 func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/v5.0.0/libpod/pods/json", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+c.libpodVersion()+"/libpod/pods/json", nil)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, readTimeout, req)
 		if err != nil {
 			return nil, fmt.Errorf("podman pods request failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -124,15 +125,16 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 // DeletePod removes a pod, optionally forcing removal.
 func (c *Client) DeletePod(ctx context.Context, idOrName string, force bool) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/v5.0.0/libpod/pods/%s?force=%t", idOrName, force)
+		url := fmt.Sprintf("http://d/%s/libpod/pods/%s?force=%t", c.libpodVersion(), idOrName, force)
 		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman delete pod failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
 			return nil
@@ -181,11 +183,12 @@ func (c *Client) CreatePod(ctx context.Context, opts CreatePodOptions) (string, 
 			payload["portmappings"] = portMappings
 		}
 		b, _ := json.Marshal(payload)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/v5.0.0/libpod/pods/create", bytes.NewReader(b))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/pods/create", bytes.NewReader(b))
 		if err == nil {
 			req.Header.Set("Content-Type", "application/json")
-			resp, err := c.httpClient.Do(req)
+			resp, cancel, err := c.do(ctx, writeTimeout, req)
 			if err == nil {
+				defer cancel()
 				defer resp.Body.Close()
 				if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusCreated {
 					var res struct {
@@ -194,6 +197,21 @@ func (c *Client) CreatePod(ctx context.Context, opts CreatePodOptions) (string, 
 					if err := json.NewDecoder(resp.Body).Decode(&res); err == nil && res.ID != "" {
 						return res.ID, nil
 					}
+					// The daemon accepted creation but the response carried
+					// no usable Id: resolve the pod by name from the store
+					// listing. The listing reports CLI-truncated (12-char)
+					// ids; callers either ignore the returned id or resolve
+					// pods through InspectPod, which matches both widths.
+					pods, listErr := c.GetPods(ctx)
+					if listErr != nil {
+						return "", fmt.Errorf("pod create for %s returned no Id and the pods listing failed: %w", opts.Name, listErr)
+					}
+					for _, p := range pods {
+						if p.Name == opts.Name {
+							return p.ID, nil
+						}
+					}
+					return "", fmt.Errorf("pod create succeeded but pod %s is missing from the store listing", opts.Name)
 				}
 			}
 		}
@@ -265,15 +283,16 @@ func (c *Client) RestartPod(ctx context.Context, idOrName string) error {
 
 func (c *Client) postPodAction(ctx context.Context, idOrName, action string) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/v5.0.0/libpod/pods/%s/%s", idOrName, action)
+		url := fmt.Sprintf("http://d/%s/libpod/pods/%s/%s", c.libpodVersion(), idOrName, action)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman pod %s failed: %w", action, err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 			return nil
@@ -292,13 +311,25 @@ func (c *Client) postPodAction(ctx context.Context, idOrName, action string) err
 }
 
 // InspectPod checks whether a pod exists by ID or name and returns its item.
+// Names match exactly and are checked first; the store listing truncates IDs
+// to 12 characters (matching podman CLI output), so a full-ID caller matches
+// by prefix comparison in either direction.
 func (c *Client) InspectPod(ctx context.Context, idOrName string) (*PodItem, error) {
 	pods, err := c.GetPods(ctx)
 	if err != nil {
 		return nil, err
 	}
 	for _, p := range pods {
-		if p.ID == idOrName || p.Name == idOrName {
+		if p.Name == idOrName {
+			return &p, nil
+		}
+	}
+	for _, p := range pods {
+		short, long := p.ID, idOrName
+		if len(short) > len(long) {
+			short, long = long, short
+		}
+		if len(short) >= 12 && strings.HasPrefix(long, short) {
 			return &p, nil
 		}
 	}

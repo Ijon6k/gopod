@@ -1,12 +1,14 @@
 package runtime
 
 import (
+	"errors"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"gopod/internal/auth"
+	"gopod/internal/podman"
 	"gopod/pkg/httputil"
 )
 
@@ -162,6 +164,13 @@ func (h *Handler) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	}
 	logs, err := h.service.GetContainerLogs(r.Context(), id, tail)
 	if err != nil {
+		// A vanished container is expected between list and fetch (it may
+		// have just exited and been removed); surface it as a clean 404
+		// instead of a red 500.
+		if errors.Is(err, podman.ErrNotFound) {
+			httputil.WriteError(w, http.StatusNotFound, "Container not found (it may have just exited and been removed)")
+			return
+		}
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}

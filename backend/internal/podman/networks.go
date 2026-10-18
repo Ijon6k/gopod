@@ -14,14 +14,15 @@ import (
 // GetNetworks returns list of container networks.
 func (c *Client) GetNetworks(ctx context.Context) ([]NetworkItem, error) {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/v5.0.0/libpod/networks/json", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+c.libpodVersion()+"/libpod/networks/json", nil)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, readTimeout, req)
 		if err != nil {
 			return nil, fmt.Errorf("podman networks request failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -110,4 +111,3 @@ func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
 	}
 	return nil
 }
-

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -11,6 +12,10 @@ import (
 	"strconv"
 	"strings"
 )
+
+// ErrNotFound reports that the requested podman object is absent from the
+// daemon store; callers map it to user-facing "already gone" messaging.
+var ErrNotFound = errors.New("podman object not found")
 
 // GetContainers returns list of containers without blocking on heavy stats.
 func (c *Client) GetContainers(ctx context.Context) ([]ContainerItem, error) {
@@ -30,71 +35,74 @@ func (c *Client) GetContainersWithStats(ctx context.Context, includeStats bool) 
 	}
 
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/v5.0.0/libpod/containers/json?all=true", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+c.libpodVersion()+"/libpod/containers/json?all=true", nil)
 		if err == nil {
-			resp, err := c.httpClient.Do(req)
-			if err == nil && resp.StatusCode == http.StatusOK {
+			resp, cancel, err := c.do(ctx, readTimeout, req)
+			if err == nil {
+				defer cancel()
 				defer resp.Body.Close()
-				var rawList []struct {
-					ID      string            `json:"Id"`
-					Names   []string          `json:"Names"`
-					Image   string            `json:"Image"`
-					State   string            `json:"State"`
-					Status  string            `json:"Status"`
-					Created string            `json:"Created"`
-					Labels  map[string]string `json:"Labels"`
-					Ports   []struct {
-						HostPort      int    `json:"host_port"`
-						ContainerPort int    `json:"container_port"`
-						Protocol      string `json:"protocol"`
-					} `json:"Ports"`
-				}
-
-				body, _ := io.ReadAll(resp.Body)
-				if err := json.Unmarshal(body, &rawList); err == nil {
-					var result []ContainerItem
-					for _, cItem := range rawList {
-						idShort := cItem.ID
-						if len(idShort) > 12 {
-							idShort = idShort[:12]
-						}
-
-						var ports []string
-						for _, p := range cItem.Ports {
-							if p.HostPort > 0 {
-								ports = append(ports, fmt.Sprintf("%d:%d/%s", p.HostPort, p.ContainerPort, p.Protocol))
-							} else {
-								ports = append(ports, fmt.Sprintf("%d/%s", p.ContainerPort, p.Protocol))
-							}
-						}
-
-						status := cItem.Status
-						if status == "" {
-							status = cItem.State
-						}
-
-						item := ContainerItem{
-							ID:      idShort,
-							Names:   cItem.Names,
-							Image:   cItem.Image,
-							Status:  status,
-							State:   cItem.State,
-							Created: cItem.Created,
-							Ports:   strings.Join(ports, ", "),
-							Labels:  cItem.Labels,
-						}
-
-						if s, ok := statsMap[idShort]; ok {
-							item.Stats = &s
-						} else if len(cItem.Names) > 0 {
-							if s, ok := statsMap[strings.TrimPrefix(cItem.Names[0], "/")]; ok {
-								item.Stats = &s
-							}
-						}
-
-						result = append(result, item)
+				if resp.StatusCode == http.StatusOK {
+					var rawList []struct {
+						ID      string            `json:"Id"`
+						Names   []string          `json:"Names"`
+						Image   string            `json:"Image"`
+						State   string            `json:"State"`
+						Status  string            `json:"Status"`
+						Created string            `json:"Created"`
+						Labels  map[string]string `json:"Labels"`
+						Ports   []struct {
+							HostPort      int    `json:"host_port"`
+							ContainerPort int    `json:"container_port"`
+							Protocol      string `json:"protocol"`
+						} `json:"Ports"`
 					}
-					return result, nil
+
+					body, _ := io.ReadAll(resp.Body)
+					if err := json.Unmarshal(body, &rawList); err == nil {
+						var result []ContainerItem
+						for _, cItem := range rawList {
+							idShort := cItem.ID
+							if len(idShort) > 12 {
+								idShort = idShort[:12]
+							}
+
+							var ports []string
+							for _, p := range cItem.Ports {
+								if p.HostPort > 0 {
+									ports = append(ports, fmt.Sprintf("%d:%d/%s", p.HostPort, p.ContainerPort, p.Protocol))
+								} else {
+									ports = append(ports, fmt.Sprintf("%d/%s", p.ContainerPort, p.Protocol))
+								}
+							}
+
+							status := cItem.Status
+							if status == "" {
+								status = cItem.State
+							}
+
+							item := ContainerItem{
+								ID:      idShort,
+								Names:   cItem.Names,
+								Image:   cItem.Image,
+								Status:  status,
+								State:   cItem.State,
+								Created: cItem.Created,
+								Ports:   strings.Join(ports, ", "),
+								Labels:  cItem.Labels,
+							}
+
+							if s, ok := statsMap[idShort]; ok {
+								item.Stats = &s
+							} else if len(cItem.Names) > 0 {
+								if s, ok := statsMap[strings.TrimPrefix(cItem.Names[0], "/")]; ok {
+									item.Stats = &s
+								}
+							}
+
+							result = append(result, item)
+						}
+						return result, nil
+					}
 				}
 			}
 		}
@@ -167,63 +175,66 @@ func (c *Client) getContainersCLI(ctx context.Context, statsMap map[string]Conta
 // GetContainerStats retrieves current resource metrics for containers.
 func (c *Client) GetContainerStats(ctx context.Context) ([]ContainerStat, error) {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/v5.0.0/libpod/containers/stats?stream=false", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+c.libpodVersion()+"/libpod/containers/stats?stream=false", nil)
 		if err == nil {
-			resp, err := c.httpClient.Do(req)
-			if err == nil && resp.StatusCode == http.StatusOK {
+			resp, cancel, err := c.do(ctx, readTimeout, req)
+			if err == nil {
+				defer cancel()
 				defer resp.Body.Close()
-				var raw struct {
-					Stats []struct {
-						ContainerID string  `json:"ContainerID"`
-						Name        string  `json:"Name"`
-						CPU         float64 `json:"CPU"`
-						MemUsage    int64   `json:"MemUsage"`
-						MemLimit    int64   `json:"MemLimit"`
-						MemPerc     float64 `json:"MemPerc"`
-						BlockInput  int64   `json:"BlockInput"`
-						BlockOutput int64   `json:"BlockOutput"`
-						PIDs        int     `json:"PIDs"`
-						Network     map[string]struct {
-							RxBytes int64 `json:"RxBytes"`
-							TxBytes int64 `json:"TxBytes"`
-						} `json:"Network"`
-					} `json:"Stats"`
-				}
-
-				if err := json.NewDecoder(resp.Body).Decode(&raw); err == nil && len(raw.Stats) > 0 {
-					var stats []ContainerStat
-					for _, s := range raw.Stats {
-						var rx, tx int64
-						for _, netStat := range s.Network {
-							rx += netStat.RxBytes
-							tx += netStat.TxBytes
-						}
-
-						idShort := s.ContainerID
-						if len(idShort) > 12 {
-							idShort = idShort[:12]
-						}
-
-						memStr := fmt.Sprintf("%s / %s", formatBytes(s.MemUsage), formatBytes(s.MemLimit))
-						netStr := fmt.Sprintf("%s / %s", formatBytes(rx), formatBytes(tx))
-
-						stats = append(stats, ContainerStat{
-							ID:          idShort,
-							Name:        s.Name,
-							CPUPercent:  s.CPU,
-							MemUsage:    s.MemUsage,
-							MemLimit:    s.MemLimit,
-							MemPercent:  s.MemPerc,
-							MemDisplay:  memStr,
-							NetRx:       rx,
-							NetTx:       tx,
-							NetDisplay:  netStr,
-							BlockInput:  s.BlockInput,
-							BlockOutput: s.BlockOutput,
-							PIDs:        s.PIDs,
-						})
+				if resp.StatusCode == http.StatusOK {
+					var raw struct {
+						Stats []struct {
+							ContainerID string  `json:"ContainerID"`
+							Name        string  `json:"Name"`
+							CPU         float64 `json:"CPU"`
+							MemUsage    int64   `json:"MemUsage"`
+							MemLimit    int64   `json:"MemLimit"`
+							MemPerc     float64 `json:"MemPerc"`
+							BlockInput  int64   `json:"BlockInput"`
+							BlockOutput int64   `json:"BlockOutput"`
+							PIDs        int     `json:"PIDs"`
+							Network     map[string]struct {
+								RxBytes int64 `json:"RxBytes"`
+								TxBytes int64 `json:"TxBytes"`
+							} `json:"Network"`
+						} `json:"Stats"`
 					}
-					return stats, nil
+
+					if err := json.NewDecoder(resp.Body).Decode(&raw); err == nil && len(raw.Stats) > 0 {
+						var stats []ContainerStat
+						for _, s := range raw.Stats {
+							var rx, tx int64
+							for _, netStat := range s.Network {
+								rx += netStat.RxBytes
+								tx += netStat.TxBytes
+							}
+
+							idShort := s.ContainerID
+							if len(idShort) > 12 {
+								idShort = idShort[:12]
+							}
+
+							memStr := fmt.Sprintf("%s / %s", formatBytes(s.MemUsage), formatBytes(s.MemLimit))
+							netStr := fmt.Sprintf("%s / %s", formatBytes(rx), formatBytes(tx))
+
+							stats = append(stats, ContainerStat{
+								ID:          idShort,
+								Name:        s.Name,
+								CPUPercent:  s.CPU,
+								MemUsage:    s.MemUsage,
+								MemLimit:    s.MemLimit,
+								MemPercent:  s.MemPerc,
+								MemDisplay:  memStr,
+								NetRx:       rx,
+								NetTx:       tx,
+								NetDisplay:  netStr,
+								BlockInput:  s.BlockInput,
+								BlockOutput: s.BlockOutput,
+								PIDs:        s.PIDs,
+							})
+						}
+						return stats, nil
+					}
 				}
 			}
 		}
@@ -371,17 +382,21 @@ func (c *Client) RestartContainer(ctx context.Context, id string) error {
 // DeleteContainer removes a container, optionally forcing removal.
 func (c *Client) DeleteContainer(ctx context.Context, id string, force bool) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/v5.0.0/libpod/containers/%s?force=%t", id, force)
+		url := fmt.Sprintf("http://d/%s/libpod/containers/%s?force=%t", c.libpodVersion(), id, force)
 		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman delete failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
-		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
+		// 404 is expected when a preflight cleanup or a pod cascade already
+		// removed the container; teardown stays idempotent (same tolerance as
+		// DeletePod and DeleteVolume).
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
 			return nil
 		}
 		body, _ := io.ReadAll(resp.Body)
@@ -405,21 +420,29 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (str
 	}
 
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/v5.0.0/libpod/containers/%s/logs?stdout=true&stderr=true&tail=%d", id, tail)
+		url := fmt.Sprintf("http://d/%s/libpod/containers/%s/logs?stdout=true&stderr=true&tail=%d", c.libpodVersion(), id, tail)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return "", err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, readTimeout, req)
 		if err != nil {
 			return "", fmt.Errorf("podman logs request failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
-		body, err := io.ReadAll(resp.Body)
+		if resp.StatusCode == http.StatusNotFound {
+			return "", fmt.Errorf("container %s: %w", id, ErrNotFound)
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return "", fmt.Errorf("podman logs returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		logs, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return "", err
 		}
-		return string(body), nil
+		return string(logs), nil
 	}
 
 	cmd := exec.CommandContext(ctx, "podman", "logs", "--tail", fmt.Sprintf("%d", tail), id)
@@ -430,15 +453,16 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (str
 
 func (c *Client) postContainerAction(ctx context.Context, id, action string) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/v5.0.0/libpod/containers/%s/%s", id, action)
+		url := fmt.Sprintf("http://d/%s/libpod/containers/%s/%s", c.libpodVersion(), id, action)
 		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman action %s failed: %w", action, err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotModified {
 			return nil
@@ -455,14 +479,15 @@ func (c *Client) postContainerAction(ctx context.Context, id, action string) err
 // PruneContainers removes stopped and exited containers.
 func (c *Client) PruneContainers(ctx context.Context) error {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/v5.0.0/libpod/containers/prune", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/containers/prune", nil)
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, pruneTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman container prune failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 			return nil

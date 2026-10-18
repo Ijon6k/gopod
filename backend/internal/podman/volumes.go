@@ -36,14 +36,15 @@ func getVolumeSize(mountPoint string) string {
 // GetVolumes returns list of local named volumes.
 func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/v5.0.0/libpod/volumes/json", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+c.libpodVersion()+"/libpod/volumes/json", nil)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, readTimeout, req)
 		if err != nil {
 			return nil, fmt.Errorf("podman volumes request failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -119,15 +120,16 @@ func (c *Client) CreateVolume(ctx context.Context, name string, labels map[strin
 		if err != nil {
 			return err
 		}
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/v5.0.0/libpod/volumes/create", bytes.NewReader(payload))
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/volumes/create", bytes.NewReader(payload))
 		if err != nil {
 			return err
 		}
 		req.Header.Set("Content-Type", "application/json")
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman create volume failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusCreated || resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 			return nil
@@ -158,14 +160,15 @@ func (c *Client) CreateVolume(ctx context.Context, name string, labels map[strin
 // PruneVolumes removes unused local volumes.
 func (c *Client) PruneVolumes(ctx context.Context) error {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/v5.0.0/libpod/volumes/prune", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/volumes/prune", nil)
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, pruneTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman volume prune failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 			return nil
@@ -179,15 +182,16 @@ func (c *Client) PruneVolumes(ctx context.Context) error {
 // DeleteVolume removes a volume, optionally forcing removal.
 func (c *Client) DeleteVolume(ctx context.Context, name string, force bool) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/v5.0.0/libpod/volumes/%s?force=%t", name, force)
+		url := fmt.Sprintf("http://d/%s/libpod/volumes/%s?force=%t", c.libpodVersion(), name, force)
 		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman delete volume failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
 			return nil

@@ -28,14 +28,15 @@ func SplitImageNameTag(fullName string) (string, string) {
 // GetImages returns container images in local storage.
 func (c *Client) GetImages(ctx context.Context) ([]ImageItem, error) {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/v5.0.0/libpod/images/json", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+c.libpodVersion()+"/libpod/images/json", nil)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, readTimeout, req)
 		if err != nil {
 			return nil, fmt.Errorf("podman images request failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -141,15 +142,16 @@ type DanglingImageStat struct {
 // GetDanglingImages counts untagged images and their total byte size.
 func (c *Client) GetDanglingImages(ctx context.Context) (*DanglingImageStat, error) {
 	if c.httpClient != nil {
-		url := `http://d/v5.0.0/libpod/images/json?filters={"dangling":{"true":true}}`
+		url := fmt.Sprintf(`http://d/%s/libpod/images/json?filters={"dangling":{"true":true}}`, c.libpodVersion())
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 		if err != nil {
 			return nil, err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, readTimeout, req)
 		if err != nil {
 			return nil, fmt.Errorf("podman dangling images request failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
@@ -195,7 +197,7 @@ func (c *Client) GetDanglingImages(ctx context.Context) (*DanglingImageStat, err
 // PruneImages cleans up unused container images.
 func (c *Client) PruneImages(ctx context.Context, all bool) error {
 	if c.httpClient != nil {
-		url := "http://d/v5.0.0/libpod/images/prune"
+		url := fmt.Sprintf("http://d/%s/libpod/images/prune", c.libpodVersion())
 		if all {
 			url += "?all=true"
 		}
@@ -203,10 +205,11 @@ func (c *Client) PruneImages(ctx context.Context, all bool) error {
 		if err != nil {
 			return err
 		}
-		resp, err := c.httpClient.Do(req)
+		resp, cancel, err := c.do(ctx, pruneTimeout, req)
 		if err != nil {
 			return fmt.Errorf("podman image prune failed: %w", err)
 		}
+		defer cancel()
 		defer resp.Body.Close()
 		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent {
 			return nil

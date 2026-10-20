@@ -149,7 +149,7 @@ func TestQuadletUnitNameAndContent(t *testing.T) {
 	}
 
 	d := &Deployer{dataDir: t.TempDir()}
-	content := d.prepareQuadletContent(s, clean)
+	content := d.prepareQuadletContent(context.Background(), s, clean)
 
 	if !strings.Contains(content, "ContainerName=svc-1234") {
 		t.Errorf("content missing ContainerName directive:\n%s", content)
@@ -336,7 +336,7 @@ func TestAntiLoopGuardsInPrepareQuadlet(t *testing.T) {
 		Name:      "guarded-app",
 		Image:     "docker.io/library/alpine:latest",
 	}
-	content := d.prepareQuadletContent(s, "guarded-app")
+	content := d.prepareQuadletContent(context.Background(), s, "guarded-app")
 	if !strings.Contains(content, "StartLimitIntervalSec=60s") {
 		t.Errorf("expected StartLimitIntervalSec=60s in quadlet unit:\n%s", content)
 	}
@@ -734,6 +734,3 @@ func TestCancelDeploymentAndReconcile(t *testing.T) {
 		t.Fatalf("expected reconciled service status to be stopped, got %s", reconciledSvc.Status)
 	}
 }
-
-
-

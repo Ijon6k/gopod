@@ -2,8 +2,8 @@
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
-	import { LayerCard, Badge, useKumoToastManager } from 'kumo-svelte';
-	import { Sparkle, CheckCircle, Info } from 'phosphor-svelte';
+	import { LayerCard, Badge, Button, useKumoToastManager } from 'kumo-svelte';
+	import { Sparkle, CheckCircle, Info, FileCode } from 'phosphor-svelte';
 	import DeployActionsBar from './deploy/DeployActionsBar.svelte';
 	import DeployPodStrategyBanner from './deploy/DeployPodStrategyBanner.svelte';
 
@@ -11,9 +11,10 @@
 		service: Service;
 		onTerminalClick?: () => void;
 		onRedeploy?: () => void;
+		onOpenQuadlet?: () => void;
 	}
 
-	let { service, onTerminalClick, onRedeploy }: Props = $props();
+	let { service, onTerminalClick, onRedeploy, onOpenQuadlet }: Props = $props();
 
 	const toast = useKumoToastManager();
 
@@ -68,6 +69,12 @@
 	}
 
 	function handleScrollToUnit() {
+		// The unit editor now lives in the dedicated Quadlet tab; navigate there
+		// when available, otherwise keep the in-page scroll fallback.
+		if (onOpenQuadlet) {
+			onOpenQuadlet();
+			return;
+		}
 		const el = document.getElementById('quadlet-editor-section');
 		if (el) {
 			el.scrollIntoView({ behavior: 'smooth' });
@@ -259,13 +266,27 @@
 			<p class="m-0 text-xs text-kumo-subtle">{subtitle}</p>
 		</div>
 
-		<!-- Workload Type Badge -->
-		<Badge variant="neutral" class="shrink-0 px-2.5 py-1 font-mono text-xs">
-			{#if service.type === 'quadlet'}
-				<Sparkle size={13} class="mr-1 inline text-[var(--accent)]" />
+		<!-- Workload Type Badge + slim Quadlet workspace link -->
+		<div class="flex shrink-0 items-center gap-2">
+			{#if onOpenQuadlet}
+				<Button
+					variant="secondary"
+					size="sm"
+					onclick={onOpenQuadlet}
+					class="shrink-0 gap-1.5"
+					title="Open the dedicated Quadlet tab"
+				>
+					<FileCode size={13} />
+					<span>Quadlet</span>
+				</Button>
 			{/if}
-			{typeLabel}
-		</Badge>
+			<Badge variant="neutral" class="shrink-0 px-2.5 py-1 font-mono text-xs">
+				{#if service.type === 'quadlet'}
+					<Sparkle size={13} class="mr-1 inline text-[var(--accent)]" />
+				{/if}
+				{typeLabel}
+			</Badge>
+		</div>
 	</LayerCard.Secondary>
 
 	<!-- 2. Action Buttons Bar -->

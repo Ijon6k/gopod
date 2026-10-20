@@ -8,6 +8,7 @@
 	import ServiceHeader from '$lib/components/features/services/detail/ServiceHeader.svelte';
 	import GeneralTab from '$lib/components/features/services/detail/tabs/GeneralTab.svelte';
 	import EnvironmentTab from '$lib/components/features/services/detail/tabs/EnvironmentTab.svelte';
+	import QuadletTab from '$lib/components/features/services/detail/tabs/QuadletTab.svelte';
 	import DomainsTab from '$lib/components/features/services/detail/tabs/DomainsTab.svelte';
 	import DeploymentsTab from '$lib/components/features/services/detail/tabs/DeploymentsTab.svelte';
 	import MonitoringTab from '$lib/components/features/services/detail/tabs/MonitoringTab.svelte';
@@ -192,8 +193,7 @@
 					if (idx >= 0) {
 						dataStore.services[idx] = {
 							...freshSvc,
-							deployments:
-								dataStore.services[idx].deployments ?? freshSvc.deployments ?? []
+							deployments: dataStore.services[idx].deployments ?? freshSvc.deployments ?? []
 						};
 					}
 				}
@@ -220,6 +220,7 @@
 	const tabs = [
 		{ id: 'general', label: 'General' },
 		{ id: 'environment', label: 'Environment' },
+		{ id: 'quadlet', label: 'Quadlet' },
 		{ id: 'domains', label: 'Domains' },
 		{ id: 'deployments', label: 'Deployments' },
 		{ id: 'monitoring', label: 'Monitoring' },
@@ -280,6 +281,8 @@
 				/>
 			{:else if activeTab === 'environment'}
 				<EnvironmentTab {service} />
+			{:else if activeTab === 'quadlet'}
+				<QuadletTab {service} />
 			{:else if activeTab === 'domains'}
 				<DomainsTab {service} />
 			{:else if activeTab === 'deployments'}
@@ -291,7 +294,7 @@
 			{:else if activeTab === 'terminal'}
 				<TerminalTab {service} />
 			{:else if activeTab === 'advanced'}
-				<AdvancedTab {service} />
+				<AdvancedTab {service} onNavigateTab={(tab: string) => (activeTab = tab)} />
 			{/if}
 		</div>
 	</div>

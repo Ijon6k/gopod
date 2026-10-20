@@ -127,7 +127,7 @@ func TestBuildPodQuadletBundlePreservesIP(t *testing.T) {
 		"127.0.0.1:18402:5230",
 		"127.0.0.1:5353:53/udp",
 		"9000:9000/udp",
-	})
+	}, nil)
 	for _, want := range []string{
 		"PublishPort=18401:80",
 		"PublishPort=127.0.0.1:18402:5230",

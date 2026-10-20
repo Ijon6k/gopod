@@ -6,20 +6,19 @@
 	import { onMount, untrack } from 'svelte';
 	import { useKumoToastManager } from 'kumo-svelte';
 	import { Check, FloppyDisk, SpinnerGap } from 'phosphor-svelte';
-	import { generatePromotionFiles, validateQuadletSyntax } from '../advanced/promotion-generator';
 
 	import RuntimeSecurityCard from '../advanced/RuntimeSecurityCard.svelte';
 	import LifecycleConfigCard from '../advanced/LifecycleConfigCard.svelte';
 	import StorageVolumesCard from '../advanced/StorageVolumesCard.svelte';
 	import ResourceTuningCard from '../advanced/ResourceTuningCard.svelte';
 	import GeneratedQuadletPreview from '../advanced/GeneratedQuadletPreview.svelte';
-	import PromotionWorkflowModal from '../advanced/PromotionWorkflowModal.svelte';
 
 	interface Props {
 		service: Service;
+		onNavigateTab?: (tabId: string) => void;
 	}
 
-	let { service = $bindable() }: Props = $props();
+	let { service = $bindable(), onNavigateTab }: Props = $props();
 
 	// Linger status state
 	let lingerInfo = $state<{ linger: boolean; user: string } | null>(null);
@@ -105,72 +104,6 @@
 
 	const toast = useKumoToastManager();
 
-	// Promotion Flow state
-	let isPromotionReviewOpen = $state(false);
-	let isPromoting = $state(false);
-	let validationMessage = $state<{ text: string; success: boolean } | null>(null);
-	let activePromoTab = $state<string>('');
-	let podFiles = $state<Record<string, string>>({});
-	let promoCode = $state<string>('');
-	let isValidatingDryRun = $state(false);
-	let dryrunOutput = $state('');
-
-	function startPromotionFlow() {
-		const res = generatePromotionFiles(service, restartPolicy, volumes, dataStore.services);
-		podFiles = res.podFiles;
-		activePromoTab = res.activePromoTab;
-		promoCode = res.promoCode;
-		validationMessage = null;
-		dryrunOutput = '';
-		isPromotionReviewOpen = true;
-	}
-
-	function handleSwitchPromoTab(tabKey: string) {
-		if (service.type === 'pod' || Object.keys(podFiles).length > 0) {
-			podFiles[activePromoTab] = promoCode;
-			activePromoTab = tabKey;
-			promoCode = podFiles[tabKey] || '';
-		}
-	}
-
-	async function handleDryRunValidation() {
-		isValidatingDryRun = true;
-		validationMessage = null;
-		dryrunOutput = '';
-
-		if (service.type === 'pod' || Object.keys(podFiles).length > 0) {
-			podFiles[activePromoTab] = promoCode;
-		}
-
-		try {
-			const payload =
-				service.type === 'pod' || Object.keys(podFiles).length > 0
-					? { files: podFiles }
-					: { content: promoCode };
-			const res = await api.services.validateQuadlet(service.id, payload);
-			if (res.valid) {
-				validationMessage = {
-					text: 'Pre-flight dry-run passed! Podman Quadlet generator (/usr/libexec/podman/quadlet) validated unit without errors.',
-					success: true
-				};
-				dryrunOutput = res.output;
-			} else {
-				validationMessage = {
-					text: `Pre-flight dry-run failed: ${res.error || 'Invalid Quadlet unit definition'}`,
-					success: false
-				};
-				dryrunOutput = res.output;
-			}
-		} catch (err: any) {
-			validationMessage = {
-				text: `Dry-run request error: ${err?.message || 'Failed to connect to backend validator'}`,
-				success: false
-			};
-		} finally {
-			isValidatingDryRun = false;
-		}
-	}
-
 	let isDemoting = $state(false);
 
 	async function handleDemoteQuadlet() {
@@ -200,75 +133,6 @@
 			});
 		} finally {
 			isDemoting = false;
-		}
-	}
-
-	function handleValidateSyntax() {
-		validationMessage = validateQuadletSyntax(promoCode);
-	}
-
-	async function handleConfirmPromotion() {
-		isPromoting = true;
-		const originalType = service.type;
-		const originalTarget = service.runtimeTarget;
-
-		if (!service.sourceType || service.sourceType === 'git') {
-			if (
-				originalType === 'compose' ||
-				(service.composeYaml && service.composeYaml.trim() !== '')
-			) {
-				service.sourceType = 'compose';
-			} else if (
-				originalType === 'kubernetes' ||
-				(service.k8sYaml && service.k8sYaml.trim() !== '')
-			) {
-				service.sourceType = 'kubernetes';
-			} else if (originalType === 'pod') {
-				service.sourceType = 'pod';
-			} else if (originalType === 'image') {
-				service.sourceType = 'image';
-			} else {
-				service.sourceType = originalType;
-			}
-		}
-
-		if (service.type === 'pod' || Object.keys(podFiles).length > 0) {
-			podFiles[activePromoTab] = promoCode;
-			const units = Object.entries(podFiles).map(([fname, content]) => {
-				return `# File: ${fname}\n${content.trim()}`;
-			});
-			service.quadletConfig = units.join('\n---\n');
-		} else {
-			service.quadletConfig = promoCode;
-		}
-
-		service.type = 'quadlet';
-		service.runtimeTarget = 'quadlet';
-
-		try {
-			await dataStore.updateService(service);
-			await dataStore.deployService(service.id, 'promote-quadlet');
-			toast.add({
-				title: 'Promoted to Systemd Quadlet',
-				description: `Workload ${service.name} is now supervised by systemd user session.`,
-				variant: 'success'
-			});
-			isPromotionReviewOpen = false;
-		} catch (err: any) {
-			service.type = originalType;
-			service.runtimeTarget = originalTarget;
-			await dataStore.updateService(service).catch(() => {});
-			validationMessage = {
-				text: `Promotion activation failed: ${err?.message || 'systemd daemon-reload error'}. State restored.`,
-				success: false
-			};
-			toast.add({
-				title: 'Promotion Failed (Rolled Back)',
-				description: err?.message || 'Systemd daemon-reload failed. Restored to previous state.',
-				variant: 'error'
-			});
-		} finally {
-			isPromoting = false;
 		}
 	}
 
@@ -398,25 +262,7 @@
 		bind:restartPolicy
 		{isDemoting}
 		onDemoteQuadlet={handleDemoteQuadlet}
-		onStartPromotion={startPromotionFlow}
-	/>
-
-	<!-- Promotion Review Modal (if active) -->
-	<PromotionWorkflowModal
-		bind:isOpen={isPromotionReviewOpen}
-		{service}
-		bind:podFiles
-		bind:activePromoTab
-		bind:promoCode
-		bind:validationMessage
-		bind:dryrunOutput
-		{isPromoting}
-		{isValidatingDryRun}
-		onSwitchTab={handleSwitchPromoTab}
-		onValidateDryRun={handleDryRunValidation}
-		onValidateSyntax={handleValidateSyntax}
-		onConfirm={handleConfirmPromotion}
-		onCancel={() => (isPromotionReviewOpen = false)}
+		onOpenQuadlet={() => onNavigateTab?.('quadlet')}
 	/>
 
 	<!-- 4. Storage & Volume Mounts Card -->

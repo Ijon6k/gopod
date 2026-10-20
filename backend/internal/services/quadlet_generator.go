@@ -1,15 +1,16 @@
 package services
 
 import (
+	"context"
 	"fmt"
 	"strings"
 )
 
 // prepareQuadletContent prepares declarative unit text ensuring anti-loop limits, ingress, and tracking directives.
-func (d *Deployer) prepareQuadletContent(s Service, cleanName string) string {
+func (d *Deployer) prepareQuadletContent(ctx context.Context, s Service, cleanName string) string {
 	rawContent := strings.TrimSpace(s.QuadletConfig)
 	if rawContent == "" {
-		return d.generateDefaultQuadletContent(s, cleanName)
+		return d.generateDefaultQuadletContent(ctx, s, cleanName)
 	}
 
 	if strings.Contains(rawContent, "\n---") {
@@ -28,7 +29,13 @@ func (d *Deployer) prepareQuadletContent(s Service, cleanName string) string {
 	return d.prepareSingleQuadletContent(s, cleanName, rawContent)
 }
 
-func (d *Deployer) generateDefaultQuadletContent(s Service, cleanName string) string {
+func (d *Deployer) generateDefaultQuadletContent(ctx context.Context, s Service, cleanName string) string {
+	// Pod services render the full bundle: the .pod plus one .container per
+	// attached child, so a promoted pod keeps every member's own unit.
+	if s.Type == "pod" {
+		return buildPodQuadletBundle(s, PodNameForService(s), extractPodPorts(s), d.podMemberServices(ctx, s))
+	}
+
 	targetContainerName := SanitizeQuadletSlug(s.ID)
 	if targetContainerName == "" {
 		targetContainerName = cleanName

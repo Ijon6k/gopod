@@ -310,7 +310,7 @@ func TestIsNamedVolumeSource(t *testing.T) {
 
 func TestBuildPodQuadletBundleCarriesOwnershipLabels(t *testing.T) {
 	s := Service{ID: "proj-web-abc123", Name: "web", ProjectID: "proj"}
-	bundle := buildPodQuadletBundle(s, "pod_proj-web-abc123", []string{"18401:80"})
+	bundle := buildPodQuadletBundle(s, "pod_proj-web-abc123", []string{"18401:80"}, nil)
 
 	podChunk := bundle
 	if idx := strings.Index(bundle, "\n---"); idx >= 0 {
@@ -332,7 +332,7 @@ func TestGenerateDefaultQuadletContentPodCarriesOwnershipLabels(t *testing.T) {
 		Name:        "stack",
 		ComposeYaml: "services:\n  web:\n    image: nginx:alpine\n  db:\n    image: postgres:16\n",
 	}
-	content := d.generateDefaultQuadletContent(s, "stack")
+	content := d.generateDefaultQuadletContent(context.Background(), s, "stack")
 
 	podChunk := content
 	if idx := strings.Index(content, "\n---"); idx >= 0 {

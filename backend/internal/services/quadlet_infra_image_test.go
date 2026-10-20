@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -11,13 +12,13 @@ import (
 // used implicitly instead.
 func TestQuadletPodUnitsDoNotPinInfraImage(t *testing.T) {
 	s := Service{ID: "svc-infra-1", ProjectID: "proj", Name: "web"}
-	bundle := buildPodQuadletBundle(s, "pod_svc-infra-1", []string{"18401:80"})
+	bundle := buildPodQuadletBundle(s, "pod_svc-infra-1", []string{"18401:80"}, nil)
 	if strings.Contains(bundle, "InfraImage=") {
 		t.Fatalf("generated .pod unit pins InfraImage=; podman must manage the pause image:\n%s", bundle)
 	}
 
 	d := NewDeployer(nil, nil, nil, t.TempDir())
-	multi := d.generateDefaultQuadletContent(Service{
+	multi := d.generateDefaultQuadletContent(context.Background(), Service{
 		ID:          "svc-infra-2",
 		ProjectID:   "proj",
 		Name:        "stack",

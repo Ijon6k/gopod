@@ -415,7 +415,7 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 	// Real Quadlet unit compilation to disk and systemd daemon-reload
 	if (svc.Type == "quadlet" || svc.RuntimeTarget == "quadlet" || strings.TrimSpace(svc.QuadletConfig) != "") && s.deployer != nil {
 		cleanName := QuadletUnitName(svc)
-		content := s.deployer.prepareQuadletContent(svc, cleanName)
+		content := s.deployer.prepareQuadletContent(ctx, svc, cleanName)
 		files := SplitQuadletUnits(content, cleanName)
 
 		quadletDir := filepath.Join(s.deployer.dataDir, "quadlets")
@@ -642,6 +642,47 @@ func (s *WorkloadService) ValidateQuadlet(ctx context.Context, content string, f
 		files = SplitQuadletUnits(content, "validation")
 	}
 	return ValidateQuadletFiles(files)
+}
+
+// PreviewQuadlet compiles the service's declarative configuration to unit files
+// through the ONE shared generator and validates the result with the real
+// `quadlet -dryrun`. Pod services render the pod plus one .container per
+// attached child. The output is data only: nothing touches the systemd search
+// path or the user manager.
+func (s *WorkloadService) PreviewQuadlet(ctx context.Context, id string) (map[string]string, bool, string, error) {
+	if s.deployer == nil {
+		return nil, false, "", errors.New("deployer not initialized")
+	}
+	svc, err := s.GetService(ctx, id)
+	if err != nil {
+		return nil, false, "", err
+	}
+	if svc == nil {
+		return nil, false, "", errors.New("service not found")
+	}
+
+	cleanName := QuadletUnitName(*svc)
+	var content string
+	if svc.Type == "pod" {
+		content = buildPodQuadletBundle(
+			*svc,
+			PodNameForService(*svc),
+			extractPodPorts(*svc),
+			s.deployer.podMemberServices(ctx, *svc),
+		)
+	} else {
+		content = s.deployer.prepareQuadletContent(ctx, *svc, cleanName)
+	}
+	if strings.TrimSpace(content) == "" {
+		return nil, false, "", errors.New("service has no quadlet configuration to preview")
+	}
+
+	files := SplitQuadletUnits(content, cleanName)
+	if len(files) == 0 {
+		return nil, false, "", errors.New("quadlet configuration produced no unit files")
+	}
+	valid, dryrun, verr := ValidateQuadletFiles(files)
+	return files, valid, dryrun, verr
 }
 
 // DemoteQuadlet converts a Quadlet service back to a standalone container managed by Podman.

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import DeploySettingsCard from '../DeploySettingsCard.svelte';
-	import QuadletEditorCard from '../QuadletEditorCard.svelte';
 	import ComposeEditorCard from '../ComposeEditorCard.svelte';
 	import PodWorkspaceCard from '../PodWorkspaceCard.svelte';
 	import ApplicationConfigCard from '../ApplicationConfigCard.svelte';
@@ -16,7 +15,7 @@
 		onRedeploy?: () => void;
 	}
 
-	let { service, onNavigateTab: _onNavigateTab, onTerminalClick, onRedeploy }: Props = $props();
+	let { service, onNavigateTab, onTerminalClick, onRedeploy }: Props = $props();
 
 	let credentialModalOpen = $state(false);
 	let credentialInitialTab = $state<'ssh' | 'registry'>('ssh');
@@ -31,16 +30,18 @@
 <div class="flex w-full flex-col gap-4">
 	<!-- 1. Operational Action Bar at top of General tab (hidden if engine setup is active) -->
 	{#if service.type !== 'database' || (service.image && !isChangingEngine)}
-		<DeploySettingsCard {service} {onTerminalClick} {onRedeploy} />
+		<DeploySettingsCard
+			{service}
+			{onTerminalClick}
+			{onRedeploy}
+			onOpenQuadlet={() => onNavigateTab?.('quadlet')}
+		/>
 	{/if}
 
 	<!-- 2. Main Workload Body depending on Type -->
 	{#if service.type === 'pod' || service.type === 'kubernetes'}
 		<!-- First-Class Pod Multi-Container Workspace (Visual Studio & Kubernetes Manifest) -->
 		<PodWorkspaceCard {service} />
-	{:else if service.type === 'quadlet'}
-		<!-- First-Class Quadlet Systemd Editor -->
-		<QuadletEditorCard {service} />
 	{:else if service.type === 'compose'}
 		<!-- First-Class Docker / Podman Compose Manifest -->
 		<ComposeEditorCard {service} />

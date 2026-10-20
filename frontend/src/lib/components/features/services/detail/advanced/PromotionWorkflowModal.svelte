@@ -15,7 +15,6 @@
 		isValidatingDryRun: boolean;
 		onSwitchTab: (tabKey: string) => void;
 		onValidateDryRun: () => void;
-		onValidateSyntax: () => void;
 		onConfirm: () => void;
 		onCancel: () => void;
 	}
@@ -32,7 +31,6 @@
 		isValidatingDryRun,
 		onSwitchTab,
 		onValidateDryRun,
-		onValidateSyntax,
 		onConfirm,
 		onCancel
 	}: Props = $props();
@@ -96,7 +94,7 @@
 		{/if}
 
 		<div class="flex flex-wrap items-center justify-between gap-2 pt-1">
-			<div class="flex items-center gap-2">
+			<div class="flex items-center">
 				<Button
 					variant="secondary"
 					size="sm"
@@ -111,9 +109,6 @@
 						<ShieldCheck size={14} />
 						<span>Pre-flight Dry-Run</span>
 					{/if}
-				</Button>
-				<Button variant="ghost" size="sm" onclick={onValidateSyntax} class="gap-1 text-xs">
-					Syntax Check
 				</Button>
 			</div>
 

@@ -161,6 +161,13 @@ export interface QuadletValidationResponse {
 	error?: string;
 }
 
+export interface QuadletPreviewResponse {
+	files: Record<string, string>;
+	valid: boolean;
+	dryrun: string;
+	error?: string;
+}
+
 export interface WebhookTokenResponse {
 	webhookToken: string;
 	hasWebhook: boolean;

@@ -5,6 +5,7 @@ import type {
 	DeployResponse,
 	JournalResponse,
 	QuadletValidationResponse,
+	QuadletPreviewResponse,
 	GroupPodRequest,
 	WebhookTokenResponse,
 	RevealEnvResponse
@@ -165,6 +166,11 @@ export const servicesApi = {
 
 	async demoteQuadlet(id: string): Promise<Service> {
 		const res = await apiClient.post<Service>(`/services/${id}/quadlet/demote`);
+		return res.data;
+	},
+
+	async quadletPreview(id: string): Promise<QuadletPreviewResponse> {
+		const res = await apiClient.post<QuadletPreviewResponse>(`/services/${id}/quadlet/preview`);
 		return res.data;
 	},
 

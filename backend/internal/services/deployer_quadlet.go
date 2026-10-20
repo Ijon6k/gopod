@@ -19,7 +19,7 @@ func (d *Deployer) deployQuadlet(ctx context.Context, s Service, depID, trigger 
 	_ = os.MkdirAll(quadletDir, 0755)
 
 	cleanName := QuadletUnitName(s)
-	content := d.prepareQuadletContent(s, cleanName)
+	content := d.prepareQuadletContent(ctx, s, cleanName)
 
 	// Split bundle into individual unit files (.pod and .container)
 	files := SplitQuadletUnits(content, cleanName)
@@ -427,7 +427,14 @@ func (d *Deployer) runQuadletUnitsDirectly(ctx context.Context, s Service, files
 // where its file was written, and whether the host user manager has it active.
 func (d *Deployer) DescribeQuadletSupervision(s Service) (unitService, unitFile string, active bool) {
 	cleanName := QuadletUnitName(s)
-	content := d.prepareQuadletContent(s, cleanName)
+	var content string
+	if s.Type == "pod" {
+		// Status probe runs on every GET: describe the .pod unit directly
+		// instead of asking the repo for the member list.
+		content = buildPodQuadletUnit(s, PodNameForService(s), extractPodPorts(s))
+	} else {
+		content = d.prepareQuadletContent(context.Background(), s, cleanName)
+	}
 	files := SplitQuadletUnits(content, cleanName)
 	if len(files) == 0 {
 		return "", "", false

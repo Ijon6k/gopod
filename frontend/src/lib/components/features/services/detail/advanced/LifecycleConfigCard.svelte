@@ -11,7 +11,7 @@
 		restartPolicy: string;
 		isDemoting: boolean;
 		onDemoteQuadlet: () => void;
-		onStartPromotion: () => void;
+		onOpenQuadlet: () => void;
 	}
 
 	let {
@@ -21,7 +21,7 @@
 		restartPolicy = $bindable(),
 		isDemoting,
 		onDemoteQuadlet,
-		onStartPromotion
+		onOpenQuadlet
 	}: Props = $props();
 </script>
 
@@ -108,7 +108,7 @@
 						automatic crash restart, boot persistence, and systemctl controls.
 					</span>
 				</div>
-				<Button variant="primary" size="sm" onclick={onStartPromotion} class="shrink-0 gap-1.5">
+				<Button variant="primary" size="sm" onclick={onOpenQuadlet} class="shrink-0 gap-1.5">
 					<Lightning size={14} weight="bold" />
 					<span>⚡ Generate & Promote to Systemd Quadlet…</span>
 				</Button>

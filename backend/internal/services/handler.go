@@ -52,6 +52,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	// Observability & Quadlet promotion
 	mux.HandleFunc("GET /api/services/{id}/journal", h.middleware.RequireAuth(h.handleGetJournal))
 	mux.HandleFunc("POST /api/services/{id}/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadlet))
+	mux.HandleFunc("POST /api/services/{id}/quadlet/preview", h.middleware.RequireAuth(h.handleQuadletPreview))
 	mux.HandleFunc("POST /api/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadletGlobal))
 	mux.HandleFunc("POST /api/services/{id}/quadlet/demote", h.middleware.RequireAuth(h.handleDemoteQuadlet))
 	mux.HandleFunc("POST /api/services/{id}/group-pod", h.middleware.RequireAuth(h.handleGroupIntoPod))
@@ -418,6 +419,26 @@ func (h *Handler) handleValidateQuadlet(w http.ResponseWriter, r *http.Request) 
 	}
 	if err != nil {
 		resp["error"] = err.Error()
+	}
+	httputil.WriteJSON(w, http.StatusOK, resp)
+}
+
+// handleQuadletPreview returns generated unit files plus the real `quadlet
+// -dryrun` verdict — data only, nothing is written to the systemd search path.
+func (h *Handler) handleQuadletPreview(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	files, valid, dryrun, verr := h.service.PreviewQuadlet(r.Context(), id)
+	if files == nil && verr != nil {
+		httputil.WriteError(w, http.StatusBadRequest, verr.Error())
+		return
+	}
+	resp := map[string]interface{}{
+		"files":  files,
+		"valid":  valid,
+		"dryrun": dryrun,
+	}
+	if verr != nil {
+		resp["error"] = verr.Error()
 	}
 	httputil.WriteJSON(w, http.StatusOK, resp)
 }

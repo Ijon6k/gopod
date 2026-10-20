@@ -254,17 +254,19 @@ func extractPodPorts(s Service) []string {
 	return result
 }
 
-// hasAttachedMemberServices checks if other services in the project are attached to this pod.
-func (d *Deployer) hasAttachedMemberServices(ctx context.Context, s Service) bool {
+// podMemberServices returns the other project services attached to this pod,
+// using the same matching rules as the runtime member reconciliation.
+func (d *Deployer) podMemberServices(ctx context.Context, s Service) []Service {
 	if d.repo == nil {
-		return false
+		return nil
 	}
 	allSvcs, err := d.repo.List(ctx, s.ProjectID)
 	if err != nil {
-		return false
+		return nil
 	}
 	expectedPod := PodNameForService(s)
 	legacyNames := legacyPodCandidates(s)
+	var members []Service
 	for _, m := range allSvcs {
 		if m.ID == s.ID {
 			continue
@@ -280,10 +282,15 @@ func (d *Deployer) hasAttachedMemberServices(ctx context.Context, s Service) boo
 			}
 		}
 		if isMember {
-			return true
+			members = append(members, m)
 		}
 	}
-	return false
+	return members
+}
+
+// hasAttachedMemberServices checks if other services in the project are attached to this pod.
+func (d *Deployer) hasAttachedMemberServices(ctx context.Context, s Service) bool {
+	return len(d.podMemberServices(ctx, s)) > 0
 }
 
 // hasK8sWorkloadContainers checks whether the Kubernetes manifest defines at least one non-infra workload container.
@@ -720,8 +727,12 @@ func (d *Deployer) deployPod(ctx context.Context, s Service, depID string, logLi
 	}
 	d.removeLegacyPodQuadlets(s, podName)
 
-	if s.Type == "quadlet" || s.RuntimeTarget == "quadlet" {
-		d.writePodQuadletArtifacts(s, podName, ports, logLine)
+	// Quadlet persistence/recovery: the runtime path stays podman, but the
+	// declarative bundle (plus one .container unit per attached child) is
+	// persisted so host systemd can re-create the pod after reboot. The exact
+	// on-disk bundle is recorded on the service row for the delete cleanup.
+	if s.Type == "pod" || s.Type == "quadlet" || s.RuntimeTarget == "quadlet" {
+		d.writePodQuadletArtifacts(ctx, s, podName, ports, logLine)
 	}
 
 	return &DeployResult{
@@ -753,10 +764,16 @@ func (d *Deployer) removeLegacyPodQuadlets(s Service, canonicalPod string) {
 }
 
 // writePodQuadletArtifacts persists declarative .pod (+ member .container) units for
-// the pod so systemd Quadlet can re-create it after reboot. Best-effort: never fails deploy.
-func (d *Deployer) writePodQuadletArtifacts(s Service, podName string, ports []string, logLine func(string)) {
+// the pod so systemd Quadlet can re-create it after reboot. Best-effort: never fails
+// deploy. The exact bundle is recorded on the service record so the delete path can
+// remove every unit it wrote (member units otherwise leak and reconnect on boot).
+func (d *Deployer) writePodQuadletArtifacts(ctx context.Context, s Service, podName string, ports []string, logLine func(string)) {
 	defer func() { _ = recover() }()
-	content := buildPodQuadletBundle(s, podName, ports)
+	var members []Service
+	if d.repo != nil {
+		members = d.podMemberServices(ctx, s)
+	}
+	content := buildPodQuadletBundle(s, podName, ports, members)
 	if strings.TrimSpace(content) == "" {
 		return
 	}
@@ -792,11 +809,31 @@ func (d *Deployer) writePodQuadletArtifacts(s Service, podName string, ports []s
 			logLine(fmt.Sprintf("Wrote %d Quadlet unit(s) for pod '%s' (.pod + members).", len(files), podName))
 		}
 	}
+	// Record what was actually written so the service-delete path (which parses
+	// this exact field) can remove every unit, member units included.
+	if d.repo != nil && strings.TrimSpace(s.QuadletConfig) != strings.TrimSpace(content) {
+		if stored, err := d.repo.Get(ctx, s.ID); err == nil && stored != nil {
+			stored.QuadletConfig = content
+			_ = d.repo.Update(ctx, *stored)
+		}
+	}
 }
 
 // buildPodQuadletBundle renders a .pod unit plus one .container unit per known member.
 // Ports live only on the .pod (Podman Quadlet spec); members reference Pod= and omit Network/PublishPort.
-func buildPodQuadletBundle(s Service, podName string, ports []string) string {
+func buildPodQuadletBundle(s Service, podName string, ports []string, members []Service) string {
+	content := buildPodQuadletUnit(s, podName, ports)
+	for _, m := range members {
+		if m.ID == s.ID {
+			continue
+		}
+		content += "\n---\n" + podMemberQuadletUnit(podName, m)
+	}
+	return content
+}
+
+// buildPodQuadletUnit renders only the .pod unit.
+func buildPodQuadletUnit(s Service, podName string, ports []string) string {
 	var publishes strings.Builder
 	for _, p := range ports {
 		// Quadlet PublishPort accepts [[ip:]host:]container[/proto]:
@@ -819,4 +856,85 @@ func buildPodQuadletBundle(s Service, podName string, ports []string) string {
 	podUnit := fmt.Sprintf("# File: %s.pod\n[Unit]\nDescription=GoPod %s Pod\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Pod]\nPodName=%s\nNetwork=gopod-net\nPodmanArgs=--share=net,uts,ipc\n%s%s[Install]\nWantedBy=default.target\n",
 		podName, podName, podName, podLabels.String(), publishes.String())
 	return podUnit
+}
+
+// podMemberQuadletUnit renders one .container unit for a child service joined to
+// the pod. The member carries env, volumes, and the Advanced-mapped directives;
+// ports live on the .pod (PublishPort in [Pod]) because a container joined to a
+// pod publishes through the pod in the Quadlet generator.
+func podMemberQuadletUnit(podName string, m Service) string {
+	memberSlug := SanitizeQuadletSlug(m.ID)
+	if memberSlug == "" {
+		memberSlug = SanitizeQuadletSlug(m.Name)
+	}
+	image := m.Image
+	if image == "" || ValidateContainerImage(image) != nil {
+		if ext := ExtractFirstImageFromCompose(m.ComposeYaml); ext != "" && ValidateContainerImage(ext) == nil {
+			image = ext
+		}
+		if image == "" || ValidateContainerImage(image) != nil {
+			image = "docker.io/library/nginx:alpine"
+		}
+	}
+	restart := MapDockerRestartToSystemd(m.RestartPolicy)
+	if restart == "" {
+		restart = "always"
+	}
+	var labels strings.Builder
+	labels.WriteString(fmt.Sprintf("Label=io.gopod.service=%s\n", m.ID))
+	if m.ProjectID != "" {
+		labels.WriteString(fmt.Sprintf("Label=io.gopod.project=%s\n", m.ProjectID))
+	}
+	return fmt.Sprintf("# File: %s.container\n[Unit]\nDescription=GoPod Pod Member %s\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Container]\nContainerName=%s\nImage=%s\nPod=%s.pod\n%s%s[Service]\nRestart=%s\nTimeoutStartSec=300\n\n[Install]\nWantedBy=default.target\n",
+		memberSlug, m.Name, memberSlug, image, podName, labels.String(), podMemberExtraDirectives(m), restart)
+}
+
+// podMemberExtraDirectives renders a member's env, volumes, and Advanced-mapped
+// keys — the same mapping the single-container generator applies.
+func podMemberExtraDirectives(m Service) string {
+	var b strings.Builder
+	for _, env := range m.EnvVars {
+		if env.Key != "" && !strings.HasPrefix(env.Key, "#") {
+			b.WriteString(fmt.Sprintf("Environment=\"%s=%s\"\n", env.Key, env.Value))
+		}
+	}
+	if a := m.Advanced; a != nil {
+		if a.Runtime.UserNamespace != "" && a.Runtime.UserNamespace != "default" && a.Runtime.UserNamespace != "none" {
+			b.WriteString(fmt.Sprintf("UserNS=%s\n", a.Runtime.UserNamespace))
+		}
+		for _, v := range a.Storage.Volumes {
+			if v.Source != "" && v.Target != "" {
+				volSource := SanitizeQuadletSlug(v.Source)
+				if v.Options != "" {
+					b.WriteString(fmt.Sprintf("Volume=%s:%s:%s\n", volSource, v.Target, v.Options))
+				} else {
+					b.WriteString(fmt.Sprintf("Volume=%s:%s:Z\n", volSource, v.Target))
+				}
+			}
+		}
+		for _, cap := range a.Security.CapAdd {
+			if cap != "" {
+				b.WriteString(fmt.Sprintf("AddCapability=%s\n", cap))
+			}
+		}
+		for _, cap := range a.Security.CapDrop {
+			if cap != "" {
+				b.WriteString(fmt.Sprintf("DropCapability=%s\n", cap))
+			}
+		}
+		for _, dev := range a.Runtime.Devices {
+			if dev != "" {
+				b.WriteString(fmt.Sprintf("AddDevice=%s\n", dev))
+			}
+		}
+		if a.Security.Privileged || a.Security.SELinuxLabel == "disable" {
+			b.WriteString("SecurityLabelDisable=true\n")
+		} else if a.Security.SELinuxLabel != "" && a.Security.SELinuxLabel != "container_file_t" {
+			b.WriteString(fmt.Sprintf("SecurityLabelType=%s\n", a.Security.SELinuxLabel))
+		}
+		if a.Security.AppArmorProfile != "" {
+			b.WriteString(fmt.Sprintf("AppArmorProfile=%s\n", a.Security.AppArmorProfile))
+		}
+	}
+	return b.String()
 }

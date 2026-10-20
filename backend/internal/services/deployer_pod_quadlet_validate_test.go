@@ -62,16 +62,24 @@ func TestGenerateDefaultQuadletContentPassesQuadletDryRun(t *testing.T) {
 func TestPodBundleEmitsOneContainerPerChild(t *testing.T) {
 	pod := Service{ID: "proj-pod-1", Name: "api-stack", ProjectID: "proj-pod", Type: "pod"}
 	members := []Service{
-		{
-			ID:            "proj-api-1",
-			Name:          "api",
-			ProjectID:     "proj-pod",
-			InPod:         true,
-			PodID:         pod.ID,
-			Image:         "docker.io/library/nginx:alpine",
-			RestartPolicy: "unless-stopped",
-			EnvVars:       []EnvVar{{Key: "API_MODE", Value: "edge"}},
-		},
+		func() Service {
+			m := Service{
+				ID:            "proj-api-1",
+				Name:          "api",
+				ProjectID:     "proj-pod",
+				InPod:         true,
+				PodID:         pod.ID,
+				Image:         "docker.io/library/nginx:alpine",
+				RestartPolicy: "unless-stopped",
+				EnvVars:       []EnvVar{{Key: "API_MODE", Value: "edge"}},
+				CPULimit:      1.5,
+				MemoryLimit:   256,
+			}
+			m.Advanced = &ServiceAdvancedConfig{}
+			m.Advanced.Resources.PIDsLimit = 500
+			m.Advanced.Resources.SwapLimit = "512MB"
+			return m
+		}(),
 		func() Service {
 			m := Service{
 				ID:        "proj-db-9",
@@ -136,8 +144,95 @@ func TestPodBundleEmitsOneContainerPerChild(t *testing.T) {
 	if !strings.Contains(dbFile, "Volume=db") || !strings.Contains(dbFile, "/var/lib/postgresql/data:Z") {
 		t.Errorf("db member must carry its advanced volume:\n%s", dbFile)
 	}
+	if !strings.Contains(apiFile, "PidsLimit=500") {
+		t.Errorf("api member must carry its pids limit (real [Container] key):\n%s", apiFile)
+	}
+	if !strings.Contains(apiFile, "PodmanArgs=--cpus=1.50 --memory=256m --memory-swap=512MB") {
+		t.Errorf("api member must carry cpu/mem/swap via the real PodmanArgs key:\n%s", apiFile)
+	}
+	if strings.Contains(podFile, "PodmanArgs=--cpus") || strings.Contains(podFile, "PidsLimit=") {
+		t.Errorf("the .pod unit must not carry member resource directives:\n%s", podFile)
+	}
 
 	if valid, out, err := ValidateQuadletFiles(files); err != nil || !valid {
 		t.Fatalf("full pod bundle must pass quadlet dryrun: valid=%v err=%v out=%s", valid, err, out)
+	}
+}
+
+func TestQuadletResourceDirectivesVariants(t *testing.T) {
+	cases := []struct {
+		name string
+		mut  func(*Service)
+		want string
+	}{
+		{"unset produces nothing", func(s *Service) {}, ""},
+		{"cpu only rides PodmanArgs", func(s *Service) { s.CPULimit = 1.5 }, "PodmanArgs=--cpus=1.50\n"},
+		{"memory in MB", func(s *Service) { s.MemoryLimit = 512 }, "PodmanArgs=--memory=512m\n"},
+		{"swap zero stays omitted", func(s *Service) {
+			s.Advanced = &ServiceAdvancedConfig{}
+			s.Advanced.Resources.SwapLimit = "0"
+		}, ""},
+		{"pids is a real key", func(s *Service) {
+			s.Advanced = &ServiceAdvancedConfig{}
+			s.Advanced.Resources.PIDsLimit = 500
+		}, "PidsLimit=500\n"},
+		{"unlimited normalizes to -1", func(s *Service) {
+			s.Advanced = &ServiceAdvancedConfig{}
+			s.Advanced.Resources.SwapLimit = "unlimited"
+		}, "PodmanArgs=--memory-swap=-1\n"},
+		{"invalid swap is skipped", func(s *Service) {
+			s.Advanced = &ServiceAdvancedConfig{}
+			s.Advanced.Resources.SwapLimit = "garbage!"
+		}, ""},
+		{"full set merges into one PodmanArgs line", func(s *Service) {
+			s.CPULimit = 2
+			s.MemoryLimit = 1024
+			s.Advanced = &ServiceAdvancedConfig{}
+			s.Advanced.Resources.PIDsLimit = 750
+			s.Advanced.Resources.SwapLimit = "1gb"
+		}, "PidsLimit=750\nPodmanArgs=--cpus=2.00 --memory=1024m --memory-swap=1gb\n"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			s := Service{}
+			tc.mut(&s)
+			if got := quadletResourceDirectives(s); got != tc.want {
+				t.Errorf("quadletResourceDirectives() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestGenerateDefaultQuadletResourceDirectives(t *testing.T) {
+	d := NewDeployer(nil, nil, nil, t.TempDir())
+	s := Service{
+		ID:            "res-svc-1",
+		ProjectID:     "proj-res",
+		Name:          "app",
+		Type:          "image",
+		Image:         "docker.io/library/nginx:alpine",
+		RestartPolicy: "always",
+		CPULimit:      2.5,
+		MemoryLimit:   512,
+	}
+	s.Advanced = &ServiceAdvancedConfig{}
+	s.Advanced.Resources.PIDsLimit = 800
+	s.Advanced.Resources.SwapLimit = "unlimited"
+
+	content := d.generateDefaultQuadletContent(context.Background(), s, "app")
+	if !strings.Contains(content, "PidsLimit=800") {
+		t.Errorf("default single unit must carry PidsLimit:\n%s", content)
+	}
+	if !strings.Contains(content, "PodmanArgs=--cpus=2.50 --memory=512m --memory-swap=-1") {
+		t.Errorf("default single unit must carry cpu/mem/swap on PodmanArgs:\n%s", content)
+	}
+	if strings.Contains(content, "--cpu-quota") {
+		t.Errorf("generated units use the canonical --cpus form, not --cpu-quota:\n%s", content)
+	}
+
+	files := SplitQuadletUnits(content, "app")
+	if valid, out, err := ValidateQuadletFiles(files); err != nil || !valid {
+		t.Fatalf("resource-carrying default unit must pass quadlet dryrun: valid=%v err=%v out=%s",
+			valid, err, out)
 	}
 }

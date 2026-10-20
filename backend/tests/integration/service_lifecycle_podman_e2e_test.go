@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -619,4 +620,186 @@ func TestServiceLifecyclePodmanE2E(t *testing.T) {
 
 	t.Logf("✓ full lifecycle + label-only guarantee verified for svc=%s decoys=[%s %s]",
 		svc.ID, decoyOne, decoyTwo)
+}
+
+// TestAdvancedResourceLimitsE2E verifies the Advanced-tab resource controls
+// reach the REAL engine on the image deploy path:
+//
+//   - top-level Service.CPULimit / MemoryLimit → HostConfig.CpuPeriod+CpuQuota /
+//     HostConfig.Memory
+//   - Advanced.Resources.PIDsLimit            → HostConfig.PidsLimit (exact value)
+//   - Advanced.Resources.SwapLimit ("512MB")  → HostConfig.MemorySwap in bytes
+//   - Advanced.Storage.Volumes                → HostConfig.Binds
+//
+// An unlabeled foreign decoy container proves nothing leaks across ownership:
+// its limits stay at the podman defaults.
+//
+// Opt-in: GOPOD_PODMAN_E2E=1 go test ./tests/integration/ -run TestAdvancedResourceLimitsE2E -v
+func TestAdvancedResourceLimitsE2E(t *testing.T) {
+	if !podmanE2EEnabled() {
+		t.Skip("set GOPOD_PODMAN_E2E=1 with a reachable rootless podman socket to run")
+	}
+
+	dbPath := filepath.Join(t.TempDir(), "gopod.db")
+	handler := newIntegrationServer(t, dbPath, "http://127.0.0.1:9")
+	ts := httptest.NewServer(handler)
+	t.Cleanup(ts.Close)
+
+	client := loginAdmin(t, ts.URL)
+
+	// Unique suffix keeps reruns collision-free even after a crashed attempt.
+	suffix := fmt.Sprintf("%x", time.Now().UnixNano())
+	projName := "proj-limits-" + suffix
+
+	code, data := client.post(t, "/api/projects", []byte(fmt.Sprintf(
+		`{"name":%q,"description":"E2E advanced resource limits"}`, projName)))
+	if code != http.StatusCreated && code != http.StatusOK {
+		t.Fatalf("create project: %d %s", code, trunc(data))
+	}
+	var project struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &project); err != nil || project.ID == "" {
+		t.Fatalf("project payload incomplete: %v / %s", err, trunc(data))
+	}
+
+	// A free host port keeps the published port collision-free.
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("no free port: %v", err)
+	}
+	hostPort := l.Addr().(*net.TCPAddr).Port
+	_ = l.Close()
+
+	bindDir := t.TempDir()
+	svcBody, _ := json.Marshal(map[string]interface{}{
+		"projectId":     project.ID,
+		"name":          "e2e-limits",
+		"type":          "image",
+		"image":         "docker.io/library/nginx:alpine",
+		"port":          80,
+		"hostPort":      hostPort,
+		"restartPolicy": "no",
+		"cpuLimit":      1,
+		"memoryLimit":   256,
+		"advanced": map[string]interface{}{
+			"runtime":   map[string]interface{}{"userNamespace": "", "devices": []string{}},
+			"lifecycle": map[string]interface{}{"restartPolicy": "no"},
+			"security": map[string]interface{}{
+				"privileged":      false,
+				"selinuxLabel":    "",
+				"capAdd":          []string{},
+				"capDrop":         []string{},
+				"noNewPrivileges": true,
+			},
+			"storage": map[string]interface{}{
+				"volumes": []map[string]string{
+					{"source": bindDir, "target": "/usr/share/nginx/html", "options": ""},
+				},
+			},
+			"resources": map[string]interface{}{"pidsLimit": 999, "swapLimit": "512MB"},
+		},
+	})
+	code, data = client.post(t, "/api/services", svcBody)
+	if code != http.StatusCreated {
+		t.Fatalf("create service: %d %s", code, trunc(data))
+	}
+	var svc struct {
+		ID string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &svc); err != nil || strings.TrimSpace(svc.ID) == "" {
+		t.Fatalf("service payload incomplete: %v / %s", err, trunc(data))
+	}
+	t.Cleanup(func() {
+		req, err := http.NewRequest(http.MethodDelete,
+			ts.URL+"/api/services/"+svc.ID+"?delete_volumes=true", nil)
+		if err == nil {
+			if resp, err := client.http.Do(req); err == nil {
+				resp.Body.Close()
+			}
+		}
+	})
+
+	// Foreign decoy: unlabeled, no limits — must not be touched by anything.
+	limitsDecoy := "e2e-limits-decoy-" + suffix
+	runDecoy(t, limitsDecoy, "docker.io/library/alpine:latest")
+
+	// ── Deploy + terminal wait ────────────────────────────────────────────────
+	code, data = client.post(t, "/api/services/"+svc.ID+"/deploy", []byte(`{"trigger":"manual"}`))
+	if code != http.StatusAccepted {
+		t.Fatalf("deploy expected 202, got %d: %s", code, trunc(data))
+	}
+	deps := waitAllDeploymentsTerminal(t, client, svc.ID)
+	if len(deps) == 0 || deps[len(deps)-1].Status != "success" {
+		t.Fatalf("limits deploy must succeed; deployments=%+v", deps)
+	}
+
+	names := ownedContainerNames(t, svc.ID)
+	if len(names) != 1 {
+		t.Fatalf("exactly one owned container expected, got %v", names)
+	}
+
+	out, err := podmanCLI(t, 20*time.Second, "inspect", "--format",
+		"{{.HostConfig.CpuPeriod}} {{.HostConfig.CpuQuota}} {{.HostConfig.Memory}} "+
+			"{{.HostConfig.MemorySwap}} {{.HostConfig.PidsLimit}} {{json .HostConfig.Binds}}", names[0])
+	if err != nil {
+		t.Fatalf("inspect owned container: %v / %s", err, trunc([]byte(out)))
+	}
+	t.Logf("owned container HostConfig: %s", strings.TrimSpace(out))
+	fields := strings.Fields(strings.TrimSpace(out))
+	if len(fields) != 6 {
+		t.Fatalf("unexpected inspect format output: %q", out)
+	}
+	want := map[string]string{
+		"cpu-period": "100000", // --cpus=1 → quota/period 100000 (podman normalizes NanoCpus)
+		"cpu-quota":  "100000",
+		"memory":     fmt.Sprintf("%d", 256*1024*1024), // --memory=256 (MB)
+		"swap":       fmt.Sprintf("%d", 512*1024*1024), // --memory-swap=512MB
+		"pids":       "999",
+	}
+	if fields[0] != want["cpu-period"] || fields[1] != want["cpu-quota"] {
+		t.Errorf("cpu limits: got period=%s quota=%s, want 100000/100000", fields[0], fields[1])
+	}
+	if fields[2] != want["memory"] {
+		t.Errorf("memory limit: got %s, want %s", fields[2], want["memory"])
+	}
+	if fields[3] != want["swap"] {
+		t.Errorf("memory swap: got %s, want %s", fields[3], want["swap"])
+	}
+	if fields[4] != want["pids"] {
+		t.Errorf("pids limit: got %s, want exactly %s", fields[4], want["pids"])
+	}
+	if !strings.Contains(out, fmt.Sprintf("%s:/usr/share/nginx/html", bindDir)) {
+		t.Errorf("advanced volume must appear in HostConfig.Binds, got %s", fields[5])
+	}
+
+	// The decoy keeps podman defaults: no limits leak across ownership.
+	dOut, err := podmanCLI(t, 20*time.Second, "inspect", "--format",
+		"{{.HostConfig.CpuQuota}} {{.HostConfig.Memory}} {{.HostConfig.MemorySwap}} {{.HostConfig.PidsLimit}}",
+		limitsDecoy)
+	if err != nil {
+		t.Fatalf("inspect decoy: %v / %s", err, trunc([]byte(dOut)))
+	}
+	// The decoy keeps podman defaults: cpu/memory/swap stay unset. Rootless
+	// hosts commonly default PidsLimit to 2048 (containers.conf), so assert
+	// "not the service's value" for pids instead of a hard 0.
+	// The decoy keeps podman defaults: cpu/memory/swap stay unset. Rootless
+	// hosts commonly default PidsLimit to 2048 (containers.conf), so assert
+	// "not the service's value" for pids instead of a hard 0.
+	dFields := strings.Fields(strings.TrimSpace(dOut))
+	if len(dFields) != 4 {
+		t.Fatalf("unexpected decoy inspect output: %q", dOut)
+	}
+	if dFields[0] != "0" || dFields[1] != "0" || dFields[2] != "0" {
+		t.Errorf("foreign decoy cpu/mem/swap must stay unset, got %s", dOut)
+	}
+	if dFields[3] == "999" {
+		t.Errorf("foreign decoy must not inherit the service pids limit (999), got %s", dOut)
+	}
+
+	// Teardown is handled by t.Cleanup (service delete) and runDecoy cleanup;
+	// verify the leftover owned container surfaces in the delete assertions
+	// of the main lifecycle suite only.
+	t.Logf("✓ advanced resource limits verified: cpu=1.0 mem=256MB swap=512MB pids=999 volume=%s",
+		bindDir)
 }

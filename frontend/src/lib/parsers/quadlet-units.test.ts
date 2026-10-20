@@ -139,15 +139,35 @@ describe('container card state', () => {
 			'[Service]',
 			'Restart=always'
 		].join('\n');
-		const state = readContainerCard(content);
-		expect(state.cpuLimit).toBe('150000');
-		expect(state.memoryLimit).toBe('512MB');
-		expect(state.podmanArgs).toContain('--share=net');
+		// Legacy --cpu-quota units stay readable…
+		const legacy = readContainerCard(content);
+		expect(legacy.cpuLimit).toBe('150000');
+		expect(legacy.memoryLimit).toBe('512MB');
+		// …but Apply rewrites them into the canonical --cpus form (the same
+		// flag the backend generator and the runtime path emit).
+		const next = containerCardEdits({ ...legacy, cpuLimit: '2', memoryLimit: '1GB' });
+		const output = applyUnitEdits(content, next);
+		expect(readDirectives(output, 'PodmanArgs')).toEqual(['--share=net --cpus=2 --memory=1GB']);
+	});
 
-		const next = containerCardEdits({ ...state, cpuLimit: '200000', memoryLimit: '1GB' });
+	it('generated PodmanArgs (--cpus + --memory-swap) round-trips untouched', () => {
+		const content = [
+			'[Container]',
+			'Image=nginx:alpine',
+			'PodmanArgs=--cpus=1.50 --memory=256m --memory-swap=512MB',
+			'[Service]',
+			'Restart=always'
+		].join('\n');
+		const state = readContainerCard(content);
+		expect(state.cpuLimit).toBe('1.50');
+		expect(state.memoryLimit).toBe('256m');
+
+		// Applying only a memory change must not corrupt --memory-swap into
+		// "-swap=…" (the token-boundary strip bug) nor drop the swap flag.
+		const next = containerCardEdits({ ...state, memoryLimit: '512MB' });
 		const output = applyUnitEdits(content, next);
 		expect(readDirectives(output, 'PodmanArgs')).toEqual([
-			'--share=net --cpu-quota=200000 --memory=1GB'
+			'--memory-swap=512MB --cpus=1.50 --memory=512MB'
 		]);
 	});
 

@@ -13,13 +13,10 @@ export interface ServiceSecretMount {
 
 export interface ServiceAdvancedConfig {
 	runtime: {
-		mode: 'rootless' | 'rootful';
 		userNamespace: string;
 		devices: string[];
 	};
 	lifecycle: {
-		quadletEnabled: boolean;
-		systemdUnitName: string;
 		restartPolicy: string;
 	};
 	security: {
@@ -34,8 +31,6 @@ export interface ServiceAdvancedConfig {
 		volumes: { source: string; target: string; options: string }[];
 	};
 	resources: {
-		cpuLimit: string;
-		memoryLimit: string;
 		pidsLimit: number;
 		swapLimit: string;
 	};

@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"strings"
+
+	"gopod/internal/podman"
 )
 
 // prepareQuadletContent prepares declarative unit text ensuring anti-loop limits, ingress, and tracking directives.
@@ -206,6 +208,7 @@ func (d *Deployer) generateDefaultQuadletContent(ctx context.Context, s Service,
 			extraDirectives.WriteString(fmt.Sprintf("AppArmorProfile=%s\n", s.Advanced.Security.AppArmorProfile))
 		}
 	}
+	extraDirectives.WriteString(quadletResourceDirectives(s))
 
 	restartPolicy := MapDockerRestartToSystemd(s.RestartPolicy)
 	if extracted.Restart != "" {
@@ -217,6 +220,38 @@ func (d *Deployer) generateDefaultQuadletContent(ctx context.Context, s Service,
 
 	return fmt.Sprintf("[Unit]\nDescription=%s Quadlet Service\nAfter=network-online.target\nStartLimitIntervalSec=60s\nStartLimitBurst=5\n\n[Container]\nContainerName=%s\nImage=%s\nNetwork=gopod-net\nLabel=io.gopod.service=%s\nLabel=io.gopod.project=%s\n%s%s\n[Service]\nRestart=%s\nTimeoutStartSec=300\n\n[Install]\nWantedBy=default.target\n",
 		cleanName, targetContainerName, image, s.ID, s.ProjectID, publishDirectives.String(), extraDirectives.String(), restartPolicy)
+}
+
+// quadletResourceDirectives renders the resource-limit directives shared by
+// every generated container unit (default single units and pod members so the
+// quadlet engine reaches runtime-path parity):
+//
+//   - PidsLimit is a documented [Container] key of podman-systemd.unit.
+//   - CPU and memory/swap have NO dedicated podman-systemd.unit key, so they
+//     ride the real PodmanArgs key with the exact flags `podman run` accepts
+//     (--cpus / --memory / --memory-swap), sourced from the same fields the
+//     runtime path enforces (Service.CPULimit/MemoryLimit + Advanced swap).
+func quadletResourceDirectives(s Service) string {
+	var b strings.Builder
+	if s.Advanced != nil && s.Advanced.Resources.PIDsLimit > 0 {
+		b.WriteString(fmt.Sprintf("PidsLimit=%d\n", s.Advanced.Resources.PIDsLimit))
+	}
+	var args []string
+	if s.CPULimit > 0 {
+		args = append(args, fmt.Sprintf("--cpus=%.2f", s.CPULimit))
+	}
+	if s.MemoryLimit > 0 {
+		args = append(args, fmt.Sprintf("--memory=%dm", s.MemoryLimit))
+	}
+	if s.Advanced != nil {
+		if swap, err := podman.NormalizeMemorySwap(s.Advanced.Resources.SwapLimit); err == nil && swap != "" {
+			args = append(args, "--memory-swap="+swap)
+		}
+	}
+	if len(args) > 0 {
+		b.WriteString("PodmanArgs=" + strings.Join(args, " ") + "\n")
+	}
+	return b.String()
 }
 
 func (d *Deployer) prepareSingleQuadletContent(s Service, cleanName string, rawContent string) string {

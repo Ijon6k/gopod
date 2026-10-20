@@ -2,7 +2,6 @@
 	import type { Service } from '$lib/types';
 	import { SectionCard, Select, Button, Banner } from '$lib/components/ui';
 	import { WarningCircle, ShieldCheck, SpinnerGap, Trash, Lightning } from 'phosphor-svelte';
-	import { slugifyName } from '$lib/parsers/compose-inspect';
 
 	interface Props {
 		openLifecycle?: boolean;
@@ -125,12 +124,16 @@
 					>Systemd Unit Specification</span
 				>
 				<span class="text-[11px] text-[var(--text-tertiary)]">
-					Unit file: ~/.config/containers/systemd/{slugifyName(service.name)}.container
+					{#if service.quadletFile}
+						Unit file: {service.quadletFile}
+					{:else}
+						Units are written under ~/.config/containers/systemd on promotion.
+					{/if}
 				</span>
 			</div>
-			<span class="font-mono text-xs font-semibold text-[var(--accent)]"
-				>{slugifyName(service.name)}.service</span
-			>
+			<span class="font-mono text-xs font-semibold text-[var(--accent)]">
+				{service.quadletUnit || 'not promoted yet'}
+			</span>
 		</div>
 
 		<Select

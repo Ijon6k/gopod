@@ -250,6 +250,7 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 	userNS := ""
 	privileged := false
 	pidsLimit := 0
+	memorySwap := ""
 
 	if s.Advanced != nil {
 		if s.Advanced.Runtime.UserNamespace != "" && s.Advanced.Runtime.UserNamespace != "default" && s.Advanced.Runtime.UserNamespace != "none" {
@@ -260,6 +261,14 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 		capDrop = s.Advanced.Security.CapDrop
 		devices = s.Advanced.Runtime.Devices
 		pidsLimit = s.Advanced.Resources.PIDsLimit
+		if swap, err := podman.NormalizeMemorySwap(s.Advanced.Resources.SwapLimit); err != nil {
+			logLine(fmt.Sprintf("⚠️ %v", err))
+		} else {
+			memorySwap = swap
+			if memorySwap != "" && s.MemoryLimit == 0 && memorySwap != "-1" {
+				logLine("⚠️ Memory swap requested without a memory limit — podman bounds swap against the memory limit, so set a memory limit too.")
+			}
+		}
 		rawLabel := strings.TrimSpace(s.Advanced.Security.SELinuxLabel)
 		if rawLabel != "" && rawLabel != "container_file_t" {
 			if rawLabel == "disable" || rawLabel == "disabled" || rawLabel == "label=disable" {
@@ -389,6 +398,7 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 			CapDrop:       capDrop,
 			Devices:       devices,
 			PidsLimit:     pidsLimit,
+			MemorySwap:    memorySwap,
 			SecurityOpt:   secOpts,
 		}
 		logLine(fmt.Sprintf("🧾 Equivalent: %s", sanitizedPodmanRunArgs(runOpts, SecretEnvKeySet(s))))

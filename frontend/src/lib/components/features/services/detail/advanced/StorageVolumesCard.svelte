@@ -6,9 +6,16 @@
 		openStorage?: boolean;
 		serviceName: string;
 		volumes: { source: string; target: string; options: string }[];
+		/** Per-row validation message ('' when the row is valid). */
+		volumeErrors?: string[];
 	}
 
-	let { openStorage = $bindable(true), serviceName, volumes = $bindable() }: Props = $props();
+	let {
+		openStorage = $bindable(true),
+		serviceName,
+		volumes = $bindable(),
+		volumeErrors = []
+	}: Props = $props();
 
 	function addVolume() {
 		volumes.push({
@@ -69,6 +76,9 @@
 							placeholder="Z"
 							class="text-xs font-[var(--font-mono)]"
 						/>
+						{#if volumeErrors[idx]}
+							<p class="m-0 text-[11px] text-[var(--status-red)]">{volumeErrors[idx]}</p>
+						{/if}
 					</div>
 					<button
 						type="button"

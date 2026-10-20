@@ -120,6 +120,7 @@ type RunContainerOptions struct {
 	CapDrop       []string          `json:"capDrop,omitempty"`
 	Devices       []string          `json:"devices,omitempty"`
 	PidsLimit     int               `json:"pidsLimit,omitempty"`
+	MemorySwap    string            `json:"memorySwap,omitempty"`
 	SecurityOpt   []string          `json:"securityOpt,omitempty"`
 }
 

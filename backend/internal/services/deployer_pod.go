@@ -936,5 +936,6 @@ func podMemberExtraDirectives(m Service) string {
 			b.WriteString(fmt.Sprintf("AppArmorProfile=%s\n", a.Security.AppArmorProfile))
 		}
 	}
+	b.WriteString(quadletResourceDirectives(m))
 	return b.String()
 }

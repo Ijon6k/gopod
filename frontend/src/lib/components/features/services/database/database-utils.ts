@@ -579,21 +579,17 @@ export function updateServiceWithDatabaseConfig(
 
 	const updatedAdvanced = {
 		...(service.advanced || {
-			runtime: { mode: 'rootless' as const, userNamespace: '', devices: [] },
-			lifecycle: {
-				quadletEnabled: false,
-				systemdUnitName: `${safeSlug}.service`,
-				restartPolicy: 'always'
-			},
+			runtime: { userNamespace: '', devices: [] },
+			lifecycle: { restartPolicy: 'always' },
 			security: {
 				privileged: false,
-				selinuxLabel: 'container_file_t',
+				selinuxLabel: '',
 				capAdd: [],
 				capDrop: [],
 				noNewPrivileges: true
 			},
 			storage: { volumes: [] },
-			resources: { cpuLimit: '0', memoryLimit: '0', pidsLimit: 2048, swapLimit: '0' }
+			resources: { pidsLimit: 0, swapLimit: '0' }
 		}),
 		storage: {
 			volumes: [{ source: volumeName, target: mountPath, options: 'Z' }]

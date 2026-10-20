@@ -1,66 +1,54 @@
 <script lang="ts">
-	import { SectionCard, Radio, Input, Switch } from '$lib/components/ui';
+	import { SectionCard, Input, Switch } from '$lib/components/ui';
+	import { WarningCircle } from 'phosphor-svelte';
 
 	interface Props {
 		openRuntime?: boolean;
 		openSecurity?: boolean;
-		runtimeMode: 'rootless' | 'rootful';
 		userNamespace: string;
+		userNsError?: string;
 		devices: string;
+		devicesError?: string;
 		isPrivileged: boolean;
 		selinuxLabel: string;
 		apparmorProfile: string;
 		capAdd: string;
+		capAddError?: string;
 		capDrop: string;
+		capDropError?: string;
+		noNewPrivileges: boolean;
+		privilegedCapDropWarning?: string;
+		privilegedUserNsWarning?: string;
 	}
 
 	let {
 		openRuntime = $bindable(true),
 		openSecurity = $bindable(true),
-		runtimeMode = $bindable(),
 		userNamespace = $bindable(),
+		userNsError = '',
 		devices = $bindable(),
+		devicesError = '',
 		isPrivileged = $bindable(),
 		selinuxLabel = $bindable(),
 		apparmorProfile = $bindable(),
 		capAdd = $bindable(),
-		capDrop = $bindable()
+		capAddError = '',
+		capDrop = $bindable(),
+		capDropError = '',
+		noNewPrivileges = $bindable(true),
+		privilegedCapDropWarning = '',
+		privilegedUserNsWarning = ''
 	}: Props = $props();
 </script>
 
 <!-- 1. RUNTIME CONFIGURATION -->
 <SectionCard
 	title="Runtime Execution"
-	description="Rootless execution isolation, user namespace mappings, and host devices."
+	description="User namespace isolation and host device access — applied as real podman run flags."
 	collapsible={true}
 	bind:open={openRuntime}
 >
-	<div class="flex flex-col gap-1.5 pt-2">
-		<span class="text-xs font-medium text-[var(--text-secondary)]">Podman Mode</span>
-		<Radio
-			value={runtimeMode}
-			onValueChange={(val: any) => {
-				if (val === 'rootless' || val === 'rootful') runtimeMode = val;
-			}}
-			appearance="card"
-			options={[
-				{
-					label: 'Rootless (Default)',
-					value: 'rootless',
-					description:
-						'Runs entirely in unprivileged user space without root privileges. Standard for PaaS workloads.'
-				},
-				{
-					label: 'Rootful',
-					value: 'rootful',
-					description:
-						'Runs via system daemon with root permissions. Required for low privileged system ports <1024 or direct raw devices.'
-				}
-			]}
-		/>
-	</div>
-
-	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+	<div class="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2">
 		<div class="flex flex-col gap-1.5">
 			<label for="rt-userns" class="text-xs font-medium text-[var(--text-secondary)]"
 				>User Namespace</label
@@ -71,10 +59,18 @@
 				<Input
 					id="rt-userns"
 					bind:value={userNamespace}
-					placeholder="keep-id (leave blank for rootless default)"
+					placeholder="keep-id (leave blank for podman default)"
 					class="text-xs font-[var(--font-mono)]"
 				/>
 			</div>
+			{#if userNsError}
+				<span class="text-[11px] text-[var(--status-red)]">{userNsError}</span>
+			{:else}
+				<span class="text-[10px] text-[var(--text-tertiary)]">
+					Emits <code>--userns</code>; blank, <code>default</code> and <code>none</code> leave the podman
+					default untouched.
+				</span>
+			{/if}
 		</div>
 
 		<div class="flex flex-col gap-1.5">
@@ -91,6 +87,13 @@
 					class="text-xs font-[var(--font-mono)]"
 				/>
 			</div>
+			{#if devicesError}
+				<span class="text-[11px] text-[var(--status-red)]">{devicesError}</span>
+			{:else}
+				<span class="text-[10px] text-[var(--text-tertiary)]">
+					Emits <code>--device</code> for each host path.
+				</span>
+			{/if}
 		</div>
 	</div>
 </SectionCard>
@@ -113,6 +116,39 @@
 			</span>
 		</div>
 		<Switch bind:checked={isPrivileged} size="sm" />
+	</div>
+
+	{#if privilegedCapDropWarning || privilegedUserNsWarning}
+		<div
+			class="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+		>
+			<WarningCircle size={14} weight="fill" class="mt-0.5 shrink-0 text-kumo-warning" />
+			<div class="flex flex-col gap-0.5">
+				{#if privilegedCapDropWarning}
+					<span class="text-[11px] leading-relaxed text-[var(--text-secondary)]"
+						>{privilegedCapDropWarning}</span
+					>
+				{/if}
+				{#if privilegedUserNsWarning}
+					<span class="text-[11px] leading-relaxed text-[var(--text-secondary)]"
+						>{privilegedUserNsWarning}</span
+					>
+				{/if}
+			</div>
+		</div>
+	{/if}
+
+	<div
+		class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
+	>
+		<div class="flex flex-col gap-0.5">
+			<span class="text-xs font-medium text-[var(--text-primary)]">No New Privileges</span>
+			<span class="text-[11px] text-[var(--text-tertiary)]">
+				Emits <code>--security-opt no-new-privileges</code> so setuid escalation cannot grant additional
+				rights. Enabled by default for hardening.
+			</span>
+		</div>
+		<Switch bind:checked={noNewPrivileges} size="sm" />
 	</div>
 
 	<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -169,6 +205,9 @@
 					class="text-xs font-[var(--font-mono)]"
 				/>
 			</div>
+			{#if capAddError}
+				<span class="text-[11px] text-[var(--status-red)]">{capAddError}</span>
+			{/if}
 		</div>
 
 		<div class="flex flex-col gap-1.5">
@@ -185,6 +224,9 @@
 					class="text-xs font-[var(--font-mono)]"
 				/>
 			</div>
+			{#if capDropError}
+				<span class="text-[11px] text-[var(--status-red)]">{capDropError}</span>
+			{/if}
 		</div>
 	</div>
 </SectionCard>

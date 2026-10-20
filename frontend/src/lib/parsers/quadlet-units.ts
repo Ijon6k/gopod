@@ -212,7 +212,9 @@ export function readContainerCard(content: string): ContainerCardState {
 		return { source: parts[0], target: parts[1], options: parts.slice(2).join(':') };
 	});
 	const podmanArgs = readFirst(content, 'PodmanArgs');
-	const cpuLimit = readArgValue(podmanArgs, 'cpu-quota');
+	// Canonical form is --cpus (podman computes period/quota); older units may
+	// carry --cpu-quota (written by the PR10 card) — read it tolerantly.
+	const cpuLimit = readArgValue(podmanArgs, 'cpus') || readArgValue(podmanArgs, 'cpu-quota');
 	const memoryLimit = readArgValue(podmanArgs, 'memory');
 
 	return {
@@ -258,16 +260,17 @@ function readArgValue(args: string, flag: string): string {
 /**
  * Builds the apply-able edits for a .container unit from its card state.
  * CPU/memory are NOT quadlet keys — they ride the REAL key PodmanArgs with the
- * REAL podman flags --cpu-quota/--memory (podman-systemd.unit has no dedicated
- * key for them).
+ * REAL podman flags --cpus/--memory (podman-systemd.unit has no dedicated
+ * key for them), matching the backend generator + runtime path. Unknown args
+ * (e.g. --memory-swap written by the generator) survive untouched.
  */
 export function containerCardEdits(state: ContainerCardState): UnitEdits {
 	const values: Record<string, string[]> = {};
 
 	if (state.podmanArgs.trim() || state.cpuLimit.trim() || state.memoryLimit.trim()) {
-		const baseArgs = stripArgs(state.podmanArgs, ['cpu-quota', 'memory']);
+		const baseArgs = stripArgs(state.podmanArgs, ['cpus', 'cpu-quota', 'memory']);
 		const extra: string[] = [];
-		if (state.cpuLimit.trim()) extra.push(`--cpu-quota=${state.cpuLimit.trim()}`);
+		if (state.cpuLimit.trim()) extra.push(`--cpus=${state.cpuLimit.trim()}`);
 		if (state.memoryLimit.trim()) extra.push(`--memory=${state.memoryLimit.trim()}`);
 		const merged = [baseArgs.trim(), ...extra].filter(Boolean).join(' ');
 		if (merged.trim()) values['PodmanArgs'] = [merged];
@@ -322,9 +325,11 @@ export function containerCardEdits(state: ContainerCardState): UnitEdits {
 }
 
 function stripArgs(args: string, flags: string[]): string {
+	// Token boundaries (?=space/end) are mandatory: without them stripping
+	// `--memory` corrupts `--memory-swap` into `-swap=…`.
 	let out = args || '';
 	for (const flag of flags) {
-		out = out.replace(new RegExp(`\\s*--${flag}(?:=[^-\\s]+|\\s+[^-\\s]+)?`), '');
+		out = out.replace(new RegExp(`--${flag}(?:=[^-\\s]+|\\s+[^-\\s]+)?(?=\\s|$)`, 'g'), '');
 	}
 	return out;
 }

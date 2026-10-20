@@ -82,16 +82,19 @@ type VolumeMountConfig struct {
 }
 
 // ServiceAdvancedConfig mirrors frontend advanced configuration.
+//
+// Mock fields were removed: `runtime.mode`, `lifecycle.quadletEnabled`, and
+// `lifecycle.systemdUnitName` were persisted but consumed by nothing (the unit
+// name is decided by QuadletUnitName()), and `resources.cpuLimit`/`memoryLimit`
+// duplicated the enforced top-level Service fields. Old rows still decode:
+// encoding/json ignores unknown fields.
 type ServiceAdvancedConfig struct {
 	Runtime struct {
-		Mode          string   `json:"mode"`
 		UserNamespace string   `json:"userNamespace"`
 		Devices       []string `json:"devices"`
 	} `json:"runtime"`
 	Lifecycle struct {
-		QuadletEnabled  bool   `json:"quadletEnabled"`
-		SystemdUnitName string `json:"systemdUnitName"`
-		RestartPolicy   string `json:"restartPolicy"`
+		RestartPolicy string `json:"restartPolicy"`
 	} `json:"lifecycle"`
 	Security struct {
 		Privileged      bool     `json:"privileged"`
@@ -105,10 +108,8 @@ type ServiceAdvancedConfig struct {
 		Volumes []VolumeMountConfig `json:"volumes"`
 	} `json:"storage"`
 	Resources struct {
-		CPULimit    string `json:"cpuLimit"`
-		MemoryLimit string `json:"memoryLimit"`
-		PIDsLimit   int    `json:"pidsLimit"`
-		SwapLimit   string `json:"swapLimit"`
+		PIDsLimit int    `json:"pidsLimit"`
+		SwapLimit string `json:"swapLimit"`
 	} `json:"resources"`
 }
 

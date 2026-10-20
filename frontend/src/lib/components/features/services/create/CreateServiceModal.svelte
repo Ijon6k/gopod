@@ -155,15 +155,13 @@ WantedBy=default.target`;
 				description: desc || 'Dedicated database instance',
 				envVars: [],
 				advanced: {
-					runtime: { mode: 'rootless', userNamespace: '', devices: [] },
+					runtime: { userNamespace: '', devices: [] },
 					lifecycle: {
-						quadletEnabled: false,
-						systemdUnitName: `${sSlug}.service`,
 						restartPolicy: 'always'
 					},
 					security: {
 						privileged: false,
-						selinuxLabel: 'container_file_t',
+						selinuxLabel: '',
 						capAdd: [],
 						capDrop: [],
 						noNewPrivileges: true
@@ -171,7 +169,7 @@ WantedBy=default.target`;
 					storage: {
 						volumes: [{ source: `${sSlug}-data`, target: '/data', options: 'Z' }]
 					},
-					resources: { cpuLimit: '0', memoryLimit: '0', pidsLimit: 2048, swapLimit: '0' }
+					resources: { pidsLimit: 0, swapLimit: '0' }
 				},
 				deployments: [],
 				createdAt: new Date().toISOString()
@@ -201,10 +199,7 @@ WantedBy=default.target`;
 					realType === 'compose'
 						? `version: "3.8"\nservices:\n  ${sSlug || 'app'}:\n    image: nginx:alpine\n    ports:\n      - "8080:80"\n    restart: always`
 						: `version: "3.8"\nservices:\n  ${sSlug || 'pod'}:\n    restart: always\n`,
-				k8sYaml:
-					realType === 'pod'
-						? serializePodK8sYaml(sSlug || 'pod', [])
-						: '',
+				k8sYaml: realType === 'pod' ? serializePodK8sYaml(sSlug || 'pod', []) : '',
 				workloads:
 					realType === 'pod'
 						? []
@@ -304,9 +299,14 @@ WantedBy=default.target`;
 						{#if stackSubtype === 'pod'}
 							<Banner variant="default" size="sm" class="mt-2">
 								<div class="text-xs">
-									<span class="font-semibold text-[var(--color-kumo-default)]">Shared localhost namespace:</span>
+									<span class="font-semibold text-[var(--color-kumo-default)]"
+										>Shared localhost namespace:</span
+									>
 									<span class="text-[var(--color-kumo-subtle)]">
-										Containers in a Pod share the network namespace and communicate on <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">localhost:&lt;port&gt;</code>. Additional containers can be attached in the Service Detail Studio.
+										Containers in a Pod share the network namespace and communicate on <code
+											class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]"
+											>localhost:&lt;port&gt;</code
+										>. Additional containers can be attached in the Service Detail Studio.
 									</span>
 								</div>
 							</Banner>
@@ -365,9 +365,14 @@ WantedBy=default.target`;
 				{:else if selectedType === 'quadlet'}
 					<Banner variant="default" size="sm">
 						<div class="text-xs">
-							<span class="font-semibold text-[var(--color-kumo-default)]">Systemd Quadlet specification:</span>
+							<span class="font-semibold text-[var(--color-kumo-default)]"
+								>Systemd Quadlet specification:</span
+							>
 							<span class="text-[var(--color-kumo-subtle)]">
-								Native systemd unit files are managed in <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">~/.config/containers/systemd</code>. Storage volumes and restart policies are configured in Service Detail.
+								Native systemd unit files are managed in <code
+									class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]"
+									>~/.config/containers/systemd</code
+								>. Storage volumes and restart policies are configured in Service Detail.
 							</span>
 						</div>
 					</Banner>
@@ -408,10 +413,7 @@ WantedBy=default.target`;
 						>Workload Architecture & Manifest</span
 					>
 					<div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
-						{#each [
-							{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service on bridge network' },
-							{ id: 'pod', label: 'Podman Pod', desc: 'Kubernetes-compatible Pod sharing localhost network namespace' }
-						] as s (s.id)}
+						{#each [{ id: 'compose', label: 'Compose Stack', desc: 'Standard compose.yaml multi-service on bridge network' }, { id: 'pod', label: 'Podman Pod', desc: 'Kubernetes-compatible Pod sharing localhost network namespace' }] as s (s.id)}
 							<button
 								type="button"
 								onclick={() => (stackSubtype = s.id as any)}
@@ -430,9 +432,17 @@ WantedBy=default.target`;
 					{#if stackSubtype === 'pod'}
 						<Banner variant="default" size="sm" class="mt-2">
 							<div class="text-xs">
-								<span class="font-semibold text-[var(--color-kumo-default)]">Shared localhost namespace & Kubernetes parity:</span>
+								<span class="font-semibold text-[var(--color-kumo-default)]"
+									>Shared localhost namespace & Kubernetes parity:</span
+								>
 								<span class="text-[var(--color-kumo-subtle)]">
-									Containers in a Pod share the network namespace and communicate on <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">localhost:&lt;port&gt;</code>. Manage this workload visually in the Studio or declaratively using Kubernetes Manifest (<code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">apiVersion: v1, kind: Pod</code>).
+									Containers in a Pod share the network namespace and communicate on <code
+										class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]"
+										>localhost:&lt;port&gt;</code
+									>. Manage this workload visually in the Studio or declaratively using Kubernetes
+									Manifest (<code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]"
+										>apiVersion: v1, kind: Pod</code
+									>).
 								</span>
 							</div>
 						</Banner>
@@ -478,9 +488,14 @@ WantedBy=default.target`;
 			{:else if selectedType === 'quadlet'}
 				<Banner variant="default" size="sm">
 					<div class="text-xs">
-						<span class="font-semibold text-[var(--color-kumo-default)]">Systemd Quadlet specification:</span>
+						<span class="font-semibold text-[var(--color-kumo-default)]"
+							>Systemd Quadlet specification:</span
+						>
 						<span class="text-[var(--color-kumo-subtle)]">
-							Native systemd unit files are managed in <code class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]">~/.config/containers/systemd</code>. Storage volumes and restart policies are configured in Service Detail.
+							Native systemd unit files are managed in <code
+								class="rounded bg-black/10 px-1 py-0.5 font-mono text-[0.9em]"
+								>~/.config/containers/systemd</code
+							>. Storage volumes and restart policies are configured in Service Detail.
 						</span>
 					</div>
 				</Banner>

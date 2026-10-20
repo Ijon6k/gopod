@@ -86,6 +86,9 @@ func sanitizedPodmanRunArgs(opts podman.RunContainerOptions, secretKeys map[stri
 	if opts.PidsLimit > 0 {
 		args = append(args, fmt.Sprintf("--pids-limit=%d", opts.PidsLimit))
 	}
+	if opts.MemorySwap != "" {
+		args = append(args, fmt.Sprintf("--memory-swap=%s", opts.MemorySwap))
+	}
 	if opts.UserNS != "" && opts.UserNS != "default" && opts.UserNS != "none" {
 		args = append(args, "--userns", opts.UserNS)
 	}

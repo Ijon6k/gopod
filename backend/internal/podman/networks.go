@@ -111,3 +111,38 @@ func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
 	}
 	return nil
 }
+
+// RemoveNetwork removes a user-defined network. Podman refuses networks with
+// attached containers, so the default call surface gets the engine's own
+// in-use refusal with its real reason.
+func (c *Client) RemoveNetwork(ctx context.Context, name string) error {
+	if c.httpClient != nil {
+		url := fmt.Sprintf("http://d/%s/libpod/networks/%s", c.libpodVersion(), name)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		if err != nil {
+			return err
+		}
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
+		if err != nil {
+			return fmt.Errorf("podman remove network failed: %w", err)
+		}
+		defer cancel()
+		defer resp.Body.Close()
+		// 404 is expected when the snapshot the page holds is already stale
+		// (the network was removed elsewhere); removal stays idempotent.
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("podman remove network failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "network", "rm", name)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		if strings.Contains(string(out), "no such network") {
+			return nil
+		}
+		return fmt.Errorf("failed to remove podman network %s: %s (%w)", name, strings.TrimSpace(string(out)), err)
+	}
+	return nil
+}

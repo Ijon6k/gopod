@@ -392,15 +392,31 @@ func TestServiceLifecyclePodmanE2E(t *testing.T) {
 		t.Fatalf("create service: %d %s", code, trunc(data))
 	}
 	var svc struct {
-		ID           string `json:"id"`
-		WebhookToken string `json:"webhookToken"`
+		ID           string
+		WebhookToken string
 	}
 	if err := json.Unmarshal(data, &svc); err != nil || strings.TrimSpace(svc.ID) == "" {
 		t.Fatalf("service payload incomplete: %v / %s", err, trunc(data))
 	}
-	if !strings.HasPrefix(svc.WebhookToken, "wh_") {
-		t.Errorf("service should have a webhook token assigned at creation, got %q", svc.WebhookToken)
+	// The webhook token is a secret: creation responses never carry it (the
+	// listing edge redacts since the API masking work). It is revealed on
+	// demand through its dedicated endpoint.
+	code, data = client.get(t, "/api/services/"+svc.ID+"/webhook")
+	if code != http.StatusOK {
+		t.Fatalf("webhook reveal: %d %s", code, trunc(data))
 	}
+	var revealed struct {
+		WebhookToken string `json:"webhookToken"`
+		HasWebhook   bool   `json:"hasWebhook"`
+	}
+	if err := json.Unmarshal(data, &revealed); err != nil {
+		t.Fatalf("webhook reveal JSON: %v / %s", err, trunc(data))
+	}
+	if !revealed.HasWebhook || !strings.HasPrefix(revealed.WebhookToken, "wh_") {
+		t.Fatalf("service should expose a rotatable webhook token, got has=%v token=%q",
+			revealed.HasWebhook, revealed.WebhookToken)
+	}
+	svc.WebhookToken = revealed.WebhookToken
 	// Best-effort cleanup: delete the service (which tears down its containers)
 	// even when an assertion fails midway through the suite.
 	t.Cleanup(func() {

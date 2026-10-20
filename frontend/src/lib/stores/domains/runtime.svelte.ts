@@ -50,6 +50,56 @@ export class RuntimeDomainStore {
 		this.containers = this.containers.filter((c) => c.id !== id);
 	}
 
+	async startPod(id: string) {
+		const found = this.pods.find((p) => p.id === id);
+		const previous = found?.status;
+		if (found) found.status = 'running';
+		try {
+			await api.runtime.pods.start(id);
+		} catch (err) {
+			if (found && previous !== undefined) found.status = previous as any;
+			throw err;
+		}
+	}
+
+	async stopPod(id: string) {
+		const found = this.pods.find((p) => p.id === id);
+		const previous = found?.status;
+		if (found) found.status = 'stopped';
+		try {
+			await api.runtime.pods.stop(id);
+		} catch (err) {
+			if (found && previous !== undefined) found.status = previous as any;
+			throw err;
+		}
+	}
+
+	async deletePod(id: string, force = false) {
+		// The row leaves the list only after the API confirms the deletion.
+		await api.runtime.pods.delete(id, force);
+		this.pods = this.pods.filter((p) => p.id !== id);
+	}
+
+	async removeImage(id: string) {
+		// Podman refuses images referenced by containers; that refusal surfaces
+		// as an error here and the row stays until the request succeeds.
+		await api.runtime.images.remove(id);
+		this.images = this.images.filter((img) => img.id !== id);
+	}
+
+	async removeVolume(name: string) {
+		// Podman refuses volumes attached to containers; the refusal keeps the row.
+		await api.runtime.volumes.remove(name);
+		this.volumes = this.volumes.filter((v) => v.name !== name);
+	}
+
+	async removeNetwork(name: string) {
+		// The backend refuses the managed ingress network and Podman refuses
+		// networks with attached containers; both keep the row in place.
+		await api.runtime.networks.remove(name);
+		this.networks = this.networks.filter((n) => n.name !== name);
+	}
+
 	async pruneImages(all = false) {
 		await api.runtime.images.prune(all);
 	}
@@ -123,7 +173,8 @@ export class RuntimeDomainStore {
 					containers: p.containers || [],
 					status: p.status?.toLowerCase() === 'running' ? 'running' : 'stopped',
 					network: p.network || 'bridge',
-					createdAt: p.created || 'Recent'
+					createdAt: p.created || 'Recent',
+					labels: p.labels || {}
 				}));
 			}
 
@@ -133,7 +184,8 @@ export class RuntimeDomainStore {
 					name: img.name || img.repository || 'image',
 					tag: img.tag || 'latest',
 					size: img.size || '—',
-					usedBy: 'Active',
+					// The payload carries no in-use data; claim nothing about usage.
+					usedBy: '—',
 					createdAt: img.createdAt || 'Recent'
 				}));
 			}
@@ -148,7 +200,8 @@ export class RuntimeDomainStore {
 					serviceName: v.driver || 'local',
 					mount: v.mount || v.mountPoint || '—',
 					size: v.size || 'Active',
-					status: 'mounted'
+					status: 'mounted',
+					labels: v.labels || {}
 				}));
 			}
 

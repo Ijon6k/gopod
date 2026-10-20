@@ -51,6 +51,7 @@ export { default as DataTable } from './DataTable.svelte';
 export { default as TablePagination } from './TablePagination.svelte';
 export { default as Modal } from './Modal.svelte';
 export { default as ConfirmDialog } from './ConfirmDialog.svelte';
+export { default as RowActionsMenu } from './RowActionsMenu.svelte';
 export { default as SearchInput } from './SearchInput.svelte';
 export { default as MetricCard } from './MetricCard.svelte';
 export { default as ResourceBar } from './ResourceBar.svelte';

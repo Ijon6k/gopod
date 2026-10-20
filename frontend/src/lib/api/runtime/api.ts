@@ -121,6 +121,13 @@ export const runtimeApi = {
 			return res.data;
 		},
 
+		async remove(id: string): Promise<{ message: string; id: string }> {
+			const res = await apiClient.delete<{ message: string; id: string }>(`/images/${id}`, {
+				params: { force: false }
+			});
+			return res.data;
+		},
+
 		async prune(all = false): Promise<{ message: string }> {
 			const res = await apiClient.post<{ message: string }>('/images/prune', null, {
 				params: { all }
@@ -135,6 +142,13 @@ export const runtimeApi = {
 			return res.data;
 		},
 
+		async remove(name: string): Promise<{ message: string; name: string }> {
+			const res = await apiClient.delete<{ message: string; name: string }>(
+				`/volumes/${encodeURIComponent(name)}`
+			);
+			return res.data;
+		},
+
 		async prune(): Promise<{ message: string }> {
 			const res = await apiClient.post<{ message: string }>('/volumes/prune');
 			return res.data;
@@ -144,6 +158,13 @@ export const runtimeApi = {
 	networks: {
 		async list(): Promise<Network[]> {
 			const res = await apiClient.get<Network[]>('/networks');
+			return res.data;
+		},
+
+		async remove(name: string): Promise<{ message: string; name: string }> {
+			const res = await apiClient.delete<{ message: string; name: string }>(
+				`/networks/${encodeURIComponent(name)}`
+			);
 			return res.data;
 		}
 	},

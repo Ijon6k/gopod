@@ -58,9 +58,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/pods/{id}", h.middleware.RequireAuth(h.handlePodDelete))
 	mux.HandleFunc("GET /api/images", h.middleware.RequireAuth(h.handleListImages))
 	mux.HandleFunc("POST /api/images/prune", h.middleware.RequireAuth(h.handlePruneImages))
+	mux.HandleFunc("DELETE /api/images/{id}", h.middleware.RequireAuth(h.handleImageRemove))
 	mux.HandleFunc("GET /api/volumes", h.middleware.RequireAuth(h.handleListVolumes))
 	mux.HandleFunc("POST /api/volumes/prune", h.middleware.RequireAuth(h.handlePruneVolumes))
+	mux.HandleFunc("DELETE /api/volumes/{name}", h.middleware.RequireAuth(h.handleVolumeDelete))
 	mux.HandleFunc("GET /api/networks", h.middleware.RequireAuth(h.handleListNetworks))
+	mux.HandleFunc("DELETE /api/networks/{name}", h.middleware.RequireAuth(h.handleNetworkRemove))
 	mux.HandleFunc("POST /api/system/prune", h.middleware.RequireAuth(h.handlePruneSystem))
 	mux.HandleFunc("GET /api/system/df", h.middleware.RequireAuth(h.handleGetDiskUsage))
 
@@ -292,6 +295,38 @@ func (h *Handler) handleListNetworks(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, networks)
 }
 
+func (h *Handler) handleImageRemove(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	force := r.URL.Query().Get("force") == "true"
+	if err := h.service.RemoveImage(r.Context(), id, force); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Image removed", "id": id})
+}
+
+func (h *Handler) handleVolumeDelete(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := h.service.DeleteVolume(r.Context(), name, false); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Volume removed", "name": name})
+}
+
+func (h *Handler) handleNetworkRemove(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if err := h.service.RemoveNetwork(r.Context(), name); err != nil {
+		if errors.Is(err, ErrManagedNetwork) {
+			httputil.WriteError(w, http.StatusConflict, err.Error())
+			return
+		}
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Network removed", "name": name})
+}
+
 func (h *Handler) handlePruneSystem(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.PruneSystem(r.Context()); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -377,4 +412,3 @@ func (h *Handler) handleQuadletDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Quadlet unit removed successfully"})
 }
-

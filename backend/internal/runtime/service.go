@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"os/exec"
 	"sync"
 	"time"
@@ -190,6 +191,32 @@ func (s *Service) GetNetworks(ctx context.Context) ([]podman.NetworkItem, error)
 	return s.client.GetNetworks(ctx)
 }
 
+// ErrManagedNetwork reports an attempt to remove the platform network through
+// the Runtime page; live ingress routing depends on it.
+var ErrManagedNetwork = errors.New("gopod-net is managed by gopod (ingress routing depends on it) and cannot be removed")
+
+// RemoveImage deletes an image from local storage. Without force, Podman
+// refuses images referenced by containers with its own reason.
+func (s *Service) RemoveImage(ctx context.Context, id string, force bool) error {
+	return s.client.RemoveImage(ctx, id, force)
+}
+
+// DeleteVolume removes a named volume. Without force, Podman refuses volumes
+// attached to containers with its own reason.
+func (s *Service) DeleteVolume(ctx context.Context, name string, force bool) error {
+	return s.client.DeleteVolume(ctx, name, force)
+}
+
+// RemoveNetwork deletes a user-defined network. The platform-managed network
+// is refused here so the Runtime page cannot break live routing. Attached
+// containers make Podman refuse the removal with its own reason.
+func (s *Service) RemoveNetwork(ctx context.Context, name string) error {
+	if name == "gopod-net" {
+		return ErrManagedNetwork
+	}
+	return s.client.RemoveNetwork(ctx, name)
+}
+
 // PruneSystem cleans up stopped containers, dangling images, and networks, and resets failed systemd units.
 func (s *Service) PruneSystem(ctx context.Context) error {
 	err := s.client.PruneSystem(ctx)
@@ -203,4 +230,3 @@ func (s *Service) PruneSystem(ctx context.Context) error {
 func (s *Service) GetDiskUsage(ctx context.Context) ([]podman.SystemDiskUsage, error) {
 	return s.client.GetDiskUsage(ctx)
 }
-

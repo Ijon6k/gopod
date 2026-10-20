@@ -283,6 +283,24 @@ export class DataStore {
 	deleteContainer(id: string, force = false) {
 		return this.runtimeStore.deleteContainer(id, force);
 	}
+	startPod(id: string) {
+		return this.runtimeStore.startPod(id);
+	}
+	stopPod(id: string) {
+		return this.runtimeStore.stopPod(id);
+	}
+	deletePod(id: string, force = false) {
+		return this.runtimeStore.deletePod(id, force);
+	}
+	removeImage(id: string) {
+		return this.runtimeStore.removeImage(id);
+	}
+	removeVolume(name: string) {
+		return this.runtimeStore.removeVolume(name);
+	}
+	removeNetwork(name: string) {
+		return this.runtimeStore.removeNetwork(name);
+	}
 	pruneImages(all = false) {
 		return this.runtimeStore.pruneImages(all);
 	}

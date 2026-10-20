@@ -223,3 +223,38 @@ func (c *Client) PruneImages(ctx context.Context, all bool) error {
 	}
 	return exec.CommandContext(ctx, "podman", args...).Run()
 }
+
+// RemoveImage removes an image from local storage. Podman refuses images
+// referenced by containers unless force is set, so the default call surface
+// gets the engine's own in-use refusal with its real reason.
+func (c *Client) RemoveImage(ctx context.Context, id string, force bool) error {
+	if c.httpClient != nil {
+		url := fmt.Sprintf("http://d/%s/libpod/images/%s?force=%t", c.libpodVersion(), id, force)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		if err != nil {
+			return err
+		}
+		resp, cancel, err := c.do(ctx, writeTimeout, req)
+		if err != nil {
+			return fmt.Errorf("podman remove image failed: %w", err)
+		}
+		defer cancel()
+		defer resp.Body.Close()
+		// 404 is expected when the snapshot the page holds is already stale
+		// (the image was removed elsewhere); removal stays idempotent.
+		if resp.StatusCode == http.StatusOK || resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+			return nil
+		}
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("podman remove image failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+	}
+
+	args := []string{"rmi"}
+	if force {
+		args = append(args, "-f")
+	}
+	args = append(args, id)
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
+}

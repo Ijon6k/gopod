@@ -1,17 +1,6 @@
 import type { Server, CaddyAccessLog, TimeSeriesPoint } from '$lib/types';
 import { api } from '$lib/api';
-
-function initSeries(baseVal: number, count = 20): TimeSeriesPoint[] {
-	const now = Date.now();
-	return Array.from({ length: count }, (_, i) => {
-		const t = new Date(now - (count - 1 - i) * 2000);
-		return {
-			time: t.toISOString(),
-			label: `${t.getHours().toString().padStart(2, '0')}:${t.getMinutes().toString().padStart(2, '0')}:${t.getSeconds().toString().padStart(2, '0')}`,
-			value: baseVal
-		};
-	});
-}
+import { computeNetRate, type NetSample } from '$lib/utils/net-rate';
 
 export class TelemetryDomainStore {
 	server = $state<Server>({
@@ -41,11 +30,16 @@ export class TelemetryDomainStore {
 	isStreaming = $state<boolean>(false);
 	private stopStream: (() => void) | null = null;
 
-	// Live reactive streaming telemetry buffers
-	cpuHistory = $state<TimeSeriesPoint[]>(initSeries(5));
-	memoryHistory = $state<TimeSeriesPoint[]>(initSeries(2));
-	storageHistory = $state<TimeSeriesPoint[]>(initSeries(20));
-	networkHistory = $state<TimeSeriesPoint[]>(initSeries(10));
+	// Live reactive streaming telemetry buffers, session-scoped and empty until
+	// real samples arrive
+	cpuHistory = $state<TimeSeriesPoint[]>([]);
+	memoryHistory = $state<TimeSeriesPoint[]>([]);
+	storageHistory = $state<TimeSeriesPoint[]>([]);
+	networkHistory = $state<TimeSeriesPoint[]>([]);
+
+	// Most recent measured aggregate throughput across all containers, bytes per second
+	lastNetworkRateBps = $state(0);
+	private prevNetSample: NetSample | null = null;
 
 	get monitoringData(): Record<string, TimeSeriesPoint[]> {
 		return {
@@ -75,19 +69,29 @@ export class TelemetryDomainStore {
 						this.applySystemUpdate(data.system);
 					}
 					if (data.stats && Array.isArray(data.stats)) {
-						let netTotal = 0;
+						// Podman network counters accumulate over the container lifetime;
+						// ingest time derives a per-second throughput so charts plot
+						// activity instead of an ever-climbing uptime total.
+						let netTotalBytes = 0;
 						for (const s of data.stats) {
-							if (s.Network) {
-								for (const iface in s.Network) {
-									netTotal += (s.Network[iface].RxBytes || 0) + (s.Network[iface].TxBytes || 0);
-								}
-							}
+							netTotalBytes += (s.netRx || 0) + (s.netTx || 0);
 						}
-						const netMB = parseFloat((netTotal / (1024 * 1024)).toFixed(2));
 						const now = new Date();
-						const timeStr = now.toISOString();
-						const labelStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
-						this.recordPoint(this.networkHistory, netMB, timeStr, labelStr);
+						const nowMs = now.getTime();
+						const rate = computeNetRate(this.prevNetSample, {
+							totalBytes: netTotalBytes,
+							atMs: nowMs
+						});
+						this.prevNetSample = { totalBytes: netTotalBytes, atMs: nowMs };
+						if (rate !== null) {
+							this.lastNetworkRateBps = rate;
+							this.recordPoint(
+								this.networkHistory,
+								rate,
+								now.toISOString(),
+								`${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+							);
+						}
 
 						if (onStats) {
 							onStats(data.stats);
@@ -109,6 +113,9 @@ export class TelemetryDomainStore {
 			this.stopStream();
 			this.stopStream = null;
 			this.isStreaming = false;
+			// Re-baseline the differ so a later restart derives rates from the next
+			// fresh sample pair instead of a long stale interval
+			this.prevNetSample = null;
 		}
 	}
 

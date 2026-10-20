@@ -4,7 +4,6 @@
 	import { formatMemory } from '$lib/utils/format';
 
 	interface Props {
-		timeRange: string;
 		cpuHistory: TimeSeriesPoint[];
 		currentCpu: number;
 		memoryHistory: TimeSeriesPoint[];
@@ -19,7 +18,6 @@
 	}
 
 	let {
-		timeRange,
 		cpuHistory,
 		currentCpu,
 		memoryHistory,
@@ -42,7 +40,6 @@
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-semibold text-[var(--text-primary)]">CPU Utilization</span>
-				<span class="font-mono text-[11px] text-[var(--text-tertiary)]">({timeRange})</span>
 				<span
 					class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--accent)]"
 				>
@@ -58,7 +55,7 @@
 				>
 				<span>•</span>
 				<span
-					>Peak: <strong class="text-[var(--text-secondary)]"
+					>Max (session): <strong class="text-[var(--text-secondary)]"
 						>{Math.max(...cpuHistory.map((p) => p.value), currentCpu).toFixed(1)}%</strong
 					></span
 				>
@@ -92,7 +89,6 @@
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-semibold text-[var(--text-primary)]">Memory Allocation</span>
-				<span class="font-mono text-[11px] text-[var(--text-tertiary)]">({timeRange})</span>
 				<span
 					class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--status-green)]"
 				>
@@ -108,7 +104,7 @@
 				>
 				<span>•</span>
 				<span
-					>Peak: <strong class="text-[var(--text-secondary)]"
+					>Max (session): <strong class="text-[var(--text-secondary)]"
 						>{formatMemory(Math.max(...memoryHistory.map((p) => p.value), currentMem))}</strong
 					></span
 				>
@@ -121,8 +117,8 @@
 				height={350}
 				maxValue={memLimit}
 				showGrid={true}
-				strokeColor="#4C9A72"
-				fillColor="#4C9A72"
+				strokeColor="var(--status-green)"
+				fillColor="var(--status-green)"
 			/>
 			<div
 				class="pointer-events-none absolute top-1 right-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
@@ -148,8 +144,9 @@
 	>
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
-				<span class="text-xs font-semibold text-[var(--text-primary)]">Network Traffic</span>
-				<span class="font-mono text-[11px] text-[var(--text-tertiary)]">({timeRange})</span>
+				<span class="text-xs font-semibold text-[var(--text-primary)]"
+					>Network Throughput (B/s)</span
+				>
 			</div>
 			<div
 				class="flex flex-wrap items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]"
@@ -159,7 +156,12 @@
 				<span>Tx: <strong class="text-[var(--text-secondary)]">{currentNetTx}</strong></span>
 			</div>
 		</div>
-		<AreaChart data={networkHistory} height={340} strokeColor="#7680B5" fillColor="#7680B5" />
+		<AreaChart
+			data={networkHistory}
+			height={340}
+			strokeColor="var(--status-blue)"
+			fillColor="var(--status-blue)"
+		/>
 	</div>
 
 	<!-- 4. Storage / Host I/O Chart (2-Column Grid, 2x Height) -->
@@ -169,7 +171,6 @@
 		<div class="flex flex-wrap items-center justify-between gap-2">
 			<div class="flex items-center gap-2">
 				<span class="text-xs font-semibold text-[var(--text-primary)]">System Host Storage</span>
-				<span class="font-mono text-[11px] text-[var(--text-tertiary)]">({timeRange})</span>
 			</div>
 			<div
 				class="flex flex-wrap items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]"
@@ -184,8 +185,8 @@
 			height={340}
 			maxValue={storageTotal}
 			showGrid={true}
-			strokeColor="#B8893B"
-			fillColor="#B8893B"
+			strokeColor="var(--status-amber)"
+			fillColor="var(--status-amber)"
 		/>
 	</div>
 </div>

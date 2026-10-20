@@ -170,6 +170,10 @@ export class DataStore {
 		return this.telemetryStore.isStreaming;
 	}
 
+	get lastNetworkRateBps(): number {
+		return this.telemetryStore.lastNetworkRateBps;
+	}
+
 	get monitoringData(): Record<string, TimeSeriesPoint[]> {
 		return this.telemetryStore.monitoringData;
 	}

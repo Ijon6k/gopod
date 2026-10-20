@@ -5,6 +5,7 @@
 	import { PageHeader, AreaChart, Select } from '$lib/components/ui';
 	import { LayerCard } from 'kumo-svelte';
 	import { monitoringData, dataStore } from '$lib/data';
+	import { formatRateBps } from '$lib/utils/format';
 	import {
 		ServerOverviewBar,
 		ProcessTaskManager,
@@ -20,6 +21,15 @@
 	let refreshRate = $state<'3s' | '5s' | '15s' | 'paused'>('3s');
 	let lastUpdatedSec = $state(0);
 	let terminalTarget = $state<string | null>(null);
+
+	// Session-max values cover exactly the sampled buffer the charts draw, so the
+	// summary chips agree with what is visible
+	let maxCpuSession = $derived(
+		Math.max(server.cpuUsage, ...(monitoringData.cpu ?? []).map((p) => p.value))
+	);
+	let maxMemorySession = $derived(
+		Math.max(server.memoryUsed, ...(monitoringData.memory ?? []).map((p) => p.value))
+	);
 
 	$effect(() => {
 		if (urlView === 'charts') {
@@ -105,7 +115,7 @@
 	<!-- 1. Host Hardware Overview Bar -->
 	<ServerOverviewBar activeTab={activeView} onSelectTab={(tab) => setView(tab)} />
 
-	<!-- 2. Subnav: Workloads vs System Daemons vs Storage & Prune vs Historical Telemetry -->
+	<!-- 2. Subnav: Workloads vs System Daemons vs Storage & Prune vs Telemetry -->
 	<div
 		class="flex flex-col justify-between gap-3 border-b border-[var(--border)] pb-0 sm:flex-row sm:items-center"
 	>
@@ -155,7 +165,7 @@
 					: 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
 			>
 				<ChartLineUp size={14} />
-				<span>Historical Telemetry</span>
+				<span>Telemetry</span>
 			</button>
 		</div>
 
@@ -218,7 +228,7 @@
 	{:else if activeView === 'storage'}
 		<PodmanStorageManager />
 	{:else}
-		<!-- Historical Time Series Area Charts with Scannable Summary Markers -->
+		<!-- Live session time-series area charts with scannable summary markers -->
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<!-- 1. CPU Utilization -->
 			<LayerCard class="flex flex-col gap-3 p-5">
@@ -236,12 +246,12 @@
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span
-							>Peak: <strong class="font-medium text-[var(--text-secondary)]"
-								>{(server.cpuUsage * 1.5).toFixed(1)}%</strong
+							>Max (session): <strong class="font-medium text-[var(--text-secondary)]"
+								>{maxCpuSession.toFixed(1)}%</strong
 							></span
 						>
 						<span>•</span>
-						<span>24h window</span>
+						<span>Session buffer</span>
 					</div>
 				</div>
 				<AreaChart
@@ -270,12 +280,12 @@
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span
-							>Peak: <strong class="font-medium text-[var(--text-secondary)]"
-								>{(server.memoryUsed * 1.15).toFixed(1)} GB</strong
+							>Max (session): <strong class="font-medium text-[var(--text-secondary)]"
+								>{maxMemorySession.toFixed(1)} GB</strong
 							></span
 						>
 						<span>•</span>
-						<span>24h window</span>
+						<span>Session buffer</span>
 					</div>
 				</div>
 				<AreaChart
@@ -286,13 +296,11 @@
 				/>
 			</LayerCard>
 
-			<!-- 3. Storage I/O -->
+			<!-- 3. Storage usage -->
 			<LayerCard class="flex flex-col gap-3 p-5">
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-medium text-[var(--text-tertiary)]"
-							>Storage I/O operations</span
-						>
+						<span class="text-xs font-medium text-[var(--text-tertiary)]">Storage usage</span>
 						<strong
 							class="mt-0.5 text-lg font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 						>
@@ -303,9 +311,7 @@
 						</strong>
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
-						<span>NVMe ext4</span>
-						<span>•</span>
-						<span>24h window</span>
+						<span>Session buffer</span>
 					</div>
 				</div>
 				<AreaChart
@@ -316,23 +322,22 @@
 				/>
 			</LayerCard>
 
-			<!-- 4. Network Traffic -->
+			<!-- 4. Network throughput -->
 			<LayerCard class="flex flex-col gap-3 p-5">
 				<div class="flex items-baseline justify-between">
 					<div class="flex flex-col">
-						<span class="text-xs font-medium text-[var(--text-tertiary)]">Network traffic</span>
+						<span class="text-xs font-medium text-[var(--text-tertiary)]">Network throughput</span>
 						<strong
 							class="mt-0.5 text-lg font-[var(--font-mono)] font-semibold text-[var(--text-primary)] tabular-nums"
 						>
-							Inbound / Outbound <span class="text-xs font-normal text-[var(--text-tertiary)]"
-								>(Aggregate)</span
+							{formatRateBps(dataStore.lastNetworkRateBps)}
+							<span class="text-xs font-normal text-[var(--text-tertiary)]"
+								>(all containers, aggregate)</span
 							>
 						</strong>
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
-						<span>eth0</span>
-						<span>•</span>
-						<span>24h window</span>
+						<span>Session buffer</span>
 					</div>
 				</div>
 				<AreaChart

@@ -103,6 +103,15 @@ export function formatBytes(bytes: number, decimals = 1): string {
 }
 
 /**
+ * Format a network rate in bytes per second as a human-readable string
+ * (e.g., 300 B/s → "300 B/s", 1536 → "1.5 KB/s").
+ */
+export function formatRateBps(bps: number): string {
+	if (!+bps || bps <= 0) return '0 B/s';
+	return `${formatBytes(bps)}/s`;
+}
+
+/**
  * Compute semantic background color token for CPU consumption.
  */
 export function getCpuColor(cpu: number): string {

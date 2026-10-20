@@ -7,6 +7,7 @@
 	import { api } from '$lib/api';
 	import { MicroWorkloadTable } from '$lib/components/features/monitoring';
 	import { formatMemory, parseNetToMb } from '$lib/utils/format';
+	import { computeNetRate, type NetSample } from '$lib/utils/net-rate';
 	import TelemetryMetricCards from '../monitoring/TelemetryMetricCards.svelte';
 	import TelemetryChartsGrid from '../monitoring/TelemetryChartsGrid.svelte';
 	import { ArrowClockwise, Warning, CheckCircle } from 'phosphor-svelte';
@@ -50,7 +51,6 @@
 		return opts;
 	});
 
-	let timeRange = $state<'1h' | '6h' | '24h' | '7d'>('24h');
 	let isRefreshing = $state(false);
 	let isRestartingContainer = $state(false);
 	let refreshRate = $state<'3s' | '5s' | '15s' | 'paused'>('3s');
@@ -153,22 +153,11 @@
 			currentStatus === 'stopped'
 	);
 
-	// Dynamic Rolling Telemetry Buffers for Live Container Charts
-	function initSeries(baseVal: number, count = 20): TimeSeriesPoint[] {
-		const now = Date.now();
-		return Array.from({ length: count }, (_, i) => {
-			const t = new Date(now - (count - 1 - i) * 2000);
-			return {
-				time: t.toISOString(),
-				label: `${t.getHours().toString().padStart(2, '0')}:${t.getMinutes().toString().padStart(2, '0')}:${t.getSeconds().toString().padStart(2, '0')}`,
-				value: Math.max(0, parseFloat(baseVal.toFixed(2)))
-			};
-		});
-	}
-
-	let cpuHistory = $state<TimeSeriesPoint[]>(initSeries(0));
-	let memoryHistory = $state<TimeSeriesPoint[]>(initSeries(0));
-	let networkHistory = $state<TimeSeriesPoint[]>(initSeries(0));
+	// Dynamic Rolling Telemetry Buffers for Live Container Charts, session-scoped
+	// and empty until real samples arrive
+	let cpuHistory = $state<TimeSeriesPoint[]>([]);
+	let memoryHistory = $state<TimeSeriesPoint[]>([]);
+	let networkHistory = $state<TimeSeriesPoint[]>([]);
 
 	function recordPoint(series: TimeSeriesPoint[], val: number, timeStr: string, labelStr: string) {
 		series.push({ time: timeStr, label: labelStr, value: Math.max(0, parseFloat(val.toFixed(2))) });
@@ -177,14 +166,22 @@
 		}
 	}
 
+	const BYTES_PER_MB = 1024 * 1024;
+
+	// Container net counters are cumulative per-lifetime byte totals; rates must be
+	// derived between consecutive samples. The tab samples display strings
+	// ("1.2 GB"), parsed per container so aggregates count every member.
+	function containerNetBytes(c: Container): number {
+		return (parseNetToMb(c.netRx || '') + parseNetToMb(c.netTx || '')) * BYTES_PER_MB;
+	}
+
+	let prevNetSample: NetSample | null = null;
+
 	async function tickStats() {
 		await dataStore.fetchLiveStats();
 		lastUpdatedSec = 0;
 		const cpu = currentCpu;
 		const mem = currentMem;
-		const netRxMb = parseNetToMb(currentNetRx);
-		const netTxMb = parseNetToMb(currentNetTx);
-		const netTotal = parseFloat((netRxMb + netTxMb).toFixed(2));
 
 		const now = new Date();
 		const timeStr = now.toISOString();
@@ -192,7 +189,18 @@
 
 		recordPoint(cpuHistory, cpu, timeStr, labelStr);
 		recordPoint(memoryHistory, mem, timeStr, labelStr);
-		recordPoint(networkHistory, netTotal, timeStr, labelStr);
+
+		// Throughput sample: the selected container when targeted, else the aggregate
+		const totalBytes =
+			activeContainer !== null
+				? containerNetBytes(activeContainer)
+				: matchingContainers.reduce((acc, c) => acc + containerNetBytes(c), 0);
+		const nowMs = now.getTime();
+		const rate = computeNetRate(prevNetSample, { totalBytes, atMs: nowMs });
+		prevNetSample = { totalBytes, atMs: nowMs };
+		if (rate !== null) {
+			recordPoint(networkHistory, rate, timeStr, labelStr);
+		}
 	}
 
 	async function handleRefresh() {
@@ -221,17 +229,6 @@
 
 	onMount(() => {
 		tickStats();
-		let pollTimer: any;
-
-		function setupTimer() {
-			if (pollTimer) clearInterval(pollTimer);
-			if (refreshRate === 'paused') return;
-
-			const ms = refreshRate === '3s' ? 3000 : refreshRate === '5s' ? 5000 : 15000;
-			pollTimer = setInterval(tickStats, ms);
-		}
-
-		setupTimer();
 
 		const secTimer = setInterval(() => {
 			if (refreshRate !== 'paused') {
@@ -240,9 +237,19 @@
 		}, 1000);
 
 		return () => {
-			if (pollTimer) clearInterval(pollTimer);
 			clearInterval(secTimer);
 		};
+	});
+
+	// Arm the poll loop from the cadence control itself so switching rates or
+	// pausing re-arms the interval; cleanup tears down the previous loop first
+	$effect(() => {
+		const cadence = refreshRate;
+		if (cadence === 'paused') return;
+
+		const ms = cadence === '3s' ? 3000 : cadence === '5s' ? 5000 : 15000;
+		const pollTimer = setInterval(tickStats, ms);
+		return () => clearInterval(pollTimer);
 	});
 </script>
 
@@ -312,25 +319,8 @@
 			{/if}
 		</div>
 
-		<!-- Time range selector & Manual Refresh -->
+		<!-- Manual Refresh -->
 		<div class="flex items-center gap-2">
-			<div
-				class="flex items-center gap-1 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
-			>
-				{#each ['1h', '6h', '24h', '7d'] as r}
-					<button
-						type="button"
-						onclick={() => (timeRange = r as any)}
-						class="cursor-pointer rounded border-0 px-2.5 py-1 text-xs transition-colors {timeRange ===
-						r
-							? 'bg-[var(--bg-surface)] font-medium text-[var(--text-primary)] shadow-xs'
-							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
-					>
-						{r}
-					</button>
-				{/each}
-			</div>
-
 			<button
 				type="button"
 				onclick={handleRefresh}
@@ -430,7 +420,6 @@
 
 	<!-- 2x2 Metric Charts Grid with Live Per-Container Time Series -->
 	<TelemetryChartsGrid
-		{timeRange}
 		{cpuHistory}
 		{currentCpu}
 		{memoryHistory}

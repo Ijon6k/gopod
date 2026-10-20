@@ -33,7 +33,7 @@
 		<strong class="text-xl font-semibold text-[var(--text-primary)] md:text-2xl">
 			{currentMeta?.current ?? '—'}
 		</strong>
-		<small class="text-xs text-[var(--text-tertiary)]">last 24 hours</small>
+		<small class="text-xs text-[var(--text-tertiary)]">live session buffer</small>
 	</div>
 	<div class="-mx-1 mt-auto">
 		<AreaChart data={currentData} height={168} />

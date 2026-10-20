@@ -60,13 +60,29 @@
 		});
 	}
 
-	let composeParseResult = $derived.by(() => parseComposeManifest(composeYaml));
+	// The editor value must stay live for bindings and save; only the parse work
+	// is debounced so typing does not run the full AST on every keystroke.
+	let parseTimer: ReturnType<typeof setTimeout> | undefined;
+	let debouncedComposeYaml = $state('');
+
+	$effect(() => {
+		const value = composeYaml;
+		if (value === debouncedComposeYaml) return;
+		clearTimeout(parseTimer);
+		parseTimer = setTimeout(() => (debouncedComposeYaml = value), 200);
+		return () => clearTimeout(parseTimer);
+	});
+
+	let composeParseResult = $derived.by(() => parseComposeManifest(debouncedComposeYaml));
 
 	async function handleSave() {
-		if (!composeParseResult.valid) {
+		// Validate the live editor contents, not the debounced parse snapshot,
+		// so a fast save right after typing cannot bypass syntax errors.
+		const current = parseComposeManifest(composeYaml);
+		if (!current.valid) {
 			toast.add({
 				title: 'Invalid Compose Syntax',
-				description: composeParseResult.errors[0] || 'Please resolve syntax errors before saving.',
+				description: current.errors[0] || 'Please resolve syntax errors before saving.',
 				variant: 'error'
 			});
 			return;

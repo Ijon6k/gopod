@@ -287,8 +287,8 @@
 			>
 				<span
 					class="h-2 w-2 rounded-full {refreshRate === 'paused'
-						? 'bg-amber-400'
-						: 'animate-pulse bg-emerald-400'}"
+						? 'bg-[var(--status-amber)]'
+						: 'animate-pulse bg-[var(--status-green)]'}"
 				></span>
 				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
 					{refreshRate === 'paused' ? 'Paused' : 'Live'}

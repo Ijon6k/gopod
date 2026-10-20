@@ -101,7 +101,7 @@
 		<div class="mt-0.5 flex shrink-0 items-center justify-center">
 			{#if isBuilding}
 				<Badge variant="warning" class="gap-1.5 font-medium">
-					<CircleNotch size={12} class="animate-spin text-amber-500" />
+					<CircleNotch size={12} class="animate-spin text-[var(--status-amber)]" />
 					<span>Building</span>
 				</Badge>
 			{:else}

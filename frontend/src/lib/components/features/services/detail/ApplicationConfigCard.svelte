@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import { LayerCard, Button, useKumoToastManager } from 'kumo-svelte';
+	import { untrack } from 'svelte';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { Cube, Check, ArrowClockwise } from 'phosphor-svelte';
@@ -91,43 +92,51 @@
 	});
 
 	// Synchronize on service prop change
+	let initializedFor = $state('');
+
+	// Mirror the server copy once per service. Re-syncing on every provider
+	// identity change would wipe in-progress edits between status polls.
 	$effect(() => {
-		sourceType =
-			service.sourceType === 'image' || service.sourceType === 'drop'
-				? service.sourceType
-				: service.image
-					? 'image'
-					: 'git';
-		repoUrl = service.source || '';
-		branch = service.branch || 'main';
-		buildPath = service.buildPath || '/';
-		sshKeyId = service.sshKeyId || (dataStore.sshKeys[0]?.id ?? '');
-		buildType = service.buildType || 'dockerfile';
-		dockerfilePath = service.dockerfilePath || './Dockerfile';
-		publishDir = service.publishDir || 'dist';
+		if (initializedFor === service.id) return;
+		initializedFor = service.id;
+		untrack(() => {
+			sourceType =
+				service.sourceType === 'image' || service.sourceType === 'drop'
+					? service.sourceType
+					: service.image
+						? 'image'
+						: 'git';
+			repoUrl = service.source || '';
+			branch = service.branch || 'main';
+			buildPath = service.buildPath || '/';
+			sshKeyId = service.sshKeyId || (dataStore.sshKeys[0]?.id ?? '');
+			buildType = service.buildType || 'dockerfile';
+			dockerfilePath = service.dockerfilePath || './Dockerfile';
+			publishDir = service.publishDir || 'dist';
 
-		rawImageName = service.image || '';
-		if (service.image) {
-			if (service.image.includes('ghcr.io/')) selectedRegistry = 'ghcr.io';
-			else if (service.image.includes('quay.io/')) selectedRegistry = 'quay.io';
-			else selectedRegistry = 'docker.io';
-		}
+			rawImageName = service.image || '';
+			if (service.image) {
+				if (service.image.includes('ghcr.io/')) selectedRegistry = 'ghcr.io';
+				else if (service.image.includes('quay.io/')) selectedRegistry = 'quay.io';
+				else selectedRegistry = 'docker.io';
+			}
 
-		containerPort = service.port ? String(service.port) : '';
-		hostPort = service.hostPort ? String(service.hostPort) : '';
-		hostIp = service.hostIp === '127.0.0.1' ? '127.0.0.1' : '0.0.0.0';
+			containerPort = service.port ? String(service.port) : '';
+			hostPort = service.hostPort ? String(service.hostPort) : '';
+			hostIp = service.hostIp === '127.0.0.1' ? '127.0.0.1' : '0.0.0.0';
 
-		runtimeTarget =
-			service.runtimeTarget === 'quadlet'
-				? 'quadlet'
-				: service.inPod || service.runtimeTarget === 'pod'
-					? 'pod'
-					: 'standalone';
-		podName = service.podId || (dataStore.pods[0]?.name ?? '');
-		cpuLimit = service.cpuLimit != null ? String(service.cpuLimit) : '';
-		memLimit = service.memoryLimit != null ? String(service.memoryLimit) : '';
-		autoDeploy = service.autoDeploy ?? true;
-		watchPaths = service.watchPaths || '';
+			runtimeTarget =
+				service.runtimeTarget === 'quadlet'
+					? 'quadlet'
+					: service.inPod || service.runtimeTarget === 'pod'
+						? 'pod'
+						: 'standalone';
+			podName = service.podId || (dataStore.pods[0]?.name ?? '');
+			cpuLimit = service.cpuLimit != null ? String(service.cpuLimit) : '';
+			memLimit = service.memoryLimit != null ? String(service.memoryLimit) : '';
+			autoDeploy = service.autoDeploy ?? true;
+			watchPaths = service.watchPaths || '';
+		});
 	});
 
 	async function handleSave() {

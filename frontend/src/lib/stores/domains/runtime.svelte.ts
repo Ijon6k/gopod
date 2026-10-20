@@ -16,14 +16,27 @@ export class RuntimeDomainStore {
 
 	async startContainer(id: string) {
 		const found = this.containers.find((c) => c.id === id);
+		const previous = found?.status;
 		if (found) found.status = 'running';
-		await api.runtime.containers.start(id);
+		try {
+			await api.runtime.containers.start(id);
+		} catch (err) {
+			// Revert to the pre-action status; the page poll converges the rest.
+			if (found && previous !== undefined) found.status = previous as any;
+			throw err;
+		}
 	}
 
 	async stopContainer(id: string) {
 		const found = this.containers.find((c) => c.id === id);
+		const previous = found?.status;
 		if (found) found.status = 'stopped';
-		await api.runtime.containers.stop(id);
+		try {
+			await api.runtime.containers.stop(id);
+		} catch (err) {
+			if (found && previous !== undefined) found.status = previous as any;
+			throw err;
+		}
 	}
 
 	async restartContainer(id: string) {
@@ -31,8 +44,10 @@ export class RuntimeDomainStore {
 	}
 
 	async deleteContainer(id: string, force = false) {
-		this.containers = this.containers.filter((c) => c.id !== id);
+		// Deletion only leaves the list after the API confirms it; a failed
+		// request must not drop a row that still exists.
 		await api.runtime.containers.delete(id, force);
+		this.containers = this.containers.filter((c) => c.id !== id);
 	}
 
 	async pruneImages(all = false) {

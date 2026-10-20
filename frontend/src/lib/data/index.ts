@@ -3,15 +3,7 @@
 // Re-exports live reactive dataStore with compatibility proxies + helpers
 // ──────────────────────────────────────────────
 
-import type {
-	Project,
-	Service,
-	Deployment,
-	Container,
-	Domain,
-	TimeSeriesPoint,
-	AuditLog
-} from '$lib/types';
+import type { Project, Service, Deployment, Container, Domain, TimeSeriesPoint } from '$lib/types';
 import { dataStore } from '$lib/stores/data.svelte';
 
 // Typed exports — dynamic proxies delegating to live reactive dataStore
@@ -26,6 +18,15 @@ function createArrayProxy<T>(getArray: () => T[]): T[] {
 				return val.bind(arr);
 			}
 			return val;
+		},
+		set(_, prop, value) {
+			// Delegate writes to the live reactive array so a mutation through the
+			// re-export reaches the store instead of a detached target. Invariant
+			// safety relies on the store keeping the arrays extensible.
+			return Reflect.set(getArray(), prop, value);
+		},
+		deleteProperty(_, prop) {
+			return Reflect.deleteProperty(getArray(), prop);
 		},
 		has(_, prop) {
 			return Reflect.has(getArray(), prop);
@@ -49,6 +50,14 @@ function createObjectProxy<T extends object>(getObject: () => T): T {
 			}
 			return val;
 		},
+		set(_, prop, value) {
+			// Delegate writes to the live reactive object so a mutation through the
+			// re-export reaches the store instead of a detached target.
+			return Reflect.set(getObject(), prop, value);
+		},
+		deleteProperty(_, prop) {
+			return Reflect.deleteProperty(getObject(), prop);
+		},
 		has(_, prop) {
 			return Reflect.has(getObject(), prop);
 		},
@@ -71,8 +80,6 @@ export const volumes = createArrayProxy(() => dataStore.volumes);
 export const networks = createArrayProxy(() => dataStore.networks);
 export const domains = createArrayProxy(() => dataStore.domains);
 export const server = createObjectProxy(() => dataStore.server);
-
-export const auditLogs: AuditLog[] = [];
 
 export const podmanSecrets = createArrayProxy(() => dataStore.podmanSecrets);
 export const sshKeys = createArrayProxy(() => dataStore.sshKeys);

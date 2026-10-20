@@ -4,6 +4,7 @@
 	import { dataStore } from '$lib/data';
 	import { parseComposeServices, extractPortNumber } from '$lib/parsers/compose';
 	import { Globe, CaretDown, CaretUp } from 'phosphor-svelte';
+	import { untrack } from 'svelte';
 
 	export interface UpstreamTargetChoice {
 		value: string;
@@ -223,38 +224,48 @@
 		}
 	}
 
-	$effect(() => {
-		if (editingDomain) {
-			domainName = editingDomain.hostname;
-			const targetVal = editingDomain.targetContainer || '';
-			const matched = detectedTargets.find((t) => t.value === targetVal);
-			if (matched) {
-				targetContainer = targetVal;
-				isCustomTarget = false;
-				customTargetName = '';
-			} else if (targetVal) {
-				isCustomTarget = true;
-				customTargetName = targetVal;
-				targetContainer = '__custom__';
-			} else {
-				targetContainer = detectedTargets[0]?.value || service.id;
-				isCustomTarget = false;
-			}
+	let initializedFor = $state('');
 
-			targetPort = String(editingDomain.containerPort || service.port || 3000);
-			autoHttps = editingDomain.tls;
-			pathPrefix = editingDomain.pathPrefix || '/';
-			stripPath = !!editingDomain.stripPathPrefix;
-			websocket = !!editingDomain.websocket;
-			cors = !!editingDomain.cors;
-			hsts = editingDomain.hsts !== false;
-			basicAuthEnabled = !!editingDomain.basicAuth;
-			basicAuthUser = editingDomain.basicAuthUser || '';
-			// The stored hash is write-only: never prefill, blank means keep.
-			basicAuthPass = '';
-		} else {
-			initFormDefaults();
-		}
+	// Initialize once per editing session, keyed by the edited domain id only.
+	// Target and port candidates refresh live in the dropdown; re-syncing the
+	// whole form from them on every runtime poll would discard in-progress edits.
+	$effect(() => {
+		const key = editingDomain ? `edit:${editingDomain.id}` : 'new';
+		if (initializedFor === key) return;
+		initializedFor = key;
+		untrack(() => {
+			if (editingDomain) {
+				domainName = editingDomain.hostname;
+				const targetVal = editingDomain.targetContainer || '';
+				const matched = detectedTargets.find((t) => t.value === targetVal);
+				if (matched) {
+					targetContainer = targetVal;
+					isCustomTarget = false;
+					customTargetName = '';
+				} else if (targetVal) {
+					isCustomTarget = true;
+					customTargetName = targetVal;
+					targetContainer = '__custom__';
+				} else {
+					targetContainer = detectedTargets[0]?.value || service.id;
+					isCustomTarget = false;
+				}
+
+				targetPort = String(editingDomain.containerPort || service.port || 3000);
+				autoHttps = editingDomain.tls;
+				pathPrefix = editingDomain.pathPrefix || '/';
+				stripPath = !!editingDomain.stripPathPrefix;
+				websocket = !!editingDomain.websocket;
+				cors = !!editingDomain.cors;
+				hsts = editingDomain.hsts !== false;
+				basicAuthEnabled = !!editingDomain.basicAuth;
+				basicAuthUser = editingDomain.basicAuthUser || '';
+				// The stored hash is write-only: never prefill, blank means keep.
+				basicAuthPass = '';
+			} else {
+				initFormDefaults();
+			}
+		});
 	});
 
 	function handleTargetChange(val: string) {
@@ -287,7 +298,7 @@
 		const effectiveTarget = isCustomTarget ? customTargetName.trim() : targetContainer.trim();
 
 		const payload: Domain = {
-			id: editingDomain ? editingDomain.id : `d-${Date.now()}`,
+			id: editingDomain ? editingDomain.id : crypto.randomUUID(),
 			hostname: cleanHost,
 			projectId: service.projectId,
 			serviceId: service.id,

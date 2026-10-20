@@ -260,6 +260,10 @@ export class DataStore {
 	}
 
 	// ── Runtime Domain Actions ──
+	// Stop background watchers owned by the domain stores (deploy pollers).
+	cleanup() {
+		this.projectsStore.cleanup();
+	}
 	getServiceContainers(serviceId: string) {
 		return this.runtimeStore.getServiceContainers(serviceId);
 	}

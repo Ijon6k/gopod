@@ -347,7 +347,7 @@
 							class="p-0 text-kumo-subtle hover:text-kumo-default"
 						/>
 					</div>
-					<span class="flex shrink-0 items-center gap-1 text-emerald-400">
+					<span class="flex shrink-0 items-center gap-1 text-[var(--status-green)]">
 						<ShieldCheck size={14} /> Rootless (--user)
 					</span>
 				</div>

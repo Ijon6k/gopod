@@ -64,7 +64,7 @@
 						Supervised by Systemd Quadlet
 					</span>
 					<span
-						class="rounded bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-emerald-400"
+						class="rounded bg-[var(--status-green-muted)] px-2 py-0.5 font-mono text-[10px] font-semibold text-[var(--status-green)]"
 					>
 						{service.name}.service
 					</span>

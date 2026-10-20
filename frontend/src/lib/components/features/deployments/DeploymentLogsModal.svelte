@@ -1,5 +1,6 @@
 <script lang="ts">
 	import type { Deployment } from '$lib/types';
+	import { untrack } from 'svelte';
 	import { Button } from '$lib/components/ui';
 	import { SearchInput } from '$lib/components/ui';
 	import { DeploymentPipelineStepper } from '$lib/components/features/deployments';
@@ -67,83 +68,109 @@
 		return logs.filter((l) => l.toLowerCase().includes(q));
 	});
 
+	let depId = $derived(deployment?.id ?? '');
+	let isLive = $derived(activeDep?.status === 'building' || activeDep?.status === 'deploying');
+
+	// Fingerprint of the last store write. Identical poll responses are skipped
+	// so the store keeps stable identities and nothing downstream re-subscribes.
+	let lastSyncedFingerprint = '';
+
 	$effect(() => {
-		if (open && activeDep) {
-			const depId = activeDep.id;
-			let isSubscribed = true;
-			isLogsLoading = true;
+		const id = depId;
+		if (!open || !id) {
+			untrack(() => {
+				if (fetchedLogs.length > 0) fetchedLogs = [];
+			});
+			return;
+		}
 
-			const syncStatus = async () => {
-				try {
-					const latest = await api.services.getDeployment(depId);
-					if (latest && isSubscribed) {
-						dataStore.upsertDeployment(latest);
-					}
-				} catch (_) {}
-			};
+		let isSubscribed = true;
+		isLogsLoading = true;
+		// Reset per effect run so a reopen always syncs.
+		lastSyncedFingerprint = '';
 
-			// Fetch stored log file
-			api.services
-				.deploymentLogs(depId)
-				.then((res) => {
-					if (!isSubscribed) return;
-					if (res?.logs) {
-						fetchedLogs = res.logs
-							.split('\n')
-							.map(sanitizeLogLine)
-							.filter((line: string) => line.length > 0);
-					}
-					syncStatus();
-				})
-				.catch((err) => {
-					console.warn('Could not load stored deployment logs:', err);
-				})
-				.finally(() => {
-					if (isSubscribed) isLogsLoading = false;
-				});
-
-			// Periodic poller while active
-			let pollInterval: ReturnType<typeof setInterval> | null = null;
-			if (activeDep.status === 'building' || activeDep.status === 'deploying') {
-				pollInterval = setInterval(async () => {
-					await syncStatus();
-					if (activeDep?.status === 'success' || activeDep?.status === 'failed') {
-						if (pollInterval) clearInterval(pollInterval);
-					}
-				}, 1200);
+		const syncStatus = async () => {
+			try {
+				const latest = await api.services.getDeployment(id);
+				if (!latest || !isSubscribed) return null;
+				const fingerprint = JSON.stringify(latest);
+				if (fingerprint !== lastSyncedFingerprint) {
+					lastSyncedFingerprint = fingerprint;
+					dataStore.upsertDeployment(latest);
+				}
+				return latest;
+			} catch (_) {
+				return null;
 			}
+		};
+
+		// Read the stored log file from the server.
+		const loadStoredLogs = () =>
+			api.services.deploymentLogs(id).then((res) => {
+				if (!isSubscribed || !res?.logs) return false;
+				fetchedLogs = res.logs
+					.split('\n')
+					.map(sanitizeLogLine)
+					.filter((line: string) => line.length > 0);
+				return true;
+			});
+
+		loadStoredLogs()
+			.then(() => syncStatus())
+			.catch((err) => {
+				console.warn('Could not load stored deployment logs:', err);
+			})
+			.finally(() => {
+				if (isSubscribed) isLogsLoading = false;
+			});
+
+		if (isLive) {
+			// Poll and stream only while the build is in flight. The effect keys on
+			// depId + isLive, so per-tick progress updates never rebuild either.
+			const timer = setInterval(async () => {
+				const latest = await syncStatus();
+				if (latest && isSubscribed && (latest.status === 'success' || latest.status === 'failed')) {
+					clearInterval(timer);
+				}
+			}, 1200);
 
 			// If active building/deploying, subscribe to SSE stream via centralized API
 			let unsubscribeStream: (() => void) | null = null;
-			if (activeDep.status === 'building' || activeDep.status === 'deploying') {
-				try {
-					unsubscribeStream = api.services.streamDeploymentLogs(
-						depId,
-						(raw) => {
-							if (!isSubscribed) return;
-							const clean = sanitizeLogLine(raw);
-							if (!fetchedLogs.includes(clean)) {
-								fetchedLogs = [...fetchedLogs, clean];
-							}
-						},
-						() => {
-							unsubscribeStream?.();
-							syncStatus();
+			try {
+				unsubscribeStream = api.services.streamDeploymentLogs(
+					id,
+					(raw) => {
+						if (!isSubscribed) return;
+						const clean = sanitizeLogLine(raw);
+						if (!fetchedLogs.includes(clean)) {
+							fetchedLogs = [...fetchedLogs, clean];
 						}
-					);
-				} catch (e) {
-					console.warn('SSE stream error:', e);
-				}
+					},
+					() => {
+						unsubscribeStream?.();
+						// A dropped stream must not end live log updates: recover from
+						// the stored log file when nothing was streamed yet, and the
+						// status poller keeps converging the rest.
+						if (fetchedLogs.length === 0) {
+							loadStoredLogs().catch(() => {});
+						}
+						syncStatus();
+					}
+				);
+			} catch (e) {
+				console.warn('SSE stream error:', e);
 			}
 
 			return () => {
 				isSubscribed = false;
-				if (pollInterval) clearInterval(pollInterval);
-				if (unsubscribeStream) unsubscribeStream();
+				clearInterval(timer);
+				unsubscribeStream?.();
 			};
-		} else if (fetchedLogs.length > 0) {
-			fetchedLogs = [];
 		}
+
+		return () => {
+			isSubscribed = false;
+		};
 	});
 
 	$effect(() => {

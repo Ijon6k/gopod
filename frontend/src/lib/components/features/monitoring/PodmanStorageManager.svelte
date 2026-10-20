@@ -101,7 +101,10 @@
 	let volumeUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('volume')));
 	let containerUsage = $derived(dfData.find((d) => d.type?.toLowerCase().includes('container')));
 
-	// Canonical color tokens - synchronized across chart, cards, and table
+	// Canonical color tokens - synchronized across chart, cards, and table.
+	// Raw hex on purpose: they feed ECharts canvas series colors, which cannot
+	// resolve CSS variables; the token-based tailwind classes above are used
+	// everywhere outside the chart.
 	const COLOR_IMAGES = '#6366f1';
 	const COLOR_VOLUMES = '#0ea5e9';
 	const COLOR_CONTAINERS = '#10b981';
@@ -127,8 +130,8 @@
 			reclaimableDisplay: imageUsage?.reclaimable || '0 B',
 			reclaimableGB: imageUsage ? bytesToGB(imageUsage.rawReclaimable) : 0,
 			hexColor: COLOR_IMAGES,
-			colorClass: 'bg-[#6366f1]',
-			textClass: 'text-[#6366f1]',
+			colorClass: 'bg-[var(--accent)]',
+			textClass: 'text-[var(--accent)]',
 			viewPath: '/runtime/images',
 			viewLabel: 'images'
 		},
@@ -150,8 +153,8 @@
 			reclaimableDisplay: volumeUsage?.reclaimable || '0 B',
 			reclaimableGB: volumeUsage ? bytesToGB(volumeUsage.rawReclaimable) : 0,
 			hexColor: COLOR_VOLUMES,
-			colorClass: 'bg-[#0ea5e9]',
-			textClass: 'text-[#0ea5e9]',
+			colorClass: 'bg-[var(--status-blue)]',
+			textClass: 'text-[var(--status-blue)]',
 			viewPath: '/runtime/volumes',
 			viewLabel: 'volumes'
 		},
@@ -175,8 +178,8 @@
 			reclaimableDisplay: containerUsage?.reclaimable || '0 B',
 			reclaimableGB: containerUsage ? bytesToGB(containerUsage.rawReclaimable) : 0,
 			hexColor: COLOR_CONTAINERS,
-			colorClass: 'bg-[#10b981]',
-			textClass: 'text-[#10b981]',
+			colorClass: 'bg-[var(--status-green)]',
+			textClass: 'text-[var(--status-green)]',
 			viewPath: '/runtime/containers',
 			viewLabel: 'containers'
 		}

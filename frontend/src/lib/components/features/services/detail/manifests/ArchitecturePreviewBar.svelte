@@ -36,14 +36,14 @@
 		<div class="flex min-w-0 items-center gap-2">
 			{#if parseResult.valid}
 				<span
-					class="inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11.5px] font-medium text-emerald-400 bg-emerald-500/10 ring-1 ring-emerald-500/20"
+					class="inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11.5px] font-medium text-[var(--status-green)] bg-[var(--status-green-muted)] ring-1 ring-[var(--status-green-muted)]"
 				>
 					<CheckCircle size={13} weight="fill" />
 					<span>Valid {parseResult.type === 'kubernetes' ? 'Pod manifest' : 'Compose stack'}</span>
 				</span>
 			{:else}
 				<span
-					class="inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11.5px] font-medium text-rose-400 bg-rose-500/10 ring-1 ring-rose-500/20"
+					class="inline-flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11.5px] font-medium text-[var(--status-red)] bg-[var(--status-red-muted)] ring-1 ring-[var(--status-red-muted)]"
 				>
 					<WarningCircle size={13} weight="fill" />
 					<span>Syntax error</span>
@@ -73,12 +73,12 @@
 
 			<!-- Inline Error / Warning snippet -->
 			{#if !parseResult.valid && parseResult.errors.length > 0}
-				<span class="truncate font-mono text-[11px] text-rose-400">
+				<span class="truncate font-mono text-[11px] text-[var(--status-red)]">
 					{parseResult.errors[0]}
 				</span>
 			{:else if parseResult.warnings.length > 0}
 				<span
-					class="inline-flex max-w-[340px] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] font-medium text-amber-400 bg-amber-500/10 ring-1 ring-amber-500/20"
+					class="inline-flex max-w-[340px] items-center gap-1 truncate rounded px-1.5 py-0.5 text-[11px] font-medium text-[var(--status-amber)] bg-[var(--status-amber-muted)] ring-1 ring-[var(--status-amber-muted)]"
 					title={parseResult.warnings.join(' • ')}
 				>
 					<Warning size={12} weight="fill" />
@@ -163,10 +163,10 @@
 
 			<!-- Warnings list if any -->
 			{#if parseResult.warnings.length > 0}
-				<div class="mt-2.5 flex flex-col gap-1 rounded bg-amber-500/10 p-2 text-[11.5px] text-amber-300 ring-1 ring-amber-500/20">
+				<div class="mt-2.5 flex flex-col gap-1 rounded bg-[var(--status-amber-muted)] p-2 text-[11.5px] text-[var(--status-amber)] ring-1 ring-[var(--status-amber-muted)]">
 					{#each parseResult.warnings as warn}
 						<div class="flex items-start gap-1.5">
-							<Warning size={13} weight="fill" class="shrink-0 mt-0.5 text-amber-400" />
+							<Warning size={13} weight="fill" class="shrink-0 mt-0.5 text-[var(--status-amber)]" />
 							<span>{warn}</span>
 						</div>
 					{/each}

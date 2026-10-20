@@ -7,6 +7,10 @@ export class ProjectsDomainStore {
 	deployments = $state<Deployment[]>([]);
 	domains = $state<Domain[]>([]);
 
+	// Deployment watchers keyed by service id. A new deploy replaces the
+	// previous watcher; cleanup() stops every one of them.
+	private deploymentWatchers = new Map<string, () => void>();
+
 	getProjectServices(projectId: string): Service[] {
 		return this.services.filter((s) => s.projectId === projectId);
 	}
@@ -143,47 +147,39 @@ export class ProjectsDomainStore {
 	}
 
 	async addService(service: Service): Promise<Service> {
-		try {
-			const res = await api.services.create(service);
-			const fullService: Service = {
-				...service,
-				...res,
-				quadletConfig: service.quadletConfig || (res as any).quadletConfig,
-				composeYaml: service.composeYaml || (res as any).composeYaml,
-				k8sYaml: service.k8sYaml || (res as any).k8sYaml,
-				description: service.description || res.description || '',
-				deployments: service.deployments || []
-			};
-			const idx = this.services.findIndex((s) => s.id === fullService.id);
-			if (idx >= 0) {
-				this.services[idx] = fullService;
-			} else {
-				this.services.unshift(fullService);
-			}
-
-			if (service.domain) {
-				this.addDomain({
-					id: `d-${Date.now()}`,
-					hostname: service.domain,
-					projectId: service.projectId,
-					serviceId: fullService.id,
-					serviceName: service.name,
-					tls: true,
-					status: 'active',
-					proxyPort: service.port || 3000,
-					containerPort: service.port || 3000,
-					publishedPort: service.port || 3000
-				});
-			}
-
-			return fullService;
-		} catch (err) {
-			const idx = this.services.findIndex((s) => s.id === service.id);
-			if (idx < 0) {
-				this.services.unshift(service);
-			}
-			throw err;
+		const res = await api.services.create(service);
+		const fullService: Service = {
+			...service,
+			...res,
+			quadletConfig: service.quadletConfig || (res as any).quadletConfig,
+			composeYaml: service.composeYaml || (res as any).composeYaml,
+			k8sYaml: service.k8sYaml || (res as any).k8sYaml,
+			description: service.description || res.description || '',
+			deployments: service.deployments || []
+		};
+		const idx = this.services.findIndex((s) => s.id === fullService.id);
+		if (idx >= 0) {
+			this.services[idx] = fullService;
+		} else {
+			this.services.unshift(fullService);
 		}
+
+		if (service.domain) {
+			this.addDomain({
+				id: crypto.randomUUID(),
+				hostname: service.domain,
+				projectId: service.projectId,
+				serviceId: fullService.id,
+				serviceName: service.name,
+				tls: true,
+				status: 'active',
+				proxyPort: service.port || 3000,
+				containerPort: service.port || 3000,
+				publishedPort: service.port || 3000
+			});
+		}
+
+		return fullService;
 	}
 
 	async updateService(updated: Service): Promise<Service> {
@@ -313,51 +309,9 @@ export class ProjectsDomainStore {
 					this.deployments.unshift(dep);
 				}
 
-				// Active watcher: Poll deployment & service status every 1.5s until finished
-				const depId = dep.id;
-				let attempts = 0;
-				const pollTimer = setInterval(async () => {
-					attempts++;
-					try {
-						const [updatedDep, updatedSvc] = await Promise.all([
-							api.services.getDeployment(depId).catch(() => null),
-							api.services.get(serviceId).catch(() => null)
-						]);
-						if (updatedDep) {
-							const dIdx = this.deployments.findIndex((d) => d.id === depId);
-							if (dIdx >= 0) {
-								this.deployments[dIdx] = {
-									...this.deployments[dIdx],
-									status: updatedDep.status,
-									duration: updatedDep.duration || this.deployments[dIdx].duration,
-									finishedAt: updatedDep.finishedAt || '',
-									commitMessage: updatedDep.commitMessage || this.deployments[dIdx].commitMessage,
-									version: updatedDep.version || this.deployments[dIdx].version,
-									image: updatedDep.image || this.deployments[dIdx].image
-								};
-								this.deployments = [...this.deployments];
-							}
-							if (updatedDep.status === 'failed' || updatedDep.status === 'success') {
-								const sIdx = this.services.findIndex((s) => s.id === serviceId);
-								if (sIdx >= 0) {
-									const terminalStatus =
-										updatedSvc?.status && updatedSvc.status !== 'deploying'
-											? updatedSvc.status
-											: updatedDep.status === 'failed'
-												? 'failed'
-												: 'running';
-									this.services[sIdx].status = terminalStatus;
-									this.services = [...this.services];
-								}
-								clearInterval(pollTimer);
-							}
-						}
-					} catch (_) {}
-
-					if (attempts > 300) {
-						clearInterval(pollTimer);
-					}
-				}, 1500);
+				// Active watcher: poll deployment & service status every 1.5s until
+				// finished. One watcher per service; a new deploy replaces the old one.
+				this.startDeploymentWatcher(serviceId, dep.id);
 
 				return dep;
 			}
@@ -369,6 +323,70 @@ export class ProjectsDomainStore {
 			}
 			throw err;
 		}
+	}
+
+	startDeploymentWatcher(serviceId: string, depId: string) {
+		this.deploymentWatchers.get(serviceId)?.();
+		let attempts = 0;
+		let pollTimer: ReturnType<typeof setInterval>;
+		// Stopping is identity-guarded: a replaced watcher's late tick or attempt
+		// cap must not remove the entry that now belongs to the newer watcher.
+		const stop = () => {
+			clearInterval(pollTimer);
+			if (this.deploymentWatchers.get(serviceId) === stop) {
+				this.deploymentWatchers.delete(serviceId);
+			}
+		};
+		pollTimer = setInterval(async () => {
+			attempts++;
+			try {
+				const [updatedDep, updatedSvc] = await Promise.all([
+					api.services.getDeployment(depId).catch(() => null),
+					api.services.get(serviceId).catch(() => null)
+				]);
+				if (updatedDep) {
+					const dIdx = this.deployments.findIndex((d) => d.id === depId);
+					if (dIdx >= 0) {
+						this.deployments[dIdx] = {
+							...this.deployments[dIdx],
+							status: updatedDep.status,
+							duration: updatedDep.duration || this.deployments[dIdx].duration,
+							finishedAt: updatedDep.finishedAt || '',
+							commitMessage: updatedDep.commitMessage || this.deployments[dIdx].commitMessage,
+							version: updatedDep.version || this.deployments[dIdx].version,
+							image: updatedDep.image || this.deployments[dIdx].image
+						};
+						this.deployments = [...this.deployments];
+					}
+					if (updatedDep.status === 'failed' || updatedDep.status === 'success') {
+						const sIdx = this.services.findIndex((s) => s.id === serviceId);
+						if (sIdx >= 0) {
+							const terminalStatus =
+								updatedSvc?.status && updatedSvc.status !== 'deploying'
+									? updatedSvc.status
+									: updatedDep.status === 'failed'
+										? 'failed'
+										: 'running';
+							this.services[sIdx].status = terminalStatus;
+							this.services = [...this.services];
+						}
+						stop();
+					}
+				}
+			} catch (_) {}
+
+			if (attempts > 300) {
+				stop();
+			}
+		}, 1500);
+		this.deploymentWatchers.set(serviceId, stop);
+	}
+
+	// Stop every background watcher. Called on logout so timers never outlive
+	// the authenticated session.
+	cleanup() {
+		for (const stop of [...this.deploymentWatchers.values()]) stop();
+		this.deploymentWatchers.clear();
 	}
 
 	async demoteQuadlet(serviceId: string): Promise<Service> {
@@ -410,23 +428,53 @@ export class ProjectsDomainStore {
 	}
 
 	addDomain(domain: Domain) {
+		// Optimistic insert; on API failure the added row is the only thing undone,
+		// so concurrent edits to other rows are never reverted with it.
 		this.domains.unshift(domain);
-		api.domains.create(domain).catch((err) => console.warn('Failed to sync domain:', err));
+		api.domains
+			.create(domain)
+			.then((saved) => {
+				this.domains = this.domains.map((d) => (d.id === domain.id ? { ...d, ...saved } : d));
+			})
+			.catch((err) => {
+				this.domains = this.domains.filter((d) => d.id !== domain.id);
+				console.warn('Failed to create domain:', err);
+			});
 	}
 
 	updateDomain(updated: Domain) {
 		const idx = this.domains.findIndex((d) => d.id === updated.id);
-		if (idx !== -1) {
-			this.domains[idx] = { ...updated };
-		}
-		api.domains
-			.update(updated.id, updated)
-			.catch((err) => console.warn('Failed to sync domain update:', err));
+		if (idx === -1) return;
+		const previous = { ...this.domains[idx] };
+		this.domains[idx] = { ...updated };
+		api.domains.update(updated.id, updated).catch((err) => {
+			// Revert by id, not by index: the list may have shifted while the
+			// request was in flight.
+			const cur = this.domains.findIndex((d) => d.id === updated.id);
+			if (cur !== -1) {
+				this.domains[cur] = previous;
+			}
+			console.warn('Failed to sync domain update:', err);
+		});
 	}
 
 	deleteDomain(domainId: string) {
-		this.domains = this.domains.filter((d) => d.id !== domainId);
-		api.domains.delete(domainId).catch((err) => console.warn('Failed to sync domain delete:', err));
+		const idx = this.domains.findIndex((d) => d.id === domainId);
+		if (idx === -1) return;
+		const removed = this.domains[idx];
+		const priorNeighborId = idx > 0 ? this.domains[idx - 1].id : null;
+		this.domains.splice(idx, 1);
+		api.domains.delete(domainId).catch((err) => {
+			// Restore unless a newer server list already contains the row; anchor
+			// after the former neighbor so the original order survives the re-add.
+			if (!this.domains.some((d) => d.id === domainId)) {
+				const anchor = priorNeighborId
+					? this.domains.findIndex((d) => d.id === priorNeighborId) + 1
+					: 0;
+				this.domains.splice(Math.min(Math.max(anchor, 0), this.domains.length), 0, removed);
+			}
+			console.warn('Failed to delete domain:', err);
+		});
 	}
 
 	async revalidateDomain(domainId: string): Promise<Domain> {
@@ -461,7 +509,10 @@ export class ProjectsDomainStore {
 					createdAt: p.createdAt || new Date().toISOString()
 				}));
 			}
-			if (servicesData && servicesData.length > 0) {
+			// Assign whenever the API answers successfully — an empty result is the
+			// truth (e.g. after deleting the last row); a failed request keeps the
+			// previous lists.
+			if (Array.isArray(servicesData)) {
 				this.services = servicesData;
 				const depResults = await Promise.all(
 					servicesData.map((s: any) => api.services.deployments(s.id).catch(() => []))
@@ -488,7 +539,7 @@ export class ProjectsDomainStore {
 				}
 				this.deployments = allDeps;
 			}
-			if (domainsData && domainsData.length > 0) {
+			if (Array.isArray(domainsData)) {
 				this.domains = domainsData;
 			}
 		} catch (err) {

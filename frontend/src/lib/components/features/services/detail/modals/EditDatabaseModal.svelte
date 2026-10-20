@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { Modal, Input, CopyButton, DatabaseIcon } from '$lib/components/ui';
 	import { Button } from 'kumo-svelte';
+	import { untrack } from 'svelte';
 	import { dataStore } from '$lib/data';
 	import type { Service } from '$lib/types';
 	import {
@@ -68,8 +69,15 @@
 	let isSaving = $state(false);
 	let saveError = $state<string | null>(null);
 
+	let syncedFor = $state('');
+
+	// Load once per open, keyed by service id. Provider identity changes from
+	// background polling must not rebuild the form while the user edits it.
 	$effect(() => {
-		if (open) void loadForOpen();
+		const key = open ? service.id : '';
+		if (syncedFor === key) return;
+		syncedFor = key;
+		if (open) untrack(() => void loadForOpen());
 	});
 
 	// The password arrives masked from the API; reveal it so the form (and the

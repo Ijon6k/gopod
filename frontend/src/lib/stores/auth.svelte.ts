@@ -4,6 +4,7 @@
 // ──────────────────────────────────────────────
 
 import { authApi, type User, type SetupPayload, type LoginPayload } from '$lib/api/auth';
+import { dataStore } from '$lib/stores/data.svelte';
 
 class AuthStore {
 	user = $state<User | null>(null);
@@ -76,6 +77,8 @@ class AuthStore {
 		} catch (err) {
 			console.warn('[AuthStore] logout request failed:', err);
 		} finally {
+			// Stop store-owned background work (deploy pollers) with the session.
+			dataStore.cleanup();
 			if (typeof window !== 'undefined') {
 				localStorage.removeItem('gopod_token');
 			}

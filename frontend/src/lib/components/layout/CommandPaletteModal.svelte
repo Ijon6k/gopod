@@ -39,10 +39,12 @@
 
 	let searchQuery = $state('');
 	let inputEl = $state<HTMLInputElement | null>(null);
+	let focusTimer: ReturnType<typeof setTimeout> | undefined;
 
 	$effect(() => {
 		if (open) {
-			setTimeout(() => inputEl?.focus(), 50);
+			focusTimer = setTimeout(() => inputEl?.focus(), 50);
+			return () => clearTimeout(focusTimer);
 		}
 	});
 

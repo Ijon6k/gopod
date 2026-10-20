@@ -3,7 +3,7 @@
 	import { Button } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
-	import { onMount } from 'svelte';
+	import { onMount, untrack } from 'svelte';
 	import { useKumoToastManager } from 'kumo-svelte';
 	import { Check, FloppyDisk, SpinnerGap } from 'phosphor-svelte';
 	import { generatePromotionFiles, validateQuadletSyntax } from '../advanced/promotion-generator';
@@ -70,29 +70,37 @@
 	let pidsLimit = $state('2048');
 	let swapLimit = $state('0');
 
+	let initializedFor = $state('');
+
+	// Mirror the server copy once per service. Re-syncing on every provider
+	// identity change would wipe in-progress edits between status polls.
 	$effect(() => {
-		runtimeMode = service.advanced?.runtime.mode ?? 'rootless';
-		userNamespace =
-			(service.advanced?.runtime.userNamespace === 'default'
-				? ''
-				: service.advanced?.runtime.userNamespace) ?? '';
-		devices = service.advanced?.runtime.devices.join(', ') ?? '';
-		quadletEnabled = service.advanced?.lifecycle.quadletEnabled ?? true;
-		systemdUnit = service.advanced?.lifecycle.systemdUnitName ?? `${service.name}.service`;
-		restartPolicy = service.restartPolicy || 'always';
-		isPrivileged = service.advanced?.security.privileged ?? false;
-		selinuxLabel = service.advanced?.security.selinuxLabel ?? 'container_t';
-		apparmorProfile = service.advanced?.security.apparmorProfile ?? 'default';
-		capAdd = service.advanced?.security.capAdd.join(', ') ?? 'NET_BIND_SERVICE';
-		capDrop = service.advanced?.security.capDrop.join(', ') ?? 'ALL';
-		noNewPrivileges = service.advanced?.security.noNewPrivileges ?? true;
-		volumes = service.advanced?.storage.volumes ?? [
-			{ source: `${service.name}_data`, target: '/app/data', options: 'Z' }
-		];
-		cpuLimit = service.advanced?.resources.cpuLimit ?? '2.0';
-		memoryLimit = service.advanced?.resources.memoryLimit ?? '512MB';
-		pidsLimit = String(service.advanced?.resources.pidsLimit ?? 2048);
-		swapLimit = service.advanced?.resources.swapLimit ?? '0';
+		if (initializedFor === service.id) return;
+		initializedFor = service.id;
+		untrack(() => {
+			runtimeMode = service.advanced?.runtime.mode ?? 'rootless';
+			userNamespace =
+				(service.advanced?.runtime.userNamespace === 'default'
+					? ''
+					: service.advanced?.runtime.userNamespace) ?? '';
+			devices = service.advanced?.runtime.devices.join(', ') ?? '';
+			quadletEnabled = service.advanced?.lifecycle.quadletEnabled ?? true;
+			systemdUnit = service.advanced?.lifecycle.systemdUnitName ?? `${service.name}.service`;
+			restartPolicy = service.restartPolicy || 'always';
+			isPrivileged = service.advanced?.security.privileged ?? false;
+			selinuxLabel = service.advanced?.security.selinuxLabel ?? 'container_t';
+			apparmorProfile = service.advanced?.security.apparmorProfile ?? 'default';
+			capAdd = service.advanced?.security.capAdd.join(', ') ?? 'NET_BIND_SERVICE';
+			capDrop = service.advanced?.security.capDrop.join(', ') ?? 'ALL';
+			noNewPrivileges = service.advanced?.security.noNewPrivileges ?? true;
+			volumes = service.advanced?.storage.volumes ?? [
+				{ source: `${service.name}_data`, target: '/app/data', options: 'Z' }
+			];
+			cpuLimit = service.advanced?.resources.cpuLimit ?? '2.0';
+			memoryLimit = service.advanced?.resources.memoryLimit ?? '512MB';
+			pidsLimit = String(service.advanced?.resources.pidsLimit ?? 2048);
+			swapLimit = service.advanced?.resources.swapLimit ?? '0';
+		});
 	});
 
 	const toast = useKumoToastManager();

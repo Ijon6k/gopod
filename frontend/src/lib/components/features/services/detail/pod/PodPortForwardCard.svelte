@@ -62,12 +62,23 @@
 		{ value: '127.0.0.1', label: '127.0.0.1 (loopback only)' }
 	];
 
-	// Synchronize internal state with service
+	let initializedFor = $state('');
+
+	// Rebuild the editor list only when the underlying port definition changes.
+	// Background polls reuse the same object content, so in-progress bindings and
+	// the inline edit state survive untouched between polls.
 	$effect(() => {
-		const parsed = service.composeYaml ? parseDetailedPorts(service.composeYaml) : [];
-		if (parsed.length > 0) {
-			portsList = parsed;
-		} else if (service.port && service.port > 0) {
+		const key = `${service.id}:${service.composeYaml || ''}:${service.port ?? 0}:${service.hostPort ?? 0}`;
+		if (initializedFor === key) return;
+		initializedFor = key;
+		if (service.composeYaml) {
+			const parsed = parseDetailedPorts(service.composeYaml);
+			if (parsed.length > 0) {
+				portsList = parsed;
+				return;
+			}
+		}
+		if (service.port && service.port > 0) {
 			const fallbackIp = normalizePortHostIp(service.hostIp);
 			const fallbackHost = service.hostPort || service.port;
 			portsList = [

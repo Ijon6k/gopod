@@ -562,7 +562,7 @@
 					<button
 						type="button"
 						onclick={() => removeSecretMount(idx)}
-						class="cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] hover:text-red-400"
+						class="cursor-pointer border-0 bg-transparent p-1 text-[var(--text-tertiary)] hover:text-[var(--status-red)]"
 						title="Detach secret"
 					>
 						<Trash size={14} />

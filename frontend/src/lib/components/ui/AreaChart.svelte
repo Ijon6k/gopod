@@ -23,7 +23,9 @@
 	}: Props = $props();
 
 	const chartWidth = 1000;
-	const gradientId = `area-grad-${Math.random().toString(36).slice(2, 8)}`;
+	// Per-instance stable id shared identically between SSR render and hydration.
+	const uid = $props.id();
+	const gradientId = `${uid}-area-grad`;
 
 	// Compute SVG path from data
 	let viewBox = $derived(`0 0 ${chartWidth} ${height}`);

@@ -135,7 +135,7 @@
 					<button
 						type="button"
 						onclick={() => (isDeleteProjectOpen = true)}
-						class="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-2 text-[var(--text-tertiary)] transition-colors hover:border-red-500/30 hover:bg-red-500/10 hover:text-red-400"
+						class="cursor-pointer rounded-md border border-[var(--border)] bg-[var(--bg-surface)] p-2 text-[var(--text-tertiary)] transition-colors hover:border-[var(--status-red-muted)] hover:bg-[var(--status-red-muted)] hover:text-[var(--status-red)]"
 						title="Delete project"
 						aria-label="Delete project"
 					>

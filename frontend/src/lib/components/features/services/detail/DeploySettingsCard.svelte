@@ -300,7 +300,7 @@
 			class="flex items-center justify-between border-t border-kumo-hairline px-5 py-2.5 text-xs {feedbackMessage.type ===
 			'success'
 				? 'bg-kumo-success-tint text-kumo-success'
-				: 'bg-blue-500/10 text-blue-400'}"
+				: 'bg-[var(--accent-muted)] text-[var(--status-blue)]'}"
 		>
 			<div class="flex items-center gap-2">
 				{#if feedbackMessage.type === 'success'}

@@ -201,7 +201,7 @@
 		const dnsStatus = isLocal || dnsVerified ? 'valid' : 'pending';
 
 		const updated: Domain = {
-			id: domain?.id || `d-${Date.now()}`,
+			id: domain?.id || crypto.randomUUID(),
 			hostname: cleanHost,
 			projectId: svc?.projectId || 'aerochat',
 			serviceId: selectedServiceId,

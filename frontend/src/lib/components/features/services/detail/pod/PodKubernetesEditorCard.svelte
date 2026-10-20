@@ -32,7 +32,20 @@
 	let initializedFor = $state('');
 	let previewExpanded = $state(false);
 
-	let parseResult = $derived.by(() => parseKubernetesPodManifest(k8sYaml));
+	// The editor value must stay live for bindings and save; only the parse work
+	// is debounced so typing does not run the full AST on every keystroke.
+	let parseTimer: ReturnType<typeof setTimeout> | undefined;
+	let debouncedYaml = $state('');
+
+	$effect(() => {
+		const value = k8sYaml;
+		if (value === debouncedYaml) return;
+		clearTimeout(parseTimer);
+		parseTimer = setTimeout(() => (debouncedYaml = value), 200);
+		return () => clearTimeout(parseTimer);
+	});
+
+	let parseResult = $derived.by(() => parseKubernetesPodManifest(debouncedYaml));
 
 	// Initialize YAML once per service version; never clobber in-progress edits
 	$effect(() => {
@@ -65,10 +78,13 @@
 	});
 
 	async function handleSaveManifest() {
-		if (!parseResult.valid) {
+		// Validate the live editor contents, not the debounced parse snapshot,
+		// so a fast save right after typing cannot bypass syntax errors.
+		const current = parseKubernetesPodManifest(k8sYaml);
+		if (!current.valid) {
 			toast.add({
 				title: 'Invalid Manifest Syntax',
-				description: parseResult.errors[0] || 'Please resolve syntax errors before saving manifest.',
+				description: current.errors[0] || 'Please resolve syntax errors before saving manifest.',
 				variant: 'error'
 			});
 			return;

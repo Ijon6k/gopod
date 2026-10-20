@@ -35,8 +35,9 @@
 						c.pod === podNameKey ||
 						c.pod === podKey ||
 						memberServiceIds.has(c.serviceId) ||
-						(c.labels && c.labels['io.gopod.service'] && memberServiceIds.has(c.labels['io.gopod.service'])) ||
-						(c.name.includes(service.name) && !c.name.endsWith('-infra')))
+						(c.labels &&
+							c.labels['io.gopod.service'] &&
+							memberServiceIds.has(c.labels['io.gopod.service'])))
 			);
 
 			if (podContainers.length > 0) {

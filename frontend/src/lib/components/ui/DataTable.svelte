@@ -1,5 +1,6 @@
 <script lang="ts" generics="T">
 	import { cn } from '$lib/utils/cn';
+	import { untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import {
 		Table,
@@ -57,14 +58,18 @@
 		onPageSizeChange
 	}: Props = $props();
 
+	// Clamp when pagination inputs change — the bound page itself is compared
+	// untracked so the correction does not re-entry the same effect.
 	$effect(() => {
-		if (pageSize && rows.length > 0) {
-			const maxPage = Math.max(1, Math.ceil(rows.length / pageSize));
+		const effectivePageSize = pageSize;
+		if (!effectivePageSize || rows.length === 0) return;
+		untrack(() => {
+			const maxPage = Math.max(1, Math.ceil(rows.length / effectivePageSize));
 			if (page > maxPage) {
 				page = 1;
 				onPageChange?.(1);
 			}
-		}
+		});
 	});
 
 	let displayedRows = $derived.by(() => {

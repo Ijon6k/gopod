@@ -432,7 +432,7 @@
 	<!-- Real Interactive xterm.js Terminal Canvas -->
 	<div
 		style={isFullscreen ? 'height: calc(100dvh - 58px);' : `height: ${height}; min-height: 520px;`}
-		class="relative flex w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[#0d1117] p-3 shadow-inner"
+		class="relative flex w-full flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-terminal)] p-3 shadow-inner"
 	>
 		<div bind:this={terminalContainer} class="h-full w-full"></div>
 

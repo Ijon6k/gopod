@@ -76,7 +76,7 @@
 			<div
 				class="flex items-center gap-2 rounded px-3 py-2 text-xs {validationMessage.success
 					? 'bg-kumo-success-tint text-kumo-success'
-					: 'bg-red-500/10 text-red-400'}"
+					: 'bg-[var(--status-red-muted)] text-[var(--status-red)]'}"
 			>
 				{#if validationMessage.success}
 					<Check size={14} weight="bold" />

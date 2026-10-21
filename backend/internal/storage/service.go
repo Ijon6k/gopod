@@ -349,4 +349,3 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 		}
 	})
 }
-

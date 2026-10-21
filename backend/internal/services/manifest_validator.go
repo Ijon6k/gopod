@@ -11,14 +11,14 @@ import (
 
 // ManifestWorkload represents an extracted workload container from K8s or Compose manifest.
 type ManifestWorkload struct {
-	Name      string   `json:"name"`
-	Image     string   `json:"image"`
-	Ports     []string `json:"ports"`
-	Role      string   `json:"role"` // "main", "sidecar", "init", "service"
-	Volumes   []string `json:"volumes,omitempty"`
-	Memory    string   `json:"memory,omitempty"`
-	CPU       string   `json:"cpu,omitempty"`
-	Command   string   `json:"command,omitempty"`
+	Name    string   `json:"name"`
+	Image   string   `json:"image"`
+	Ports   []string `json:"ports"`
+	Role    string   `json:"role"` // "main", "sidecar", "init", "service"
+	Volumes []string `json:"volumes,omitempty"`
+	Memory  string   `json:"memory,omitempty"`
+	CPU     string   `json:"cpu,omitempty"`
+	Command string   `json:"command,omitempty"`
 }
 
 // ManifestValidationResult is the structured response for manifest pre-flight inspection.

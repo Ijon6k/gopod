@@ -144,4 +144,3 @@ func (r *SQLiteRepository) DeleteSchedule(ctx context.Context, id string) error 
 	_, err := r.db.ExecContext(ctx, "DELETE FROM volume_schedules WHERE id = ?", id)
 	return err
 }
-

@@ -266,4 +266,3 @@ func (s *Service) DeleteQuadlet(ctx context.Context, name string) error {
 
 	return nil
 }
-

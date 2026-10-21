@@ -53,7 +53,6 @@ func ValidateContainerImage(image string) error {
 	return nil
 }
 
-
 // ParseQuadlet parses raw .container unit text and extracts container runtime parameters.
 func ParseQuadlet(content string) ParsedQuadlet {
 	p := ParsedQuadlet{

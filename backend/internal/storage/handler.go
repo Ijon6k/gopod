@@ -149,4 +149,3 @@ func (h *Handler) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 	}
 	httputil.WriteJSON(w, http.StatusOK, sched)
 }
-

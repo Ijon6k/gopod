@@ -122,4 +122,3 @@ func TestUninitializedMasterKeyReturnsError(t *testing.T) {
 		t.Fatalf("Expected error when encrypting with uninitialized master key, got nil")
 	}
 }
-

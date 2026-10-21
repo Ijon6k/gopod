@@ -35,6 +35,7 @@ var userBusMu sync.Mutex
 var busProbeMu sync.Mutex
 var busProbeOK bool
 var busProbeAt time.Time
+
 const busProbeTTL = 30 * time.Second
 const busDialTimeout = 3 * time.Second
 

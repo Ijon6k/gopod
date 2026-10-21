@@ -10,6 +10,7 @@ import "strings"
 //
 //   - secret env values  -> replaced by EnvSecretMask
 //   - webhook token      -> hidden; HasWebhook reports whether one exists
+//   - webhook secret     -> hidden; HasWebhookSecret reports whether one exists
 //
 // UpdateService treats EnvSecretMask (and an empty value) for secret vars as
 // "keep the existing value", so a client may round-trip a redacted payload
@@ -18,8 +19,12 @@ import "strings"
 // RedactService returns a copy of s safe for API serialization.
 func RedactService(s Service) Service {
 	out := s
-	out.HasWebhook = s.WebhookToken != ""
+	// Preserve flags already resolved by the caller (for example an update
+	// response whose token/secret are intentionally omitted from the request).
+	out.HasWebhook = s.HasWebhook || s.WebhookToken != ""
 	out.WebhookToken = ""
+	out.HasWebhookSecret = s.HasWebhookSecret || s.WebhookSecret != "" || s.WebhookSecretError
+	out.WebhookSecret = ""
 	out.EnvVars = RedactEnvVars(s.EnvVars)
 	return out
 }

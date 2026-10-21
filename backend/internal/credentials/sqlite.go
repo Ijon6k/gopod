@@ -56,6 +56,8 @@ func (r *SQLiteRepository) GetSSHKey(ctx context.Context, id string) (*SSHKey, e
 	}
 	if dec, err := crypto.Decrypt(k.PrivateKey); err == nil {
 		k.PrivateKey = dec
+	} else {
+		return nil, fmt.Errorf("decrypt ssh key %s: %w", id, err)
 	}
 	return &k, nil
 }
@@ -74,6 +76,67 @@ func (r *SQLiteRepository) CreateSSHKey(ctx context.Context, k SSHKey) error {
 
 func (r *SQLiteRepository) DeleteSSHKey(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM ssh_keys WHERE id = ?", id)
+	return err
+}
+
+// ── Git tokens ──
+
+func (r *SQLiteRepository) ListGitTokens(ctx context.Context) ([]GitToken, error) {
+	rows, err := r.db.QueryContext(ctx, "SELECT id, name, provider, username, token, created_at FROM git_tokens ORDER BY created_at DESC")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tokens []GitToken
+	for rows.Next() {
+		var t GitToken
+		if err := rows.Scan(&t.ID, &t.Name, &t.Provider, &t.Username, &t.Token, &t.CreatedAt); err != nil {
+			return nil, err
+		}
+		if dec, err := crypto.Decrypt(t.Token); err == nil {
+			t.Token = dec
+		}
+		tokens = append(tokens, t)
+	}
+	if tokens == nil {
+		tokens = []GitToken{}
+	}
+	return tokens, rows.Err()
+}
+
+func (r *SQLiteRepository) GetGitToken(ctx context.Context, id string) (*GitToken, error) {
+	var t GitToken
+	err := r.db.QueryRowContext(ctx, "SELECT id, name, provider, username, token, created_at FROM git_tokens WHERE id = ?", id).
+		Scan(&t.ID, &t.Name, &t.Provider, &t.Username, &t.Token, &t.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if dec, err := crypto.Decrypt(t.Token); err == nil {
+		t.Token = dec
+	} else {
+		return nil, fmt.Errorf("decrypt git token %s: %w", id, err)
+	}
+	return &t, nil
+}
+
+func (r *SQLiteRepository) CreateGitToken(ctx context.Context, t GitToken) error {
+	encToken, err := crypto.Encrypt(t.Token)
+	if err != nil {
+		return fmt.Errorf("failed to encrypt git token: %w", err)
+	}
+	_, err = r.db.ExecContext(ctx,
+		"INSERT INTO git_tokens (id, name, provider, username, token) VALUES (?, ?, ?, ?, ?)",
+		t.ID, t.Name, t.Provider, t.Username, encToken,
+	)
+	return err
+}
+
+func (r *SQLiteRepository) DeleteGitToken(ctx context.Context, id string) error {
+	_, err := r.db.ExecContext(ctx, "DELETE FROM git_tokens WHERE id = ?", id)
 	return err
 }
 
@@ -194,4 +257,3 @@ func (r *SQLiteRepository) DeleteSecret(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM secrets WHERE id = ?", id)
 	return err
 }
-

@@ -93,6 +93,10 @@ export interface Service {
 	sourceType?: ServiceType | 'git' | 'image' | 'drop';
 	branch?: string;
 	sshKeyId?: string;
+	gitCredentialId?: string;
+	buildArgs?: string[];
+	webhookProvider?: 'github' | 'gitlab' | 'gitea' | '';
+	hasWebhookSecret?: boolean;
 	image?: string;
 	registryId?: string;
 	buildType?: 'dockerfile' | 'nixpacks' | 'static';
@@ -135,6 +139,8 @@ export interface Service {
 	hasWebhook?: boolean;
 	/** True when the encrypted env blob could not be decrypted with the current master key. */
 	envDecryptionError?: boolean;
+	/** True when a stored webhook signing secret cannot be decrypted. Deliveries fail closed until it is rotated. */
+	webhookSecretError?: boolean;
 	publishDir?: string;
 }
 
@@ -166,6 +172,14 @@ export interface QuadletPreviewResponse {
 export interface WebhookTokenResponse {
 	webhookToken: string;
 	hasWebhook: boolean;
+	webhookProvider?: string;
+	hasWebhookSecret?: boolean;
+	webhookSecretError?: boolean;
+}
+
+export interface WebhookSecretResponse {
+	webhookSecret: string;
+	hasWebhookSecret: boolean;
 }
 
 export interface RevealEnvResponse {

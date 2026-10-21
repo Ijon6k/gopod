@@ -3,9 +3,8 @@
 	import { dataStore } from '$lib/data';
 	import { CodeEditor } from '$lib/components/ui';
 	import { LayerCard, Button, Switch, useKumoToastManager } from 'kumo-svelte';
-	import { Stack, Eye, Check } from 'phosphor-svelte';
+	import { Stack, Eye, Check, Info } from 'phosphor-svelte';
 	import { getDefaultComposeYaml } from '../manifests/defaults';
-	import ComposeSourceSelector from './compose/ComposeSourceSelector.svelte';
 	import { parseComposeManifest } from '$lib/parsers/manifest-engine';
 	import ArchitecturePreviewBar from './manifests/ArchitecturePreviewBar.svelte';
 
@@ -17,11 +16,6 @@
 
 	const toast = useKumoToastManager();
 
-	let providerMode = $state<'raw' | 'git'>('raw');
-	let gitProvider = $state<'github' | 'gitlab' | 'custom'>('github');
-	let gitRepoUrl = $state('');
-	let gitBranch = $state('main');
-	let gitComposePath = $state('docker-compose.yml');
 	let composeYaml = $state('');
 
 	let previewOpen = $state(false);
@@ -32,17 +26,8 @@
 	$effect(() => {
 		if (service.id !== lastLoadedServiceId) {
 			lastLoadedServiceId = service.id;
-			const isGit =
-				service.sourceType === 'git' ||
-				Boolean(
-					service.source && /^(https?:\/\/|git@|ssh:\/\/|.*\.git$)/.test(service.source.trim())
-				);
-			gitRepoUrl = isGit ? service.source || '' : '';
-			gitBranch = service.branch || 'main';
-			gitComposePath = 'docker-compose.yml';
 			composeYaml = service.composeYaml || service.k8sYaml || getDefaultComposeYaml(service);
 			inPod = service.inPod || service.runtimeTarget === 'pod';
-			providerMode = isGit ? 'git' : 'raw';
 		}
 	});
 
@@ -97,13 +82,7 @@
 		service.inPod = inPod;
 		service.runtimeTarget = inPod ? 'pod' : 'standalone';
 
-		if (providerMode === 'git') {
-			service.sourceType = 'git';
-			service.source = gitRepoUrl.trim();
-			service.branch = gitBranch.trim() || 'main';
-		} else {
-			service.sourceType = 'compose';
-		}
+		service.sourceType = 'compose';
 
 		try {
 			await dataStore.updateService(service);
@@ -150,34 +129,8 @@
 			</div>
 		</div>
 
-		<!-- Right Controls: Source Mode Selector + Preview Button -->
+		<!-- Right Controls: Preview Button -->
 		<div class="flex items-center gap-2.5">
-			<div
-				class="inline-flex items-center rounded-md bg-kumo-base p-0.5 ring ring-kumo-hairline"
-				role="tablist"
-			>
-				<button
-					type="button"
-					onclick={() => (providerMode = 'raw')}
-					class="cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors {providerMode ===
-					'raw'
-						? 'bg-kumo-elevated text-kumo-default shadow-xs ring ring-kumo-line'
-						: 'text-kumo-subtle hover:text-kumo-default'}"
-				>
-					Inline YAML
-				</button>
-				<button
-					type="button"
-					onclick={() => (providerMode = 'git')}
-					class="cursor-pointer rounded px-2.5 py-1 text-xs font-medium transition-colors {providerMode ===
-					'git'
-						? 'bg-kumo-elevated text-kumo-default shadow-xs ring ring-kumo-line'
-						: 'text-kumo-subtle hover:text-kumo-default'}"
-				>
-					Git repository
-				</button>
-			</div>
-
 			<Button
 				variant="secondary"
 				size="sm"
@@ -197,9 +150,15 @@
 
 	<!-- Main Body (LayerCard.Primary) -->
 	<LayerCard.Primary class="flex flex-col gap-4 p-4">
-		{#if providerMode === 'git'}
-			<ComposeSourceSelector bind:gitProvider bind:gitRepoUrl bind:gitBranch bind:gitComposePath />
-		{/if}
+		<div
+			class="flex items-start gap-2 rounded-md bg-kumo-base px-3 py-2 text-[11px] leading-relaxed text-kumo-subtle ring ring-kumo-line"
+		>
+			<Info size={13} class="mt-0.5 shrink-0" />
+			<span>
+				Stack manifests are edited inline. Pulling a compose file from a Git repository is not
+				implemented yet; use an Application service for Git-based builds.
+			</span>
+		</div>
 
 		<!-- Podman Pod Encapsulation Strategy Banner -->
 		<div

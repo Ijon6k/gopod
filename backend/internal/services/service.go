@@ -124,7 +124,10 @@ func (s *WorkloadService) GetService(ctx context.Context, id string) (*Service, 
 		b := make([]byte, 16)
 		_, _ = rand.Read(b)
 		svc.WebhookToken = "wh_" + hex.EncodeToString(b)
-		_ = s.repo.Update(ctx, *svc)
+		// Persist only the generated token. A full Update would re-encrypt the
+		// env blob and, when the current master key cannot decrypt it, replace
+		// the recoverable ciphertext with an empty list.
+		_ = s.repo.SetWebhookToken(ctx, svc.ID, svc.WebhookToken)
 	}
 	s.reconcileRuntimeStatus(ctx, svc)
 	return svc, nil
@@ -177,6 +180,11 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 	}
 
 	svc.CreatedAt = time.Now()
+	// These are read-side flags derived from stored data, never client input.
+	svc.HasWebhook = false
+	svc.HasWebhookSecret = false
+	svc.WebhookSecretError = false
+	svc.EnvDecryptionError = false
 
 	if err := s.repo.Create(ctx, svc); err != nil {
 		return nil, err
@@ -363,6 +371,35 @@ func (s *WorkloadService) RotateWebhookToken(ctx context.Context, id string) (st
 	return token, nil
 }
 
+// RotateWebhookSecret generates and persists a fresh provider signature secret,
+// returning it once. The value is encrypted at rest.
+func (s *WorkloadService) RotateWebhookSecret(ctx context.Context, id string) (string, error) {
+	if s.repo == nil {
+		return "", errors.New("repository not initialized")
+	}
+	svc, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	if svc == nil {
+		return "", errors.New("service not found")
+	}
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	secret := "whsec_" + hex.EncodeToString(b)
+	if err := s.repo.SetWebhookSecret(ctx, id, secret); err != nil {
+		return "", err
+	}
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "service.webhook_secret_rotate", "operator", svc.Name, "security", "127.0.0.1", "success")
+	}
+	activity.RecordActivity(ctx, "operator", "service.webhook_secret_rotate", "service", svc.ID, svc.ProjectID, svc.ID, "success",
+		fmt.Sprintf("Webhook signature secret rotated for service '%s'", svc.Name), "127.0.0.1")
+	return secret, nil
+}
+
 // UpdateService modifies service configuration and syncs declarative units.
 func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error {
 	if s.repo == nil {
@@ -408,6 +445,10 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 		svc.PodID = PodNameFor(rawPod)
 	}
 
+	// This is an explicit, validated write. The read-side decryption flag must
+	// not make the repository preserve the old blob: the user may have entered
+	// a full replacement list (the UI round-trips the flag from GET).
+	svc.EnvDecryptionError = false
 	if err := s.repo.Update(ctx, svc); err != nil {
 		return err
 	}

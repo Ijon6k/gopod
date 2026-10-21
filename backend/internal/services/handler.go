@@ -16,6 +16,7 @@ import (
 type Handler struct {
 	service    *WorkloadService
 	middleware *auth.Middleware
+	deduper    *webhookDeduper
 }
 
 // NewHandler creates a new services domain handler.
@@ -23,6 +24,7 @@ func NewHandler(service *WorkloadService, mw *auth.Middleware) *Handler {
 	return &Handler{
 		service:    service,
 		middleware: mw,
+		deduper:    newWebhookDeduper(),
 	}
 }
 
@@ -67,6 +69,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/services/{id}/env/reveal", h.middleware.RequireAuth(h.handleRevealEnv))
 	mux.HandleFunc("GET /api/services/{id}/webhook", h.middleware.RequireAuth(h.handleRevealWebhook))
 	mux.HandleFunc("POST /api/services/{id}/webhook/rotate", h.middleware.RequireAuth(h.handleRotateWebhook))
+	mux.HandleFunc("POST /api/services/{id}/webhook/secret", h.middleware.RequireAuth(h.handleRotateWebhookSecret))
 
 	// Cleanup engine: inventory + manual run (nightly job runs unattended).
 	mux.HandleFunc("GET /api/system/gc/preview", h.middleware.RequireAuth(h.handleGCPreview))
@@ -130,6 +133,11 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.UpdateService(r.Context(), s); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if stored, err := h.service.GetService(r.Context(), id); err == nil && stored != nil {
+		s.HasWebhook = stored.WebhookToken != ""
+		s.HasWebhookSecret = stored.WebhookSecret != "" || stored.WebhookSecretError
+		s.WebhookSecretError = stored.WebhookSecretError
 	}
 	httputil.WriteJSON(w, http.StatusOK, RedactService(s))
 }
@@ -268,65 +276,6 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 			}
 		}
 	}
-}
-
-// WebhookPushPayload matches standard GitHub, GitLab, and Gitea webhook push events.
-type WebhookPushPayload struct {
-	Ref        string `json:"ref"`
-	After      string `json:"after"`
-	HeadCommit *struct {
-		ID      string `json:"id"`
-		Message string `json:"message"`
-	} `json:"head_commit"`
-}
-
-func (h *Handler) handleWebhook(w http.ResponseWriter, r *http.Request) {
-	token := r.PathValue("token")
-	if token == "" {
-		httputil.WriteError(w, http.StatusBadRequest, "Missing webhook token")
-		return
-	}
-
-	var payload WebhookPushPayload
-	// Body is attacker-controlled; cap it and only fail hard on oversize.
-	if err := httputil.DecodeJSONBody(w, r, &payload, 0); err != nil && errors.Is(err, httputil.ErrBodyTooLarge) {
-		httputil.WriteDecodeError(w, err)
-		return
-	}
-
-	// Validate webhook token first
-	svc, err := h.service.GetServiceByWebhookToken(r.Context(), token)
-	if err != nil || svc == nil {
-		httputil.WriteError(w, http.StatusUnauthorized, "Invalid webhook token")
-		return
-	}
-
-	// Filter by branch if Git push ref is present in payload
-	if payload.Ref != "" {
-		branch := strings.TrimPrefix(payload.Ref, "refs/heads/")
-		targetBranch := svc.GitBranch
-		if targetBranch == "" {
-			targetBranch = "main"
-		}
-		if branch != targetBranch {
-			httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
-				"status":  "ignored",
-				"message": fmt.Sprintf("Ignored push for branch '%s'; service tracks '%s'", branch, targetBranch),
-			})
-			return
-		}
-	}
-
-	_, err = h.service.DeployByWebhook(r.Context(), token)
-	if err != nil {
-		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-
-	httputil.WriteJSON(w, http.StatusAccepted, map[string]interface{}{
-		"message": "Deployment triggered successfully",
-		"service": svc.Name,
-	})
 }
 
 func (h *Handler) handleListDeployments(w http.ResponseWriter, r *http.Request) {
@@ -584,9 +533,20 @@ func (h *Handler) handleRevealWebhook(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, status, err.Error())
 		return
 	}
+	provider := ""
+	hasSecret := false
+	secretError := false
+	if svc, err := h.service.GetService(r.Context(), id); err == nil && svc != nil {
+		provider = svc.WebhookProvider
+		hasSecret = svc.WebhookSecret != "" || svc.WebhookSecretError
+		secretError = svc.WebhookSecretError
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"webhookToken": token,
-		"hasWebhook":   token != "",
+		"webhookToken":       token,
+		"hasWebhook":         token != "",
+		"webhookProvider":    provider,
+		"hasWebhookSecret":   hasSecret,
+		"webhookSecretError": secretError,
 	})
 }
 
@@ -605,6 +565,24 @@ func (h *Handler) handleRotateWebhook(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
 		"webhookToken": token,
 		"hasWebhook":   true,
+	})
+}
+
+// handleRotateWebhookSecret issues a fresh signature secret and returns it once.
+func (h *Handler) handleRotateWebhookSecret(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	secret, err := h.service.RotateWebhookSecret(r.Context(), id)
+	if err != nil {
+		status := http.StatusBadRequest
+		if strings.Contains(err.Error(), "not found") {
+			status = http.StatusNotFound
+		}
+		httputil.WriteError(w, status, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
+		"webhookSecret":    secret,
+		"hasWebhookSecret": true,
 	})
 }
 

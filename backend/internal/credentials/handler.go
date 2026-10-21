@@ -28,6 +28,10 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/credentials/ssh-keys/generate", h.middleware.RequireAuth(h.handleGenerateSSHKey))
 	mux.HandleFunc("DELETE /api/credentials/ssh-keys/{id}", h.middleware.RequireAuth(h.handleDeleteSSHKey))
 
+	mux.HandleFunc("GET /api/credentials/git-tokens", h.middleware.RequireAuth(h.handleListGitTokens))
+	mux.HandleFunc("POST /api/credentials/git-tokens", h.middleware.RequireAuth(h.handleCreateGitToken))
+	mux.HandleFunc("DELETE /api/credentials/git-tokens/{id}", h.middleware.RequireAuth(h.handleDeleteGitToken))
+
 	mux.HandleFunc("GET /api/credentials/registries", h.middleware.RequireAuth(h.handleListRegistries))
 	mux.HandleFunc("POST /api/credentials/registries", h.middleware.RequireAuth(h.handleCreateRegistry))
 	mux.HandleFunc("DELETE /api/credentials/registries/{id}", h.middleware.RequireAuth(h.handleDeleteRegistry))
@@ -83,6 +87,41 @@ func (h *Handler) handleDeleteSSHKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "SSH key deleted"})
+}
+
+// ── Git tokens ──
+
+func (h *Handler) handleListGitTokens(w http.ResponseWriter, r *http.Request) {
+	tokens, err := h.service.ListGitTokens(r.Context())
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, tokens)
+}
+
+func (h *Handler) handleCreateGitToken(w http.ResponseWriter, r *http.Request) {
+	var t GitToken
+	if err := httputil.DecodeJSONBody(w, r, &t, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+
+	created, err := h.service.CreateGitToken(r.Context(), t)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, created)
+}
+
+func (h *Handler) handleDeleteGitToken(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.service.DeleteGitToken(r.Context(), id); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Git token deleted"})
 }
 
 // ── Registries ──

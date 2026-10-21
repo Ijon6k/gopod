@@ -1,7 +1,21 @@
 import apiClient from '../client';
-import type { SSHKey, ContainerRegistry, PodmanSecret } from './types';
+import type { SSHKey, ContainerRegistry, PodmanSecret, GitToken } from './types';
 
 export const credentialsApi = {
+	gitTokens: {
+		async list(): Promise<GitToken[]> {
+			const res = await apiClient.get<GitToken[]>('/credentials/git-tokens');
+			return res.data;
+		},
+		async create(token: Partial<GitToken>): Promise<GitToken> {
+			const res = await apiClient.post<GitToken>('/credentials/git-tokens', token);
+			return res.data;
+		},
+		async delete(id: string): Promise<{ message: string }> {
+			const res = await apiClient.delete<{ message: string }>(`/credentials/git-tokens/${id}`);
+			return res.data;
+		}
+	},
 	sshKeys: {
 		async list(): Promise<SSHKey[]> {
 			const res = await apiClient.get<SSHKey[]>('/credentials/ssh-keys');

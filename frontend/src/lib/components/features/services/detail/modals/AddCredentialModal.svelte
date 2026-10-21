@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
-	import { sshKeySchema, registrySchema } from '$lib/schemas';
+	import { sshKeySchema, registrySchema, gitTokenSchema } from '$lib/schemas';
 	import {
 		Button,
 		Input,
@@ -11,18 +11,18 @@
 		SensitiveInput,
 		Modal
 	} from '$lib/components/ui';
-	import { Key, Package, ArrowsClockwise } from 'phosphor-svelte';
+	import { Key, Package, ArrowsClockwise, GitBranch } from 'phosphor-svelte';
 
 	interface Props {
 		open?: boolean;
-		initialTab?: 'ssh' | 'registry';
+		initialTab?: 'ssh' | 'registry' | 'git';
 		onclose?: () => void;
-		oncreated?: (type: 'ssh' | 'registry', id: string) => void;
+		oncreated?: (type: 'ssh' | 'registry' | 'git', id: string) => void;
 	}
 
 	let { open = $bindable(false), initialTab = 'ssh', onclose, oncreated }: Props = $props();
 
-	let activeTab = $state<'ssh' | 'registry'>('ssh');
+	let activeTab = $state<'ssh' | 'registry' | 'git'>('ssh');
 	let errorMessage = $state('');
 	let isGenerating = $state(false);
 
@@ -38,6 +38,19 @@
 	let regUrl = $state('docker.io');
 	let regUsername = $state('');
 	let regToken = $state('');
+
+	// Git token form
+	let gitName = $state('');
+	let gitProvider = $state<'github' | 'gitlab' | 'gitea' | 'custom'>('github');
+	let gitUsername = $state('x-access-token');
+	let gitToken = $state('');
+
+	function applyProviderDefaults(provider: 'github' | 'gitlab' | 'gitea' | 'custom') {
+		gitProvider = provider;
+		if (provider === 'github') gitUsername = 'x-access-token';
+		else if (provider === 'gitlab' || provider === 'gitea') gitUsername = 'oauth2';
+		else gitUsername = '';
+	}
 
 	async function generateRealKey() {
 		isGenerating = true;
@@ -128,6 +141,37 @@
 		}
 	}
 
+	async function handleSaveGitToken() {
+		errorMessage = '';
+		const validation = gitTokenSchema.safeParse({
+			name: gitName.trim(),
+			provider: gitProvider,
+			username: gitUsername.trim(),
+			token: gitToken.trim()
+		});
+
+		if (!validation.success) {
+			errorMessage = validation.error.issues[0]?.message || 'Validation error';
+			return;
+		}
+
+		try {
+			const created = await dataStore.addGitToken({
+				name: gitName.trim(),
+				provider: gitProvider,
+				username: gitUsername.trim(),
+				token: gitToken.trim()
+			});
+			open = false;
+			oncreated?.('git', created.id);
+			onclose?.();
+			gitName = '';
+			gitToken = '';
+		} catch (err: any) {
+			errorMessage = err.message || 'Failed to save Git access token';
+		}
+	}
+
 	function handleClose() {
 		open = false;
 		onclose?.();
@@ -140,7 +184,7 @@
 		<Button variant="primary" size="sm" disabled={!keyName.trim()} onclick={handleSaveSSH}>
 			Save SSH Key
 		</Button>
-	{:else}
+	{:else if activeTab === 'registry'}
 		<Button
 			variant="primary"
 			size="sm"
@@ -149,14 +193,27 @@
 		>
 			Save Registry
 		</Button>
+	{:else}
+		<Button
+			variant="primary"
+			size="sm"
+			disabled={!gitName.trim() || !gitToken.trim()}
+			onclick={handleSaveGitToken}
+		>
+			Save Git Token
+		</Button>
 	{/if}
 {/snippet}
 
 <Modal
 	{open}
 	onclose={handleClose}
-	title={activeTab === 'ssh' ? 'Add SSH Deployment Key' : 'Add Container Registry'}
-	icon={activeTab === 'ssh' ? Key : Package}
+	title={activeTab === 'ssh'
+		? 'Add SSH Deployment Key'
+		: activeTab === 'registry'
+			? 'Add Container Registry'
+			: 'Add Git Access Token'}
+	icon={activeTab === 'ssh' ? Key : activeTab === 'registry' ? Package : GitBranch}
 	size="md"
 	footer={modalFooter}
 >
@@ -175,6 +232,13 @@
 			class={`cursor-pointer border-0 border-b-2 bg-transparent pb-1 text-xs font-medium transition-colors ${activeTab === 'registry' ? 'border-[var(--accent)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
 		>
 			Docker Registry
+		</button>
+		<button
+			type="button"
+			onclick={() => (activeTab = 'git')}
+			class={`cursor-pointer border-0 border-b-2 bg-transparent pb-1 text-xs font-medium transition-colors ${activeTab === 'git' ? 'border-[var(--accent)] text-[var(--text-primary)]' : 'border-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}`}
+		>
+			Git Token
 		</button>
 	</div>
 
@@ -228,7 +292,7 @@
 				Add this public key to your repository (GitHub → Settings → Deploy Keys).
 			</span>
 		</div>
-	{:else}
+	{:else if activeTab === 'registry'}
 		<Field label="Registry Name" required>
 			<Input id="reg-name" bind:value={regName} placeholder="e.g. My Docker Hub" class="text-xs" />
 		</Field>
@@ -267,5 +331,57 @@
 				class="text-xs font-[var(--font-mono)]"
 			/>
 		</Field>
+	{:else}
+		<Field label="Token Name" required>
+			<Input
+				id="git-token-name"
+				bind:value={gitName}
+				placeholder="e.g. GitHub deploy token"
+				class="text-xs"
+			/>
+		</Field>
+
+		<div class="grid grid-cols-2 gap-3">
+			<Select
+				label="Provider"
+				value={gitProvider}
+				onValueChange={(val) => {
+					if (val === 'github' || val === 'gitlab' || val === 'gitea' || val === 'custom') {
+						applyProviderDefaults(val);
+					}
+				}}
+				options={[
+					{ label: 'GitHub', value: 'github' },
+					{ label: 'GitLab', value: 'gitlab' },
+					{ label: 'Gitea', value: 'gitea' },
+					{ label: 'Custom Git server', value: 'custom' }
+				]}
+				size="sm"
+			/>
+
+			<Field label="Username" required={gitProvider === 'custom'}>
+				<Input
+					id="git-token-username"
+					bind:value={gitUsername}
+					placeholder={gitProvider === 'custom'
+						? 'git username'
+						: 'defaults to the provider identity'}
+					class="text-xs"
+				/>
+			</Field>
+		</div>
+
+		<Field label="Personal Access Token" required>
+			<SensitiveInput
+				bind:value={gitToken}
+				placeholder="ghp_... / glpat-... / gitea token"
+				size="sm"
+				class="text-xs font-[var(--font-mono)]"
+			/>
+		</Field>
+		<span class="text-[11px] text-[var(--text-tertiary)]">
+			Read-only repository scope is sufficient. The token is encrypted at rest and never displayed
+			again.
+		</span>
 	{/if}
 </Modal>

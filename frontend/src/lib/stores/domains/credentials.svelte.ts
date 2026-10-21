@@ -1,21 +1,24 @@
-import type { SSHKey, ContainerRegistry, PodmanSecret } from '$lib/types';
+import type { SSHKey, ContainerRegistry, PodmanSecret, GitToken } from '$lib/types';
 import { api } from '$lib/api';
 
 export class CredentialsDomainStore {
 	sshKeys = $state<SSHKey[]>([]);
 	registries = $state<ContainerRegistry[]>([]);
 	podmanSecrets = $state<PodmanSecret[]>([]);
+	gitTokens = $state<GitToken[]>([]);
 
 	async fetchCredentials() {
 		try {
-			const [keys, regs, secs] = await Promise.all([
+			const [keys, regs, secs, tokens] = await Promise.all([
 				api.credentials.sshKeys.list().catch(() => []),
 				api.credentials.registries.list().catch(() => []),
-				api.credentials.secrets.list().catch(() => [])
+				api.credentials.secrets.list().catch(() => []),
+				api.credentials.gitTokens.list().catch(() => [])
 			]);
 			if (Array.isArray(keys)) this.sshKeys = keys;
 			if (Array.isArray(regs)) this.registries = regs;
 			if (Array.isArray(secs)) this.podmanSecrets = secs;
+			if (Array.isArray(tokens)) this.gitTokens = tokens;
 		} catch (err) {
 			console.warn('[CredentialsDomainStore] Failed to fetch credentials:', err);
 		}
@@ -47,5 +50,16 @@ export class CredentialsDomainStore {
 		const created = await api.credentials.secrets.create({ name, value, driver: 'file' } as any);
 		this.podmanSecrets.unshift(created);
 		return created;
+	}
+
+	async addGitToken(token: Omit<GitToken, 'id' | 'createdAt'>): Promise<GitToken> {
+		const created = await api.credentials.gitTokens.create(token);
+		this.gitTokens.unshift(created);
+		return created;
+	}
+
+	async deleteGitToken(id: string) {
+		await api.credentials.gitTokens.delete(id);
+		this.gitTokens = this.gitTokens.filter((t) => t.id !== id);
 	}
 }

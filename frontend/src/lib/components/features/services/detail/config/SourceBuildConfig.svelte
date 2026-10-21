@@ -12,13 +12,14 @@
 		branch: string;
 		buildType: 'dockerfile' | 'nixpacks' | 'static';
 		dockerfilePath: string;
-		publishDir: string;
 		sshKeyId: string;
+		gitCredentialId: string;
+		buildArgsText: string;
 		rawImageName: string;
 		selectedRegistry: string;
 		dropFileName: string | null;
 		containerPort: string;
-		onOpenCredentialModal?: (type: 'ssh' | 'registry') => void;
+		onOpenCredentialModal?: (type: 'ssh' | 'registry' | 'git') => void;
 	}
 
 	let {
@@ -28,8 +29,9 @@
 		branch = $bindable(),
 		buildType = $bindable(),
 		dockerfilePath = $bindable(),
-		publishDir = $bindable(),
 		sshKeyId = $bindable(),
+		gitCredentialId = $bindable(),
+		buildArgsText = $bindable(),
 		rawImageName = $bindable(),
 		selectedRegistry = $bindable(),
 		dropFileName = $bindable(),
@@ -78,6 +80,13 @@
 				description: `Successfully extracted ${data.filesCount} static files to disk.`,
 				variant: 'success'
 			});
+			// A stale manifest would take precedence over the drop source in the
+			// deploy dispatcher. Never erase a Quadlet-managed unit from here.
+			service.composeYaml = '';
+			service.k8sYaml = '';
+			if (service.type !== 'quadlet' && service.runtimeTarget !== 'quadlet') {
+				service.quadletConfig = '';
+			}
 			await dataStore.updateService(service);
 		} catch (err: any) {
 			toast.add({
@@ -182,68 +191,32 @@
 				</div>
 			</div>
 
-			<div class="flex flex-wrap items-center gap-4 pt-1">
+			<div class="flex flex-wrap items-end gap-4 pt-1">
 				<div class="flex flex-col gap-1.5">
 					<span class="text-[11px] font-medium text-kumo-subtle">Build method</span>
 					<div class="flex items-center gap-1.5">
-						<button
-							type="button"
-							onclick={() => (buildType = 'dockerfile')}
-							class="cursor-pointer rounded-sm border px-2.5 py-1 text-xs transition-colors {buildType ===
-							'dockerfile'
-								? 'border-kumo-line bg-kumo-base font-medium text-kumo-default shadow-xs'
-								: 'border-transparent text-kumo-subtle hover:text-kumo-default'}"
+						<span
+							class="rounded-sm border border-kumo-line bg-kumo-base px-2.5 py-1 text-xs font-medium text-kumo-default shadow-xs"
 						>
 							Dockerfile
-						</button>
-						<button
-							type="button"
-							onclick={() => (buildType = 'nixpacks')}
-							class="cursor-pointer rounded-sm border px-2.5 py-1 text-xs transition-colors {buildType ===
-							'nixpacks'
-								? 'border-kumo-line bg-kumo-base font-medium text-kumo-default shadow-xs'
-								: 'border-transparent text-kumo-subtle hover:text-kumo-default'}"
-						>
-							Nixpacks
-						</button>
-						<button
-							type="button"
-							onclick={() => (buildType = 'static')}
-							class="cursor-pointer rounded-sm border px-2.5 py-1 text-xs transition-colors {buildType ===
-							'static'
-								? 'border-kumo-line bg-kumo-base font-medium text-kumo-default shadow-xs'
-								: 'border-transparent text-kumo-subtle hover:text-kumo-default'}"
-						>
-							Static SPA
-						</button>
+						</span>
+						<span class="text-[10px] text-kumo-subtle">
+							Buildpack autodetect is not available yet.
+						</span>
 					</div>
 				</div>
 
-				{#if buildType === 'dockerfile'}
-					<div class="flex w-44 flex-col gap-1.5">
-						<label for="dockerfile-path" class="text-[11px] font-medium text-kumo-subtle">
-							Dockerfile path
-						</label>
-						<Input
-							id="dockerfile-path"
-							bind:value={dockerfilePath}
-							placeholder="./Dockerfile"
-							class="h-8 font-mono text-xs"
-						/>
-					</div>
-				{:else if buildType === 'static'}
-					<div class="flex w-36 flex-col gap-1.5">
-						<label for="publish-dir" class="text-[11px] font-medium text-kumo-subtle">
-							Publish directory
-						</label>
-						<Input
-							id="publish-dir"
-							bind:value={publishDir}
-							placeholder="dist"
-							class="h-8 font-mono text-xs"
-						/>
-					</div>
-				{/if}
+				<div class="flex w-44 flex-col gap-1.5">
+					<label for="dockerfile-path" class="text-[11px] font-medium text-kumo-subtle">
+						Dockerfile path
+					</label>
+					<Input
+						id="dockerfile-path"
+						bind:value={dockerfilePath}
+						placeholder="./Dockerfile"
+						class="h-8 font-mono text-xs"
+					/>
+				</div>
 
 				<div class="flex flex-col gap-1.5">
 					<div class="flex items-center justify-between gap-2">
@@ -267,6 +240,48 @@
 						class="h-8 w-48 text-xs"
 					/>
 				</div>
+
+				<div class="flex flex-col gap-1.5">
+					<div class="flex items-center justify-between gap-2">
+						<span class="text-[11px] font-medium text-kumo-subtle">HTTPS access token</span>
+						{#if onOpenCredentialModal}
+							<button
+								type="button"
+								onclick={() => onOpenCredentialModal('git')}
+								class="cursor-pointer text-[10px] text-[var(--accent)] hover:underline"
+							>
+								+ Add token
+							</button>
+						{/if}
+					</div>
+					<Select
+						bind:value={gitCredentialId}
+						options={[
+							{ value: '', label: 'None (SSH or public)' },
+							...dataStore.gitTokens.map((t) => ({
+								value: t.id,
+								label: `${t.name} (${t.provider})`
+							}))
+						]}
+						class="h-8 w-48 text-xs"
+					/>
+				</div>
+			</div>
+
+			<div class="flex flex-col gap-1.5">
+				<label for="build-args" class="text-[11px] font-medium text-kumo-subtle">
+					Build arguments (optional)
+				</label>
+				<textarea
+					id="build-args"
+					bind:value={buildArgsText}
+					rows="2"
+					placeholder={'NODE_ENV=production\nAPI_URL=https://api.example.test'}
+					class="w-full resize-y rounded-sm border border-kumo-line bg-kumo-base px-2.5 py-1.5 font-mono text-xs text-kumo-default placeholder:text-kumo-subtle focus:border-[var(--accent)] focus:outline-none"
+				></textarea>
+				<span class="text-[10px] text-kumo-subtle">
+					One KEY=VALUE per line. Build args are stored in plain text; keep secrets out of them.
+				</span>
 			</div>
 		</div>
 	{:else if sourceType === 'image'}

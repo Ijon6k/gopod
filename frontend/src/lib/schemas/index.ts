@@ -30,6 +30,24 @@ export const registrySchema = z.object({
 
 export type RegistryInput = z.infer<typeof registrySchema>;
 
+// ── Git Access Token Validation Schema ──
+export const gitTokenSchema = z
+	.object({
+		name: z
+			.string()
+			.min(2, 'Token name must be at least 2 characters')
+			.max(64, 'Token name cannot exceed 64 characters'),
+		provider: z.enum(['github', 'gitlab', 'gitea', 'custom']),
+		username: z.string().max(128, 'Username cannot exceed 128 characters').optional(),
+		token: z.string().min(1, 'Access token is required')
+	})
+	.refine((data) => data.provider !== 'custom' || (data.username ?? '').trim().length > 0, {
+		message: 'Username is required for a custom Git provider',
+		path: ['username']
+	});
+
+export type GitTokenInput = z.infer<typeof gitTokenSchema>;
+
 // ── Service Workload Schema ──
 export const serviceSchema = z.object({
 	name: z

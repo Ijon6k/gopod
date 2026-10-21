@@ -385,18 +385,6 @@ func TestEnvironmentVariables_DiskSync(t *testing.T) {
 // TestGitSourceDetectionLogic verifies the heuristic distinguishing raw compose filenames
 // from real Git repository URLs.
 func TestGitSourceDetectionLogic(t *testing.T) {
-	isGitURL := func(source string) bool {
-		source = strings.TrimSpace(source)
-		if source == "" {
-			return false
-		}
-		return strings.HasPrefix(source, "https://") ||
-			strings.HasPrefix(source, "http://") ||
-			strings.HasPrefix(source, "git@") ||
-			strings.HasPrefix(source, "ssh://") ||
-			strings.HasSuffix(source, ".git")
-	}
-
 	testCases := []struct {
 		input    string
 		expected bool
@@ -407,17 +395,19 @@ func TestGitSourceDetectionLogic(t *testing.T) {
 		{"../data/compose/file.yml", false},
 		{"", false},
 		{"   ", false},
+		{"docker.io/library/nginx:latest", false},
 		{"https://github.com/org/repo.git", true},
 		{"https://gitlab.com/org/repo", true},
 		{"http://git.internal.company.com/stack.git", true},
 		{"git@github.com:user/repo.git", true},
 		{"ssh://git@custom.host:22/user/repo", true},
+		{"git://git.internal.company.com/repo", true},
 	}
 
 	for _, tc := range testCases {
-		res := isGitURL(tc.input)
+		res := isGitSource(Service{Source: tc.input})
 		if res != tc.expected {
-			t.Errorf("isGitURL(%q) = %v, expected %v", tc.input, res, tc.expected)
+			t.Errorf("isGitSource(%q) = %v, expected %v", tc.input, res, tc.expected)
 		}
 	}
 }

@@ -8,6 +8,7 @@ import type {
 	QuadletPreviewResponse,
 	GroupPodRequest,
 	WebhookTokenResponse,
+	WebhookSecretResponse,
 	RevealEnvResponse
 } from './types';
 
@@ -111,6 +112,12 @@ export const servicesApi = {
 	/** Issues a fresh webhook token; the previous URL stops working immediately. */
 	async rotateWebhookToken(id: string): Promise<WebhookTokenResponse> {
 		const res = await apiClient.post<WebhookTokenResponse>(`/services/${id}/webhook/rotate`);
+		return res.data;
+	},
+
+	/** Issues a fresh signature secret; the value is returned once and never serialized again. */
+	async rotateWebhookSecret(id: string): Promise<WebhookSecretResponse> {
+		const res = await apiClient.post<WebhookSecretResponse>(`/services/${id}/webhook/secret`);
 		return res.data;
 	},
 

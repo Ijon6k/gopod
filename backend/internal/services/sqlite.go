@@ -21,7 +21,36 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 	return &SQLiteRepository{db: db}
 }
 
-const serviceSelectCols = "id, project_id, name, type, status, source, branch, image, port, COALESCE(host_port, 0), COALESCE(host_ip, ''), cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, COALESCE(source_type, 'git'), COALESCE(build_type, 'dockerfile'), COALESCE(build_path, '/'), COALESCE(publish_dir, 'dist'), COALESCE(pod_id, ''), COALESCE(registry_id, ''), COALESCE(auto_deploy, 1), COALESCE(watch_paths, ''), COALESCE(command, ''), COALESCE(entrypoint, ''), env_vars, COALESCE(advanced, '{}'), created_at"
+const serviceSelectCols = "id, project_id, name, type, status, source, branch, image, port, COALESCE(host_port, 0), COALESCE(host_ip, ''), cpu_limit, memory_limit, restart_policy, description, quadlet_config, compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo, git_branch, dockerfile_path, ssh_key_id, COALESCE(git_credential_id, ''), COALESCE(build_args, '[]'), COALESCE(webhook_provider, ''), COALESCE(webhook_secret, ''), COALESCE(source_type, 'git'), COALESCE(build_type, 'dockerfile'), COALESCE(build_path, '/'), COALESCE(publish_dir, 'dist'), COALESCE(pod_id, ''), COALESCE(registry_id, ''), COALESCE(auto_deploy, 1), COALESCE(watch_paths, ''), COALESCE(command, ''), COALESCE(entrypoint, ''), env_vars, COALESCE(advanced, '{}'), created_at"
+
+// hydrateService decodes the encrypted and JSON-backed service columns.
+func hydrateService(s *Service, envJSON, advJSON, buildArgsJSON, webhookSecretEnc string) {
+	if dec, err := crypto.Decrypt(envJSON); err == nil {
+		envJSON = dec
+	} else {
+		// Keep the row intact, flag it, and never present ciphertext as a value.
+		log.Printf("[WARN] failed to decrypt env vars for service %s: %v", s.ID, err)
+		s.EnvDecryptionError = true
+		envJSON = ""
+	}
+	if envJSON != "" {
+		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
+	}
+	if advJSON != "" && advJSON != "{}" {
+		_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
+	}
+	if buildArgsJSON != "" && buildArgsJSON != "[]" {
+		_ = json.Unmarshal([]byte(buildArgsJSON), &s.BuildArgs)
+	}
+	if webhookSecretEnc != "" {
+		if dec, err := crypto.Decrypt(webhookSecretEnc); err == nil {
+			s.WebhookSecret = dec
+		} else {
+			log.Printf("[WARN] failed to decrypt webhook secret for service %s: %v", s.ID, err)
+			s.WebhookSecretError = true
+		}
+	}
+}
 
 func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Service, error) {
 	var query string
@@ -42,34 +71,20 @@ func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Servic
 	var list []Service
 	for rows.Next() {
 		var s Service
-		var envJSON, advJSON string
+		var envJSON, advJSON, buildArgsJSON, webhookSecretEnc string
 		if err := rows.Scan(
 			&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image,
 			&s.Port, &s.HostPort, &s.HostIP, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
 			&s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken,
-			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.SourceType, &s.BuildType,
+			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.GitCredentialID, &buildArgsJSON,
+			&s.WebhookProvider, &webhookSecretEnc, &s.SourceType, &s.BuildType,
 			&s.BuildPath, &s.PublishDir, &s.PodID, &s.RegistryID, &s.AutoDeploy, &s.WatchPaths,
 			&s.Command, &s.Entrypoint,
 			&envJSON, &advJSON, &s.CreatedAt,
 		); err != nil {
 			return nil, err
 		}
-		if dec, err := crypto.Decrypt(envJSON); err == nil {
-			envJSON = dec
-		} else {
-			// The stored blob cannot be decrypted (e.g. the master key was
-			// replaced). Keep the row intact, flag it, and never present the
-			// ciphertext as if it were the value.
-			log.Printf("[WARN] failed to decrypt env vars for service %s: %v", s.ID, err)
-			s.EnvDecryptionError = true
-			envJSON = ""
-		}
-		if envJSON != "" {
-			_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
-		}
-		if advJSON != "" && advJSON != "{}" {
-			_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
-		}
+		hydrateService(&s, envJSON, advJSON, buildArgsJSON, webhookSecretEnc)
 		list = append(list, s)
 	}
 	if list == nil {
@@ -80,14 +95,15 @@ func (r *SQLiteRepository) List(ctx context.Context, projectID string) ([]Servic
 
 func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error) {
 	var s Service
-	var envJSON, advJSON string
+	var envJSON, advJSON, buildArgsJSON, webhookSecretEnc string
 	err := r.db.QueryRowContext(ctx,
 		"SELECT "+serviceSelectCols+" FROM services WHERE id = ?", id).
 		Scan(
 			&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image,
 			&s.Port, &s.HostPort, &s.HostIP, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
 			&s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken,
-			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.SourceType, &s.BuildType,
+			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.GitCredentialID, &buildArgsJSON,
+			&s.WebhookProvider, &webhookSecretEnc, &s.SourceType, &s.BuildType,
 			&s.BuildPath, &s.PublishDir, &s.PodID, &s.RegistryID, &s.AutoDeploy, &s.WatchPaths,
 			&s.Command, &s.Entrypoint,
 			&envJSON, &advJSON, &s.CreatedAt,
@@ -98,19 +114,7 @@ func (r *SQLiteRepository) Get(ctx context.Context, id string) (*Service, error)
 	if err != nil {
 		return nil, err
 	}
-	if dec, err := crypto.Decrypt(envJSON); err == nil {
-		envJSON = dec
-	} else {
-		log.Printf("[WARN] failed to decrypt env vars for service %s: %v", s.ID, err)
-		s.EnvDecryptionError = true
-		envJSON = ""
-	}
-	if envJSON != "" {
-		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
-	}
-	if advJSON != "" && advJSON != "{}" {
-		_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
-	}
+	hydrateService(&s, envJSON, advJSON, buildArgsJSON, webhookSecretEnc)
 	return &s, nil
 }
 
@@ -154,19 +158,26 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 	if s.PublishDir == "" {
 		s.PublishDir = "dist"
 	}
+	buildArgsJSON := marshalServiceBuildArgs(s.BuildArgs)
+	encWebhookSecret, err := crypto.Encrypt(s.WebhookSecret)
+	if err != nil {
+		return fmt.Errorf("encrypt webhook secret: %w", err)
+	}
 
 	_, err = r.db.ExecContext(ctx,
 		`INSERT INTO services (
 			id, project_id, name, type, status, source, branch, image, port, host_port, host_ip,
 			cpu_limit, memory_limit, restart_policy, description, quadlet_config,
 			compose_yaml, k8s_yaml, runtime_target, in_pod, webhook_token, git_repo,
-			git_branch, dockerfile_path, ssh_key_id, source_type, build_type, build_path,
+			git_branch, dockerfile_path, ssh_key_id, git_credential_id, build_args,
+			webhook_provider, webhook_secret, source_type, build_type, build_path,
 			publish_dir, pod_id, registry_id, auto_deploy, watch_paths, command, entrypoint, env_vars, advanced, created_at
-		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		s.ID, s.ProjectID, s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image, s.Port, s.HostPort, s.HostIP,
 		s.CPULimit, s.MemoryLimit, s.RestartPolicy, s.Description, s.QuadletConfig,
 		s.ComposeYaml, s.K8sYaml, s.RuntimeTarget, s.InPod, s.WebhookToken, s.GitRepo,
-		s.GitBranch, s.DockerfilePath, s.SSHKeyID, s.SourceType, s.BuildType, s.BuildPath,
+		s.GitBranch, s.DockerfilePath, s.SSHKeyID, s.GitCredentialID, buildArgsJSON,
+		s.WebhookProvider, encWebhookSecret, s.SourceType, s.BuildType, s.BuildPath,
 		s.PublishDir, s.PodID, s.RegistryID, s.AutoDeploy, s.WatchPaths, s.Command, s.Entrypoint, string(envJSON), string(advJSON), s.CreatedAt,
 	)
 	return err
@@ -174,7 +185,10 @@ func (r *SQLiteRepository) Create(ctx context.Context, s Service) error {
 
 func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 	// Env blob encryption failure must abort the write: falling back to
-	// plaintext would silently store secrets unencrypted.
+	// plaintext would silently store secrets unencrypted. When the caller
+	// carries a service whose stored env blob could not be decrypted, preserve
+	// the ciphertext: status-only updates must not replace the only copy with
+	// an empty list.
 	rawEnv, _ := json.Marshal(s.EnvVars)
 	envJSON := string(rawEnv)
 	encEnv, err := crypto.Encrypt(envJSON)
@@ -212,6 +226,11 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 	if s.PublishDir == "" {
 		s.PublishDir = "dist"
 	}
+	buildArgsJSON := marshalServiceBuildArgs(s.BuildArgs)
+	encWebhookSecret, err := crypto.Encrypt(s.WebhookSecret)
+	if err != nil {
+		return fmt.Errorf("encrypt webhook secret: %w", err)
+	}
 
 	_, err = r.db.ExecContext(ctx,
 		`UPDATE services SET
@@ -220,19 +239,33 @@ func (r *SQLiteRepository) Update(ctx context.Context, s Service) error {
 			description = ?, quadlet_config = ?, compose_yaml = ?, k8s_yaml = ?,
 			runtime_target = ?, in_pod = ?, webhook_token = COALESCE(NULLIF(webhook_token, ''), ?),
 			git_repo = ?, git_branch = ?, dockerfile_path = ?, ssh_key_id = ?,
+			git_credential_id = ?, build_args = ?, webhook_provider = ?,
+			webhook_secret = COALESCE(NULLIF(webhook_secret, ''), ?),
 			source_type = ?, build_type = ?, build_path = ?, publish_dir = ?,
 			pod_id = ?, registry_id = ?, auto_deploy = ?, watch_paths = ?, command = ?, entrypoint = ?,
-			env_vars = ?, advanced = ?
+			env_vars = CASE WHEN ? THEN env_vars ELSE ? END, advanced = ?
 		WHERE id = ?`,
 		s.Name, s.Type, s.Status, s.Source, s.Branch, s.Image,
 		s.Port, s.HostPort, s.HostIP, s.CPULimit, s.MemoryLimit, s.RestartPolicy,
 		s.Description, s.QuadletConfig, s.ComposeYaml, s.K8sYaml,
 		s.RuntimeTarget, s.InPod, s.WebhookToken, s.GitRepo, s.GitBranch,
-		s.DockerfilePath, s.SSHKeyID, s.SourceType, s.BuildType, s.BuildPath,
+		s.DockerfilePath, s.SSHKeyID, s.GitCredentialID, buildArgsJSON, s.WebhookProvider,
+		encWebhookSecret, s.SourceType, s.BuildType, s.BuildPath,
 		s.PublishDir, s.PodID, s.RegistryID, s.AutoDeploy, s.WatchPaths, s.Command, s.Entrypoint,
-		string(envJSON), string(advJSON), s.ID,
+		s.EnvDecryptionError, string(envJSON), string(advJSON), s.ID,
 	)
 	return err
+}
+
+func marshalServiceBuildArgs(args []string) string {
+	if len(args) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(args)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
 }
 
 func (r *SQLiteRepository) Delete(ctx context.Context, id string) error {
@@ -248,16 +281,27 @@ func (r *SQLiteRepository) SetWebhookToken(ctx context.Context, id, token string
 	return err
 }
 
+// SetWebhookSecret replaces the provider signature secret, encrypted at rest.
+func (r *SQLiteRepository) SetWebhookSecret(ctx context.Context, id, secret string) error {
+	enc, err := crypto.Encrypt(secret)
+	if err != nil {
+		return err
+	}
+	_, err = r.db.ExecContext(ctx, "UPDATE services SET webhook_secret = ? WHERE id = ?", enc, id)
+	return err
+}
+
 func (r *SQLiteRepository) GetByWebhookToken(ctx context.Context, token string) (*Service, error) {
 	var s Service
-	var envJSON, advJSON string
+	var envJSON, advJSON, buildArgsJSON, webhookSecretEnc string
 	err := r.db.QueryRowContext(ctx,
 		"SELECT "+serviceSelectCols+" FROM services WHERE webhook_token = ?", token).
 		Scan(
 			&s.ID, &s.ProjectID, &s.Name, &s.Type, &s.Status, &s.Source, &s.Branch, &s.Image,
 			&s.Port, &s.HostPort, &s.HostIP, &s.CPULimit, &s.MemoryLimit, &s.RestartPolicy, &s.Description,
 			&s.QuadletConfig, &s.ComposeYaml, &s.K8sYaml, &s.RuntimeTarget, &s.InPod, &s.WebhookToken,
-			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.SourceType, &s.BuildType,
+			&s.GitRepo, &s.GitBranch, &s.DockerfilePath, &s.SSHKeyID, &s.GitCredentialID, &buildArgsJSON,
+			&s.WebhookProvider, &webhookSecretEnc, &s.SourceType, &s.BuildType,
 			&s.BuildPath, &s.PublishDir, &s.PodID, &s.RegistryID, &s.AutoDeploy, &s.WatchPaths,
 			&s.Command, &s.Entrypoint,
 			&envJSON, &advJSON, &s.CreatedAt,
@@ -268,19 +312,7 @@ func (r *SQLiteRepository) GetByWebhookToken(ctx context.Context, token string) 
 	if err != nil {
 		return nil, err
 	}
-	if dec, err := crypto.Decrypt(envJSON); err == nil {
-		envJSON = dec
-	} else {
-		log.Printf("[WARN] failed to decrypt env vars for service %s: %v", s.ID, err)
-		s.EnvDecryptionError = true
-		envJSON = ""
-	}
-	if envJSON != "" {
-		_ = json.Unmarshal([]byte(envJSON), &s.EnvVars)
-	}
-	if advJSON != "" && advJSON != "{}" {
-		_ = json.Unmarshal([]byte(advJSON), &s.Advanced)
-	}
+	hydrateService(&s, envJSON, advJSON, buildArgsJSON, webhookSecretEnc)
 	return &s, nil
 }
 

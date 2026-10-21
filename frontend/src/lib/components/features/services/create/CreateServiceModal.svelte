@@ -86,6 +86,7 @@
 				branch: 'main',
 				buildType: 'dockerfile',
 				runtimeTarget: 'standalone',
+				autoDeploy: true,
 				port: servicePort.trim() ? parseInt(servicePort.trim(), 10) || 0 : 0,
 				cpu: 0,
 				memory: 0,

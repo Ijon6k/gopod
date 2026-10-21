@@ -9,6 +9,11 @@ type Repository interface {
 	CreateSSHKey(ctx context.Context, k SSHKey) error
 	DeleteSSHKey(ctx context.Context, id string) error
 
+	ListGitTokens(ctx context.Context) ([]GitToken, error)
+	GetGitToken(ctx context.Context, id string) (*GitToken, error)
+	CreateGitToken(ctx context.Context, t GitToken) error
+	DeleteGitToken(ctx context.Context, id string) error
+
 	ListRegistries(ctx context.Context) ([]ContainerRegistry, error)
 	GetRegistry(ctx context.Context, id string) (*ContainerRegistry, error)
 	CreateRegistry(ctx context.Context, r ContainerRegistry) error

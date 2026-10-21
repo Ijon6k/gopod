@@ -384,6 +384,7 @@ func TestServiceLifecyclePodmanE2E(t *testing.T) {
 		"port":          80,
 		"hostPort":      hostPort,
 		"restartPolicy": "no",
+		"autoDeploy":    true,
 		"envVars": []map[string]interface{}{
 			{"key": "NGINX_HOST", "value": "e2e.local", "secret": false},
 		},

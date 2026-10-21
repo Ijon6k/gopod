@@ -1,5 +1,7 @@
 package db
 
+import "fmt"
+
 func (d *DB) migrate() error {
 	schema := `
 	CREATE TABLE IF NOT EXISTS projects (
@@ -106,6 +108,15 @@ func (d *DB) migrate() error {
 		name TEXT NOT NULL,
 		url TEXT NOT NULL,
 		username TEXT NOT NULL,
+		token TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS git_tokens (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		username TEXT DEFAULT '',
 		token TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
@@ -220,6 +231,10 @@ func (d *DB) migrate() error {
 		"ALTER TABLE services ADD COLUMN watch_paths TEXT DEFAULT '';",
 		"ALTER TABLE services ADD COLUMN command TEXT DEFAULT '';",
 		"ALTER TABLE services ADD COLUMN entrypoint TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN git_credential_id TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN build_args TEXT DEFAULT '[]';",
+		"ALTER TABLE services ADD COLUMN webhook_provider TEXT DEFAULT '';",
+		"ALTER TABLE services ADD COLUMN webhook_secret TEXT DEFAULT '';",
 		"ALTER TABLE deployments ADD COLUMN commit_hash TEXT DEFAULT '';",
 		"ALTER TABLE deployments ADD COLUMN commit_message TEXT DEFAULT '';",
 		"ALTER TABLE deployments ADD COLUMN trigger TEXT DEFAULT 'manual';",
@@ -233,5 +248,26 @@ func (d *DB) migrate() error {
 		_, _ = d.Exec(q)
 	}
 
+	d.migrateData()
 	return nil
+}
+
+// Data migrations are keyed by PRAGMA user_version; each entry runs once.
+var dataMigrations = []string{
+	// auto_deploy existed as an inert column, so every stored false value is
+	// the zero value rather than an operator choice. Start everyone enabled.
+	"UPDATE services SET auto_deploy = 1",
+}
+
+func (d *DB) migrateData() {
+	var version int
+	if err := d.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
+		return
+	}
+	for i := version; i < len(dataMigrations); i++ {
+		if _, err := d.Exec(dataMigrations[i]); err != nil {
+			return
+		}
+		_, _ = d.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1))
+	}
 }

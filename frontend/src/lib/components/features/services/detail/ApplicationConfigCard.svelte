@@ -3,15 +3,15 @@
 	import { LayerCard, Button, useKumoToastManager } from 'kumo-svelte';
 	import { untrack } from 'svelte';
 	import { dataStore } from '$lib/data';
-	import { api } from '$lib/api';
 	import { Cube, Check, ArrowClockwise } from 'phosphor-svelte';
 	import SourceBuildConfig from './config/SourceBuildConfig.svelte';
 	import ServicePortConfig from './config/ServicePortConfig.svelte';
 	import ServiceAdvancedConfig from './config/ServiceAdvancedConfig.svelte';
+	import GitWebhookSection from './config/GitWebhookSection.svelte';
 
 	interface Props {
 		service: Service;
-		onOpenCredentialModal?: (type: 'ssh' | 'registry') => void;
+		onOpenCredentialModal?: (type: 'ssh' | 'registry' | 'git') => void;
 	}
 
 	let { service, onOpenCredentialModal }: Props = $props();
@@ -24,9 +24,11 @@
 	let branch = $state('main');
 	let buildPath = $state('/');
 	let sshKeyId = $state('');
+	let gitCredentialId = $state('');
 	let buildType = $state<'dockerfile' | 'nixpacks' | 'static'>('dockerfile');
 	let dockerfilePath = $state('./Dockerfile');
-	let publishDir = $state('dist');
+	let buildArgsText = $state('');
+	let webhookProvider = $state<'' | 'github' | 'gitlab' | 'gitea'>('');
 	let rawImageName = $state('');
 	let selectedRegistry = $state('docker.io');
 	let dropFileName = $state<string | null>(null);
@@ -71,26 +73,6 @@
 		return clean;
 	});
 
-	let webhookToken = $state('');
-	let activeWebhookServiceId = $state<string | null>(null);
-
-	let webhookUrl = $derived(webhookToken ? api.services.getWebhookUrl(webhookToken) : '');
-
-	// The webhook token is never serialized alongside the service; fetch it on
-	// demand so the displayed URL carries the real token.
-	$effect(() => {
-		if (service.id === activeWebhookServiceId) return;
-		activeWebhookServiceId = service.id;
-		const id = service.id;
-		webhookToken = '';
-		api.services
-			.getWebhookToken(id)
-			.then((res) => {
-				if (activeWebhookServiceId === id) webhookToken = res.webhookToken ?? '';
-			})
-			.catch((err) => console.warn('Failed to fetch webhook token', err));
-	});
-
 	// Synchronize on service prop change
 	let initializedFor = $state('');
 
@@ -110,9 +92,19 @@
 			branch = service.branch || 'main';
 			buildPath = service.buildPath || '/';
 			sshKeyId = service.sshKeyId || (dataStore.sshKeys[0]?.id ?? '');
-			buildType = service.buildType || 'dockerfile';
+			gitCredentialId = service.gitCredentialId || '';
+			buildType =
+				service.buildType === 'nixpacks' || service.buildType === 'static'
+					? 'dockerfile'
+					: service.buildType || 'dockerfile';
 			dockerfilePath = service.dockerfilePath || './Dockerfile';
-			publishDir = service.publishDir || 'dist';
+			buildArgsText = (service.buildArgs ?? []).join('\n');
+			webhookProvider =
+				service.webhookProvider === 'gitlab' ||
+				service.webhookProvider === 'gitea' ||
+				service.webhookProvider === 'github'
+					? service.webhookProvider
+					: '';
 
 			rawImageName = service.image || '';
 			if (service.image) {
@@ -139,6 +131,26 @@
 		});
 	});
 
+	function parseBuildArgs(raw: string): string[] {
+		return raw
+			.split(/\r?\n/)
+			.map((line) => line.trim())
+			.filter(Boolean);
+	}
+
+	// This card owns application/image/drop sources. A leftover Compose,
+	// Kubernetes, or Quadlet manifest would win over the selected source in
+	// the deploy dispatcher, so clear those fields when the card is saved.
+	function clearDeclarativeWorkloadConfig() {
+		// Stale manifests would take precedence over the selected source.
+		service.composeYaml = '';
+		service.k8sYaml = '';
+		// Quadlet-managed workloads are edited in the Quadlet tab; this card is
+		// also rendered on their General tab and must not erase their unit.
+		if (service.type === 'quadlet' || service.runtimeTarget === 'quadlet') return;
+		service.quadletConfig = '';
+	}
+
 	async function handleSave() {
 		isSaving = true;
 		try {
@@ -152,14 +164,30 @@
 					});
 					return;
 				}
+				const buildArgs = parseBuildArgs(buildArgsText);
+				const invalidArg = buildArgs.find((arg) => {
+					const separator = arg.indexOf('=');
+					if (separator <= 0) return true;
+					return /\s/.test(arg.slice(0, separator).trim());
+				});
+				if (invalidArg) {
+					toast.add({
+						title: 'Invalid build argument',
+						description: `"${invalidArg}" must use the KEY=VALUE form.`,
+						variant: 'error'
+					});
+					return;
+				}
 				service.sourceType = 'git';
 				service.source = repoUrl.trim();
 				service.branch = branch.trim() || 'main';
 				service.buildPath = buildPath.trim() || '/';
-				service.buildType = buildType;
+				service.buildType = 'dockerfile';
 				service.dockerfilePath = dockerfilePath.trim();
-				service.publishDir = publishDir.trim();
 				service.sshKeyId = sshKeyId || undefined;
+				service.gitCredentialId = gitCredentialId || undefined;
+				service.buildArgs = buildArgs;
+				service.webhookProvider = webhookProvider;
 				service.image = undefined;
 			} else if (sourceType === 'image') {
 				if (!rawImageName.trim()) {
@@ -220,6 +248,7 @@
 			// 4. Triggers
 			service.autoDeploy = autoDeploy;
 			service.watchPaths = watchPaths.trim();
+			clearDeclarativeWorkloadConfig();
 
 			await dataStore.updateService(service);
 			saveStatus = 'saved';
@@ -289,14 +318,19 @@
 			bind:branch
 			bind:buildType
 			bind:dockerfilePath
-			bind:publishDir
 			bind:sshKeyId
+			bind:gitCredentialId
+			bind:buildArgsText
 			bind:rawImageName
 			bind:selectedRegistry
 			bind:dropFileName
 			bind:containerPort
 			{onOpenCredentialModal}
 		/>
+
+		{#if sourceType === 'git'}
+			<GitWebhookSection {service} bind:provider={webhookProvider} />
+		{/if}
 
 		<!-- SECTION 2: Networking & Ports -->
 		<ServicePortConfig {service} bind:containerPort bind:hostPort bind:hostIp />
@@ -310,7 +344,6 @@
 			bind:memLimit
 			bind:autoDeploy
 			bind:watchPaths
-			{webhookUrl}
 		/>
 
 		<!-- Single Unified Bottom Save Button -->

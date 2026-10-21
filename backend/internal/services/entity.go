@@ -19,48 +19,61 @@ const EnvSecretMask = "••••••"
 
 // Service represents a workload inside a project.
 type Service struct {
-	ID             string                 `json:"id"`
-	ProjectID      string                 `json:"projectId"`
-	Name           string                 `json:"name"`
-	Type           string                 `json:"type"`
-	Status         string                 `json:"status"`
-	Source         string                 `json:"source"`
-	Branch         string                 `json:"branch"`
-	Image          string                 `json:"image"`
-	Port           int                    `json:"port"`
-	HostPort       int                    `json:"hostPort"`
-	HostIP         string                 `json:"hostIp,omitempty"`
-	CPULimit       float64                `json:"cpuLimit"`
-	MemoryLimit    int                    `json:"memoryLimit"`
-	RestartPolicy  string                 `json:"restartPolicy"`
-	Description    string                 `json:"description,omitempty"`
-	QuadletConfig  string                 `json:"quadletConfig,omitempty"`
-	ComposeYaml    string                 `json:"composeYaml,omitempty"`
-	K8sYaml        string                 `json:"k8sYaml,omitempty"`
-	RuntimeTarget  string                 `json:"runtimeTarget,omitempty"`
-	InPod          bool                   `json:"inPod"`
-	WebhookToken   string                 `json:"-"` // secret: only via the reveal/rotate endpoints
-	GitRepo        string                 `json:"gitRepo,omitempty"`
-	GitBranch      string                 `json:"gitBranch,omitempty"`
-	DockerfilePath string                 `json:"dockerfilePath,omitempty"`
-	SSHKeyID       string                 `json:"sshKeyId,omitempty"`
-	SourceType     string                 `json:"sourceType,omitempty"`
-	BuildType      string                 `json:"buildType,omitempty"`
-	BuildPath      string                 `json:"buildPath,omitempty"`
-	PublishDir     string                 `json:"publishDir,omitempty"`
-	PodID          string                 `json:"podId,omitempty"`
-	RegistryID     string                 `json:"registryId,omitempty"`
-	AutoDeploy     bool                   `json:"autoDeploy"`
-	WatchPaths     string                 `json:"watchPaths,omitempty"`
-	Command        string                 `json:"command,omitempty"`
-	Entrypoint     string                 `json:"entrypoint,omitempty"`
-	EnvVars        []EnvVar               `json:"envVars"`
-	Advanced       *ServiceAdvancedConfig `json:"advanced,omitempty"`
-	CreatedAt      time.Time              `json:"createdAt"`
+	ID              string   `json:"id"`
+	ProjectID       string   `json:"projectId"`
+	Name            string   `json:"name"`
+	Type            string   `json:"type"`
+	Status          string   `json:"status"`
+	Source          string   `json:"source"`
+	Branch          string   `json:"branch"`
+	Image           string   `json:"image"`
+	Port            int      `json:"port"`
+	HostPort        int      `json:"hostPort"`
+	HostIP          string   `json:"hostIp,omitempty"`
+	CPULimit        float64  `json:"cpuLimit"`
+	MemoryLimit     int      `json:"memoryLimit"`
+	RestartPolicy   string   `json:"restartPolicy"`
+	Description     string   `json:"description,omitempty"`
+	QuadletConfig   string   `json:"quadletConfig,omitempty"`
+	ComposeYaml     string   `json:"composeYaml,omitempty"`
+	K8sYaml         string   `json:"k8sYaml,omitempty"`
+	RuntimeTarget   string   `json:"runtimeTarget,omitempty"`
+	InPod           bool     `json:"inPod"`
+	WebhookToken    string   `json:"-"` // secret: only via the reveal/rotate endpoints
+	GitRepo         string   `json:"gitRepo,omitempty"`
+	GitBranch       string   `json:"gitBranch,omitempty"`
+	DockerfilePath  string   `json:"dockerfilePath,omitempty"`
+	SSHKeyID        string   `json:"sshKeyId,omitempty"`
+	GitCredentialID string   `json:"gitCredentialId,omitempty"`
+	BuildArgs       []string `json:"buildArgs,omitempty"`
+	SourceType      string   `json:"sourceType,omitempty"`
+	BuildType       string   `json:"buildType,omitempty"`
+	BuildPath       string   `json:"buildPath,omitempty"`
+	PublishDir      string   `json:"publishDir,omitempty"`
+	PodID           string   `json:"podId,omitempty"`
+	RegistryID      string   `json:"registryId,omitempty"`
+	AutoDeploy      bool     `json:"autoDeploy"`
+	WatchPaths      string   `json:"watchPaths,omitempty"`
+	WebhookProvider string   `json:"webhookProvider,omitempty"`
+	// WebhookSecret is the provider signature secret. It is never serialized;
+	// HasWebhookSecret reports whether one is configured.
+	WebhookSecret string                 `json:"-"`
+	Command       string                 `json:"command,omitempty"`
+	Entrypoint    string                 `json:"entrypoint,omitempty"`
+	EnvVars       []EnvVar               `json:"envVars"`
+	Advanced      *ServiceAdvancedConfig `json:"advanced,omitempty"`
+	CreatedAt     time.Time              `json:"createdAt"`
 	// HasWebhook reports whether a webhook token exists for this service.
 	// The token itself is never serialized (json:"-") and is only handed out
 	// by the explicit reveal/rotate endpoints.
 	HasWebhook bool `json:"hasWebhook,omitempty"`
+	// HasWebhookSecret reports whether a provider signature secret is stored.
+	HasWebhookSecret bool `json:"hasWebhookSecret,omitempty"`
+	// WebhookSecretError is set when a stored signature secret cannot be
+	// decrypted with the current master key. Webhook delivery must fail closed
+	// in that state; treating the service as unsigned would silently accept
+	// forged pushes.
+	WebhookSecretError bool `json:"webhookSecretError,omitempty"`
 	// EnvDecryptionError is set when the stored env blob could not be decrypted
 	// (for example a wiped/replaced master key). The UI shows a warning instead
 	// of silently losing the variables.

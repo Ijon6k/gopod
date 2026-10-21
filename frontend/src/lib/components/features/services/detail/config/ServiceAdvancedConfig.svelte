@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { Input, Select, CopyButton } from '$lib/components/ui';
+	import { Input, Select } from '$lib/components/ui';
 	import { Switch } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
 	import { SlidersHorizontal, CaretDown } from 'phosphor-svelte';
@@ -12,7 +12,6 @@
 		memLimit: string;
 		autoDeploy: boolean;
 		watchPaths: string;
-		webhookUrl: string;
 	}
 
 	let {
@@ -22,8 +21,7 @@
 		cpuLimit = $bindable(),
 		memLimit = $bindable(),
 		autoDeploy = $bindable(),
-		watchPaths = $bindable(),
-		webhookUrl
+		watchPaths = $bindable()
 	}: Props = $props();
 </script>
 
@@ -128,9 +126,9 @@
 
 				<div class="flex max-w-md items-center justify-between gap-4">
 					<div class="flex flex-col gap-0.5">
-						<span class="text-xs font-medium text-kumo-default">Auto-deploy on git push</span>
+						<span class="text-xs font-medium text-kumo-default">Auto-deploy on push/webhook</span>
 						<span class="text-[11px] text-kumo-subtle"
-							>Roll out updates when new commits arrive.</span
+							>Allow incoming push webhooks to roll out updates.</span
 						>
 					</div>
 					<Switch bind:checked={autoDeploy} size="sm" />
@@ -146,21 +144,6 @@
 						placeholder="src/**, packages/app/**"
 						class="h-8 font-mono text-xs"
 					/>
-				</div>
-
-				<div class="flex max-w-md flex-col gap-1 pt-1">
-					<span class="text-[11px] text-kumo-subtle">Webhook endpoint</span>
-					<div class="flex items-center gap-2">
-						<Input
-							value={webhookUrl}
-							readonly
-							placeholder="Loading webhook token…"
-							class="h-8 flex-1 bg-kumo-base font-mono text-xs text-kumo-subtle"
-						/>
-						{#if webhookUrl}
-							<CopyButton text={webhookUrl} />
-						{/if}
-					</div>
 				</div>
 			</div>
 		</div>

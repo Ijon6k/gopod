@@ -18,6 +18,7 @@ import type {
 	PodmanSecret,
 	SSHKey,
 	ContainerRegistry,
+	GitToken,
 	PortMapping,
 	CaddyAccessLog,
 	VolumeSnapshot,
@@ -136,6 +137,13 @@ export class DataStore {
 	}
 	set podmanSecrets(val: PodmanSecret[]) {
 		this.credentialsStore.podmanSecrets = val;
+	}
+
+	get gitTokens(): GitToken[] {
+		return this.credentialsStore.gitTokens;
+	}
+	set gitTokens(val: GitToken[]) {
+		this.credentialsStore.gitTokens = val;
 	}
 
 	get volumeSnapshots(): VolumeSnapshot[] {
@@ -347,6 +355,12 @@ export class DataStore {
 	}
 	addSecret(name: string, value = '') {
 		return this.credentialsStore.addSecret(name, value);
+	}
+	addGitToken(token: Omit<GitToken, 'id' | 'createdAt'>) {
+		return this.credentialsStore.addGitToken(token);
+	}
+	deleteGitToken(id: string) {
+		return this.credentialsStore.deleteGitToken(id);
 	}
 
 	// ── Storage Domain Actions ──

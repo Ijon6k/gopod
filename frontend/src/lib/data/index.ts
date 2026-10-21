@@ -84,6 +84,7 @@ export const server = createObjectProxy(() => dataStore.server);
 export const podmanSecrets = createArrayProxy(() => dataStore.podmanSecrets);
 export const sshKeys = createArrayProxy(() => dataStore.sshKeys);
 export const registries = createArrayProxy(() => dataStore.registries);
+export const gitTokens = createArrayProxy(() => dataStore.gitTokens);
 export const ports = createArrayProxy(() => dataStore.ports);
 export const quadlets = createArrayProxy(() => dataStore.quadlets);
 export const accessLogs = createArrayProxy(() => dataStore.accessLogs);

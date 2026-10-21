@@ -23,6 +23,16 @@ type ContainerRegistry struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// GitToken represents an HTTPS access token for a Git provider.
+type GitToken struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Provider  string    `json:"provider"`
+	Username  string    `json:"username"`
+	Token     string    `json:"token,omitempty"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 // Secret represents a Podman secret.
 type Secret struct {
 	ID        string    `json:"id"`

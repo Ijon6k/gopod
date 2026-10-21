@@ -12,15 +12,16 @@
 		Badge
 	} from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
-	import { Key, Package, ShieldCheck, Plus, Trash } from 'phosphor-svelte';
+	import { Key, Package, ShieldCheck, Plus, Trash, GitBranch } from 'phosphor-svelte';
 	import AddCredentialModal from '$lib/components/features/services/detail/modals/AddCredentialModal.svelte';
 
-	let activeTab = $state<'ssh' | 'registries' | 'secrets'>('ssh');
+	let activeTab = $state<'ssh' | 'registries' | 'git' | 'secrets'>('ssh');
 	let isModalOpen = $state(false);
 
 	const tabs = [
 		{ id: 'ssh', label: 'SSH Deploy Keys' },
 		{ id: 'registries', label: 'Container Registries' },
+		{ id: 'git', label: 'Git Access Tokens' },
 		{ id: 'secrets', label: 'Podman Secrets' }
 	];
 </script>
@@ -74,7 +75,9 @@
 			<LayerCard class="overflow-hidden p-0">
 				<div class="w-full overflow-x-auto md:overflow-x-visible">
 					<Table class="w-full text-left text-xs">
-						<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+						<TableHeader
+							class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
+						>
 							<TableRow>
 								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
 									>Key name</TableHead
@@ -176,7 +179,9 @@
 			<LayerCard class="overflow-hidden p-0">
 				<div class="w-full overflow-x-auto md:overflow-x-visible">
 					<Table class="w-full text-left text-xs">
-						<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+						<TableHeader
+							class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
+						>
 							<TableRow>
 								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
 									>Registry name</TableHead
@@ -241,8 +246,100 @@
 			</LayerCard>
 		</div>
 
-		<!-- 3. Podman Secrets Tab -->
-	{:else}
+		<!-- 3. Git Access Tokens Tab -->
+	{:else if activeTab === 'git'}
+		<div class="flex flex-col gap-4">
+			<div
+				class="flex items-start gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-surface)] p-3.5 text-xs text-[var(--text-secondary)]"
+			>
+				<div
+					class="mt-0.5 shrink-0 rounded-[var(--radius-sm)] bg-[var(--accent-muted)] p-1.5 text-[var(--accent)]"
+				>
+					<GitBranch size={15} />
+				</div>
+				<div class="flex flex-col gap-1">
+					<span class="font-semibold text-[var(--text-primary)]">HTTPS Git Access Tokens</span>
+					<p class="leading-relaxed text-[var(--text-tertiary)]">
+						Clone private repositories over HTTPS with a personal access token. Tokens are encrypted
+						at rest, never serialized, and are only used for the repository that references them.
+					</p>
+				</div>
+			</div>
+
+			<LayerCard class="overflow-hidden p-0">
+				<div class="w-full overflow-x-auto md:overflow-x-visible">
+					<Table class="w-full text-left text-xs">
+						<TableHeader
+							class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
+						>
+							<TableRow>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Token name</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Provider</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Username</TableHead
+								>
+								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Created</TableHead
+								>
+								<TableHead
+									class="px-4 py-3 text-right text-[12px] font-semibold text-kumo-subtle normal-case"
+									>Actions</TableHead
+								>
+							</TableRow>
+						</TableHeader>
+						<TableBody class="divide-y divide-kumo-hairline">
+							{#if dataStore.gitTokens.length === 0}
+								<TableRow>
+									<TableCell colspan="5" class="py-12 text-center text-kumo-subtle">
+										No Git access tokens configured. Click "Add Credential" to create one.
+									</TableCell>
+								</TableRow>
+							{:else}
+								{#each dataStore.gitTokens as token (token.id)}
+									<TableRow class="transition-colors hover:bg-kumo-fill">
+										<TableCell
+											class="flex items-center gap-2 px-4 py-3.5 font-semibold text-kumo-default"
+										>
+											<GitBranch size={14} class="text-kumo-subtle" />
+											<span>{token.name}</span>
+										</TableCell>
+										<TableCell class="px-4 py-3.5">
+											<Badge variant="neutral" size="sm" class="font-mono uppercase">
+												{token.provider}
+											</Badge>
+										</TableCell>
+										<TableCell class="px-4 py-3.5 font-mono text-[11px] text-kumo-subtle">
+											{token.username}
+										</TableCell>
+										<TableCell class="px-4 py-3.5 text-kumo-subtle">
+											{new Date(token.createdAt).toLocaleDateString()}
+										</TableCell>
+										<TableCell class="px-4 py-3.5 text-right">
+											<Button
+												variant="ghost"
+												size="xs"
+												onclick={() => dataStore.deleteGitToken(token.id)}
+												title="Delete Git token"
+												aria-label="Delete Git token"
+											>
+												<Trash size={14} class="text-kumo-danger" />
+											</Button>
+										</TableCell>
+									</TableRow>
+								{/each}
+							{/if}
+						</TableBody>
+					</Table>
+				</div>
+			</LayerCard>
+		</div>
+
+		<!-- 4. Podman Secrets Tab -->
+	{:else if activeTab === 'secrets'}
 		<div class="flex flex-col gap-4">
 			<div
 				class="flex items-start gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-surface)] p-3.5 text-xs text-[var(--text-secondary)]"
@@ -264,7 +361,9 @@
 			<LayerCard class="overflow-hidden p-0">
 				<div class="w-full overflow-x-auto md:overflow-x-visible">
 					<Table class="w-full text-left text-xs">
-						<TableHeader class="sticky top-0 z-20 border-b border-kumo-line bg-kumo-base">
+						<TableHeader
+							class="sticky top-0 z-20 border-b border-[var(--border)] bg-[var(--bg-table-header)]"
+						>
 							<TableRow>
 								<TableHead class="px-4 py-3 text-[12px] font-semibold text-kumo-subtle normal-case"
 									>Secret name</TableHead
@@ -334,6 +433,6 @@
 <!-- Modal Dialog -->
 <AddCredentialModal
 	bind:open={isModalOpen}
-	initialTab={activeTab === 'registries' ? 'registry' : 'ssh'}
+	initialTab={activeTab === 'registries' ? 'registry' : activeTab === 'git' ? 'git' : 'ssh'}
 	onclose={() => (isModalOpen = false)}
 />

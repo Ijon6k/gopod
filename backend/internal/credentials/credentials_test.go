@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"gopod/pkg/crypto"
@@ -46,6 +47,14 @@ func setupTestDB(t *testing.T) (*sql.DB, func()) {
 		name TEXT NOT NULL,
 		value TEXT DEFAULT '',
 		driver TEXT DEFAULT 'file',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+	CREATE TABLE git_tokens (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		username TEXT DEFAULT '',
+		token TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	`
@@ -103,5 +112,103 @@ func TestCredentialsEncryptionAndRetrieval(t *testing.T) {
 	}
 	if privKey != "-----BEGIN PRIVATE KEY-----\nMIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQC...\n-----END PRIVATE KEY-----" {
 		t.Fatalf("Decrypted private key mismatch")
+	}
+}
+
+func TestGitTokenEncryptionAndMasking(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewSQLiteRepository(db)
+	svc := NewService(repo)
+	ctx := context.Background()
+
+	created, err := svc.CreateGitToken(ctx, GitToken{
+		Name:     "deploy token",
+		Provider: "gitlab",
+		Token:    "glpat-secret-value",
+	})
+	if err != nil {
+		t.Fatalf("CreateGitToken error: %v", err)
+	}
+	if created.Token != "" {
+		t.Fatal("created token must be masked in the response")
+	}
+	if created.Username != "oauth2" {
+		t.Fatalf("expected oauth2 default username, got %q", created.Username)
+	}
+
+	var raw string
+	if err := db.QueryRow("SELECT token FROM git_tokens WHERE id = ?", created.ID).Scan(&raw); err != nil {
+		t.Fatalf("query raw token: %v", err)
+	}
+	if raw == "glpat-secret-value" || !strings.HasPrefix(raw, "enc:v1:") {
+		t.Fatalf("token not encrypted at rest: %q", raw)
+	}
+
+	decrypted, err := svc.GetGitToken(ctx, created.ID)
+	if err != nil {
+		t.Fatalf("GetGitToken error: %v", err)
+	}
+	if decrypted.Token != "glpat-secret-value" {
+		t.Fatalf("decrypted token mismatch: %q", decrypted.Token)
+	}
+
+	list, err := svc.ListGitTokens(ctx)
+	if err != nil {
+		t.Fatalf("ListGitTokens error: %v", err)
+	}
+	if len(list) != 1 || list[0].Token != "" {
+		t.Fatalf("list must mask tokens: %+v", list)
+	}
+
+	if _, err := svc.CreateGitToken(ctx, GitToken{Name: "empty", Provider: "github"}); err == nil {
+		t.Fatal("token without a value must be rejected")
+	}
+	if _, err := svc.CreateGitToken(ctx, GitToken{Name: "bad", Provider: "svn", Token: "x"}); err == nil {
+		t.Fatal("unsupported provider must be rejected")
+	}
+	if _, err := svc.CreateGitToken(ctx, GitToken{Name: "custom", Provider: "custom", Token: "x"}); err == nil {
+		t.Fatal("custom provider without a username must be rejected")
+	}
+
+	if err := svc.DeleteGitToken(ctx, created.ID); err != nil {
+		t.Fatalf("DeleteGitToken error: %v", err)
+	}
+	if _, err := svc.GetGitToken(ctx, created.ID); err == nil {
+		t.Fatal("deleted token still resolves")
+	}
+}
+
+func TestGetGitTokenFailsClosedOnDecryptError(t *testing.T) {
+	db, cleanup := setupTestDB(t)
+	defer cleanup()
+
+	repo := NewSQLiteRepository(db)
+	svc := NewService(repo)
+	ctx := context.Background()
+
+	created, err := svc.CreateGitToken(ctx, GitToken{
+		Name:     "broken token",
+		Provider: "github",
+		Token:    "ghp-secret",
+	})
+	if err != nil {
+		t.Fatalf("CreateGitToken error: %v", err)
+	}
+	if _, err := db.Exec("UPDATE git_tokens SET token = 'enc:v1:not-hex' WHERE id = ?", created.ID); err != nil {
+		t.Fatalf("corrupt token: %v", err)
+	}
+	if _, err := svc.GetGitToken(ctx, created.ID); err == nil {
+		t.Fatal("undecryptable token must not be returned as a usable credential")
+	}
+
+	// The listing endpoint still masks the value; it must not leak ciphertext.
+	list, err := svc.ListGitTokens(ctx)
+	if err != nil {
+		t.Fatalf("ListGitTokens error: %v", err)
+	}
+	if len(list) != 1 || list[0].Token != "" {
+		t.Fatalf("list leaked a token value: %+v", list)
 	}
 }

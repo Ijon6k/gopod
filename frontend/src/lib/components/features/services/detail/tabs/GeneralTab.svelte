@@ -18,10 +18,10 @@
 	let { service, onNavigateTab, onTerminalClick, onRedeploy }: Props = $props();
 
 	let credentialModalOpen = $state(false);
-	let credentialInitialTab = $state<'ssh' | 'registry'>('ssh');
+	let credentialInitialTab = $state<'ssh' | 'registry' | 'git'>('ssh');
 	let isChangingEngine = $state(false);
 
-	function handleOpenCredentialModal(type: 'ssh' | 'registry') {
+	function handleOpenCredentialModal(type: 'ssh' | 'registry' | 'git') {
 		credentialInitialTab = type;
 		credentialModalOpen = true;
 	}

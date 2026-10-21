@@ -3,7 +3,6 @@
 	import { Button } from '$lib/components/ui';
 	import { Modal } from '$lib/components/ui';
 	import { api } from '$lib/api';
-	import { Switch } from 'kumo-svelte';
 	import { Copy, Check, Globe, ArrowClockwise } from 'phosphor-svelte';
 
 	interface Props {
@@ -14,7 +13,6 @@
 
 	let { service, open = $bindable(false), onclose }: Props = $props();
 
-	let autoDeployEnabled = $state(true);
 	let copiedUrl = $state(false);
 	let copiedCurl = $state(false);
 
@@ -112,23 +110,6 @@
 	footer={modalFooter}
 >
 	<div class="flex flex-col gap-4">
-		<!-- Auto deploy toggle -->
-		<div
-			class="flex items-center justify-between rounded-lg bg-kumo-base p-3.5 ring ring-kumo-line"
-		>
-			<div class="flex flex-col gap-0.5">
-				<span class="text-sm font-medium text-kumo-default">Auto-deploy on git push</span>
-				<span class="text-xs text-kumo-subtle">
-					Automatically pull container and reload Quadlet unit when new commits hit <code
-						class="rounded bg-kumo-recessed px-1 py-0.5 font-mono text-xs text-kumo-default"
-						>{service.branch || 'main'}</code
-					>.
-				</span>
-			</div>
-
-			<Switch size="sm" bind:checked={autoDeployEnabled} aria-label="Auto-deploy on git push" />
-		</div>
-
 		<!-- Webhook Endpoint URL -->
 		<div class="flex flex-col gap-1.5">
 			<div class="flex items-center justify-between">

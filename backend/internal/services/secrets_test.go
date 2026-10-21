@@ -263,10 +263,127 @@ func TestUpdateServiceRefusesToWipeUndecryptableEnv(t *testing.T) {
 		t.Fatalf("expected stored blob to remain undecryptable after refused updates")
 	}
 
-	// Sending an explicit new list is allowed (deliberate replacement).
+	// Sending an explicit new list is allowed (deliberate replacement). The UI
+	// round-trips envDecryptionError from GET, so the explicit write must clear
+	// the read-side flag instead of preserving the old ciphertext.
 	payload.EnvVars = []EnvVar{{Key: "SECRET", Value: "fresh", Secret: true}}
+	payload.EnvDecryptionError = true
 	if err := ws.UpdateService(ctx, payload); err != nil {
 		t.Fatalf("explicit replacement should be allowed: %v", err)
+	}
+	replaced, err := repo.Get(ctx, created.ID)
+	if err != nil || replaced == nil {
+		t.Fatalf("get service after replacement: %v", err)
+	}
+	if replaced.EnvDecryptionError {
+		t.Fatal("replacement should clear the decryption error")
+	}
+	if len(replaced.EnvVars) != 1 || replaced.EnvVars[0].Value != "fresh" {
+		t.Fatalf("replacement was not persisted: %+v", replaced.EnvVars)
+	}
+}
+
+// TestDeployServiceRefusesUndecryptableEnv: deploying with an unreadable env
+// blob would silently drop authentication secrets, so the deployer must stop
+// before touching the runtime.
+func TestDeployServiceRefusesUndecryptableEnv(t *testing.T) {
+	d := NewDeployer(nil, nil, nil, t.TempDir())
+	_, err := d.DeployService(context.Background(), Service{
+		ID:                 "svc-env",
+		ProjectID:          "proj-env",
+		Name:               "env-app",
+		Type:               "image",
+		Image:              "nginx:alpine",
+		EnvDecryptionError: true,
+	}, "dep-env")
+	if err == nil || !strings.Contains(err.Error(), "environment variables cannot be decrypted") {
+		t.Fatalf("expected a clear env decryption error, got %v", err)
+	}
+}
+
+// TestRepositoryUpdatePreservesUndecryptableEnv: internal status-only updates
+// must not replace an unreadable env blob with an empty list.
+func TestRepositoryUpdatePreservesUndecryptableEnv(t *testing.T) {
+	ws, repo, ctx := newSecretsTestRepo(t)
+
+	created, err := ws.CreateService(ctx, Service{
+		ID:        "proj-corrupt-repo-1",
+		ProjectID: "proj-secrets",
+		Name:      "corrupt-repo",
+		Type:      "image",
+		Image:     "nginx:alpine",
+		EnvVars:   []EnvVar{{Key: "SECRET", Value: "value", Secret: true}},
+	})
+	if err != nil {
+		t.Fatalf("create service: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, "UPDATE services SET env_vars = 'enc:v1:AQIDBAUGBwgJCgsMDQ4PEA==' WHERE id = ?", created.ID); err != nil {
+		t.Fatalf("craft undecryptable row: %v", err)
+	}
+
+	stored, err := repo.Get(ctx, created.ID)
+	if err != nil || stored == nil {
+		t.Fatalf("get service: %v", err)
+	}
+	if !stored.EnvDecryptionError {
+		t.Fatal("expected EnvDecryptionError")
+	}
+	var before string
+	if err := repo.db.QueryRowContext(ctx, "SELECT env_vars FROM services WHERE id = ?", created.ID).Scan(&before); err != nil {
+		t.Fatalf("read env ciphertext: %v", err)
+	}
+
+	stored.Status = "running"
+	if err := repo.Update(ctx, *stored); err != nil {
+		t.Fatalf("status update: %v", err)
+	}
+
+	var after string
+	if err := repo.db.QueryRowContext(ctx, "SELECT env_vars FROM services WHERE id = ?", created.ID).Scan(&after); err != nil {
+		t.Fatalf("read env ciphertext after update: %v", err)
+	}
+	if after != before {
+		t.Fatal("status-only update replaced the undecryptable env ciphertext")
+	}
+}
+
+// TestGetServiceLazyWebhookTokenPreservesUndecryptableEnv: the lazy token
+// backfill must use the targeted setter, not a full row update.
+func TestGetServiceLazyWebhookTokenPreservesUndecryptableEnv(t *testing.T) {
+	ws, repo, ctx := newSecretsTestRepo(t)
+
+	created, err := ws.CreateService(ctx, Service{
+		ID:        "proj-corrupt-token-1",
+		ProjectID: "proj-secrets",
+		Name:      "corrupt-token",
+		Type:      "image",
+		Image:     "nginx:alpine",
+		EnvVars:   []EnvVar{{Key: "SECRET", Value: "value", Secret: true}},
+	})
+	if err != nil {
+		t.Fatalf("create service: %v", err)
+	}
+	if _, err := repo.db.ExecContext(ctx, "UPDATE services SET env_vars = 'enc:v1:AQIDBAUGBwgJCgsMDQ4PEA==', webhook_token = '' WHERE id = ?", created.ID); err != nil {
+		t.Fatalf("craft undecryptable row: %v", err)
+	}
+	var before string
+	if err := repo.db.QueryRowContext(ctx, "SELECT env_vars FROM services WHERE id = ?", created.ID).Scan(&before); err != nil {
+		t.Fatalf("read env ciphertext: %v", err)
+	}
+
+	got, err := ws.GetService(ctx, created.ID)
+	if err != nil || got == nil {
+		t.Fatalf("get service: %v", err)
+	}
+	if got.WebhookToken == "" {
+		t.Fatal("expected lazy webhook token generation")
+	}
+	var after string
+	if err := repo.db.QueryRowContext(ctx, "SELECT env_vars FROM services WHERE id = ?", created.ID).Scan(&after); err != nil {
+		t.Fatalf("read env ciphertext after get: %v", err)
+	}
+	if after != before {
+		t.Fatal("lazy webhook token generation replaced the undecryptable env ciphertext")
 	}
 }
 

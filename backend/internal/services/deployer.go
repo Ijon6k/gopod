@@ -5,6 +5,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -21,6 +22,11 @@ import (
 // SSHKeyProvider provides private SSH keys for Git authentication.
 type SSHKeyProvider interface {
 	GetPrivateKey(ctx context.Context, id string) (string, error)
+}
+
+// GitTokenProvider provides HTTPS access tokens for Git authentication.
+type GitTokenProvider interface {
+	GetGitToken(ctx context.Context, id string) (*credentials.GitToken, error)
 }
 
 // RegistryProvider provides credentials for private container registries.
@@ -41,6 +47,7 @@ type DeployResult struct {
 type Deployer struct {
 	podmanClient     *podman.Client
 	sshKeyProvider   SSHKeyProvider
+	gitTokenProvider GitTokenProvider
 	registryProvider RegistryProvider
 	logManager       *LogManager
 	dataDir          string
@@ -67,6 +74,11 @@ func NewDeployer(client *podman.Client, keyProvider SSHKeyProvider, logMgr *LogM
 // SetRegistryProvider configures private registry credential resolution.
 func (d *Deployer) SetRegistryProvider(rp RegistryProvider) {
 	d.registryProvider = rp
+}
+
+// SetGitTokenProvider configures HTTPS Git credential resolution.
+func (d *Deployer) SetGitTokenProvider(gp GitTokenProvider) {
+	d.gitTokenProvider = gp
 }
 
 // SetServiceRepo configures the service repository for member introspection.
@@ -160,6 +172,12 @@ func GenerateContainerName(projectID, serviceName string) string {
 
 // DeployService executes a deployment according to the service workload type and writes logs.
 func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, trigger ...string) (*DeployResult, error) {
+	// Never start a workload with an empty env list when the stored list is
+	// merely unreadable: that would silently drop authentication secrets and
+	// database credentials from the running container.
+	if s.EnvDecryptionError {
+		return nil, errors.New("stored environment variables cannot be decrypted with the current master key; re-enter them before deploying")
+	}
 	trig := "manual"
 	if len(trigger) > 0 && trigger[0] != "" {
 		trig = trigger[0]
@@ -186,12 +204,12 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 	}
 
 	// ── 2. KUBERNETES MANIFEST WORKLOAD ──
-	if (s.Type == "kubernetes" || s.Type == "k8s" || strings.TrimSpace(s.K8sYaml) != "") && s.Type != "pod" && s.SourceType != "pod" && s.Type != "compose" && s.Type != "quadlet" {
+	if (s.Type == "kubernetes" || s.Type == "k8s" || strings.TrimSpace(s.K8sYaml) != "") && s.Type != "pod" && s.SourceType != "pod" && s.Type != "compose" && s.Type != "quadlet" && s.RuntimeTarget != "quadlet" {
 		return d.deployKube(ctx, s, depID, trig, logLine)
 	}
 
 	// ── 3. COMPOSE WORKLOAD ──
-	if (s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "") && s.Type != "pod" && s.SourceType != "pod" && s.Type != "quadlet" {
+	if (s.Type == "compose" || strings.TrimSpace(s.ComposeYaml) != "") && s.Type != "pod" && s.SourceType != "pod" && s.Type != "quadlet" && s.RuntimeTarget != "quadlet" {
 		return d.deployCompose(ctx, s, depID, trig, logLine)
 	}
 
@@ -206,16 +224,23 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 	}
 
 	// ── 6. GIT WORKLOAD ──
-	isGit := s.GitRepo != "" || s.Source == "git" ||
-		strings.HasPrefix(s.Source, "http://") || strings.HasPrefix(s.Source, "https://") ||
-		strings.HasPrefix(s.Source, "git@") || strings.HasSuffix(s.Source, ".git")
-
-	if isGit {
+	if isGitSource(s) {
 		return d.deployGit(ctx, s, depID, logLine)
 	}
 
 	// ── 7. DIRECT IMAGE WORKLOAD ──
 	return d.deployImage(ctx, s, depID, trig, logLine)
+}
+
+// isGitSource distinguishes a clone URL from an image name or static path.
+// The UI stores the clone URL in Source, so both Source and the legacy GitRepo
+// field must be recognized.
+func isGitSource(s Service) bool {
+	source := strings.TrimSpace(s.Source)
+	return strings.TrimSpace(s.GitRepo) != "" || source == "git" ||
+		strings.HasPrefix(source, "http://") || strings.HasPrefix(source, "https://") ||
+		strings.HasPrefix(source, "ssh://") || strings.HasPrefix(source, "git://") ||
+		strings.HasPrefix(source, "git@") || strings.HasSuffix(source, ".git")
 }
 
 func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) []string {

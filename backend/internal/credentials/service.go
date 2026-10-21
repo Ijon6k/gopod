@@ -139,6 +139,93 @@ func (s *Service) GetPrivateKey(ctx context.Context, id string) (string, error) 
 	return k.PrivateKey, nil
 }
 
+// ── Git tokens ──
+
+func (s *Service) ListGitTokens(ctx context.Context) ([]GitToken, error) {
+	if s.repo == nil {
+		return []GitToken{}, nil
+	}
+	tokens, err := s.repo.ListGitTokens(ctx)
+	if err != nil {
+		return nil, err
+	}
+	sanitized := make([]GitToken, len(tokens))
+	for i, t := range tokens {
+		t.Token = ""
+		sanitized[i] = t
+	}
+	return sanitized, nil
+}
+
+func (s *Service) CreateGitToken(ctx context.Context, t GitToken) (*GitToken, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	if strings.TrimSpace(t.Name) == "" {
+		return nil, errors.New("token name is required")
+	}
+	if strings.TrimSpace(t.Token) == "" {
+		return nil, errors.New("access token is required")
+	}
+	t.Provider = strings.ToLower(strings.TrimSpace(t.Provider))
+	switch t.Provider {
+	case "github":
+		if strings.TrimSpace(t.Username) == "" {
+			t.Username = "x-access-token"
+		}
+	case "gitlab", "gitea":
+		if strings.TrimSpace(t.Username) == "" {
+			t.Username = "oauth2"
+		}
+	case "custom":
+		if strings.TrimSpace(t.Username) == "" {
+			return nil, errors.New("username is required for a custom Git provider")
+		}
+	case "":
+		return nil, errors.New("Git provider is required")
+	default:
+		return nil, fmt.Errorf("unsupported Git provider %q", t.Provider)
+	}
+	t.Name = strings.TrimSpace(t.Name)
+	t.Username = strings.TrimSpace(t.Username)
+	t.Token = strings.TrimSpace(t.Token)
+
+	if t.ID == "" {
+		b := make([]byte, 4)
+		_, _ = rand.Read(b)
+		t.ID = fmt.Sprintf("git-%s", hex.EncodeToString(b))
+	}
+	t.CreatedAt = time.Now()
+
+	if err := s.repo.CreateGitToken(ctx, t); err != nil {
+		return nil, err
+	}
+	t.Token = ""
+	return &t, nil
+}
+
+func (s *Service) DeleteGitToken(ctx context.Context, id string) error {
+	if s.repo == nil {
+		return errors.New("repository not initialized")
+	}
+	return s.repo.DeleteGitToken(ctx, id)
+}
+
+// GetGitToken retrieves the unmasked token and its clone identity.
+func (s *Service) GetGitToken(ctx context.Context, id string) (*GitToken, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	t, err := s.repo.GetGitToken(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if t == nil {
+		return nil, errors.New("git token not found")
+	}
+	return t, nil
+}
+
 // ── Registries ──
 
 func (s *Service) ListRegistries(ctx context.Context) ([]ContainerRegistry, error) {

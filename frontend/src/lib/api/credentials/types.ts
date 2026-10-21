@@ -23,3 +23,12 @@ export interface PodmanSecret {
 	createdAt: string;
 	driver?: string;
 }
+
+export interface GitToken {
+	id: string;
+	name: string;
+	provider: 'github' | 'gitlab' | 'gitea' | 'custom';
+	username: string;
+	token?: string;
+	createdAt: string;
+}

@@ -2,14 +2,12 @@
 	import type { Service } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { CodeEditor } from '$lib/components/ui';
-	import { Input, CopyButton } from '$lib/components/ui';
+	import { CopyButton } from '$lib/components/ui';
 	import { LayerCard, Button, Banner, useKumoToastManager } from 'kumo-svelte';
 	import {
 		FileText,
-		Eye,
 		Check,
 		ShieldCheck,
-		GitBranch,
 		Lightning,
 		Plus,
 		FileCode,
@@ -28,12 +26,8 @@
 
 	const toast = useKumoToastManager();
 
-	let providerTab = $state<'raw' | 'git' | 'templates'>('raw');
-	let gitRepoUrl = $state('');
-	let gitBranch = $state('main');
-	let gitFilePath = $state('');
+	let providerTab = $state<'raw' | 'templates'>('raw');
 	let quadletConfig = $state('');
-	let previewOpen = $state(false);
 	let saveStatus = $state<'idle' | 'saving' | 'saved'>('idle');
 
 	let lastLoadedServiceId = $state<string | null>(null);
@@ -41,9 +35,6 @@
 	$effect(() => {
 		if (service.id !== lastLoadedServiceId) {
 			lastLoadedServiceId = service.id;
-			gitRepoUrl = service.source && service.source.endsWith('.git') ? service.source : '';
-			gitBranch = service.branch || 'main';
-			gitFilePath = `${service.name}.container`;
 			quadletConfig = service.quadletConfig || getDefaultQuadletConfig(service);
 		}
 	});
@@ -52,11 +43,17 @@
 		if (cfg) {
 			const m = cfg.match(/ContainerName\s*=\s*([^\r\n#]+)/i);
 			if (m && m[1]?.trim()) {
-				return m[1].trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+				return m[1]
+					.trim()
+					.toLowerCase()
+					.replace(/[^a-z0-9_-]/g, '-');
 			}
 			const p = cfg.match(/PodName\s*=\s*([^\r\n#]+)/i);
 			if (p && p[1]?.trim()) {
-				return p[1].trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-');
+				return p[1]
+					.trim()
+					.toLowerCase()
+					.replace(/[^a-z0-9_-]/g, '-');
 			}
 		}
 		return (svc.id || svc.name).toLowerCase().replace(/[^a-z0-9_-]/g, '-');
@@ -90,10 +87,6 @@
 	async function handleSave() {
 		saveStatus = 'saving';
 		service.quadletConfig = quadletConfig;
-		if (providerTab === 'git') {
-			service.source = gitRepoUrl;
-			service.branch = gitBranch;
-		}
 
 		try {
 			await dataStore.updateService(service);
@@ -128,12 +121,6 @@
 					Select the source for your Quadlet systemd unit
 				</p>
 			</div>
-
-			<!-- Right Action: Preview Systemd Generator Output -->
-			<Button variant="secondary" onclick={() => (previewOpen = !previewOpen)} class="gap-1.5">
-				<Eye size={14} />
-				{previewOpen ? 'Hide Systemd Output' : 'Preview Systemd Unit'}
-			</Button>
 		</div>
 
 		<!-- Provider Tabs Bar -->
@@ -153,17 +140,6 @@
 
 			<button
 				type="button"
-				onclick={() => (providerTab = 'git')}
-				class="flex cursor-pointer items-center gap-2 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
-				'git'
-					? 'bg-[var(--accent)] text-white shadow-xs'
-					: 'bg-transparent text-[var(--text-secondary)] hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]'}"
-			>
-				<GitBranch size={14} /> Git Repository
-			</button>
-
-			<button
-				type="button"
 				onclick={() => (providerTab = 'templates')}
 				class="flex cursor-pointer items-center gap-2 rounded-md border-0 px-3 py-1.5 text-xs font-medium transition-colors {providerTab ===
 				'templates'
@@ -175,43 +151,15 @@
 		</div>
 
 		<!-- Provider Tab Contents -->
-		{#if providerTab === 'git'}
-			<div class="flex flex-col gap-4 p-5">
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-					<div class="flex flex-col gap-1.5 sm:col-span-2">
-						<label for="git-repo" class="text-xs font-medium text-[var(--text-secondary)]"
-							>Repository URL</label
-						>
-						<Input
-							id="git-repo"
-							bind:value={gitRepoUrl}
-							placeholder="git@github.com:user/homelab-infra.git"
-							class="text-xs font-[var(--font-mono)]"
-						/>
-					</div>
-					<div class="flex flex-col gap-1.5">
-						<label for="git-branch" class="text-xs font-medium text-[var(--text-secondary)]"
-							>Branch</label
-						>
-						<Input
-							id="git-branch"
-							bind:value={gitBranch}
-							placeholder="main"
-							class="text-xs font-[var(--font-mono)]"
-						/>
-					</div>
-				</div>
-				<div class="flex flex-col gap-1.5">
-					<label for="git-path" class="text-xs font-medium text-[var(--text-secondary)]"
-						>Unit File Path in Repo</label
-					>
-					<Input
-						id="git-path"
-						bind:value={gitFilePath}
-						placeholder="quadlets/metube.container"
-						class="text-xs font-[var(--font-mono)]"
-					/>
-				</div>
+		{#if providerTab === 'raw'}
+			<div
+				class="flex items-start gap-2 px-5 pt-3 text-[11px] leading-relaxed text-[var(--text-tertiary)]"
+			>
+				<Info size={13} class="mt-0.5 shrink-0" />
+				<span>
+					Git-sourced Quadlet units are not implemented yet. Paste the unit contents here; the file
+					is written to the systemd user directory on save.
+				</span>
 			</div>
 		{:else if providerTab === 'templates'}
 			<div class="flex flex-col gap-3 p-5">
@@ -307,9 +255,9 @@
 							Unit file is written at
 							<code class="font-mono text-[var(--accent)]">{supervisedFile}</code>.
 							{#if service.status === 'running'}
-								Traffic works, but restarts and reboots are not managed. To hand
-								supervision to host systemd, stop the direct container first to free
-								the name and ports, then activate the unit on the host.
+								Traffic works, but restarts and reboots are not managed. To hand supervision to host
+								systemd, stop the direct container first to free the name and ports, then activate
+								the unit on the host.
 							{:else}
 								Activate the unit on the host to bring this workload up under systemd.
 							{/if}
@@ -338,7 +286,9 @@
 				<div class="flex items-center gap-3">
 					<div class="flex items-center gap-1.5 text-kumo-subtle">
 						<span class="shrink-0">Supervise:</span>
-						<code class="rounded bg-black/30 px-1 py-0.5 text-[11px] text-[var(--accent)]">{systemctlStatusCmd}</code>
+						<code class="rounded bg-black/30 px-1 py-0.5 text-[11px] text-[var(--accent)]"
+							>{systemctlStatusCmd}</code
+						>
 						<CopyButton
 							text={systemctlStatusCmd}
 							title="Copy systemctl status command"
@@ -357,46 +307,6 @@
 			<div class="overflow-hidden rounded-md border border-[var(--border)] shadow-inner">
 				<CodeEditor bind:value={quadletConfig} language="quadlet" height="auto" />
 			</div>
-
-			<!-- Systemd Generator Preview Drawer -->
-			{#if previewOpen}
-				<div
-					class="flex flex-col gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--bg-surface)]/90 p-4"
-				>
-					<div class="flex items-center justify-between">
-						<span
-							class="flex items-center gap-1.5 text-xs font-semibold text-[var(--text-primary)]"
-						>
-							<Eye size={14} class="text-[var(--accent)]" /> Generated Service Unit (/usr/lib/systemd/system-generators/podman-systemd-generator)
-						</span>
-						<span class="text-[11px] font-[var(--font-mono)] text-[var(--text-tertiary)]"
-							>{systemctlStatusCmd}</span
-						>
-					</div>
-					<pre
-						class="m-0 overflow-x-auto rounded-md border border-[var(--border-subtle)] bg-[var(--bg-panel)] p-3 text-[11px] leading-relaxed font-[var(--font-mono)] text-[var(--text-secondary)]">
-# Automatically generated by podman-systemd-generator
-[Unit]
-Description={service.name} Quadlet Service
-SourcePath={unitPath}
-After=network-online.target
-RequiresMountsFor=%t/containers
-
-[Service]
-Environment=PODMAN_SYSTEMD_UNIT=%n
-Restart=always
-TimeoutStartSec=300
-ExecStart=/usr/bin/podman run --name={service.name} -d --replace -p {service.port ||
-							8080}:80 {service.image || 'ghcr.io/alexta69/metube:latest'}
-ExecStop=/usr/bin/podman stop -t 10 {service.name}
-ExecStopPost=/usr/bin/podman rm -f {service.name}
-Type=notify
-NotifyAccess=all
-
-[Install]
-WantedBy=default.target</pre>
-				</div>
-			{/if}
 		</div>
 
 		<!-- Card Footer (1 Explicit Save Button per Card) -->

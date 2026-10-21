@@ -107,6 +107,7 @@ func NewServer(cfg Config) (http.Handler, error) {
 	serviceRepo := services.NewSQLiteRepository(sqlDB)
 	deployer := services.NewDeployer(podmanClient, credentialsService, logMgr, dataDir)
 	deployer.SetRegistryProvider(credentialsService)
+	deployer.SetGitTokenProvider(credentialsService)
 	deployer.SetServiceRepo(serviceRepo)
 	workloadService := services.NewWorkloadService(serviceRepo, deployer, logMgr)
 	_ = workloadService.ReconcileOrphanedDeployments(context.Background())
@@ -384,4 +385,3 @@ func (rw *responseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	}
 	return nil, nil, fmt.Errorf("response writer does not implement http.Hijacker")
 }
-

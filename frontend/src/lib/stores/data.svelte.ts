@@ -178,12 +178,29 @@ export class DataStore {
 		return this.telemetryStore.isStreaming;
 	}
 
+	/** True while the initial runtime batch (pods/images/volumes/networks/containers) is loading. */
+	get isRuntimeLoading(): boolean {
+		return this.runtimeStore.loading;
+	}
+
 	get lastNetworkRateBps(): number {
 		return this.telemetryStore.lastNetworkRateBps;
 	}
 
-	get monitoringData(): Record<string, TimeSeriesPoint[]> {
-		return this.telemetryStore.monitoringData;
+	// Direct per-series getters: each chart reads exactly the series it draws,
+	// so a push into one history never re-derives the other three charts the
+	// way the old `monitoringData` object-allocating getter did.
+	get cpuHistory(): TimeSeriesPoint[] {
+		return this.telemetryStore.cpuHistory;
+	}
+	get memoryHistory(): TimeSeriesPoint[] {
+		return this.telemetryStore.memoryHistory;
+	}
+	get storageHistory(): TimeSeriesPoint[] {
+		return this.telemetryStore.storageHistory;
+	}
+	get networkHistory(): TimeSeriesPoint[] {
+		return this.telemetryStore.networkHistory;
 	}
 
 	// ── Projects Domain Actions ──
@@ -336,8 +353,11 @@ export class DataStore {
 	pruneSystem() {
 		return this.runtimeStore.pruneSystem();
 	}
-	fetchRuntimeData() {
-		return this.runtimeStore.fetchRuntimeData();
+	fetchRuntimeData(maxAgeMs = 0) {
+		if (this.isFresh('runtime', maxAgeMs)) return Promise.resolve();
+		return this.runtimeStore.fetchRuntimeData().then(() => {
+			this.lastFetchedAt['runtime'] = Date.now();
+		});
 	}
 
 	// ── Credentials Domain Actions ──
@@ -387,39 +407,63 @@ export class DataStore {
 	}
 
 	// ── Telemetry & Live Polling Actions ──
+	// Refcounted SSE stream: multiple pages (monitoring, runtime) can share one
+	// connection; the transport is opened for the first owner and closed when
+	// the last one leaves.
+	private streamOwners = 0;
 	startStreamingStats() {
-		this.telemetryStore.startStreamingStats((stats) => {
-			this.applyStatsUpdate(stats);
-		});
+		this.streamOwners++;
+		if (this.streamOwners === 1) {
+			this.telemetryStore.startStreamingStats((stats) => {
+				this.applyStatsUpdate(stats);
+			});
+		}
 	}
 	stopStreamingStats() {
-		this.telemetryStore.stopStreamingStats();
+		this.streamOwners = Math.max(0, this.streamOwners - 1);
+		if (this.streamOwners === 0) {
+			this.telemetryStore.stopStreamingStats();
+		}
 	}
 	applySystemUpdate(sys: any) {
 		this.telemetryStore.applySystemUpdate(sys);
 	}
 
+	// O(n) per tick: one index pass replaces the per-entry `.find()` scans that
+	// made every stats event quadratic over the deep-proxied store.
 	private applyStatsUpdate(stats: any[]) {
+		const containers = this.runtimeStore.containers;
+		if (!containers.length || !stats.length) return;
+		const index = new Map<string, Container>();
+		for (const c of containers) {
+			if (c.id) index.set(c.id, c);
+			if (c.name) index.set(c.name, c);
+		}
 		for (const s of stats) {
-			const found = this.runtimeStore.containers.find((c) => c.name === s.name || c.id === s.id);
-			if (found) {
-				found.cpu = s.cpuPercent ? parseFloat(s.cpuPercent.toFixed(1)) : found.cpu;
-				found.pids = s.pids ?? found.pids;
-				if (s.memUsage) {
-					found.memory = Math.round(s.memUsage / (1024 * 1024));
-				}
-				if (s.memLimit) {
-					found.memoryLimit = Math.round(s.memLimit / (1024 * 1024));
-				}
-				if (s.netDisplay) {
-					found.netRx = s.netDisplay.split('/')[0]?.trim();
-					found.netTx = s.netDisplay.split('/')[1]?.trim();
-				}
+			const found = index.get(s.id) || index.get(s.name);
+			if (!found) continue;
+			found.cpu = s.cpuPercent ? parseFloat(s.cpuPercent.toFixed(1)) : found.cpu;
+			found.pids = s.pids ?? found.pids;
+			if (s.memUsage) {
+				found.memory = Math.round(s.memUsage / (1024 * 1024));
+			}
+			if (s.memLimit) {
+				found.memoryLimit = Math.round(s.memLimit / (1024 * 1024));
+			}
+			if (s.netDisplay) {
+				found.netRx = s.netDisplay.split('/')[0]?.trim();
+				found.netTx = s.netDisplay.split('/')[1]?.trim();
 			}
 		}
 	}
 
+	// One live-stats refresh at a time; the runtime page, layout boot and SSE
+	// fallback all funnel through this method and used to pile up parallel
+	// GET bursts when they raced.
+	private liveStatsInFlight = false;
 	async fetchLiveStats() {
+		if (this.liveStatsInFlight) return null;
+		this.liveStatsInFlight = true;
 		try {
 			const [rawContainers, stats] = await Promise.all([
 				api.runtime.containers.list().catch(() => null),
@@ -472,6 +516,8 @@ export class DataStore {
 			}
 		} catch (e) {
 			// Silently ignore
+		} finally {
+			this.liveStatsInFlight = false;
 		}
 	}
 
@@ -649,21 +695,38 @@ export class DataStore {
 		});
 	}
 
-	async fetchInitialData() {
+	// How long ago each dataset was fetched, in ms since epoch; used by the
+	// TTL-aware entry points so re-visiting pages does not re-download the
+	// whole cluster state.
+	private lastFetchedAt: Record<string, number> = {};
+	private isFresh(key: string, maxAgeMs: number): boolean {
+		const at = this.lastFetchedAt[key] || 0;
+		return maxAgeMs > 0 && at > 0 && Date.now() - at < maxAgeMs;
+	}
+
+	/**
+	 * Boot & re-entry fetch. With `maxAgeMs` set the call is idempotent for that
+	 * TTL window: pages that call this on mount stop double-hitting every
+	 * endpoint the layout already filled.
+	 */
+	async fetchInitialData(maxAgeMs = 0) {
+		if (this.isFresh('initial', maxAgeMs)) return;
+
 		// 1. Fetch projects and services first to avoid container matching race condition
 		await this.projectsStore.fetchProjectsData();
 
-		// 2. Fetch runtime data, credentials, storage, traffic, and live stats
+		// 2. Fetch runtime data, credentials, storage, traffic, and live stats.
+		//    fetchLiveStats resolves projects/services metadata inline now that
+		//    projects are loaded — the former post-hoc relinkContainers pass
+		//    re-did the same O(C·S) resolution for nothing.
 		await Promise.all([
-			this.runtimeStore.fetchRuntimeData(),
+			this.fetchRuntimeData(),
 			this.credentialsStore.fetchCredentials(),
 			this.storageStore.fetchStorageData(),
 			this.telemetryStore.fetchTrafficLogs(),
 			this.fetchLiveStats()
 		]);
-
-		// 3. Ensure any loaded containers are immediately re-linked to known projects/services
-		this.relinkContainers();
+		this.lastFetchedAt.initial = Date.now();
 	}
 }
 

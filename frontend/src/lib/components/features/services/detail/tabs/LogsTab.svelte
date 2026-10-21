@@ -13,6 +13,7 @@
 		ArrowsInSimple
 	} from 'phosphor-svelte';
 	import { onMount } from 'svelte';
+	import { createPoller } from '$lib/utils/poller';
 
 	interface Props {
 		service: Service;
@@ -231,14 +232,18 @@
 		parsedLogs = [];
 	}
 
+	const logPoller = createPoller(
+		3000,
+		() => {
+			if (follow) fetchLogs();
+		},
+		{ pauseWhenHidden: true }
+	);
+
 	onMount(() => {
 		fetchLogs();
-		const interval = setInterval(() => {
-			if (follow) {
-				fetchLogs();
-			}
-		}, 3000);
-		return () => clearInterval(interval);
+		logPoller.start();
+		return () => logPoller.stop();
 	});
 
 	$effect(() => {

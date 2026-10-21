@@ -4,7 +4,7 @@
 	import { goto } from '$app/navigation';
 	import { PageHeader, AreaChart, Select } from '$lib/components/ui';
 	import { LayerCard } from 'kumo-svelte';
-	import { monitoringData, dataStore } from '$lib/data';
+	import { dataStore } from '$lib/data';
 	import { formatRateBps } from '$lib/utils/format';
 	import {
 		ServerOverviewBar,
@@ -22,13 +22,17 @@
 	let lastUpdatedSec = $state(0);
 	let terminalTarget = $state<string | null>(null);
 
+	// Direct series getters: each view tracks only the history it draws.
+	let cpuHistory = $derived(dataStore.cpuHistory);
+	let memoryHistory = $derived(dataStore.memoryHistory);
+	let storageHistory = $derived(dataStore.storageHistory);
+	let networkHistory = $derived(dataStore.networkHistory);
+
 	// Session-max values cover exactly the sampled buffer the charts draw, so the
 	// summary chips agree with what is visible
-	let maxCpuSession = $derived(
-		Math.max(server.cpuUsage, ...(monitoringData.cpu ?? []).map((p) => p.value))
-	);
+	let maxCpuSession = $derived(Math.max(server.cpuUsage, ...cpuHistory.map((p) => p.value)));
 	let maxMemorySession = $derived(
-		Math.max(server.memoryUsed, ...(monitoringData.memory ?? []).map((p) => p.value))
+		Math.max(server.memoryUsed, ...memoryHistory.map((p) => p.value))
 	);
 
 	$effect(() => {
@@ -61,8 +65,9 @@
 	}
 
 	onMount(() => {
-		// When monitoring page is opened, ensure complete projects & service topology is loaded
-		dataStore.fetchInitialData();
+		// When monitoring page is opened, ensure complete projects & service topology is loaded.
+		// TTL-guarded: the layout already fetched everything on boot.
+		dataStore.fetchInitialData(25_000);
 
 		if (refreshRate !== 'paused') {
 			dataStore.startStreamingStats();
@@ -177,7 +182,7 @@
 				<span
 					class="h-2 w-2 rounded-full {refreshRate === 'paused'
 						? 'bg-[var(--status-amber)]'
-						: 'animate-pulse bg-[var(--status-green)]'}"
+						: 'bg-[var(--status-green)]'}"
 				></span>
 				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
 					{refreshRate === 'paused' ? 'Paused' : dataStore.isStreaming ? 'Stream (SSE)' : 'Live'}
@@ -255,7 +260,7 @@
 					</div>
 				</div>
 				<AreaChart
-					data={monitoringData.cpu ?? []}
+					data={cpuHistory}
 					height={210}
 					strokeColor="var(--accent)"
 					fillColor="var(--accent)"
@@ -289,7 +294,7 @@
 					</div>
 				</div>
 				<AreaChart
-					data={monitoringData.memory ?? []}
+					data={memoryHistory}
 					height={210}
 					strokeColor="var(--status-green)"
 					fillColor="var(--status-green)"
@@ -315,7 +320,7 @@
 					</div>
 				</div>
 				<AreaChart
-					data={monitoringData.storage ?? []}
+					data={storageHistory}
 					height={210}
 					strokeColor="var(--status-amber)"
 					fillColor="var(--status-amber)"
@@ -341,7 +346,7 @@
 					</div>
 				</div>
 				<AreaChart
-					data={monitoringData.network ?? []}
+					data={networkHistory}
 					height={210}
 					strokeColor="var(--status-blue)"
 					fillColor="var(--status-blue)"

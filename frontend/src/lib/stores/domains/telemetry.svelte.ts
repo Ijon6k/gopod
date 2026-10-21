@@ -16,6 +16,8 @@ export class TelemetryDomainStore {
 		cpuUsage: 5,
 		status: 'online',
 		podmanVersion: '5.x',
+		engine: 'podman',
+		engineVersion: '5.x',
 		rootless: true,
 		systemd: true,
 		quadlet: true,
@@ -40,15 +42,8 @@ export class TelemetryDomainStore {
 	// Most recent measured aggregate throughput across all containers, bytes per second
 	lastNetworkRateBps = $state(0);
 	private prevNetSample: NetSample | null = null;
-
-	get monitoringData(): Record<string, TimeSeriesPoint[]> {
-		return {
-			cpu: this.cpuHistory,
-			memory: this.memoryHistory,
-			storage: this.storageHistory,
-			network: this.networkHistory
-		};
-	}
+	// Pending SSE restart scheduled by the backoff handler; cancelled by stop
+	private sseRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
 	private recordPoint(series: TimeSeriesPoint[], val: number, timeStr: string, labelStr: string) {
 		series.push({ time: timeStr, label: labelStr, value: Math.max(0, val) });
@@ -61,10 +56,16 @@ export class TelemetryDomainStore {
 		if (typeof window === 'undefined') return;
 		if (this.stopStream) return;
 
-		try {
+		// EventSource fires onerror for every network hiccup while it keeps
+		// auto-reconnecting; re-fetching inside that handler without closing
+		// caused overlapping refetch + reconnect storms. Close on error and
+		// restart with backoff instead, each restart fully re-baselines.
+		let restartAttempt = 0;
+		const open = () => {
 			this.isStreaming = true;
 			this.stopStream = api.system.streamStats(
 				(data) => {
+					restartAttempt = 0;
 					if (data.system) {
 						this.applySystemUpdate(data.system);
 					}
@@ -99,16 +100,32 @@ export class TelemetryDomainStore {
 					}
 				},
 				() => {
-					// Fallback to polled stats if stream drops
+					// The transport dropped or errored. Poll once as fallback so the
+					// UI keeps a fresh sample, then reconnect with capped backoff.
+					restartAttempt = Math.min(restartAttempt + 1, 5);
+					this.stopStreamingStats();
 					this.fetchLiveStats();
+					const delay = Math.min(1000 * 2 ** restartAttempt, 15_000);
+					this.sseRestartTimer = setTimeout(() => {
+						this.sseRestartTimer = null;
+						if (!this.isStreaming) open();
+					}, delay);
 				}
 			);
+		};
+
+		try {
+			open();
 		} catch {
 			this.fetchLiveStats();
 		}
 	}
 
 	stopStreamingStats() {
+		if (this.sseRestartTimer) {
+			clearTimeout(this.sseRestartTimer);
+			this.sseRestartTimer = null;
+		}
 		if (this.stopStream) {
 			this.stopStream();
 			this.stopStream = null;
@@ -120,27 +137,32 @@ export class TelemetryDomainStore {
 	}
 
 	applySystemUpdate(sys: any) {
-		this.server = {
-			...this.server,
-			ip: sys.ip || this.server.ip,
-			hostname: sys.hostname || this.server.hostname,
-			os: sys.os || this.server.os,
-			kernel: sys.kernel || this.server.kernel,
-			vcpu: sys.vcpu || this.server.vcpu,
-			memory: parseFloat(sys.memoryTotalGB?.toFixed(1)) || this.server.memory,
-			memoryUsed: parseFloat(sys.memoryUsedGB?.toFixed(1)) || this.server.memoryUsed,
-			memoryAvailable:
-				sys.memoryAvailableGB != null
-					? parseFloat(sys.memoryAvailableGB.toFixed(1))
-					: this.server.memory - this.server.memoryUsed,
-			swapUsed: sys.swapUsedMB != null ? sys.swapUsedMB : this.server.swapUsed,
-			swapTotal: sys.swapTotalGB != null ? sys.swapTotalGB : this.server.swapTotal,
-			cpuUsage: parseFloat(sys.cpuUsage?.toFixed(1)) || this.server.cpuUsage,
-			podmanVersion: sys.podmanVersion || this.server.podmanVersion,
-			rootless: sys.rootless ?? this.server.rootless,
-			uptime: sys.uptime || this.server.uptime,
-			status: 'online'
-		};
+		// Field-level writes instead of object replacement: every 2s SSE tick
+		// must not swap the shared `server` object identity, otherwise every
+		// consumer of any `server.*` field re-derives on every tick.
+		const s = this.server;
+		s.ip = sys.ip || s.ip;
+		s.hostname = sys.hostname || s.hostname;
+		s.os = sys.os || s.os;
+		s.kernel = sys.kernel || s.kernel;
+		s.vcpu = sys.vcpu || s.vcpu;
+		s.memory = parseFloat(sys.memoryTotalGB?.toFixed(1)) || s.memory;
+		s.memoryUsed = parseFloat(sys.memoryUsedGB?.toFixed(1)) || s.memoryUsed;
+		s.memoryAvailable =
+			sys.memoryAvailableGB != null
+				? parseFloat(sys.memoryAvailableGB.toFixed(1))
+				: s.memory - s.memoryUsed;
+		s.swapUsed = sys.swapUsedMB != null ? sys.swapUsedMB : s.swapUsed;
+		s.swapTotal = sys.swapTotalGB != null ? sys.swapTotalGB : s.swapTotal;
+		s.cpuUsage = parseFloat(sys.cpuUsage?.toFixed(1)) || s.cpuUsage;
+		s.podmanVersion = sys.podmanVersion || s.podmanVersion;
+		// The engine identity only changes on real host changes; assign through
+		// so a Docker-only host reports "Docker" even when podmanVersion missed.
+		if (sys.engine !== undefined) s.engine = sys.engine || s.engine;
+		if (sys.engineVersion !== undefined) s.engineVersion = sys.engineVersion || s.engineVersion;
+		s.rootless = sys.rootless ?? s.rootless;
+		s.uptime = sys.uptime || s.uptime;
+		s.status = 'online';
 
 		const now = new Date();
 		const timeStr = now.toISOString();

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as echarts from 'echarts';
+	import { echarts } from '$lib/utils/echarts-lite';
 	import { Chart, Button } from '$lib/components/ui';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { formatBytes } from '$lib/utils/format';

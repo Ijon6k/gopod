@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { PageHeader } from '$lib/components/ui';
-	import { server, deployments, projects, monitoringData } from '$lib/data';
+	import { server, deployments, projects, cpuHistory, memoryHistory, storageHistory } from '$lib/data';
 	import ServerSurface from '$lib/components/features/home/ServerSurface.svelte';
 	import ResourceUsage from '$lib/components/features/home/ResourceUsage.svelte';
 	import AttentionPanel from '$lib/components/features/home/AttentionPanel.svelte';
@@ -9,11 +9,17 @@
 
 	let failed = $derived(deployments.filter((d) => d.status === 'failed'));
 
-	const chartMeta: Record<string, { current: string }> = {
+	// Only the tranche ResourceUsage draws; a plain object is rebuilt only when
+	// one of the three underlying histories actually changed.
+	const usageSeries = $derived({ cpu: cpuHistory, memory: memoryHistory, storage: storageHistory });
+
+	// Derived (a plain const went stale during the session) — three small
+	// strings recompute per sample, nothing else re-renders.
+	let chartMeta = $derived({
 		cpu: { current: `${server.cpuUsage.toFixed(1)}%` },
 		memory: { current: `${server.memoryUsed.toFixed(1)} / ${server.memory} GB` },
 		storage: { current: `${server.storageUsed.toFixed(1)} / ${server.storage} GB` }
-	};
+	});
 </script>
 
 <svelte:head>
@@ -28,7 +34,7 @@
 
 	<!-- 2. Resource usage + Attention -->
 	<div class="grid grid-cols-[minmax(0,1.65fr)_minmax(300px,1fr)] gap-7 max-[1000px]:grid-cols-1">
-		<ResourceUsage data={monitoringData} {chartMeta} />
+		<ResourceUsage data={usageSeries} {chartMeta} />
 		<AttentionPanel {failed} />
 	</div>
 

@@ -157,7 +157,7 @@
 			<CircleNotch size={32} class="animate-spin text-[var(--accent)]" />
 			<div class="flex flex-col gap-1">
 				<span class="text-sm font-medium text-[var(--text-primary)]">Executing Podman Prune</span>
-				<span class="animate-pulse font-mono text-xs text-[var(--text-tertiary)]"
+				<span class="font-mono text-xs text-[var(--text-tertiary)]"
 					>{currentStep}</span
 				>
 			</div>

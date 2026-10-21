@@ -9,6 +9,20 @@ export class RuntimeDomainStore {
 	networks = $state<Network[]>([]);
 	ports = $state<PortMapping[]>([]);
 	quadlets = $state<QuadletUnit[]>([]);
+	/** True while the first fetchRuntimeData of the session is in flight. */
+	loading = $state(false);
+
+	/** True only until the first successful batch arrives; used for skeletons. */
+	get hasLoadedOnce() {
+		return (
+			this.containers.length > 0 ||
+			this.pods.length > 0 ||
+			this.images.length > 0 ||
+			this.volumes.length > 0 ||
+			this.networks.length > 0 ||
+			this.quadlets.length > 0
+		);
+	}
 
 	getServiceContainers(serviceId: string): Container[] {
 		return this.containers.filter((c) => c.serviceId === serviceId);
@@ -151,6 +165,7 @@ export class RuntimeDomainStore {
 	}
 
 	async fetchRuntimeData() {
+		this.loading = true;
 		try {
 			const [podsData, imagesData, volumesData, networksData, quadletsData] = await Promise.all([
 				api.runtime.pods.list().catch(() => []),
@@ -218,6 +233,8 @@ export class RuntimeDomainStore {
 			}
 		} catch (e) {
 			console.warn('[RuntimeDomainStore] Error fetching runtime data:', e);
+		} finally {
+			this.loading = false;
 		}
 	}
 }

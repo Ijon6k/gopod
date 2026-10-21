@@ -109,8 +109,9 @@ export class ProjectsDomainStore {
 	upsertDeployment(dep: Partial<Deployment> & { id: string }) {
 		const idx = this.deployments.findIndex((d) => d.id === dep.id);
 		if (idx >= 0) {
-			this.deployments[idx] = { ...this.deployments[idx], ...dep };
-			this.deployments = [...this.deployments];
+			// Field-level merge: no array identity churn, so consumers reading the
+			// array re-run only for the fields that actually changed.
+			Object.assign(this.deployments[idx], dep);
 		} else {
 			this.deployments = [dep as Deployment, ...this.deployments];
 		}
@@ -329,6 +330,11 @@ export class ProjectsDomainStore {
 		this.deploymentWatchers.get(serviceId)?.();
 		let attempts = 0;
 		let pollTimer: ReturnType<typeof setInterval>;
+		let inFlight = false;
+		// Change detection: only write state when the payload actually moved.
+		// Every 1.5s otherwise re-derived every consumer of the arrays.
+		let lastDepFingerprint = '';
+		let lastServiceStatus = '';
 		// Stopping is identity-guarded: a replaced watcher's late tick or attempt
 		// cap must not remove the entry that now belongs to the newer watcher.
 		const stop = () => {
@@ -338,25 +344,36 @@ export class ProjectsDomainStore {
 			}
 		};
 		pollTimer = setInterval(async () => {
+			// A slow tick never overlaps the next one.
+			if (inFlight) return;
 			attempts++;
+			inFlight = true;
 			try {
 				const [updatedDep, updatedSvc] = await Promise.all([
 					api.services.getDeployment(depId).catch(() => null),
 					api.services.get(serviceId).catch(() => null)
 				]);
 				if (updatedDep) {
-					const dIdx = this.deployments.findIndex((d) => d.id === depId);
-					if (dIdx >= 0) {
-						this.deployments[dIdx] = {
-							...this.deployments[dIdx],
-							status: updatedDep.status,
-							duration: updatedDep.duration || this.deployments[dIdx].duration,
-							finishedAt: updatedDep.finishedAt || '',
-							commitMessage: updatedDep.commitMessage || this.deployments[dIdx].commitMessage,
-							version: updatedDep.version || this.deployments[dIdx].version,
-							image: updatedDep.image || this.deployments[dIdx].image
-						};
-						this.deployments = [...this.deployments];
+					const depFingerprint = [
+						updatedDep.status,
+						updatedDep.duration || '',
+						updatedDep.finishedAt || '',
+						updatedDep.version || '',
+						updatedDep.image || '',
+						updatedDep.commitMessage || ''
+					].join('|');
+					if (depFingerprint !== lastDepFingerprint) {
+						lastDepFingerprint = depFingerprint;
+						const dIdx = this.deployments.findIndex((d) => d.id === depId);
+						if (dIdx >= 0) {
+							const dep = this.deployments[dIdx];
+							dep.status = updatedDep.status;
+							dep.duration = updatedDep.duration || dep.duration;
+							dep.finishedAt = updatedDep.finishedAt || dep.finishedAt;
+							dep.commitMessage = updatedDep.commitMessage || dep.commitMessage;
+							dep.version = updatedDep.version || dep.version;
+							dep.image = updatedDep.image || dep.image;
+						}
 					}
 					if (updatedDep.status === 'failed' || updatedDep.status === 'success') {
 						const sIdx = this.services.findIndex((s) => s.id === serviceId);
@@ -367,13 +384,17 @@ export class ProjectsDomainStore {
 									: updatedDep.status === 'failed'
 										? 'failed'
 										: 'running';
-							this.services[sIdx].status = terminalStatus;
-							this.services = [...this.services];
+							if (terminalStatus !== lastServiceStatus) {
+								lastServiceStatus = terminalStatus;
+								this.services[sIdx].status = terminalStatus;
+							}
 						}
 						stop();
 					}
 				}
-			} catch (_) {}
+			} catch (_) {} finally {
+				inFlight = false;
+			}
 
 			if (attempts > 300) {
 				stop();

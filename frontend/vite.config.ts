@@ -30,5 +30,22 @@ export default defineConfig({
 				ws: true
 			}
 		}
+	},
+	build: {
+		rollupOptions: {
+			output: {
+				// Heavy editors/charts live in dedicated chunks so route chunks
+				// (and the initial shell) stay small; the runtime chunk files are
+				// only fetched by routes that actually use them.
+				manualChunks(id) {
+					if (!id.includes('node_modules')) return undefined;
+					if (id.includes('echarts')) return 'vendor-echarts';
+					if (id.includes('@xterm')) return 'vendor-terminal';
+					if (id.includes('codemirror') || id.includes('@codemirror')) return 'vendor-editor';
+					if (id.includes('@xyflow')) return 'vendor-topology';
+					return undefined;
+				}
+			}
+		}
 	}
 });

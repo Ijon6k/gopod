@@ -1,5 +1,5 @@
 <script lang="ts">
-	import * as echarts from 'echarts';
+	import { echarts } from '$lib/utils/echarts-lite';
 	import { uiStore } from '$lib/stores/ui.svelte';
 	import { Switch, Chart } from '$lib/components/ui';
 	import { LayerCard } from 'kumo-svelte';

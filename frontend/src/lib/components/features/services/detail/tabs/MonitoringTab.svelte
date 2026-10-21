@@ -8,6 +8,7 @@
 	import { MicroWorkloadTable } from '$lib/components/features/monitoring';
 	import { formatMemory, parseNetToMb } from '$lib/utils/format';
 	import { computeNetRate, type NetSample } from '$lib/utils/net-rate';
+	import { createPoller } from '$lib/utils/poller';
 	import TelemetryMetricCards from '../monitoring/TelemetryMetricCards.svelte';
 	import TelemetryChartsGrid from '../monitoring/TelemetryChartsGrid.svelte';
 	import { ArrowClockwise, Warning, CheckCircle } from 'phosphor-svelte';
@@ -242,14 +243,15 @@
 	});
 
 	// Arm the poll loop from the cadence control itself so switching rates or
-	// pausing re-arms the interval; cleanup tears down the previous loop first
+	// pausing re-arms a guarded poller: a slow stats fetch never overlaps the
+	// next tick and hidden tabs stop ticking.
 	$effect(() => {
 		const cadence = refreshRate;
 		if (cadence === 'paused') return;
-
 		const ms = cadence === '3s' ? 3000 : cadence === '5s' ? 5000 : 15000;
-		const pollTimer = setInterval(tickStats, ms);
-		return () => clearInterval(pollTimer);
+		const statsPoller = createPoller(ms, tickStats, { pauseWhenHidden: true });
+		statsPoller.start();
+		return () => statsPoller.stop();
 	});
 </script>
 
@@ -295,7 +297,7 @@
 				<span
 					class="h-2 w-2 rounded-full {refreshRate === 'paused'
 						? 'bg-[var(--status-amber)]'
-						: 'animate-pulse bg-[var(--status-green)]'}"
+						: 'bg-[var(--status-green)]'}"
 				></span>
 				<span class="font-mono text-[11px] text-[var(--text-secondary)]">
 					{refreshRate === 'paused' ? 'Paused' : 'Live'}
@@ -428,7 +430,7 @@
 		{networkHistory}
 		{currentNetRx}
 		{currentNetTx}
-		storageHistory={dataStore.monitoringData.storage}
+		storageHistory={dataStore.storageHistory}
 		storageUsed={dataStore.server.storageUsed}
 		storageTotal={dataStore.server.storage}
 	/>

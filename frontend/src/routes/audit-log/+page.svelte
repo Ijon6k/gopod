@@ -20,6 +20,7 @@
 		Banner
 	} from '$lib/components/ui';
 	import { api, ApiError } from '$lib/api';
+	import { createPoller } from '$lib/utils/poller';
 	import type { ActivityItem, EngineEvent, Project, Service } from '$lib/types';
 	import { ArrowClockwise, Pause, Play, Trash, CaretDown, CaretRight } from 'phosphor-svelte';
 
@@ -56,7 +57,18 @@
 	let consoleServiceId = $state('all');
 	let tailing = $state(true);
 	let expanded = $state<Record<string, boolean>>({});
-	let pollTimer: ReturnType<typeof setInterval> | null = null;
+
+	// Engine tail poller: guarded against overlapping fetches and paused while
+	// the browser tab is hidden.
+	const tailPoller = createPoller(
+		3000,
+		() => {
+			if (activeView === 'console' && tailing && !engineNotAvailable) {
+				void fetchEngine(true);
+			}
+		},
+		{ pauseWhenHidden: true }
+	);
 
 	const mainTabs = [
 		{ id: 'activity', label: 'Activity' },
@@ -244,20 +256,12 @@
 	}
 
 	function startPolling() {
-		stopPolling();
 		if (!tailing) return;
-		pollTimer = setInterval(() => {
-			if (activeView === 'console' && tailing && !engineNotAvailable) {
-				void fetchEngine(true);
-			}
-		}, 3000);
+		tailPoller.start();
 	}
 
 	function stopPolling() {
-		if (pollTimer) {
-			clearInterval(pollTimer);
-			pollTimer = null;
-		}
+		tailPoller.stop();
 	}
 
 	function toggleTail() {

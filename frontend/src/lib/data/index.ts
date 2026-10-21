@@ -3,7 +3,7 @@
 // Re-exports live reactive dataStore with compatibility proxies + helpers
 // ──────────────────────────────────────────────
 
-import type { Project, Service, Deployment, Container, Domain, TimeSeriesPoint } from '$lib/types';
+import type { Project, Service, Deployment, Container, Domain } from '$lib/types';
 import { dataStore } from '$lib/stores/data.svelte';
 
 // Typed exports — dynamic proxies delegating to live reactive dataStore
@@ -145,8 +145,10 @@ export function updateService(service: Service): Promise<Service> {
 	return dataStore.updateService(service);
 }
 
-// ── Monitoring live metrics series (proxied to live dataStore stream) ──
+	// ── Monitoring live metrics series (direct fine-grained series, no object
+	// allocation per read; each consumer tracks exactly its own series) ──
 
-export const monitoringData: Record<string, TimeSeriesPoint[]> = createObjectProxy(
-	() => dataStore.monitoringData
-);
+export const cpuHistory = createObjectProxy(() => dataStore.cpuHistory);
+export const memoryHistory = createObjectProxy(() => dataStore.memoryHistory);
+export const storageHistory = createObjectProxy(() => dataStore.storageHistory);
+export const networkHistory = createObjectProxy(() => dataStore.networkHistory);

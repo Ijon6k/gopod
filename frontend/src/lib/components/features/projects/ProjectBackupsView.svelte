@@ -3,6 +3,7 @@
 	import {
 		Button,
 		LayerCard,
+		MountPath,
 		Table,
 		TableHeader,
 		TableHead,
@@ -159,9 +160,10 @@
 										mounted
 									</span>
 								</div>
-								<span class="text-[11px] text-[var(--text-tertiary)]">
-									Mount: <code class="font-mono text-[var(--text-secondary)]">{vol.mount}</code> ·
-									Service: <strong class="text-[var(--text-secondary)]">{vol.serviceName}</strong>
+								<span class="flex flex-wrap items-center gap-1 text-[11px] text-[var(--text-tertiary)]">
+									<span>Mount:</span>
+									<MountPath value={vol.mount} />
+									<span>· Service: <strong class="text-[var(--text-secondary)]">{vol.serviceName}</strong></span>
 								</span>
 							</div>
 

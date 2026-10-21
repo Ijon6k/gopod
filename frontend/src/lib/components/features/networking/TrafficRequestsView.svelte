@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { untrack } from 'svelte';
+	import { onDestroy, untrack } from 'svelte';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
+	import { createPoller } from '$lib/utils/poller';
 	import type { CaddyAccessLog } from '$lib/types';
 	import {
 		TrafficMetricsDeck,
@@ -32,46 +33,50 @@
 	// Real access logs fetched from Caddy reverse proxy API
 	let liveLogs = $state<CaddyAccessLog[]>([]);
 
-	// Initial fetch & live polling
-	$effect(() => {
-		let active = true;
+	let active = true;
 
-		async function fetchLogs() {
-			try {
-				isFetching = true;
-				const fetched = await api.traffic.getRequests({
-					limit: 500,
-					projectId: selectedProjectId !== 'all' ? selectedProjectId : undefined,
-					serviceId: selectedServiceId !== 'all' ? selectedServiceId : undefined,
-					status: selectedStatusGroup !== 'all' ? selectedStatusGroup : undefined,
-					timeRange: timeRange !== '24h' ? timeRange : undefined,
-					search: searchQuery.trim() || undefined,
-					excludeDashboard
-				});
-				if (active && Array.isArray(fetched)) {
-					liveLogs = fetched;
-				}
-			} catch (err) {
-				console.warn('[TrafficRequestsView] Access log fetch error:', err);
-			} finally {
-				if (active) isFetching = false;
+	async function fetchLogs() {
+		if (!active) return;
+		try {
+			isFetching = true;
+			const fetched = await api.traffic.getRequests({
+				limit: 500,
+				projectId: selectedProjectId !== 'all' ? selectedProjectId : undefined,
+				serviceId: selectedServiceId !== 'all' ? selectedServiceId : undefined,
+				status: selectedStatusGroup !== 'all' ? selectedStatusGroup : undefined,
+				timeRange: timeRange !== '24h' ? timeRange : undefined,
+				search: searchQuery.trim() || undefined,
+				excludeDashboard
+			});
+			if (active && Array.isArray(fetched)) {
+				liveLogs = fetched;
 			}
+		} catch (err) {
+			console.warn('[TrafficRequestsView] Access log fetch error:', err);
+		} finally {
+			if (active) isFetching = false;
 		}
+	}
 
+	// In-flight guard + hidden-tab pause: a slow 500-row fetch never overlaps
+	// the next tick, and the tab going background stops the 3s hammering.
+	const poller = createPoller(3000, fetchLogs, { pauseWhenHidden: true });
+
+	// Initial fetch & live polling; the live toggle owns the poller lifecycle.
+	$effect(() => {
 		untrack(() => {
 			fetchLogs();
 		});
+		if (isLivePolling) {
+			poller.start();
+		} else {
+			poller.stop();
+		}
+	});
 
-		const interval = setInterval(() => {
-			if (isLivePolling) {
-				fetchLogs();
-			}
-		}, 3000);
-
-		return () => {
-			active = false;
-			clearInterval(interval);
-		};
+	onDestroy(() => {
+		active = false;
+		poller.stop();
 	});
 
 	// Reset page when filters change

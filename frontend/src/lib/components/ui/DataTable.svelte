@@ -3,6 +3,7 @@
 	import { untrack } from 'svelte';
 	import type { Snippet } from 'svelte';
 	import {
+		SkeletonLine,
 		Table,
 		TableHeader,
 		TableHead,
@@ -29,6 +30,16 @@
 		onRowClick?: (row: T) => void;
 		emptyMessage?: string;
 		actions?: Snippet<[T]>;
+		/**
+		 * Pin the actions column to the right edge of the horizontal scroll
+		 * container (kumo sticky-column pattern) so row actions stay reachable
+		 * no matter how wide the table is.
+		 */
+		stickyActions?: boolean;
+		/** While true the table body renders skeleton rows instead of data. */
+		loading?: boolean;
+		/** Number of skeleton rows to display while loading. */
+		skeletonRows?: number;
 		class?: string;
 		striped?: boolean;
 		pageSize?: number;
@@ -47,6 +58,9 @@
 		onRowClick,
 		emptyMessage = 'No data available',
 		actions,
+		stickyActions = false,
+		loading = false,
+		skeletonRows = 8,
 		class: className = '',
 		striped = true,
 		pageSize = $bindable(),
@@ -77,11 +91,27 @@
 		const start = (page - 1) * pageSize;
 		return rows.slice(start, start + pageSize);
 	});
+
+	// Keyed row list for the skeleton phase; re-derives only if skeletonRows
+	// changes, so the DOM does not thrash between ticks of any parent loop.
+	const skeletonKeys = $derived.by(() =>
+		Array.from({ length: skeletonRows }, (_, i) => `skeleton-${i}`)
+	);
+
+	// Width recipe per column index reproduces natural data variance without
+	// swallowing random values in the component tree.
+	function widthClass(i: number, isLast: boolean): number {
+		if (isLast) return 45;
+		return 66 + ((i * 61) % 129) / 5.0;
+	}
 </script>
 
-<!-- Kumo Table Container: LayerCard wrapper with smooth rounded corners & sticky preservation -->
-<LayerCard class={cn('w-full overflow-hidden p-0', className)}>
-	<div class="w-full overflow-x-auto md:overflow-x-visible">
+<!-- Kumo Table Container: LayerCard wrapper with smooth rounded corners -->
+<!-- Horizontal scrolling lives on this inner container on every breakpoint
+     (no vertical inner scroll: height stays content-driven; sticky top-0 row
+     header + optional sticky-right actions require this scroll context). -->
+<LayerCard class={cn('w-full overflow-hidden p-0', className)} aria-busy={loading}>
+	<div class="w-full overflow-x-auto">
 		<Table class="w-full min-w-[560px] text-left">
 			<TableHeader>
 				<!-- Solid Opaque Header: Sticky Top-0 with Z-20, Natural Sentence Case (No All-Caps) -->
@@ -102,12 +132,39 @@
 						</TableHead>
 					{/each}
 					{#if actions}
-						<TableHead class="sticky top-0 z-20 w-12 bg-kumo-base px-4 py-3"></TableHead>
+						<TableHead
+							sticky={stickyActions ? 'right' : undefined}
+							class="sticky top-0 z-20 w-12 bg-kumo-base px-4 py-3"
+						>
+							<span class="sr-only">Actions</span>
+						</TableHead>
 					{/if}
 				</TableRow>
 			</TableHeader>
 			<TableBody class="divide-y divide-kumo-hairline">
-				{#if displayedRows.length === 0}
+				{#if loading}
+					<!-- Skeleton phase: mirrors the live row silhouette -->
+					{#each skeletonKeys as sk (sk)}
+						<TableRow
+							class="bg-[var(--bg-table-row)]"
+							style="--kumo-table-row-bg: var(--bg-table-row);"
+						>
+							{#each columns as col, ci (col.key)}
+								<TableCell class="px-4 py-3.5 align-middle whitespace-nowrap">
+									<div style:width={`${widthClass(ci, ci === columns.length - 1)}%`}>
+										<SkeletonLine minWidth={100} maxWidth={100} class="h-3 w-full" />
+									</div>
+								</TableCell>
+							{/each}
+							{#if actions}
+								<TableCell
+									sticky="right"
+									class="bg-(--kumo-table-row-bg) px-4 py-3.5 align-middle"
+								></TableCell>
+							{/if}
+						</TableRow>
+					{/each}
+				{:else if displayedRows.length === 0}
 					<TableRow>
 						<TableCell
 							colspan={columns.length + (actions ? 1 : 0)}
@@ -128,6 +185,9 @@
 									: 'bg-[var(--bg-table-row)]',
 								onRowClick && 'cursor-pointer'
 							)}
+							style={stickyActions
+								? `--kumo-table-row-bg: ${striped && i % 2 === 1 ? 'var(--bg-table-row-alt)' : 'var(--bg-table-row)'};`
+								: ''}
 							onclick={() => onRowClick?.(row)}
 						>
 							{#each columns as col (col.key)}
@@ -152,7 +212,11 @@
 							{/each}
 							{#if actions}
 								<TableCell
-									class="px-4 py-3 text-right align-middle"
+									sticky={stickyActions ? 'right' : undefined}
+									class={cn(
+										stickyActions && 'bg-(--kumo-table-row-bg)',
+										'px-4 py-3 text-right align-middle'
+									)}
 									onclick={(e: MouseEvent) => e.stopPropagation()}
 								>
 									<div class="flex items-center justify-end gap-1">
@@ -167,7 +231,7 @@
 		</Table>
 	</div>
 
-	{#if pageSize}
+	{#if pageSize && !loading}
 		<TablePagination
 			bind:page
 			bind:pageSize

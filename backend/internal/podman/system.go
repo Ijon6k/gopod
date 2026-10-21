@@ -172,6 +172,8 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 							SwapUsedMB:      float64(swapUsed) / (1024 * 1024),
 							SwapTotalGB:     float64(swapTotal) / (1024 * 1024 * 1024),
 							PodmanVersion:   raw.Version.Version,
+							Engine:          "podman",
+							EngineVersion:   raw.Version.Version,
 							Rootless:        raw.Host.Security.Rootless,
 							RunningCount:    raw.Store.ContainerStore.Running,
 							StoppedCount:    raw.Store.ContainerStore.Stopped,
@@ -188,7 +190,17 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 	}
 
 	// CLI fallback
-	return c.getSystemInfoCLI(ctx)
+	info, cliErr := c.getSystemInfoCLI(ctx)
+	if cliErr == nil {
+		return info, nil
+	}
+	// The socket and the CLI are both unavailable; the host may be a Docker
+	// machine. Probe Docker so the interface can label the host engine
+	// honestly instead of failing blind.
+	if dockerInfo, dockerErr := c.getDockerSystemInfo(ctx); dockerErr == nil {
+		return dockerInfo, nil
+	}
+	return nil, cliErr
 }
 
 func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
@@ -274,6 +286,8 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 		SwapUsedMB:      float64(swapUsed) / (1024 * 1024),
 		SwapTotalGB:     float64(swapTotal) / (1024 * 1024 * 1024),
 		PodmanVersion:   getString(ver, "Version"),
+		Engine:          "podman",
+		EngineVersion:   getString(ver, "Version"),
 		Rootless:        getBool(sec, "rootless"),
 		RunningCount:    int(getFloat(cstore, "running")),
 		StoppedCount:    int(getFloat(cstore, "stopped")),
@@ -282,6 +296,78 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 		CgroupVersion:   getString(host, "cgroupVersion"),
 		SELinuxEnabled:  getBool(sec, "selinuxEnabled"),
 		AppArmorEnabled: getBool(sec, "apparmorEnabled"),
+	}, nil
+}
+
+// getDockerSystemInfo reports basic host and engine facts through the Docker
+// CLI. gopod manages workloads over the Podman socket, so this path only
+// feeds the descriptive system info: what it guarantees is that the user
+// interface labels the host engine correctly on Docker-only machines
+// instead of reporting an offline Podman daemon.
+func (c *Client) getDockerSystemInfo(ctx context.Context) (*SystemInfo, error) {
+	cmd := exec.CommandContext(ctx, "docker", "info", "--format", "json")
+	var stdout bytes.Buffer
+	cmd.Stdout = &stdout
+	if err := cmd.Run(); err != nil {
+		return nil, fmt.Errorf("docker info failed: %w", err)
+	}
+
+	var raw struct {
+		Hostname        string `json:"Hostname"`
+		OperatingSystem string `json:"OperatingSystem"`
+		KernelVersion   string `json:"KernelVersion"`
+		NCPU            int    `json:"NCPU"`
+		MemTotal        int64  `json:"MemTotal"`
+		ServerVersion   string `json:"ServerVersion"`
+		CgroupVersion   string `json:"CgroupVersion"`
+		Containers      int    `json:"Containers"`
+		ContainersRun   int    `json:"ContainersRunning"`
+		ContainersStop  int    `json:"ContainersStopped"`
+		SystemTime      string `json:"SystemTime"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &raw); err != nil {
+		return nil, err
+	}
+
+	// Docker reports total memory but no availability window; prefer the
+	// host meminfo numbers when they exist so memory fields stay consistent
+	// with the Podman path.
+	memTotal := raw.MemTotal
+	memAvailable := memTotal
+	memUsed := int64(0)
+	if memInfo, err := readHostMemInfo(); err == nil && memInfo.MemTotal > 0 {
+		memTotal = memInfo.MemTotal
+		memAvailable = memInfo.MemAvailable
+		if memAvailable <= 0 {
+			memAvailable = memInfo.MemFree + memInfo.Buffers + memInfo.Cached + memInfo.SReclaimable
+		}
+		memUsed = memTotal - memAvailable
+		if memUsed < 0 {
+			memUsed = 0
+		}
+	} else if memUsed < 0 {
+		memUsed = 0
+	}
+
+	return &SystemInfo{
+		IP:              detectHostIP(),
+		Hostname:        raw.Hostname,
+		OS:              raw.OperatingSystem,
+		Kernel:          raw.KernelVersion,
+		VCPU:            raw.NCPU,
+		MemoryTotal:     memTotal,
+		MemoryFree:      memTotal - memUsed,
+		MemoryAvailable: memAvailable,
+		MemoryUsed:      memUsed,
+		MemUsedGB:       float64(memUsed) / (1024 * 1024 * 1024),
+		MemTotalGB:      float64(memTotal) / (1024 * 1024 * 1024),
+		MemAvailableGB:  float64(memAvailable) / (1024 * 1024 * 1024),
+		Engine:          "docker",
+		EngineVersion:   raw.ServerVersion,
+		RunningCount:    raw.ContainersRun,
+		StoppedCount:    raw.ContainersStop,
+		TotalCount:      raw.Containers,
+		CgroupVersion:   raw.CgroupVersion,
 	}, nil
 }
 

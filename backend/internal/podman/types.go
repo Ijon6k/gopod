@@ -21,6 +21,8 @@ type SystemInfo struct {
 	SwapUsedMB      float64 `json:"swapUsedMB"`
 	SwapTotalGB     float64 `json:"swapTotalGB"`
 	PodmanVersion   string  `json:"podmanVersion"`
+	Engine          string  `json:"engine"`
+	EngineVersion   string  `json:"engineVersion"`
 	Rootless        bool    `json:"rootless"`
 	RunningCount    int     `json:"runningCount"`
 	StoppedCount    int     `json:"stoppedCount"`

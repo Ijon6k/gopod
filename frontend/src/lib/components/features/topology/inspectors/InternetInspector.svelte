@@ -2,9 +2,16 @@
 	import { goto } from '$app/navigation';
 	import { Button } from 'kumo-svelte';
 	import { ArrowRight } from 'phosphor-svelte';
+	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 
 	interface Props {
-		server: { ip: string; podmanVersion: string; os: string };
+		server: {
+			ip: string;
+			podmanVersion?: string;
+			engine?: string;
+			engineVersion?: string;
+			os: string;
+		};
 	}
 
 	let { server }: Props = $props();
@@ -24,8 +31,10 @@
 		<div
 			class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5"
 		>
-			<span>Podman Engine</span>
-			<span class="font-mono text-[var(--text-primary)]">Podman {server.podmanVersion}</span>
+			<span>{engineLabel(server)} Engine</span>
+			<span class="font-mono text-[var(--text-primary)]"
+				>{engineLabel(server)} {engineVersionLabel(server)}</span
+			>
 		</div>
 		<div
 			class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-2.5 py-1.5"

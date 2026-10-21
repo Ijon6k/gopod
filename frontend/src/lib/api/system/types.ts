@@ -22,6 +22,9 @@ export interface Server {
 	podmanHealth: string;
 	networkHealth: string;
 	storageHealth: string;
+	/** Container engine on the host: 'podman' | 'docker' | '' when unknown. */
+	engine?: string;
+	engineVersion?: string;
 	uptime: string;
 	cgroupVersion?: string;
 	containersRunning?: number;
@@ -48,6 +51,9 @@ export interface SystemInfoResponse {
 	swapUsedMB?: number;
 	swapTotalGB?: number;
 	podmanVersion: string;
+	/** Container engine detected by the backend: 'podman' | 'docker' | ''. */
+	engine?: string;
+	engineVersion?: string;
 	rootless: boolean;
 	runningCount: number;
 	stoppedCount: number;

@@ -3,6 +3,7 @@
 	import { StatusBadge, MetricCard } from '$lib/components/ui';
 	import { LayerCard } from 'kumo-svelte';
 	import type { Server } from '$lib/types';
+	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 	import { formatCpu, formatStorage } from '$lib/utils/format';
 
 	interface Props {
@@ -23,7 +24,11 @@
 				<StatusBadge status="online" size="sm" />
 			</div>
 			<p class="mt-1.5 mb-0 text-xs text-[var(--text-tertiary)] md:text-sm">
-				{server.os} · Podman {server.podmanVersion} · Rootless{server.systemd ? ' · systemd' : ''}
+				{server.os} · {engineLabel(server)} {engineVersionLabel(server)} · {server.rootless
+					? 'Rootless'
+					: 'Root'}{server.systemd
+					? ' · systemd'
+					: ''}
 			</p>
 		</div>
 	</div>

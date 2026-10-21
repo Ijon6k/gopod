@@ -75,7 +75,14 @@ export const systemApi = {
 			} catch {}
 		};
 		if (onError) {
-			es.onerror = onError;
+			// Close on the first error; EventSource auto-reconnects while the
+			// caller also refetches, which produced parallel reconnect plus
+			// refetch storms after any transport drop. The caller now owns the
+			// reconnect (backoff) entirely.
+			es.onerror = (event) => {
+				es.close();
+				onError(event);
+			};
 		}
 		return () => es.close();
 	}

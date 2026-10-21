@@ -1,13 +1,11 @@
 // ──────────────────────────────────────────────
-// GOPOD UI Store — Theme & Sidebar State
+// GOPOD UI Store — Theme State
 // ──────────────────────────────────────────────
 
 export type Theme = 'dark' | 'light';
 
 class UIStore {
 	theme = $state<Theme>('dark');
-	sidebarCollapsed = $state(false);
-	sidebarMobileOpen = $state(false);
 
 	init() {
 		if (typeof window !== 'undefined') {
@@ -19,12 +17,6 @@ class UIStore {
 				this.theme = 'light';
 			}
 			this.applyTheme();
-
-			// Initialize sidebar collapse state
-			const savedSidebar = localStorage.getItem('gopod-sidebar-collapsed');
-			if (savedSidebar !== null) {
-				this.sidebarCollapsed = savedSidebar === 'true';
-			}
 		}
 	}
 
@@ -54,21 +46,6 @@ class UIStore {
 				document.documentElement.classList.remove('light');
 			}
 		}
-	}
-
-	toggleSidebar() {
-		if (typeof window !== 'undefined' && window.innerWidth < 768) {
-			this.sidebarMobileOpen = !this.sidebarMobileOpen;
-		} else {
-			this.sidebarCollapsed = !this.sidebarCollapsed;
-			if (typeof window !== 'undefined') {
-				localStorage.setItem('gopod-sidebar-collapsed', String(this.sidebarCollapsed));
-			}
-		}
-	}
-
-	closeMobileSidebar() {
-		this.sidebarMobileOpen = false;
 	}
 }
 

@@ -2,6 +2,7 @@
 	import { Sidebar as KumoSidebar, useSidebar } from 'kumo-svelte';
 	import { page } from '$app/state';
 	import { dataStore } from '$lib/stores/data.svelte';
+	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 	import {
 		SquaresFour,
 		FolderOpen,
@@ -16,7 +17,10 @@
 		GearSix
 	} from 'phosphor-svelte';
 
-	let podmanVersion = $derived(dataStore.server?.podmanVersion ?? '5.0');
+	// Engine identity drives naming everywhere: "Podman" on podman hosts,
+	// "Docker" on docker hosts, "Runtime" until system info arrives.
+	let engineName = $derived(engineLabel(dataStore.server));
+	let engineVersion = $derived(engineVersionLabel(dataStore.server));
 	let serverHostname = $derived(dataStore.server?.hostname ?? 'cpx41-edge');
 	const sidebar = useSidebar();
 
@@ -26,23 +30,13 @@
 		return currentPath === path || currentPath.startsWith(path + '/');
 	}
 
-	let isRuntimeActive = $derived(page.url.pathname.startsWith('/runtime'));
-	let isNetworkingActive = $derived(page.url.pathname.startsWith('/networking'));
-
-	let runtimeOpen = $state(false);
-	let networkingOpen = $state(false);
-
-	$effect(() => {
-		if (isRuntimeActive) runtimeOpen = true;
-	});
-
-	$effect(() => {
-		if (isNetworkingActive) networkingOpen = true;
-	});
-
-	// Close the mobile offcanvas drawer on every navigation.
+	// Close the mobile offcanvas drawer when navigation changes it. Guarded on
+	// kumo's documented pattern: untouched on desktop (the collapsed state is
+	// user-controlled and must survive navigation), only dismissed when the
+	// mobile drawer is actually open on an actual mobile viewport.
 	$effect(() => {
 		page.url.pathname;
+		if (!sidebar.isMobile || !sidebar.openMobile) return;
 		sidebar.setOpenMobile(false);
 	});
 </script>
@@ -78,7 +72,7 @@
 						GOPOD
 					</span>
 					<span class="truncate font-mono text-[10px] leading-tight text-[var(--text-tertiary)]">
-						Podman v{podmanVersion}
+						{engineName} v{engineVersion}
 					</span>
 				</div>
 			</a>
@@ -140,94 +134,28 @@
 		<KumoSidebar.Group>
 			<KumoSidebar.GroupLabel>Compute & Network</KumoSidebar.GroupLabel>
 			<KumoSidebar.Menu>
-				<!-- Runtime Collapsible -->
-				<KumoSidebar.Collapsible bind:open={runtimeOpen}>
-					<KumoSidebar.CollapsibleTrigger>
-						<KumoSidebar.MenuButton icon={Stack} active={isRuntimeActive} tooltip="Runtime">
-							<span class="flex-1 text-left">Runtime</span>
-							<KumoSidebar.MenuChevron open={runtimeOpen} />
-						</KumoSidebar.MenuButton>
-					</KumoSidebar.CollapsibleTrigger>
-					<KumoSidebar.CollapsibleContent>
-						<KumoSidebar.MenuSub>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/runtime/containers"
-									active={isActive('/runtime/containers')}
-								>
-									Containers
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton href="/runtime/pods" active={isActive('/runtime/pods')}>
-									Pods
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/runtime/images"
-									active={isActive('/runtime/images')}
-								>
-									Images
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/runtime/volumes"
-									active={isActive('/runtime/volumes')}
-								>
-									Volumes
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/runtime/networks"
-									active={isActive('/runtime/networks')}
-								>
-									Networks
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-						</KumoSidebar.MenuSub>
-					</KumoSidebar.CollapsibleContent>
-				</KumoSidebar.Collapsible>
-
-				<!-- Networking Collapsible -->
-				<KumoSidebar.Collapsible bind:open={networkingOpen}>
-					<KumoSidebar.CollapsibleTrigger>
-						<KumoSidebar.MenuButton icon={Globe} active={isNetworkingActive} tooltip="Networking">
-							<span class="flex-1 text-left">Networking</span>
-							<KumoSidebar.MenuChevron open={networkingOpen} />
-						</KumoSidebar.MenuButton>
-					</KumoSidebar.CollapsibleTrigger>
-					<KumoSidebar.CollapsibleContent>
-						<KumoSidebar.MenuSub>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/networking/domains"
-									active={isActive('/networking/domains')}
-								>
-									Domains
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/networking/requests"
-									active={isActive('/networking/requests')}
-								>
-									Traffic & Logs
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-							<KumoSidebar.MenuSubItem>
-								<KumoSidebar.MenuSubButton
-									href="/networking/ports"
-									active={isActive('/networking/ports')}
-								>
-									Ports
-								</KumoSidebar.MenuSubButton>
-							</KumoSidebar.MenuSubItem>
-						</KumoSidebar.MenuSub>
-					</KumoSidebar.CollapsibleContent>
-				</KumoSidebar.Collapsible>
+				<!-- Engine runtime: flat entry, tabs live inside the page -->
+				<KumoSidebar.MenuItem>
+					<KumoSidebar.MenuButton
+						href="/runtime/containers"
+						active={isActive('/runtime')}
+						icon={Stack}
+						tooltip={engineName}
+					>
+						{engineName}
+					</KumoSidebar.MenuButton>
+				</KumoSidebar.MenuItem>
+				<!-- Networking: flat entry, tabs live inside the page -->
+				<KumoSidebar.MenuItem>
+					<KumoSidebar.MenuButton
+						href="/networking/domains"
+						active={isActive('/networking')}
+						icon={Globe}
+						tooltip="Networking"
+					>
+						Networking
+					</KumoSidebar.MenuButton>
+				</KumoSidebar.MenuItem>
 			</KumoSidebar.Menu>
 		</KumoSidebar.Group>
 

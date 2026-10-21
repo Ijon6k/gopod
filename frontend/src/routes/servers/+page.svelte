@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { PageHeader, StatusBadge, ResourceBar } from '$lib/components/ui';
 	import { server } from '$lib/data';
+	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 </script>
 
 <svelte:head>
@@ -58,8 +59,8 @@
 		<!-- Info -->
 		<div class="grid grid-cols-2 gap-4 text-xs md:grid-cols-4">
 			<div class="flex flex-col gap-0.5">
-				<span class="text-[var(--text-tertiary)]">Podman</span>
-				<span class="text-[var(--text-secondary)]">v{server.podmanVersion}</span>
+				<span class="text-[var(--text-tertiary)]">{engineLabel(server)}</span>
+				<span class="text-[var(--text-secondary)]">v{engineVersionLabel(server)}</span>
 			</div>
 			<div class="flex flex-col gap-0.5">
 				<span class="text-[var(--text-tertiary)]">Mode</span>

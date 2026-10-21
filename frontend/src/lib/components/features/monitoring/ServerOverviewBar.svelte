@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { dataStore } from '$lib/stores/data.svelte';
+	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 	import { Cpu, HardDrive, Gauge, ShieldCheck, Pulse } from 'phosphor-svelte';
 
 	interface Props {
@@ -49,7 +50,7 @@
 			<!-- Mini Progress bar -->
 			<div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface)]">
 				<div
-					class="h-full rounded-full bg-[var(--accent)] transition-all duration-500"
+					class="h-full rounded-full bg-[var(--accent)] transition-[width] duration-300"
 					style="width: {server.cpuUsage}%;"
 				></div>
 			</div>
@@ -107,7 +108,7 @@
 			<!-- Memory Progress bar -->
 			<div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface)]">
 				<div
-					class="h-full rounded-full transition-all duration-500 {Number(memPercent) > 85
+					class="h-full rounded-full transition-[width] duration-300 {Number(memPercent) > 85
 						? 'bg-[var(--status-red)]'
 						: Number(memPercent) > 70
 							? 'bg-[var(--status-amber)]'
@@ -136,7 +137,7 @@
 		<button
 			type="button"
 			onclick={() => onSelectTab?.('storage')}
-			class="group flex cursor-pointer flex-col justify-between gap-3 rounded-[var(--radius-card)] border bg-[var(--bg-panel)] p-4 text-left transition-all {activeTab ===
+			class="group flex cursor-pointer flex-col justify-between gap-3 rounded-[var(--radius-card)] border bg-[var(--bg-panel)] p-4 text-left {activeTab ===
 			'storage'
 				? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/30'
 				: 'border-[var(--border)] hover:border-[var(--status-amber)]/60'}"
@@ -167,7 +168,7 @@
 			<!-- Storage Progress bar -->
 			<div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface)]">
 				<div
-					class="h-full rounded-full bg-[var(--status-amber)] transition-all duration-500"
+					class="h-full rounded-full bg-[var(--status-amber)] transition-[width] duration-300"
 					style="width: {diskPercent}%;"
 				></div>
 			</div>
@@ -210,7 +211,7 @@
 			<div class="flex items-center gap-1.5 text-[11px]">
 				<span class="h-2 w-2 shrink-0 rounded-full bg-[var(--status-green)]"></span>
 				<span class="truncate text-[var(--text-secondary)]"
-					>Podman v{server.podmanVersion} ({server.rootless ? 'Rootless' : 'Root'})</span
+					>{engineLabel(server)} v{engineVersionLabel(server)} ({server.rootless ? 'Rootless' : 'Root'})</span
 				>
 			</div>
 

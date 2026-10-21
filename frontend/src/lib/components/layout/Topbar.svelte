@@ -6,6 +6,7 @@
 	import { projects, services } from '$lib/data';
 	import { dataStore } from '$lib/stores/data.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
+	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { DropdownMenu, useSidebar } from 'kumo-svelte';
 	import { Kbd } from '$lib/components/ui';
@@ -76,7 +77,9 @@
 	);
 
 	let podmanStatus = $derived(dataStore.server?.status ?? 'online');
-	let podmanVersion = $derived(dataStore.server?.podmanVersion ?? '5.0');
+	// Engine-aware pill: mirrors the sidebar naming (Podman | Docker | Runtime).
+	let engineName = $derived(engineLabel(dataStore.server));
+	let engineVersion = $derived(engineVersionLabel(dataStore.server) || '–');
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -186,10 +189,10 @@
 
 	<!-- Right section: Quick Search (Cmd+K), Engine Status, Theme Toggle & User Profile -->
 	<div class="flex items-center gap-2">
-		<!-- Podman Engine Status Pill Badge -->
+		<!-- Engine Status Pill Badge -->
 		<div
 			class="hidden shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)] select-none lg:flex"
-			title="Podman local engine status"
+			title="Container engine status"
 		>
 			<span
 				class={cn(
@@ -197,8 +200,8 @@
 					podmanStatus === 'online' ? 'bg-[var(--status-green)]' : 'bg-[var(--status-red)]'
 				)}
 			></span>
-			<span class="font-medium text-[var(--text-primary)]">Podman</span>
-			<span class="text-[var(--text-muted)]">v{podmanVersion}</span>
+			<span class="font-medium text-[var(--text-primary)]">{engineName}</span>
+			<span class="text-[var(--text-muted)]">v{engineVersion}</span>
 		</div>
 
 		<!-- Unified Search Bar & Command Palette Trigger (Cmd+K / Ctrl+K) -->

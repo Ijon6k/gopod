@@ -9,7 +9,8 @@
 		containers,
 		cpuHistory,
 		memoryHistory,
-		storageHistory
+		storageHistory,
+		dataStore
 	} from '$lib/data';
 	import StatusStrip from '$lib/components/features/home/StatusStrip.svelte';
 	import NeedsAttention from '$lib/components/features/home/NeedsAttention.svelte';
@@ -17,6 +18,7 @@
 	import HostFacts from '$lib/components/features/home/HostFacts.svelte';
 	import RecentDeployments from '$lib/components/features/home/RecentDeployments.svelte';
 	import ProjectList from '$lib/components/features/home/ProjectList.svelte';
+	import OnboardingCard from '$lib/components/features/home/OnboardingCard.svelte';
 
 	let booted = $derived(Boolean(server?.hostname));
 	let failed = $derived(deployments.filter((d) => d.status === 'failed'));
@@ -38,6 +40,17 @@
 		cpu: { current: `${server.cpuUsage.toFixed(1)}%` },
 		memory: { current: `${server.memoryUsed.toFixed(1)} / ${server.memory} GB` },
 		storage: { current: `${server.storageUsed.toFixed(1)} / ${server.storage} GB` }
+	});
+
+	// Fresh host: nothing deployed yet — the board collapses to onboarding.
+	let freshInstall = $derived(projects.length === 0 && deployments.length === 0);
+
+	// Home holds one seat on the refcounted live-stats stream while mounted.
+	// The SSE feed is normally lit by runtime/monitoring; without this seat
+	// Overview only sampled once a minute and its chart read as historical.
+	$effect(() => {
+		dataStore.startStreamingStats();
+		return () => dataStore.stopStreamingStats();
 	});
 </script>
 
@@ -70,15 +83,18 @@
 			<NeedsAttention {failed} unhealthy={unhealthyNames} restarting={restartingNames} />
 		{/if}
 
-		<div class="grid grid-cols-12 gap-6">
-			<ResourceUsage data={usageSeries} {chartMeta} class="col-span-12 lg:col-span-8" />
-			<HostFacts {server} class="col-span-12 lg:col-span-4" />
-		</div>
+		{#if freshInstall}
+			<OnboardingCard />
+		{:else}
+			<RecentDeployments {deployments} />
 
-		<div class="grid grid-cols-12 gap-6">
-			<RecentDeployments {deployments} class="col-span-12 lg:col-span-7" />
-			<ProjectList {projects} class="col-span-12 lg:col-span-5" />
-		</div>
+			<div class="grid grid-cols-12 gap-6">
+				<ResourceUsage data={usageSeries} {chartMeta} class="col-span-12 lg:col-span-7" />
+				<ProjectList {projects} class="col-span-12 lg:col-span-5" />
+			</div>
+		{/if}
+
+		<HostFacts {server} />
 	{:else}
 		<!-- Boot skeleton: honest waiting state instead of zero-value panes -->
 		<div class="flex flex-col gap-6">

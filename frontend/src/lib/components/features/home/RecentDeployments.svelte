@@ -13,7 +13,33 @@
 
 	let { deployments, class: className = '' }: Props = $props();
 
-	let latest = $derived(deployments.slice(0, 8));
+	// Latest rollout per service. A service with ten green builds contributes
+	// one row, so this board ranks services that changed rather than repeating
+	// builds of the same service — the full history lives behind "View all".
+	let latest = $derived.by(() => {
+		const seen = new Set<string>();
+		const out: Deployment[] = [];
+		for (const d of deployments) {
+			const key = d.serviceId || `${d.projectId}-${d.serviceName}`;
+			if (seen.has(key)) continue;
+			seen.add(key);
+			out.push(d);
+			if (out.length >= 6) break;
+		}
+		return out;
+	});
+
+	// Always computed fresh from the timestamp; the precomputed timeAgo string
+	// freezes between watcher pushes and reads as a lie under a live page.
+	function whenFor(d: Deployment): string {
+		const ts = Date.parse(d.startedAt ?? '');
+		return Number.isNaN(ts) ? d.timeAgo || '—' : formatTimeAgo(ts);
+	}
+
+	function whenTitle(d: Deployment): string | undefined {
+		const ts = Date.parse(d.startedAt ?? '');
+		return Number.isNaN(ts) ? undefined : new Date(ts).toLocaleString();
+	}
 </script>
 
 <LayerCard class={cn('overflow-hidden p-0', className)}>
@@ -30,17 +56,16 @@
 	</div>
 	<DataTable
 		columns={[
-		{ key: 'name', label: 'Service', render: serviceCell },
-		{ key: 'status', label: 'Status', render: statusCell },
-		{ key: 'version', label: 'Version', mono: true, render: versionCell },
-		{ key: 'trigger', label: 'Trigger', render: triggerCell },
-		{ key: 'when', label: 'When', mono: true, render: whenCell }
-	]}
+			{ key: 'name', label: 'Service', render: serviceCell },
+			{ key: 'status', label: 'Status', render: statusCell },
+			{ key: 'when', label: 'When', render: whenCell }
+		]}
 		rows={latest}
 		keyExtractor={(d) => d.id}
 		onRowClick={(d) => d.projectId && goto(`/projects/${d.projectId}`)}
 		emptyMessage="No deployments recorded yet"
 		itemName="deployments"
+		showRowsPerPage={false}
 	/>
 </LayerCard>
 
@@ -59,21 +84,11 @@
 	<StatusBadge status={row.status} size="sm" />
 {/snippet}
 
-{#snippet versionCell(row: Deployment)}
-	<span class="font-[var(--font-mono)]">{row.version || row.commitHash?.slice(0, 7) || '—'}</span>
-{/snippet}
-
-{#snippet triggerCell(row: Deployment)}
-	{row.trigger
-		? row.trigger
-				.split('-')
-				.map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-				.join(' ')
-		: 'Manual'}
-{/snippet}
-
 {#snippet whenCell(row: Deployment)}
-	<span class="font-[var(--font-mono)]" title={row.startedAt}>
-		{row.timeAgo || formatTimeAgo(row.startedAt)}
+	<span
+		class="text-[13px] whitespace-nowrap text-[var(--text-secondary)] tabular-nums"
+		title={whenTitle(row)}
+	>
+		{whenFor(row)}
 	</span>
 {/snippet}

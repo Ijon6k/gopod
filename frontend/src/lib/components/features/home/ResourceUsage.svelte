@@ -65,6 +65,12 @@
 			type="line"
 			data={[{ name: seriesName, data: tuples, color: '#4290F0' }]}
 			height={184}
+			// Live tail: the feed pushes a sample every ~2s. Kumo's default
+			// update transition (300ms easing) replays a morph on every tick,
+			// which reads as the whole chart "refreshing". Monitoring tails
+			// (Grafana, Datadog) render each push instantly with no entry
+			// animation — only the line position moves.
+			animation={false}
 			isDarkMode={ui.theme === 'dark'}
 			gradient
 			loading={tuples.length === 0}

@@ -68,6 +68,9 @@
 		return logs.filter((l) => l.toLowerCase().includes(q));
 	});
 
+	// Streaming tick dedup: O(1) membership instead of array scans per line.
+	let knownLogs = new Set<string>();
+
 	let depId = $derived(deployment?.id ?? '');
 	let isLive = $derived(activeDep?.status === 'building' || activeDep?.status === 'deploying');
 
@@ -88,6 +91,7 @@
 		isLogsLoading = true;
 		// Reset per effect run so a reopen always syncs.
 		lastSyncedFingerprint = '';
+		knownLogs = new Set<string>();
 
 		const syncStatus = async () => {
 			try {
@@ -112,6 +116,7 @@
 					.split('\n')
 					.map(sanitizeLogLine)
 					.filter((line: string) => line.length > 0);
+				knownLogs = new Set(fetchedLogs);
 				return true;
 			});
 
@@ -142,10 +147,11 @@
 					(raw) => {
 						if (!isSubscribed) return;
 						const clean = sanitizeLogLine(raw);
-						if (!fetchedLogs.includes(clean)) {
-							fetchedLogs = [...fetchedLogs, clean];
-						}
-					},
+					if (!knownLogs.has(clean)) {
+						knownLogs.add(clean);
+						fetchedLogs = [...fetchedLogs, clean];
+					}
+				},
 					() => {
 						unsubscribeStream?.();
 						// A dropped stream must not end live log updates: recover from

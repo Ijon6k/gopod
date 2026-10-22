@@ -20,6 +20,9 @@
 
 	let booted = $derived(Boolean(server?.hostname));
 	let failed = $derived(deployments.filter((d) => d.status === 'failed'));
+	let inFlight = $derived(
+		deployments.filter((d) => d.status === 'building' || d.status === 'deploying').length
+	);
 
 	// Real join from the runtime store — nothing invented, nothing hidden.
 	let unhealthyNames = $derived(containers.filter((c) => c.health === 'unhealthy').map((c) => c.name));
@@ -43,7 +46,18 @@
 </svelte:head>
 
 <div class="flex w-full flex-col gap-6">
-	<PageHeader title="Overview" subtitle="Host status, open issues, and the latest deployments.">
+	<PageHeader title="Overview">
+		{#snippet meta()}
+			<span class="text-xs text-[var(--text-tertiary)]">
+				{#if typeof server.containersRunning === 'number'}
+					{server.containersRunning} containers running
+				{/if}
+				{#if inFlight > 0}
+					{#if typeof server.containersRunning === 'number'} · {/if}
+					{inFlight} {inFlight === 1 ? 'deployment' : 'deployments'} in flight
+				{/if}
+			</span>
+		{/snippet}
 		{#snippet actions()}
 			<Button variant="primary" size="sm" onclick={() => goto('/projects/new')}>New project</Button>
 		{/snippet}

@@ -26,6 +26,18 @@
 	let tuples = $derived(toTimeseriesTuples(currentData));
 	let unit = $derived(activeTab === 'cpu' ? '%' : 'GB');
 	let seriesName = $derived(tabs.find((t) => t.id === activeTab)?.label ?? 'Usage');
+
+	// Timeliness stamp computed from the actual samples, never invented:
+	// when the engine stops reporting, the stamp holds its breath.
+	let stamp = $derived.by(() => {
+		if (tuples.length < 2) return '';
+		const first = tuples[0][0];
+		const last = tuples[tuples.length - 1][0];
+		const mins = Math.max(1, Math.round((last - first) / 60000));
+		const d = new Date(last);
+		const clock = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}:${String(d.getSeconds()).padStart(2, '0')}`;
+		return `as of ${clock} · last ${mins}m`;
+	});
 </script>
 
 <!--
@@ -43,6 +55,9 @@
 			{chartMeta[activeTab]?.current ?? '—'}
 		</strong>
 		<small class="text-xs text-[var(--text-tertiary)]">currently {unit}</small>
+		{#if stamp}
+			<small class="ml-auto text-xs whitespace-nowrap text-[var(--text-tertiary)]">{stamp}</small>
+		{/if}
 	</div>
 	<div class="mt-auto">
 		<TimeseriesChart

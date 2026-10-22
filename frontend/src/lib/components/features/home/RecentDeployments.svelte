@@ -16,9 +16,11 @@
 	let latest = $derived(deployments.slice(0, 8));
 </script>
 
-<LayerCard class={cn('flex flex-col p-5', className)}>
-	<div class="mb-3 flex min-h-[26px] items-center justify-between gap-4">
-		<h2 class="m-0 text-base font-semibold text-[var(--text-primary)]">Recent deployments</h2>
+<LayerCard class={cn('overflow-hidden p-0', className)}>
+	<div
+		class="flex items-center justify-between border-b border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5"
+	>
+		<h2 class="m-0 text-[13px] font-semibold text-[var(--text-secondary)]">Recent deployments</h2>
 		<button
 			onclick={() => goto('/deployments')}
 			class="inline-flex cursor-pointer items-center border-0 bg-transparent p-0 text-[13px] font-[var(--font-sans)] whitespace-nowrap text-[var(--text-secondary)] hover:text-[var(--text-primary)]"

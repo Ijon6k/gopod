@@ -37,6 +37,17 @@
 		}
 		return names(failed.map((d) => d.serviceName || d.projectName || d.serviceId));
 	}
+
+	// Single failure lands straight on its service; many failures fall back to
+	// the plain deployments list so the user keeps the overview.
+	function failedAction() {
+		if (failed.length === 1 && failed[0]?.projectId && failed[0]?.serviceId) {
+			const d = failed[0];
+			goto(`/projects/${d.projectId}/services/${d.serviceId}`);
+			return;
+		}
+		goto('/deployments');
+	}
 </script>
 
 <section class={cn('flex flex-col gap-2', className)} aria-labelledby="needs-attention-title">
@@ -53,7 +64,7 @@
 	{#if failed.length > 0}
 		<Banner variant="error" title={failedLabel()} description={failedDetail()}>
 			{#snippet action()}
-				<BannerAction size="sm" onclick={() => goto('/deployments')}>View deployments</BannerAction>
+				<BannerAction size="sm" onclick={failedAction}>View deployment</BannerAction>
 			{/snippet}
 		</Banner>
 	{/if}

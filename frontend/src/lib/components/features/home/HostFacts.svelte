@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { cn } from '$lib/utils/cn';
 	import { LayerCard } from 'kumo-svelte';
-	import { StatusBadge } from '$lib/components/ui';
 	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 	import { pluralize } from '$lib/utils/format';
 	import type { Server } from '$lib/types';
@@ -50,9 +49,8 @@
 </script>
 
 <LayerCard class={cn('flex flex-col p-5', className)}>
-	<div class="mb-1 flex items-center gap-2">
+	<div class="mb-1">
 		<h2 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Host facts</h2>
-		<StatusBadge status={server.status} size="sm" />
 	</div>
 	<dl class="m-0 flex flex-col divide-y divide-[var(--border-subtle)]">
 		{#each facts as fact (fact.label)}

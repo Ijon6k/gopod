@@ -3,6 +3,7 @@
 	import { dataStore } from '$lib/stores/data.svelte';
 	import type { RuntimeRowActions } from './runtime-actions.svelte';
 	import { isGopodManaged, parsePorts } from './runtime-helpers';
+	import { formatTimeAgo } from '$lib/utils/format';
 	import type { Container } from '$lib/types';
 
 	interface Props {
@@ -32,7 +33,7 @@
 		{ key: 'image', label: 'Image', mono: true },
 		{ key: 'status', label: 'Status', render: containerStatus },
 		{ key: 'ports', label: 'Ports', render: containerPorts },
-		{ key: 'startedAt', label: 'Started' }
+		{ key: 'startedAt', label: 'Started', render: startedCell }
 	]}
 	{rows}
 	keyExtractor={(c) => c.id}
@@ -65,6 +66,19 @@
 		</div>
 	{:else}
 		<span class="text-base text-[var(--text-tertiary)]">—</span>
+	{/if}
+{/snippet}
+
+{#snippet startedCell(row: Container)}
+	{#if row.startedAt}
+		<span
+			class="text-[13px] font-[var(--font-mono)] whitespace-nowrap text-[var(--text-secondary)]"
+			title={row.startedAt}
+		>
+			{formatTimeAgo(row.startedAt)}
+		</span>
+	{:else}
+		<span class="text-[13px] text-[var(--text-tertiary)]">—</span>
 	{/if}
 {/snippet}
 

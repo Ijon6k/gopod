@@ -22,6 +22,8 @@ export interface Container {
 	pids?: number;
 	restarts?: number;
 	uptime?: string;
+	/** Machine health from the engine status phrase: 'healthy' | 'unhealthy' | 'starting' | 'restarting' | ''. */
+	health?: string;
 	pod?: string;
 	podId?: string;
 	labels?: Record<string, string>;

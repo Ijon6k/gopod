@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // ErrNotFound reports that the requested podman object is absent from the
@@ -43,13 +44,14 @@ func (c *Client) GetContainersWithStats(ctx context.Context, includeStats bool) 
 				defer resp.Body.Close()
 				if resp.StatusCode == http.StatusOK {
 					var rawList []struct {
-						ID      string            `json:"Id"`
-						Names   []string          `json:"Names"`
-						Image   string            `json:"Image"`
-						State   string            `json:"State"`
-						Status  string            `json:"Status"`
-						Created string            `json:"Created"`
-						Labels  map[string]string `json:"Labels"`
+						ID        string            `json:"Id"`
+						Names     []string          `json:"Names"`
+						Image     string            `json:"Image"`
+						State     string            `json:"State"`
+						Status    string            `json:"Status"`
+						Created   string            `json:"Created"`
+						CreatedAt string            `json:"CreatedAt"`
+						Labels    map[string]string `json:"Labels"`
 						Ports   []struct {
 							HostPort      int    `json:"host_port"`
 							ContainerPort int    `json:"container_port"`
@@ -81,14 +83,15 @@ func (c *Client) GetContainersWithStats(ctx context.Context, includeStats bool) 
 							}
 
 							item := ContainerItem{
-								ID:      idShort,
-								Names:   cItem.Names,
-								Image:   cItem.Image,
-								Status:  status,
-								State:   cItem.State,
-								Created: cItem.Created,
-								Ports:   strings.Join(ports, ", "),
-								Labels:  cItem.Labels,
+								ID:        idShort,
+								Names:     cItem.Names,
+								Image:     cItem.Image,
+								Status:    status,
+								State:     cItem.State,
+								Created:   cItem.Created,
+								StartedAt: normalizeTimeRef(cItem.CreatedAt),
+								Ports:     strings.Join(ports, ", "),
+								Labels:    cItem.Labels,
 							}
 
 							if s, ok := statsMap[idShort]; ok {
@@ -148,14 +151,20 @@ func (c *Client) getContainersCLI(ctx context.Context, statsMap map[string]Conta
 			}
 		}
 
+		startedAt := getString(raw, "StartedAt")
+		if startedAt == "" {
+			startedAt = getString(raw, "Created")
+		}
+
 		item := ContainerItem{
-			ID:      id,
-			Names:   names,
-			Image:   getString(raw, "Image"),
-			Status:  getString(raw, "Status"),
-			State:   getString(raw, "State"),
-			Created: getString(raw, "Created"),
-			Labels:  labelsMap,
+			ID:        id,
+			Names:     names,
+			Image:     getString(raw, "Image"),
+			Status:    getString(raw, "Status"),
+			State:     getString(raw, "State"),
+			Created:   getString(raw, "Created"),
+			StartedAt: normalizeTimeRef(startedAt),
+			Labels:    labelsMap,
 		}
 
 		if s, ok := statsMap[id]; ok {
@@ -170,6 +179,31 @@ func (c *Client) getContainersCLI(ctx context.Context, statsMap map[string]Conta
 	}
 
 	return result, nil
+}
+
+// normalizeTimeRef normalizes the podman time representations (RFC3339, human
+// Go time, unix seconds) into an RFC3339 UTC string. Empty or zero times
+// become "" so the UI can fall back honestly instead of showing fake data.
+func normalizeTimeRef(raw string) string {
+	clean := strings.TrimSpace(raw)
+	// CLI JSON may carry numbers as float strings — accept "1752887630.9".
+	if unix, err := strconv.ParseFloat(clean, 64); err == nil && unix > 0 {
+		return time.Unix(int64(unix), 0).UTC().Format(time.RFC3339)
+	}
+	if clean == "" || strings.Contains(clean, "0001-01-01T00:00:00Z") {
+		return ""
+	}
+	layouts := []string{
+		time.RFC3339Nano,
+		time.RFC3339,
+		"2006-01-02 15:04:05.999999999 -0700 MST",
+	}
+	for _, layout := range layouts {
+		if t, err := time.Parse(layout, clean); err == nil {
+			return t.UTC().Format(time.RFC3339)
+		}
+	}
+	return ""
 }
 
 // GetContainerStats retrieves current resource metrics for containers.

@@ -58,7 +58,9 @@ type ContainerItem struct {
 	Status  string            `json:"status"`
 	State   string            `json:"state"`
 	Created string            `json:"created"`
-	Ports   string            `json:"ports"`
+	// StartedAt is the container start time (RFC3339) or empty when unknown.
+	StartedAt string            `json:"startedAt,omitempty"`
+	Ports     string            `json:"ports"`
 	Labels  map[string]string `json:"labels,omitempty"`
 	Stats   *ContainerStat    `json:"stats,omitempty"`
 }

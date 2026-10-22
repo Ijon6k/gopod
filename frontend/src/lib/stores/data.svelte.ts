@@ -485,6 +485,8 @@ export class DataStore {
 					const meta = this.resolveContainerMetadata(name, rc.labels);
 					const isRunning =
 						rc.state === 'running' || (rc.status && rc.status.toLowerCase().includes('up'));
+					const statusText = (rc.status || '').trim();
+					const health = extractContainerHealth(statusText, rc.state);
 
 					return {
 						id: rc.id,
@@ -499,14 +501,15 @@ export class DataStore {
 						memory: stat?.memUsage ? Math.round(stat.memUsage / (1024 * 1024)) : 0,
 						memoryLimit: stat?.memLimit ? Math.round(stat.memLimit / (1024 * 1024)) : 512,
 						ports: rc.ports || '—',
-						startedAt: rc.status || (isRunning ? 'Active' : 'Stopped'),
+						startedAt: rc.startedAt || '',
 						netRx: stat?.netDisplay ? stat.netDisplay.split('/')[0]?.trim() : '—',
 						netTx: stat?.netDisplay ? stat.netDisplay.split('/')[1]?.trim() : '—',
 						blockRead: '—',
 						blockWrite: '—',
 						pids: stat?.pids || (isRunning ? 1 : 0),
 						restarts: 0,
-						uptime: rc.status || (isRunning ? 'Active' : 'Stopped'),
+						uptime: statusText || (isRunning ? 'Up' : 'Stopped'),
+						health,
 						labels: rc.labels || {}
 					};
 				});
@@ -785,4 +788,17 @@ export function parseContainerPortMappings(containers: Container[]): PortMapping
 		}
 	}
 	return result;
+}
+
+/**
+ * Extract a machine-readable health signal from the podman human status
+ * string ("Up 2 minutes (unhealthy)"). Returns '' when the container engine
+ * supplies no health info — no fabricated states.
+ */
+export function extractContainerHealth(status: string, state = ''): Container['health'] {
+	const s = (status || '').toLowerCase();
+	if (s.startsWith('restarting') || /restarting/.test(s)) return 'restarting';
+	if (state === 'restarting') return 'restarting';
+	const m = /\((unhealthy|healthy|starting)\)/.exec(s);
+	return (m?.[1] as Container['health']) ?? '';
 }

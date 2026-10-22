@@ -66,7 +66,7 @@
 			class="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2"
 		>
 			<span class="block text-[10px] text-[var(--text-tertiary)]">Uptime</span>
-			<span class="font-mono text-[var(--text-primary)]">{cnt?.uptime || 'Active'}</span>
+			<span class="font-mono text-[var(--text-primary)]">{cnt?.uptime || '—'}</span>
 		</div>
 		<div
 			class="rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2"

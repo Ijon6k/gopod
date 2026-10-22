@@ -57,9 +57,7 @@
 				</Badge>
 			</div>
 			<div class="mt-1 flex items-baseline gap-2">
-				<span class="text-lg font-semibold text-[var(--text-primary)]">
-					Caddy v{server.caddy || '2.8'}
-				</span>
+				<span class="text-lg font-semibold text-[var(--text-primary)]"> Caddy</span>
 				<span class="font-mono text-xs text-[var(--text-tertiary)]">rootless socket</span>
 			</div>
 			<span class="text-xs text-[var(--text-tertiary)]">

@@ -346,9 +346,7 @@
 			class="flex items-center justify-between border-t border-[var(--border)] bg-[var(--bg-table-header)] px-4 py-2.5 text-xs text-[var(--text-tertiary)]"
 		>
 			<span>{dataStore.domains.length} active domain routing configurations</span>
-			<span class="font-mono text-[11px]"
-				>Engine: Caddy v{server.caddy || '2.8'} (Rootless Ingress)</span
-			>
+			<span class="font-mono text-[11px]">Engine: Caddy (Rootless Ingress)</span>
 		</div>
 	</LayerCard>
 </div>

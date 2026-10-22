@@ -80,7 +80,7 @@ export function formatTimeAgo(dateInput: string | number | Date | null | undefin
 		typeof dateInput === 'string' || typeof dateInput === 'number'
 			? new Date(dateInput)
 			: dateInput;
-	if (isNaN(date.getTime())) return 'Recently';
+	if (isNaN(date.getTime())) return '—';
 
 	const diff = Math.floor((Date.now() - date.getTime()) / 1000);
 	if (diff < 30) return 'Just now';

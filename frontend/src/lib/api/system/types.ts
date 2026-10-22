@@ -17,11 +17,6 @@ export interface Server {
 	podmanVersion: string;
 	rootless: boolean;
 	systemd: boolean;
-	quadlet: boolean;
-	caddy: string;
-	podmanHealth: string;
-	networkHealth: string;
-	storageHealth: string;
 	/** Container engine on the host: 'podman' | 'docker' | '' when unknown. */
 	engine?: string;
 	engineVersion?: string;

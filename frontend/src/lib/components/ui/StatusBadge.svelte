@@ -19,6 +19,7 @@
 		active: { variant: 'success', label: 'Active' },
 		online: { variant: 'success', label: 'Online' },
 		mounted: { variant: 'success', label: 'Mounted' },
+		success: { variant: 'success', label: 'Success' },
 
 		stopped: { variant: 'neutral', label: 'Stopped' },
 		cancelled: { variant: 'neutral', label: 'Cancelled' },

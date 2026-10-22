@@ -20,7 +20,6 @@
 		Broadcast,
 		ChartLineUp,
 		Graph,
-		HardDrives,
 		Key,
 		ShieldCheck,
 		GearSix,
@@ -184,15 +183,6 @@
 			icon: Graph,
 			action: () => goto('/topology'),
 			keywords: ['topology', 'graph', 'map', 'diagram']
-		},
-		{
-			id: 'nav-servers',
-			title: 'Servers & Node',
-			description: 'Host daemon, systemd socket info, and cgroup kernel driver',
-			category: 'Navigation',
-			icon: HardDrives,
-			action: () => goto('/servers'),
-			keywords: ['servers', 'node', 'host', 'systemd']
 		},
 		{
 			id: 'nav-credentials',

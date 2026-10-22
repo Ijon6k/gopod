@@ -40,7 +40,6 @@
 		'/networking': ['Networking'],
 		'/deployments': ['Deployments'],
 		'/monitoring': ['Monitoring'],
-		'/servers': ['Servers'],
 		'/topology': ['Topology'],
 		'/audit-log': ['Audit log'],
 		'/settings': ['Settings']

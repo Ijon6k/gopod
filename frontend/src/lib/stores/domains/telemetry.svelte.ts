@@ -15,17 +15,12 @@ export class TelemetryDomainStore {
 		memoryUsed: 2,
 		cpuUsage: 5,
 		status: 'online',
-		podmanVersion: '5.x',
-		engine: 'podman',
-		engineVersion: '5.x',
+		podmanVersion: '',
+		engine: '',
+		engineVersion: '',
 		rootless: true,
 		systemd: true,
-		quadlet: true,
-		caddy: '2.x',
-		podmanHealth: 'healthy',
-		networkHealth: 'healthy',
-		storageHealth: 'healthy',
-		uptime: 'Active'
+		uptime: ''
 	});
 
 	accessLogs = $state<CaddyAccessLog[]>([]);
@@ -45,9 +40,19 @@ export class TelemetryDomainStore {
 	// Pending SSE restart scheduled by the backoff handler; cancelled by stop
 	private sseRestartTimer: ReturnType<typeof setTimeout> | null = null;
 
+	// Session-scoped rolling buffers. 240 samples at the ~2s stream cadence
+	// span roughly the last 8 minutes — long enough to read a trend, short
+	// enough that every pixel is recent data.
+	// Wall time of the last accepted system sample. The watchdog compares it
+	// against the clock to detect a wedged or silently-dead SSE stream and
+	// falls back to REST polling so charts keep breathing.
+	private lastSystemAtMs = 0;
+	private watchdog: ReturnType<typeof setInterval> | null = null;
+	private watchdogBusy = false;
+
 	private recordPoint(series: TimeSeriesPoint[], val: number, timeStr: string, labelStr: string) {
 		series.push({ time: timeStr, label: labelStr, value: Math.max(0, val) });
-		if (series.length > 30) {
+		if (series.length > 240) {
 			series.shift();
 		}
 	}
@@ -114,6 +119,8 @@ export class TelemetryDomainStore {
 			);
 		};
 
+		this.startWatchdog();
+
 		try {
 			open();
 		} catch {
@@ -121,7 +128,30 @@ export class TelemetryDomainStore {
 		}
 	}
 
+	// Every 3s: if no system sample arrived through the stream for 8s
+	// (wedged SSE, dropped connection without error), poll the REST endpoint
+	// so the rolling buffers never go blind.
+	private startWatchdog() {
+		this.stopWatchdog();
+		this.watchdog = setInterval(() => {
+			if (Date.now() - this.lastSystemAtMs > 8000 && !this.watchdogBusy) {
+				this.watchdogBusy = true;
+				this.fetchLiveStats().finally(() => {
+					this.watchdogBusy = false;
+				});
+			}
+		}, 3000);
+	}
+
+	private stopWatchdog() {
+		if (this.watchdog) {
+			clearInterval(this.watchdog);
+			this.watchdog = null;
+		}
+	}
+
 	stopStreamingStats() {
+		this.stopWatchdog();
 		if (this.sseRestartTimer) {
 			clearTimeout(this.sseRestartTimer);
 			this.sseRestartTimer = null;
@@ -141,20 +171,24 @@ export class TelemetryDomainStore {
 		// must not swap the shared `server` object identity, otherwise every
 		// consumer of any `server.*` field re-derives on every tick.
 		const s = this.server;
+		this.lastSystemAtMs = Date.now();
 		s.ip = sys.ip || s.ip;
 		s.hostname = sys.hostname || s.hostname;
 		s.os = sys.os || s.os;
 		s.kernel = sys.kernel || s.kernel;
 		s.vcpu = sys.vcpu || s.vcpu;
 		s.memory = parseFloat(sys.memoryTotalGB?.toFixed(1)) || s.memory;
-		s.memoryUsed = parseFloat(sys.memoryUsedGB?.toFixed(1)) || s.memoryUsed;
+		s.memoryUsed =
+			sys.memoryUsedGB != null ? parseFloat(sys.memoryUsedGB.toFixed(1)) : s.memoryUsed;
 		s.memoryAvailable =
 			sys.memoryAvailableGB != null
 				? parseFloat(sys.memoryAvailableGB.toFixed(1))
 				: s.memory - s.memoryUsed;
 		s.swapUsed = sys.swapUsedMB != null ? sys.swapUsedMB : s.swapUsed;
 		s.swapTotal = sys.swapTotalGB != null ? sys.swapTotalGB : s.swapTotal;
-		s.cpuUsage = parseFloat(sys.cpuUsage?.toFixed(1)) || s.cpuUsage;
+		// A real 0.0% must overwrite the previous sample — the former `||`
+		// treated zero as falsy and froze CPU at its last non-zero reading.
+		s.cpuUsage = sys.cpuUsage != null ? parseFloat(Number(sys.cpuUsage).toFixed(1)) : s.cpuUsage;
 		s.podmanVersion = sys.podmanVersion || s.podmanVersion;
 		// The engine identity only changes on real host changes; assign through
 		// so a Docker-only host reports "Docker" even when podmanVersion missed.

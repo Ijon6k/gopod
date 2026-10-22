@@ -75,7 +75,7 @@ export function computeGlobalLayout({
 		width: 180,
 		height: 62,
 		monoDetail: `ports 80, 443`,
-		badge: `Caddy ${server.caddy || 'v2.8'}`,
+		badge: 'Caddy',
 		raw: { server, domainsCount: domains.length }
 	};
 	nodes.push(caddyNode);

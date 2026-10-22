@@ -218,7 +218,9 @@
 			<div
 				class="flex items-center justify-between border-t border-[var(--border-subtle)] pt-1 text-[10.5px] text-[var(--text-tertiary)]"
 			>
+				{#if server.uptime}
 				<span>Uptime: {server.uptime}</span>
+			{/if}
 				<span class="font-[var(--font-mono)]">{server.kernel.split('-')[0]}</span>
 			</div>
 		</div>

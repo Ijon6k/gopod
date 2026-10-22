@@ -11,7 +11,6 @@
 		GitBranch,
 		Key,
 		ChartBar,
-		HardDrives,
 		ShareNetwork,
 		ClockCounterClockwise,
 		GearSix
@@ -200,16 +199,6 @@
 		<KumoSidebar.Group>
 			<KumoSidebar.GroupLabel>Platform</KumoSidebar.GroupLabel>
 			<KumoSidebar.Menu>
-				<KumoSidebar.MenuItem>
-					<KumoSidebar.MenuButton
-						href="/servers"
-						active={isActive('/servers')}
-						icon={HardDrives}
-						tooltip="Servers"
-					>
-						Servers
-					</KumoSidebar.MenuButton>
-				</KumoSidebar.MenuItem>
 				<KumoSidebar.MenuItem>
 					<KumoSidebar.MenuButton
 						href="/credentials"

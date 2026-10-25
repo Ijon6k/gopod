@@ -7,6 +7,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -34,6 +35,21 @@ var (
 // a daemon version. Daemons at libpod >= 5.0 accept it; older daemons reject
 // the path and their calls fall back to the CLI.
 const pinnedLibpodVersion = "v5.0.0"
+
+// OwnershipLabel is the podman label gopod stamps on every container, pod,
+// image and volume it creates (io.gopod.service=<serviceID>). Deletion and
+// prune paths must only touch objects carrying this label — host-wide
+// unlabeled objects can belong to tools other than gopod.
+const OwnershipLabel = "io.gopod.service"
+
+// ownershipFilterJSON is the libpod prune request body filter restricting a
+// prune to gopod-owned objects, e.g. /libpod/containers/prune?filters=...
+var ownershipFilterJSON = fmt.Sprintf(`{"label":["%s"]}`, OwnershipLabel)
+
+// pruneFiltersURL appends the ownership label filter to a libpod prune URL.
+func pruneFiltersURL(base string) string {
+	return base + "?filters=" + url.QueryEscape(ownershipFilterJSON)
+}
 
 // Client handles communication with Podman via Unix socket or CLI.
 type Client struct {

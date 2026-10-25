@@ -147,8 +147,10 @@ func (c *Client) CreateVolume(ctx context.Context, name string, labels map[strin
 		}
 		args = append(args, "--label", fmt.Sprintf("%s=%s", k, v))
 	}
-	args = append(args, name)
-	if err := exec.CommandContext(ctx, "podman", args...).Run(); err != nil {
+	args = append(args, "--", name)
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
+	if err := cmd.Run(); err != nil {
 		if strings.Contains(strings.ToLower(err.Error()), "already exists") {
 			return nil
 		}
@@ -157,10 +159,13 @@ func (c *Client) CreateVolume(ctx context.Context, name string, labels map[strin
 	return nil
 }
 
-// PruneVolumes removes unused local volumes.
+// PruneVolumes removes unused volumes gopod owns. Unused volumes frequently
+// belong to other tooling on the host, so the ownership-label filter applies
+// to both the libpod API request and the CLI fallback — matching the "named
+// volumes are never removed unless provably orphaned" GC policy of gopod.
 func (c *Client) PruneVolumes(ctx context.Context) error {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/volumes/prune", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, pruneFiltersURL("http://d/"+c.libpodVersion()+"/libpod/volumes/prune"), nil)
 		if err != nil {
 			return err
 		}
@@ -176,7 +181,10 @@ func (c *Client) PruneVolumes(ctx context.Context) error {
 		body, _ := io.ReadAll(resp.Body)
 		return fmt.Errorf("podman volume prune failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return exec.CommandContext(ctx, "podman", "volume", "prune", "-f").Run()
+	// CLI fallback targets the configured gopod socket, not the ambient one.
+	cmd := exec.CommandContext(ctx, "podman", "volume", "prune", "-f", "--filter", "label="+OwnershipLabel)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
 }
 
 // DeleteVolume removes a volume, optionally forcing removal.
@@ -203,6 +211,11 @@ func (c *Client) DeleteVolume(ctx context.Context, name string, force bool) erro
 	if force {
 		args = append(args, "-f")
 	}
-	args = append(args, name)
-	return exec.CommandContext(ctx, "podman", args...).Run()
+	// `--` guarantees the volume name is parsed as an identifier; a crafted
+	// volume name starting with a dash would otherwise become a CLI flag
+	// (e.g. `podman volume rm -f --all` wipes every volume on the host).
+	args = append(args, "--", name)
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
 }

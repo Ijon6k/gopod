@@ -221,7 +221,9 @@ func (c *Client) PruneImages(ctx context.Context, all bool) error {
 	if all {
 		args = append(args, "-a")
 	}
-	return exec.CommandContext(ctx, "podman", args...).Run()
+	cmd := exec.CommandContext(ctx, "podman", args...)
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
 }
 
 // RemoveImage removes an image from local storage. Podman refuses images

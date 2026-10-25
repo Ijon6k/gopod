@@ -43,8 +43,9 @@ func GenerateRandomToken(bytesLen int) (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// ExtractToken retrieves session token from Cookie, Bearer header, or query param.
-func ExtractToken(r *http.Request) string {
+// ExtractTokenHeader retrieves the session token from the session cookie or
+// the Authorization bearer header only.
+func ExtractTokenHeader(r *http.Request) string {
 	if cookie, err := r.Cookie("gopod_session"); err == nil && cookie.Value != "" {
 		return cookie.Value
 	}
@@ -52,18 +53,44 @@ func ExtractToken(r *http.Request) string {
 	if strings.HasPrefix(authHeader, "Bearer ") {
 		return strings.TrimSpace(strings.TrimPrefix(authHeader, "Bearer "))
 	}
+	return ""
+}
+
+// ExtractToken retrieves the session token from Cookie, Bearer header, or
+// query param.
+//
+// security: the query parameter announces the token in proxy and access logs
+// plus browser history, so only the streaming endpoints that cannot set
+// headers (EventSource / WebSocket) may go through GetSessionUserAllowQuery.
+// Every other route must resolve credentials from headers — see
+// Middleware.RequireAuth.
+func ExtractToken(r *http.Request) string {
+	if token := ExtractTokenHeader(r); token != "" {
+		return token
+	}
 	if q := r.URL.Query().Get("token"); q != "" {
 		return q
 	}
 	return ""
 }
 
-// GetSessionUser retrieves the active session and associated user.
+// GetSessionUser resolves the session and associated user from cookie or
+// bearer credentials only.
 func (s *Service) GetSessionUser(r *http.Request) (*Session, *User, error) {
+	return s.sessionUserByToken(ExtractTokenHeader(r), r)
+}
+
+// GetSessionUserAllowQuery additionally accepts a ?token= query parameter.
+// Reserved for the SSE/WebSocket endpoints that cannot set request headers.
+func (s *Service) GetSessionUserAllowQuery(r *http.Request) (*Session, *User, error) {
+	return s.sessionUserByToken(ExtractToken(r), r)
+}
+
+// sessionUserByToken looks up an active session for a raw token value.
+func (s *Service) sessionUserByToken(token string, r *http.Request) (*Session, *User, error) {
 	if s.repo == nil {
 		return nil, nil, errors.New("repository not initialized")
 	}
-	token := ExtractToken(r)
 	if token == "" {
 		return nil, nil, nil
 	}

@@ -10,11 +10,19 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"regexp"
 	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 )
+
+// secretNamePattern accepts a Podman secret identifier: alphanumeric first
+// character, then alphanumerics, dots, dashes and underscores, 64 characters
+// max. A dash-leading name would be parsed as a CLI flag by
+// `podman secret create/rm` ("--all" would wipe every secret), so it is
+// rejected before any command is built or persisted.
+var secretNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`)
 
 // Service encapsulates credentials management business logic.
 type Service struct {
@@ -306,6 +314,12 @@ func (s *Service) CreateSecret(ctx context.Context, sec Secret) (*Secret, error)
 	if strings.TrimSpace(sec.Name) == "" || strings.TrimSpace(sec.Value) == "" {
 		return nil, errors.New("secret name and value are required")
 	}
+	// Trim before pattern check AND before persisting: the stored row and the
+	// `podman secret create` invocation must equal the validated value.
+	sec.Name = strings.TrimSpace(sec.Name)
+	if !secretNamePattern.MatchString(sec.Name) {
+		return nil, fmt.Errorf("invalid secret name %q: must be an alphanumeric identifier", sec.Name)
+	}
 
 	if sec.ID == "" {
 		b := make([]byte, 4)
@@ -339,7 +353,9 @@ func (s *Service) DeleteSecret(ctx context.Context, id string) error {
 	sec, _ := s.repo.GetSecret(ctx, id)
 	if sec != nil && sec.Name != "" {
 		if _, err := exec.LookPath("podman"); err == nil {
-			_ = exec.CommandContext(ctx, "podman", "secret", "rm", sec.Name).Run()
+			// Legacy rows may still carry arbitrary names; `--` guarantees the value is
+			// treated as a secret identifier, never as a podman flag.
+			_ = exec.CommandContext(ctx, "podman", "secret", "rm", "--", sec.Name).Run()
 		}
 	}
 	return s.repo.DeleteSecret(ctx, id)

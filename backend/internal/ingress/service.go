@@ -123,9 +123,10 @@ func cleanHostname(raw string) string {
 	return clean
 }
 
-// validateUpstream validates every stored value that is interpolated as the
-// upstream of a generated Caddyfile route.
-func validateUpstream(d *Domain) error {
+// validateRouteFields validates every stored value that is interpolated into
+// a generated Caddyfile route: the upstream identity, the port, the optional
+// path matcher and the optional basic-auth username.
+func validateRouteFields(d *Domain) error {
 	if strings.TrimSpace(d.TargetContainer) != "" {
 		if err := ValidateTargetContainer(d.TargetContainer); err != nil {
 			return err
@@ -136,7 +137,18 @@ func validateUpstream(d *Domain) error {
 			return err
 		}
 	}
-	return ValidateContainerPort(d.ContainerPort)
+	if err := ValidateContainerPort(d.ContainerPort); err != nil {
+		return err
+	}
+	clean := strings.TrimSpace(d.PathPrefix)
+	if clean == "" || clean == "/" {
+		clean = "/"
+	}
+	if err := ValidatePathPrefix(clean); err != nil {
+		return err
+	}
+	d.PathPrefix = clean
+	return ValidateBasicAuthUser(d.BasicAuthUser)
 }
 
 // hashBasicAuthPass returns the bcrypt hash of a plaintext password for storage
@@ -194,7 +206,7 @@ func (s *Service) CreateDomain(ctx context.Context, d Domain) (*Domain, error) {
 	}
 	d.Hostname = cleanHost
 
-	if err := validateUpstream(&d); err != nil {
+	if err := validateRouteFields(&d); err != nil {
 		return nil, err
 	}
 
@@ -243,7 +255,7 @@ func (s *Service) UpdateDomain(ctx context.Context, d Domain) (*Domain, error) {
 	}
 	d.Hostname = cleanHost
 
-	if err := validateUpstream(&d); err != nil {
+	if err := validateRouteFields(&d); err != nil {
 		return nil, err
 	}
 

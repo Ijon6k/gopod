@@ -6,8 +6,15 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
+
+// quadletIdentPattern accepts the base of a systemd unit name: alphanumeric
+// first character, then alphanumerics, dots, dashes and underscores, 64
+// characters max. A dash-leading value would be parsed as a CLI flag by
+// systemctl/podman, so it is rejected before any command is built.
+var quadletIdentPattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`)
 
 // QuadletUnit represents a systemd Quadlet declarative file and its live status.
 type QuadletUnit struct {
@@ -148,9 +155,25 @@ func (s *Service) GetQuadletContent(name string) (string, error) {
 	return "", fmt.Errorf("quadlet unit file not found: %s", name)
 }
 
+// validateQuadletName derives and allowlists the unit base identifier used
+// in systemctl/podman invocations. A dash-leading base (e.g. "--all.container"
+// stripping to "--all") would otherwise land in flag position of
+// `systemctl start` or `podman rm -f --all`, so every lifecycle verb funnels
+// through this gate.
+func validateQuadletName(name string) (string, error) {
+	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	if !quadletIdentPattern.MatchString(base) {
+		return "", fmt.Errorf("invalid quadlet identifier %q: must be an alphanumeric unit name", name)
+	}
+	return base, nil
+}
+
 // StartQuadlet starts a quadlet unit via systemctl or podman container.
 func (s *Service) StartQuadlet(ctx context.Context, name string) error {
-	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	base, err := validateQuadletName(name)
+	if err != nil {
+		return err
+	}
 	serviceUnit := fmt.Sprintf("%s.service", base)
 
 	if _, err := exec.LookPath("systemctl"); err == nil {
@@ -170,7 +193,10 @@ func (s *Service) StartQuadlet(ctx context.Context, name string) error {
 
 // StopQuadlet stops a quadlet unit via systemctl and podman.
 func (s *Service) StopQuadlet(ctx context.Context, name string) error {
-	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	base, err := validateQuadletName(name)
+	if err != nil {
+		return err
+	}
 	serviceUnit := fmt.Sprintf("%s.service", base)
 
 	var stopErr error
@@ -192,7 +218,10 @@ func (s *Service) StopQuadlet(ctx context.Context, name string) error {
 
 // RestartQuadlet restarts a quadlet unit via systemctl.
 func (s *Service) RestartQuadlet(ctx context.Context, name string) error {
-	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	base, err := validateQuadletName(name)
+	if err != nil {
+		return err
+	}
 	serviceUnit := fmt.Sprintf("%s.service", base)
 
 	if _, err := exec.LookPath("systemctl"); err == nil {
@@ -224,7 +253,14 @@ func (s *Service) ReloadQuadlets(ctx context.Context) error {
 
 // DeleteQuadlet thoroughly stops systemd supervision, removes unit files, reloads daemon, and forces Podman container/pod removal.
 func (s *Service) DeleteQuadlet(ctx context.Context, name string) error {
-	base := strings.TrimSuffix(filepath.Base(name), filepath.Ext(name))
+	// The derived identifier is interpolated into systemctl/podman invocations
+	// below. A name like "--all.container" would otherwise strip to "--all"
+	// and turn `podman rm -f --all` into a host-wide cleanup. Only honest
+	// unit identifiers are accepted.
+	base, err := validateQuadletName(name)
+	if err != nil {
+		return err
+	}
 	serviceUnit := fmt.Sprintf("%s.service", base)
 	podUnit := fmt.Sprintf("%s-pod.service", base)
 
@@ -261,8 +297,8 @@ func (s *Service) DeleteQuadlet(ctx context.Context, name string) error {
 		_ = s.client.DeleteContainer(ctx, base, true)
 		_ = s.client.DeletePod(ctx, base, true)
 	}
-	_ = exec.CommandContext(ctx, "podman", "rm", "-f", base).Run()
-	_ = exec.CommandContext(ctx, "podman", "pod", "rm", "-f", base).Run()
+	_ = exec.CommandContext(ctx, "podman", "rm", "-f", "--", base).Run()
+	_ = exec.CommandContext(ctx, "podman", "pod", "rm", "-f", "--", base).Run()
 
 	return nil
 }

@@ -271,14 +271,11 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 			map[string]any{"skipped": skippedDomains, "domains": len(domains)})
 	}
 
-	// 1. Write to disk for persistence
-	dir := filepath.Dir(r.caddyfilePath)
-	_ = os.MkdirAll(dir, 0755)
-	if err := os.WriteFile(r.caddyfilePath, []byte(content), 0644); err != nil {
-		log.Printf("[WARN] Failed to write Caddyfile to disk (%s): %v", r.caddyfilePath, err)
-	}
-
-	// 2. Post to Caddy Admin API (/load with Caddyfile adapter) with automatic fallback
+	// 1. Hot-reload via the Caddy Admin API (/load with Caddyfile adapter),
+	// with endpoint automatic fallback. An actively rejected config (HTTP 400+)
+	// must never be persisted to disk: a broken Caddyfile would make Caddy
+	// refuse to start at next boot. When no admin endpoint answers at all the
+	// file is still written, so the config reaches Caddy on its next restart.
 	endpoints := []string{r.adminURL}
 	if r.adminURL == "http://caddy:2019" {
 		endpoints = append(endpoints, "http://127.0.0.1:2019", "http://localhost:2019")
@@ -287,18 +284,27 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 	}
 
 	var lastErr error
+	rejected := false
 	reloaded := false
+	unreachable := 0
 	for _, endpoint := range endpoints {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint+"/load", bytes.NewBufferString(content))
+		// A dead endpoint must not stall the whole fallback chain (or the
+		// persistence below) for the httpClient's full default timeout: bound
+		// every single /load attempt independently.
+		attemptCtx, cancelAttempt := context.WithTimeout(ctx, 2*time.Second)
+		req, err := http.NewRequestWithContext(attemptCtx, http.MethodPost, endpoint+"/load", bytes.NewBufferString(content))
 		if err != nil {
+			cancelAttempt()
 			lastErr = err
 			continue
 		}
 		req.Header.Set("Content-Type", "text/caddyfile")
 
 		resp, err := r.httpClient.Do(req)
+		cancelAttempt()
 		if err != nil {
 			lastErr = err
+			unreachable++
 			continue
 		}
 		// Close explicitly per iteration instead of deferring inside the loop
@@ -308,17 +314,38 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 
 		if resp.StatusCode >= 400 {
 			lastErr = fmt.Errorf("caddy API reload returned status %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+			rejected = true
 			continue
 		}
 
 		r.adminURL = endpoint
 		log.Printf("✅ Caddy ingress updated with %d domain rules via %s", validDomains, endpoint)
 		reloaded = true
+		rejected = false
 		break
 	}
 
+	if rejected {
+		log.Printf("[WARN] Caddy rejected the new configuration, keeping the previous on-disk Caddyfile: %v; in-memory config is unchanged", lastErr)
+	} else {
+		// 2. Persist to disk so the config survives restarts. The file holds
+		// bcrypt password hashes — owner-only permissions (chmod re-tightens
+		// files that predate the 0600 rule).
+		dir := filepath.Dir(r.caddyfilePath)
+		_ = os.MkdirAll(dir, 0700)
+		if err := os.WriteFile(r.caddyfilePath, []byte(content), 0600); err != nil {
+			log.Printf("[WARN] Failed to write Caddyfile to disk (%s): %v", r.caddyfilePath, err)
+		} else {
+			_ = os.Chmod(r.caddyfilePath, 0600)
+		}
+	}
+
 	if !reloaded && lastErr != nil {
-		log.Printf("[INFO] Caddy Admin API not reachable on any endpoint (%v). Caddyfile written to %s.", lastErr, r.caddyfilePath)
+		if rejected {
+			log.Printf("[INFO] Caddy Admin API not reachable on remaining endpoints after a rejected config; the previous Caddyfile at %s stays in charge.", r.caddyfilePath)
+		} else {
+			log.Printf("[INFO] Caddy Admin API not reachable on any endpoint (%d tried: %v). Caddyfile written to %s, applied at next restart.", unreachable, lastErr, r.caddyfilePath)
+		}
 	}
 	emitIngressReconcileEvent(ctx, validDomains, reloaded)
 	return nil
@@ -328,6 +355,7 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 type domainRoute struct {
 	Hostname string // scheme/port stripped
 	Upstream string // validated DNS host of the upstream, without port
+	Path     string // validated path matcher ("/" = whole host)
 }
 
 // buildDomainRoute cleans and validates a stored domain rule for Caddyfile
@@ -344,6 +372,20 @@ func (r *Reconciler) buildDomainRoute(d Domain) (domainRoute, error) {
 	}
 
 	if err := ValidateContainerPort(d.ContainerPort); err != nil {
+		return domainRoute{}, err
+	}
+
+	// Render-ready field validation (defense in depth behind the API write
+	// boundaries): a stored row with a Caddyfile-metacharacter path prefix or
+	// basic-auth user is skipped entirely rather than escaping the sanitizer.
+	cleanPath := strings.TrimSpace(d.PathPrefix)
+	if cleanPath == "" {
+		cleanPath = "/"
+	}
+	if err := ValidatePathPrefix(cleanPath); err != nil {
+		return domainRoute{}, err
+	}
+	if err := ValidateBasicAuthUser(d.BasicAuthUser); err != nil {
 		return domainRoute{}, err
 	}
 
@@ -396,7 +438,7 @@ func (r *Reconciler) buildDomainRoute(d Domain) (domainRoute, error) {
 		}
 	}
 
-	return domainRoute{Hostname: host, Upstream: upstreamHost}, nil
+	return domainRoute{Hostname: host, Upstream: upstreamHost, Path: cleanPath}, nil
 }
 
 // adminListenAddress derives the admin API bind address for the generated
@@ -517,17 +559,21 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 			b.WriteString("    tls internal\n")
 		}
 		if d.BasicAuth && d.BasicAuthUser != "" {
-			cleanUser := strings.Map(func(r rune) rune {
-				if r == '\n' || r == '\r' || r == '{' || r == '}' || r == '"' {
-					return -1
-				}
-				return r
-			}, strings.TrimSpace(d.BasicAuthUser))
+			// The route-level validation guarantees a metachar-free token;
+			// TrimSpace only normalizes incidental surrounding whitespace.
+			cleanUser := strings.TrimSpace(d.BasicAuthUser)
 
 			passHash := strings.TrimSpace(d.BasicAuthPass)
-			if !strings.HasPrefix(passHash, "$2") && passHash != "" {
+			if passHash != "" && !strings.HasPrefix(passHash, "$2") {
+				// security: never write the plaintext password when hashing
+				// fails (e.g. bcrypt's 72-byte length cap on legacy rows) —
+				// but publishing the route unprotected would be worse. The
+				// whole site block is skipped below (fail closed).
 				if h, err := bcrypt.GenerateFromPassword([]byte(passHash), bcrypt.DefaultCost); err == nil {
 					passHash = string(h)
+				} else {
+					log.Printf("[WARN] Skipping domain %q: basicauth password cannot be hashed (%v) and rendering it would publish the route without protection", cleanHost, err)
+					continue
 				}
 			}
 
@@ -542,25 +588,14 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 
 		targetUpstream := fmt.Sprintf("%s:%d", upstreamHost, d.ContainerPort)
 
-		if d.PathPrefix != "" && d.PathPrefix != "/" {
-			cleanPath := strings.TrimSpace(d.PathPrefix)
-			cleanPath = strings.ReplaceAll(cleanPath, "\n", "")
-			cleanPath = strings.ReplaceAll(cleanPath, "\r", "")
-			cleanPath = strings.ReplaceAll(cleanPath, "{", "")
-			cleanPath = strings.ReplaceAll(cleanPath, "}", "")
-			if cleanPath != "" && cleanPath != "/" {
-				if d.StripPathPrefix {
-					b.WriteString(fmt.Sprintf("    handle_path %s* {\n", cleanPath))
-					b.WriteString(fmt.Sprintf("        reverse_proxy %s\n", targetUpstream))
-					b.WriteString("    }\n")
-				} else {
-					b.WriteString(fmt.Sprintf("    handle %s* {\n", cleanPath))
-					b.WriteString(fmt.Sprintf("        reverse_proxy %s\n", targetUpstream))
-					b.WriteString("    }\n")
-				}
-			} else {
-				b.WriteString(fmt.Sprintf("    reverse_proxy %s\n", targetUpstream))
+		if path := route.Path; path != "/" {
+			stripOrHandle := "handle"
+			if d.StripPathPrefix {
+				stripOrHandle = "handle_path"
 			}
+			b.WriteString(fmt.Sprintf("    %s %s* {\n", stripOrHandle, path))
+			b.WriteString(fmt.Sprintf("        reverse_proxy %s\n", targetUpstream))
+			b.WriteString("    }\n")
 		} else {
 			b.WriteString(fmt.Sprintf("    reverse_proxy %s\n", targetUpstream))
 		}

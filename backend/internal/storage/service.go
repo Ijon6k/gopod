@@ -11,12 +11,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/robfig/cron/v3"
 )
+
+// volumeNamePattern enforces a Podman volume identifier: alphanumeric first
+// character, then alphanumerics, dots, dashes and underscores, 64 characters
+// max. Together with the filepath.Base equality check below it guarantees the
+// name can never be interpreted as a host path, a flag, or a traversal
+// sequence when it is interpolated into a podman bind mount.
+var volumeNamePattern = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,63}$`)
+
+// validateVolumeName rejects anything that is not a bare volume identifier.
+// It operates on the raw, untrimmed string: values such as "/etc" pass
+// filepath.Base on their own (base "etc" is well-formed) but must never be
+// handed to `podman -v /etc:/...` as a bind mount.
+func validateVolumeName(raw string) error {
+	if raw == "" || !volumeNamePattern.MatchString(raw) || filepath.Base(raw) != raw {
+		return fmt.Errorf("invalid volume name %q: must be an alphanumeric volume identifier", raw)
+	}
+	return nil
+}
 
 // Service encapsulates storage backups and snapshot lifecycle business logic.
 type Service struct {
@@ -62,13 +81,14 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 		_, _ = rand.Read(b)
 		snap.ID = fmt.Sprintf("snap-%s", hex.EncodeToString(b))
 	}
-	cleanVolume := filepath.Base(snap.VolumeName)
-	if cleanVolume == "" || cleanVolume == "." || strings.HasPrefix(cleanVolume, "-") || strings.ContainsAny(cleanVolume, " \t\r\n/\\`\"'$;&|<>") {
-		return nil, fmt.Errorf("invalid volume name: %q", snap.VolumeName)
+	// security: the raw value is validated, not just its base — "/etc" passes
+	// Base() as "etc" but must be rejected before it reaches a bind mount.
+	if err := validateVolumeName(snap.VolumeName); err != nil {
+		return nil, err
 	}
 	cleanFilename := filepath.Base(snap.Filename)
 	if cleanFilename == "." || cleanFilename == "/" || strings.Contains(cleanFilename, "..") || cleanFilename == "" {
-		cleanFilename = fmt.Sprintf("%s-%d.tar.gz", cleanVolume, time.Now().Unix())
+		cleanFilename = fmt.Sprintf("%s-%d.tar.gz", snap.VolumeName, time.Now().Unix())
 	}
 	snap.Filename = cleanFilename
 
@@ -88,30 +108,36 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 		cmd := exec.CommandContext(ctx, "podman", "volume", "export", snap.VolumeName)
 		setupCmdEnv(cmd)
 		cmd.Stdout = gw
-		if exportErr := cmd.Run(); exportErr == nil {
-			_ = gw.Close()
-			_ = outFile.Close()
-		} else {
+		exportErr := cmd.Run()
+		// Flush and close the primary writers before deciding anything; the
+		// tar fallback path below re-opens the file from scratch.
+		_ = gw.Close()
+		_ = outFile.Close()
+		if exportErr != nil {
 			// Remote Podman client fallback: export via tar helper container
-			_ = gw.Close()
-			_ = outFile.Close()
 			_ = os.Remove(filePath)
 			if f, createErr := os.Create(filePath); createErr == nil {
 				tarCmd := exec.CommandContext(ctx, "podman", "run", "--rm", "-v", fmt.Sprintf("%s:/data:ro", snap.VolumeName), "docker.io/library/alpine:latest", "tar", "-C", "/data", "-czf", "-", ".")
 				setupCmdEnv(tarCmd)
 				tarCmd.Stdout = f
-				_ = tarCmd.Run()
+				exportErr = tarCmd.Run()
 				_ = f.Close()
+			} else {
+				exportErr = createErr
 			}
 		}
 
+		// Honest status reporting: an export that failed, or that produced no
+		// bytes on disk, is a failed backup — never a completed one. The file
+		// is removed in both failure cases so nothing fake stays downloadable.
 		if fi, statErr := os.Stat(filePath); statErr == nil && fi.Size() > 0 {
 			snap.SizeBytes = fi.Size()
 			snap.Size = fmt.Sprintf("%.2f MB", float64(fi.Size())/(1024*1024))
 			snap.Status = "completed"
 		} else {
 			snap.Size = "0 MB"
-			snap.Status = "completed"
+			snap.Status = "failed"
+			_ = os.Remove(filePath)
 		}
 	} else {
 		snap.Size = "0 MB"
@@ -132,6 +158,12 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 	snap, err := s.repo.GetSnapshot(ctx, id)
 	if err != nil || snap == nil {
 		return fmt.Errorf("snapshot not found: %s", id)
+	}
+
+	// Stored rows are replayed against the shell/daemon below; re-validate the
+	// volume name so a legacy host-path row can never be bind-mounted again.
+	if err := validateVolumeName(snap.VolumeName); err != nil {
+		return err
 	}
 
 	cleanFilename := filepath.Base(snap.Filename)
@@ -212,6 +244,9 @@ func (s *Service) CreateSchedule(ctx context.Context, sched VolumeSchedule) (*Vo
 	}
 	if sched.VolumeName == "" {
 		return nil, errors.New("volumeName is required")
+	}
+	if err := validateVolumeName(sched.VolumeName); err != nil {
+		return nil, err
 	}
 
 	if sched.ID == "" {

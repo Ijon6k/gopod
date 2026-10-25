@@ -68,6 +68,52 @@ func ValidateContainerPort(port int) error {
 // backticks and hashes can retokenize or comment out the rest of a line.
 const caddyfileMetachars = " \t\r\n{};\"`$#\\()"
 
+// pathPrefixPattern accepts an absolute URL path prefix safe for sprintf
+// interpolation into a Caddy handle matcher: a leading slash, then plain URL
+// path characters, max 128 characters. Wildcard `*` is deliberately
+// excluded — Caddy already appends one to the matcher, so an embedded `*`
+// is a literal (or an over-broad surprise) rather than a glob. An encoded
+// `%xx` suffix is accepted at write time but note that Caddypath matchers
+// compare against the decoded path, so it will never match at runtime.
+var pathPrefixPattern = regexp.MustCompile(`^/[a-zA-Z0-9._~!$'()+,;=:@/-]*$`)
+
+// ValidatePathPrefix checks a user-supplied reverse-proxy path matcher before
+// it is interpolated into the generated Caddyfile. An empty value or a plain
+// "/" means "match the whole host" and is always valid.
+func ValidatePathPrefix(p string) error {
+	if p == "" || p == "/" {
+		return nil
+	}
+	if len(p) > 128 {
+		return fmt.Errorf("%w: path prefix exceeds 128 characters", ErrValidation)
+	}
+	if strings.ContainsRune(p, '*') {
+		return fmt.Errorf("%w: path prefix %q must not contain a wildcard: caddy appends one automatically", ErrValidation, p)
+	}
+	if !pathPrefixPattern.MatchString(p) {
+		return fmt.Errorf("%w: path prefix %q contains invalid characters", ErrValidation, p)
+	}
+	return nil
+}
+
+// basicAuthUserPattern accepts a Caddy basic-auth username safe to write as a
+// bare token: letters, digits, dots, dashes, underscores and a single "@", up
+// to 64 characters.
+var basicAuthUserPattern = regexp.MustCompile(`^[a-zA-Z0-9_.@-]{1,64}$`)
+
+// ValidateBasicAuthUser checks a user-supplied basic-auth username before it
+// is interpolated into the Caddyfile's basicauth block.
+func ValidateBasicAuthUser(u string) error {
+	clean := strings.TrimSpace(u)
+	if clean == "" {
+		return nil // optional field
+	}
+	if !basicAuthUserPattern.MatchString(clean) {
+		return fmt.Errorf("%w: basic auth user %q contains invalid characters", ErrValidation, clean)
+	}
+	return nil
+}
+
 // parseAdminBindOverride parses the CADDY_ADMIN_HOST environment override for
 // the generated `admin` bind address. Accepted forms: "localhost", any specific
 // IP address (IPv4 or IPv6, optionally followed by ":port", default 2019).

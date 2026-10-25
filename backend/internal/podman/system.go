@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net"
@@ -395,16 +396,40 @@ func detectHostIP() string {
 	return "127.0.0.1"
 }
 
-// PruneSystem cleans up stopped containers, unused networks, and dangling images.
+// PruneSystem cleans up gopod-owned stopped containers, dangling images, and
+// unused podman networks. It deliberately avoids the coarse
+// /libpod/system/prune and `podman system prune` verbs: those act host-wide
+// and would delete stopped containers gopod does not own. Networks are pruned
+// without an ownership filter because an engine refuses to remove a network
+// still referenced by any container — no data can ride on it.
 func (c *Client) PruneSystem(ctx context.Context) error {
+	var errs []string
+	if err := c.PruneContainers(ctx); err != nil {
+		errs = append(errs, "container prune: "+err.Error())
+	}
+	if err := c.PruneImages(ctx, false); err != nil {
+		errs = append(errs, "dangling image prune: "+err.Error())
+	}
+	if err := c.PruneNetworks(ctx); err != nil {
+		errs = append(errs, "network prune: "+err.Error())
+	}
+	if len(errs) > 0 {
+		return errors.New(strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// PruneNetworks removes podman networks no container references, via the
+// libpod API when available and the CLI verb otherwise.
+func (c *Client) PruneNetworks(ctx context.Context) error {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/system/prune", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/networks/prune", nil)
 		if err != nil {
 			return err
 		}
 		resp, cancel, err := c.do(ctx, pruneTimeout, req)
 		if err != nil {
-			return fmt.Errorf("podman system prune failed: %w", err)
+			return fmt.Errorf("podman network prune failed: %w", err)
 		}
 		defer cancel()
 		defer resp.Body.Close()
@@ -412,9 +437,13 @@ func (c *Client) PruneSystem(ctx context.Context) error {
 			return nil
 		}
 		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("podman system prune failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		return fmt.Errorf("podman network prune failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
-	return exec.CommandContext(ctx, "podman", "system", "prune", "-f").Run()
+	// `podman network prune` only removes networks not referenced by any
+	// container; nothing host-wide can be destroyed by it.
+	cmd := exec.CommandContext(ctx, "podman", "network", "prune", "-f")
+	c.SetupCmdEnv(cmd)
+	return cmd.Run()
 }
 
 // PruneBuilds removes dangling images and build cache left behind by image

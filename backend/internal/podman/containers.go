@@ -52,7 +52,7 @@ func (c *Client) GetContainersWithStats(ctx context.Context, includeStats bool) 
 						Created   string            `json:"Created"`
 						CreatedAt string            `json:"CreatedAt"`
 						Labels    map[string]string `json:"Labels"`
-						Ports   []struct {
+						Ports     []struct {
 							HostPort      int    `json:"host_port"`
 							ContainerPort int    `json:"container_port"`
 							Protocol      string `json:"protocol"`
@@ -508,15 +508,18 @@ func (c *Client) postContainerAction(ctx context.Context, id, action string) err
 		return fmt.Errorf("podman %s failed (HTTP %d): %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", action, id)
+	cmd := exec.CommandContext(ctx, "podman", action, "--", id)
 	c.SetupCmdEnv(cmd)
 	return cmd.Run()
 }
 
-// PruneContainers removes stopped and exited containers.
+// PruneContainers removes stopped and exited containers gopod owns. The
+// ownership-label filter applies to both the libpod API request and the CLI
+// fallback: stopped containers on the host that carry no io.gopod labels may
+// belong to tooling other than gopod and are never touched.
 func (c *Client) PruneContainers(ctx context.Context) error {
 	if c.httpClient != nil {
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://d/"+c.libpodVersion()+"/libpod/containers/prune", nil)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, pruneFiltersURL("http://d/"+c.libpodVersion()+"/libpod/containers/prune"), nil)
 		if err != nil {
 			return err
 		}
@@ -533,7 +536,7 @@ func (c *Client) PruneContainers(ctx context.Context) error {
 		return fmt.Errorf("podman container prune failed (HTTP %d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "container", "prune", "-f")
+	cmd := exec.CommandContext(ctx, "podman", "container", "prune", "-f", "--filter", "label="+OwnershipLabel)
 	c.SetupCmdEnv(cmd)
 	return cmd.Run()
 }

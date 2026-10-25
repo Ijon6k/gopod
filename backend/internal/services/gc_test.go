@@ -83,8 +83,11 @@ func TestGCPreviewComputesCountsFromFixtures(t *testing.T) {
 		dangling: &podman.DanglingImageStat{Count: 3, Bytes: 300 * 1024 * 1024},
 		containers: []podman.ContainerItem{
 			{ID: "a", State: "running"},
-			{ID: "b", State: "exited"},
-			{ID: "c", State: "exited"},
+			{ID: "b", State: "exited", Labels: map[string]string{"io.gopod.service": "svc-gone"}},
+			{ID: "c", State: "exited", Labels: map[string]string{"io.gopod.service": "svc-gone"}},
+			// Host-wide stopped container without gopod labels: never counted,
+			// because a filtered prune must never touch it.
+			{ID: "d", State: "exited"},
 		},
 		volumes: []podman.VolumeItem{
 			{Name: "known-vol", Labels: map[string]string{"io.gopod.service": "svc-known"}},

@@ -19,7 +19,20 @@ func NewMiddleware(authService *Service) *Middleware {
 }
 
 // RequireAuth wraps an http.HandlerFunc to ensure the request is from an authenticated session.
+// Credentials are resolved from the session cookie or the bearer header only.
 func (m *Middleware) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
+	return m.guard(false, next)
+}
+
+// RequireAuthAllowQuery additionally accepts a ?token= query parameter. It is
+// reserved for the SSE and WebSocket endpoints whose clients (EventSource,
+// browser WebSocket) cannot set an Authorization header; a query token is
+// delegable through referer/proxy logs, so no ordinary JSON route may use it.
+func (m *Middleware) RequireAuthAllowQuery(next http.HandlerFunc) http.HandlerFunc {
+	return m.guard(true, next)
+}
+
+func (m *Middleware) guard(allowQueryToken bool, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if !m.initialized.Load() {
 			count, err := m.authService.CountUsers(r.Context())
@@ -34,7 +47,14 @@ func (m *Middleware) RequireAuth(next http.HandlerFunc) http.HandlerFunc {
 			m.initialized.Store(true)
 		}
 
-		session, user, err := m.authService.GetSessionUser(r)
+		var session *Session
+		var user *User
+		var err error
+		if allowQueryToken {
+			session, user, err = m.authService.GetSessionUserAllowQuery(r)
+		} else {
+			session, user, err = m.authService.GetSessionUser(r)
+		}
 		if err != nil || session == nil || user == nil {
 			httputil.WriteError(w, http.StatusUnauthorized, "Authentication required. Please sign in.")
 			return

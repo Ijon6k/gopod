@@ -249,7 +249,9 @@ func (s *WorkloadService) GCPreview(ctx context.Context) (*GCPreview, error) {
 	}
 	if containers, err := client.GetContainers(ctx); err == nil {
 		for _, c := range containers {
-			if !containerIsRunning(c) {
+			// Preview must match what a filtered prune would actually delete:
+			// only stopped containers owning an io.gopod label.
+			if !containerIsRunning(c) && c.Labels["io.gopod.service"] != "" {
 				preview.StoppedContainers++
 			}
 		}
@@ -258,6 +260,11 @@ func (s *WorkloadService) GCPreview(ctx context.Context) (*GCPreview, error) {
 		preview.OrphanVolumes = findOrphanVolumes(volumes, known)
 	}
 	if df, err := client.GetDiskUsage(ctx); err == nil {
+		// Host-wide podman df figure: covers unlabeled stopped containers and
+		// unused tagged images that the scoped prune (label-owned containers,
+		// dangling images) will NOT delete. Displayed as "reclaimable
+		// potential", not as the exact outcome — the StoppedContainers row is
+		// the precisely scoped number.
 		preview.WeightedReclaimable = gcReclaimableBytes(df)
 	}
 	return preview, nil

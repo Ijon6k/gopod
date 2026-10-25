@@ -54,8 +54,18 @@
 		if (revealedFor === id) revealedEnv = values;
 	}
 
+	// Re-reveal whenever the service's env content changes, not only when the
+	// service id flips: update responses arrive redacted (mask sentinels), and
+	// a saved password change must surface fresh values, not stale ones.
+	const envFingerprint = $derived(
+		service.id +
+			':' +
+			(service.envVars ?? []).map((v) => `${v.key}=${v.value}:${v.secret}`).join('|')
+	);
+	let revealedFingerprint = '';
 	$effect(() => {
-		if (service.id !== revealedFor) {
+		if (envFingerprint !== revealedFingerprint) {
+			revealedFingerprint = envFingerprint;
 			revealedEnv = {};
 			void refreshRevealed();
 		}

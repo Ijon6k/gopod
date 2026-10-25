@@ -185,15 +185,25 @@ export class ProjectsDomainStore {
 	}
 
 	async updateService(updated: Service): Promise<Service> {
-		const idx = this.services.findIndex((s) => s.id === updated.id);
-		if (idx !== -1) {
-			this.services[idx] = { ...updated };
-		}
 		try {
 			const res = await api.services.update(updated.id, updated);
+			// Adopt the server response as cache truth: it is the redacted form
+			// (secret env values masked), the same contract list/get uses. The
+			// optimistic local object may carry plaintext the UI must never keep
+			// beyond the request; reveal layers re-fetch via /env/reveal.
+			const idx = this.services.findIndex((s) => s.id === updated.id);
+			if (idx !== -1) {
+				this.services[idx] = { ...res };
+			}
 			return res;
 		} catch (err) {
 			console.warn('Failed to sync service update to backend:', err);
+			// Offline-failure fallback: keep the optimistic object so unsaved
+			// edits are not silently reverted in the open editors.
+			const idx = this.services.findIndex((s) => s.id === updated.id);
+			if (idx !== -1) {
+				this.services[idx] = { ...updated };
+			}
 			return updated;
 		}
 	}

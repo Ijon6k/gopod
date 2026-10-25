@@ -52,6 +52,11 @@
 	let clipboardAddon: ClipboardAddon | null = null;
 	let ws: WebSocket | null = null;
 	let resizeObserver: ResizeObserver | null = null;
+	// Destroy epoch: connectSession spans awaits and socket creation, so
+	// anything resolving after onDestroy must never write into a disposed
+	// component. Handlers compare their snapshot against this counter.
+	let epoch = 0;
+	let rafId: number | null = null;
 
 	function getTargetContainer(): string {
 		return selectedWorkload || (workloads.length > 0 ? workloads[0].name : '') || title;
@@ -74,6 +79,10 @@
 
 	async function connectSession() {
 		if (!browser || !terminalContainer) return;
+
+		// Snapshot the epoch: if the component unmounts at any of the awaits
+		// below, this attempt is stale and must not re-enter the DOM state.
+		const myEpoch = epoch;
 
 		// Cleanup existing session
 		if (ws) {
@@ -115,6 +124,11 @@
 			// fallback silently to session token
 		}
 
+		// The ticket fetch can take seconds; bail out silently if the
+		// component was destroyed while it was pending — no UI writes and
+		// no term/subscription changes from this stale attempt.
+		if (myEpoch !== epoch) return;
+
 		const url = api.runtime.containers.getTerminalWsUrl(target, cols, rows, activeShell, ticket);
 
 		try {
@@ -122,6 +136,11 @@
 			socket.binaryType = 'arraybuffer';
 
 			socket.onopen = () => {
+				// A late-opening socket must not write into a disposed xterm.
+				if (myEpoch !== epoch) {
+					socket.close();
+					return;
+				}
 				isConnected = true;
 				exitMessage = null;
 				term?.focus();
@@ -129,7 +148,7 @@
 			};
 
 			socket.onmessage = (event) => {
-				if (!term) return;
+				if (myEpoch !== epoch || !term) return;
 				if (typeof event.data === 'string') {
 					term.write(event.data);
 				} else if (event.data instanceof ArrayBuffer) {
@@ -138,6 +157,7 @@
 			};
 
 			socket.onclose = (event) => {
+				if (myEpoch !== epoch) return;
 				isConnected = false;
 				if (event.code !== 1000 && !term?.buffer.active.length) {
 					exitMessage = `Session closed (code: ${event.code})`;
@@ -145,8 +165,20 @@
 			};
 
 			socket.onerror = () => {
+				if (myEpoch !== epoch) return;
 				isConnected = false;
 			};
+
+			// A socket created right after destroy would never be closed by
+			// onDestroy's cleanup — close it here instead of wiring it up.
+			if (myEpoch !== epoch) {
+				socket.onopen = null;
+				socket.onclose = null;
+				socket.onerror = null;
+				socket.onmessage = null;
+				socket.close();
+				return;
+			}
 
 			ws = socket;
 		} catch (err) {
@@ -253,7 +285,9 @@
 
 	onMount(() => {
 		if (browser) {
-			requestAnimationFrame(() => {
+			// Track the rAF id so destroy can cancel a still-pending connect.
+			rafId = requestAnimationFrame(() => {
+				rafId = null;
 				initTerminal();
 				connectSession();
 			});
@@ -261,6 +295,13 @@
 	});
 
 	onDestroy(() => {
+		// Invalidate first: any socket or await resuming after this point
+		// belongs to a destroyed component and must bail out on its own.
+		epoch++;
+		if (rafId !== null) {
+			cancelAnimationFrame(rafId);
+			rafId = null;
+		}
 		if (resizeObserver) {
 			resizeObserver.disconnect();
 			resizeObserver = null;

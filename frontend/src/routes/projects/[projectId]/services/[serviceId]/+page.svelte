@@ -16,6 +16,7 @@
 	import TerminalTab from '$lib/components/features/services/detail/tabs/TerminalTab.svelte';
 	import AdvancedTab from '$lib/components/features/services/detail/tabs/AdvancedTab.svelte';
 	import { SpinnerGap } from 'phosphor-svelte';
+	import { createPoller } from '$lib/utils/poller';
 
 	let serviceId = $derived(page.params.serviceId ?? '');
 	let projectId = $derived(page.params.projectId ?? '');
@@ -139,79 +140,87 @@
 		};
 	});
 
-	// Periodic status polling to guarantee zero desynchronization with Podman daemon
+	// Periodic status polling to guarantee zero desynchronization with the
+	// Podman daemon. Runs through createPoller so ticks stay latched (a slow
+	// response never overlaps the next one); errored ticks are console-warned
+	// by the poller and the loop keeps running. The effect keys on the
+	// transitional-state flag too: when it flips, the poller restarts at the
+	// matching cadence instead of keeping a frozen interval forever.
+	let serviceTransitional = $derived(
+		service?.status === 'deploying' ||
+			service?.status === 'building' ||
+			service?.status === 'stopping' ||
+			service?.status === 'starting'
+	);
+
 	$effect(() => {
 		const sId = serviceId;
+		// Read the transition flag so a cadence change re-arms the poller.
+		const transitional = serviceTransitional;
 		if (!sId) return;
 
 		let active = true;
+		// No local try/catch: createPoller owns failed ticks (console-warn +
+		// loop keeps running), which replaces the previous silent `catch {}`.
 		const poll = async () => {
-			try {
-				const freshSvc = await api.services.get(sId);
-				if (!active || !freshSvc) return;
-				if (directService && directService.status !== freshSvc.status) {
-					if (directService.status === 'stopping' && freshSvc.status === 'running') {
-						// Keep local transitional state until stopped
-					} else {
-						directService.status = freshSvc.status;
-					}
+			const freshSvc = await api.services.get(sId);
+			if (!active || !freshSvc) return;
+			if (directService && directService.status !== freshSvc.status) {
+				if (directService.status === 'stopping' && freshSvc.status === 'running') {
+					// Keep local transitional state until stopped
+				} else {
+					directService.status = freshSvc.status;
 				}
-				const idx = dataStore.services.findIndex((s) => s.id === freshSvc.id);
-				if (idx >= 0 && dataStore.services[idx].status !== freshSvc.status) {
-					if (dataStore.services[idx].status === 'stopping' && freshSvc.status === 'running') {
-						// Keep local transitional state until stopped
-					} else {
-						dataStore.services[idx].status = freshSvc.status;
-					}
+			}
+			const idx = dataStore.services.findIndex((s) => s.id === freshSvc.id);
+			if (idx >= 0 && dataStore.services[idx].status !== freshSvc.status) {
+				if (dataStore.services[idx].status === 'stopping' && freshSvc.status === 'running') {
+					// Keep local transitional state until stopped
+				} else {
+					dataStore.services[idx].status = freshSvc.status;
 				}
+			}
 
-				// Full manifest sync (not just status): another tab/device may
-				// have saved ports or manifests. Skipped while transitional or
-				// while the user is typing, so local edits and in-progress
-				// editors are never clobbered.
-				const cur = dataStore.services.find((s) => s.id === freshSvc.id);
-				const transitionalNow =
-					cur?.status === 'deploying' ||
-					cur?.status === 'building' ||
-					cur?.status === 'stopping' ||
-					cur?.status === 'starting';
-				const ae = typeof document !== 'undefined' ? document.activeElement : null;
-				const typing =
-					!!ae &&
-					(ae.tagName === 'INPUT' ||
-						ae.tagName === 'TEXTAREA' ||
-						ae.tagName === 'SELECT' ||
-						ae.getAttribute?.('contenteditable') === 'true' ||
-						!!ae.closest?.('.cm-editor'));
-				if (!transitionalNow && !typing) {
-					if (directService && directService.id === freshSvc.id) {
-						directService = {
-							...freshSvc,
-							deployments: directService.deployments ?? freshSvc.deployments ?? []
-						};
-					}
-					if (idx >= 0) {
-						dataStore.services[idx] = {
-							...freshSvc,
-							deployments: dataStore.services[idx].deployments ?? freshSvc.deployments ?? []
-						};
-					}
+			// Full manifest sync (not just status): another tab/device may
+			// have saved ports or manifests. Skipped while transitional or
+			// while the user is typing, so local edits and in-progress
+			// editors are never clobbered.
+			const cur = dataStore.services.find((s) => s.id === freshSvc.id);
+			const transitionalNow =
+				cur?.status === 'deploying' ||
+				cur?.status === 'building' ||
+				cur?.status === 'stopping' ||
+				cur?.status === 'starting';
+			const ae = typeof document !== 'undefined' ? document.activeElement : null;
+			const typing =
+				!!ae &&
+				(ae.tagName === 'INPUT' ||
+					ae.tagName === 'TEXTAREA' ||
+					ae.tagName === 'SELECT' ||
+					ae.getAttribute?.('contenteditable') === 'true' ||
+					!!ae.closest?.('.cm-editor'));
+			if (!transitionalNow && !typing) {
+				if (directService && directService.id === freshSvc.id) {
+					directService = {
+						...freshSvc,
+						deployments: directService.deployments ?? freshSvc.deployments ?? []
+					};
 				}
-			} catch {}
+				if (idx >= 0) {
+					dataStore.services[idx] = {
+						...freshSvc,
+						deployments: dataStore.services[idx].deployments ?? freshSvc.deployments ?? []
+					};
+				}
+			}
 		};
 
-		const isTransitional = untrack(
-			() =>
-				service?.status === 'deploying' ||
-				service?.status === 'building' ||
-				service?.status === 'stopping' ||
-				service?.status === 'starting'
-		);
-		const interval = setInterval(poll, isTransitional ? 1500 : 4000);
+		const poller = createPoller(transitional ? 1500 : 4000, poll);
+		poller.start();
 
 		return () => {
 			active = false;
-			clearInterval(interval);
+			poller.stop();
 		};
 	});
 

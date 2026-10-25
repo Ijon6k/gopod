@@ -2,6 +2,7 @@
 	import { Button, Checkbox, Modal } from '$lib/components/ui';
 	import { api } from '$lib/api';
 	import type { SystemDiskUsage } from '$lib/types';
+	import { useKumoToastManager } from 'kumo-svelte';
 	import {
 		Broom,
 		CircleNotch,
@@ -33,6 +34,9 @@
 	let currentStep = $state('');
 	let dfData = $state<SystemDiskUsage[]>([]);
 	let isLoadingDf = $state(false);
+
+	// Destructive failures must surface in the UI, not only in the console.
+	const toast = useKumoToastManager();
 
 	async function loadDiskUsage() {
 		try {
@@ -103,6 +107,11 @@
 			}, 1400);
 		} catch (err) {
 			console.error('Podman storage prune error:', err);
+			toast.add({
+				title: 'Prune failed',
+				description: 'One of the prune steps did not finish — check server logs for details.',
+				variant: 'error'
+			});
 		} finally {
 			isPruning = false;
 		}
@@ -157,9 +166,7 @@
 			<CircleNotch size={32} class="animate-spin text-[var(--accent)]" />
 			<div class="flex flex-col gap-1">
 				<span class="text-sm font-medium text-[var(--text-primary)]">Executing Podman Prune</span>
-				<span class="font-mono text-xs text-[var(--text-tertiary)]"
-					>{currentStep}</span
-				>
+				<span class="font-mono text-xs text-[var(--text-tertiary)]">{currentStep}</span>
 			</div>
 		</div>
 	{:else}

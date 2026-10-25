@@ -57,7 +57,9 @@
 						c.pod === podNameKey ||
 						c.pod === podKey ||
 						memberServiceIds.has(c.serviceId) ||
-						(c.labels && c.labels['io.gopod.service'] && memberServiceIds.has(c.labels['io.gopod.service'])) ||
+						(c.labels &&
+							c.labels['io.gopod.service'] &&
+							memberServiceIds.has(c.labels['io.gopod.service'])) ||
 						(c.name.includes(service.name) && !c.name.endsWith('-infra')))
 			);
 		}
@@ -220,11 +222,33 @@
 		}
 	}
 
-	function handleCopy() {
+	async function handleCopy() {
 		if (!rawLogsText) return;
-		navigator.clipboard.writeText(rawLogsText);
-		copyFeedback = true;
-		setTimeout(() => (copyFeedback = false), 2000);
+		// "Copied!" must only show on a true success. navigator.clipboard is
+		// unavailable on insecure origins, so fall back to the legacy path.
+		try {
+			await navigator.clipboard.writeText(rawLogsText);
+			copyFeedback = true;
+		} catch {
+			const helper = document.createElement('textarea');
+			helper.value = rawLogsText;
+			helper.style.position = 'fixed';
+			helper.style.opacity = '0';
+			document.body.appendChild(helper);
+			helper.select();
+			let copied = false;
+			try {
+				copied = document.execCommand('copy');
+			} catch {
+				copied = false;
+			}
+			document.body.removeChild(helper);
+			if (copied) copyFeedback = true;
+			else console.error('Failed to copy logs to clipboard');
+		}
+		if (copyFeedback) {
+			setTimeout(() => (copyFeedback = false), 2000);
+		}
 	}
 
 	function handleClear() {

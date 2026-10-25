@@ -6,6 +6,7 @@
 	import { DeploymentPipelineStepper } from '$lib/components/features/deployments';
 	import { LayerDialog, Badge, Switch } from 'kumo-svelte';
 	import { api } from '$lib/api';
+	import { createPoller } from '$lib/utils/poller';
 	import { getDeploymentSteps, getDeploymentLogs } from '$lib/utils/deploymentLogs';
 	import { dataStore } from '$lib/stores/data.svelte';
 	import { Copy, Check, DownloadSimple } from 'phosphor-svelte';
@@ -25,6 +26,13 @@
 
 	let fetchedLogs = $state<string[]>([]);
 	let isLogsLoading = $state(false);
+
+	// In-memory ring bound for a live session: very long builds keep only the
+	// newest MAX_LOG_LINES lines so streaming never grows without limit.
+	const MAX_LOG_LINES = 5000;
+	// Bounded tail of recently streamed lines; the only true duplicate source
+	// in the SSE feed is an immediate re-delivery of one event.
+	const STREAM_DEDUPE_TAIL = 50;
 
 	let activeDep = $derived.by(() => {
 		if (!deployment) return null;
@@ -68,8 +76,16 @@
 		return logs.filter((l) => l.toLowerCase().includes(q));
 	});
 
-	// Streaming tick dedup: O(1) membership instead of array scans per line.
-	let knownLogs = new Set<string>();
+	// A content-keyed dedup against the stored log was wrong: the backend
+	// streams plain text lines with no sequence ids and never replays lines on
+	// reconnect (a fresh subscriber channel per connection, see
+	// backend/internal/services/log_manager.go Subscribe/PipeReader), so
+	// identical lines are legitimate distinct events (health retries,
+	// repeated build steps). The stream guard is therefore limited to an
+	// immediate re-delivery of one SSE event via the bounded tail below —
+	// O(1) membership checks, then the oldest entry evicts from the queue.
+	let recentStreamed = new Set<string>();
+	let recentStreamedQueue: string[] = [];
 
 	let depId = $derived(deployment?.id ?? '');
 	let isLive = $derived(activeDep?.status === 'building' || activeDep?.status === 'deploying');
@@ -91,7 +107,8 @@
 		isLogsLoading = true;
 		// Reset per effect run so a reopen always syncs.
 		lastSyncedFingerprint = '';
-		knownLogs = new Set<string>();
+		recentStreamed = new Set<string>();
+		recentStreamedQueue = [];
 
 		const syncStatus = async () => {
 			try {
@@ -112,11 +129,12 @@
 		const loadStoredLogs = () =>
 			api.services.deploymentLogs(id).then((res) => {
 				if (!isSubscribed || !res?.logs) return false;
+				// Stored lines load as-is; they must NOT seed the stream guard,
+				// or identical later SSE lines would be silently dropped.
 				fetchedLogs = res.logs
 					.split('\n')
 					.map(sanitizeLogLine)
 					.filter((line: string) => line.length > 0);
-				knownLogs = new Set(fetchedLogs);
 				return true;
 			});
 
@@ -132,12 +150,14 @@
 		if (isLive) {
 			// Poll and stream only while the build is in flight. The effect keys on
 			// depId + isLive, so per-tick progress updates never rebuild either.
-			const timer = setInterval(async () => {
+			// createPoller latches ticks so a slow sync can never overlap itself.
+			const statusPoller = createPoller(1200, async () => {
 				const latest = await syncStatus();
 				if (latest && isSubscribed && (latest.status === 'success' || latest.status === 'failed')) {
-					clearInterval(timer);
+					statusPoller.stop();
 				}
-			}, 1200);
+			});
+			statusPoller.start();
 
 			// If active building/deploying, subscribe to SSE stream via centralized API
 			let unsubscribeStream: (() => void) | null = null;
@@ -147,11 +167,21 @@
 					(raw) => {
 						if (!isSubscribed) return;
 						const clean = sanitizeLogLine(raw);
-					if (!knownLogs.has(clean)) {
-						knownLogs.add(clean);
-						fetchedLogs = [...fetchedLogs, clean];
-					}
-				},
+						// Only an immediate re-delivery of the same streamed line is
+						// suppressed; identical repeats further apart still render.
+						if (recentStreamed.has(clean)) return;
+						recentStreamed.add(clean);
+						recentStreamedQueue.push(clean);
+						if (recentStreamedQueue.length > STREAM_DEDUPE_TAIL) {
+							const evicted = recentStreamedQueue.shift() as string;
+							recentStreamed.delete(evicted);
+						}
+						// Ring bound: keep the newest MAX_LOG_LINES lines in memory.
+						fetchedLogs =
+							fetchedLogs.length + 1 > MAX_LOG_LINES
+								? [...fetchedLogs.slice(-(MAX_LOG_LINES - 1)), clean]
+								: [...fetchedLogs, clean];
+					},
 					() => {
 						unsubscribeStream?.();
 						// A dropped stream must not end live log updates: recover from
@@ -169,7 +199,7 @@
 
 			return () => {
 				isSubscribed = false;
-				clearInterval(timer);
+				statusPoller.stop();
 				unsubscribeStream?.();
 			};
 		}

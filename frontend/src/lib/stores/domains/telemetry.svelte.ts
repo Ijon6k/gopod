@@ -116,7 +116,11 @@ export class TelemetryDomainStore {
 					restartAttempt = Math.min(restartAttempt + 1, 5);
 					this.stopStreamingStats();
 					this.fetchLiveStats();
-					const delay = Math.min(1000 * 2 ** restartAttempt, 15_000);
+					// Capped exponential backoff with ±25% jitter: every tab
+					// recovering at the same moment must not form a thundering
+					// herd against one restarting server.
+					const base = Math.min(1000 * 2 ** restartAttempt, 15_000);
+					const delay = Math.round(base * (0.75 + 0.5 * Math.random()));
 					this.sseRestartTimer = setTimeout(() => {
 						this.sseRestartTimer = null;
 						if (!this.isStreaming) open();

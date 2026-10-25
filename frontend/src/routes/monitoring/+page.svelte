@@ -200,10 +200,8 @@
 							if (val) handleRefreshRateChange(val);
 						}}
 						options={[
-							{ label: '3s', value: '3s' },
-							{ label: '5s', value: '5s' },
-							{ label: '15s', value: '15s' },
-							{ label: 'Pause', value: 'paused' }
+							{ label: 'Live', value: '3s' },
+							{ label: 'Paused', value: 'paused' }
 						]}
 						size="xs"
 					/>

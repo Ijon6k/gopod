@@ -333,6 +333,17 @@ export class ProjectsDomainStore {
 	startDeploymentWatcher(serviceId: string, depId: string) {
 		this.deploymentWatchers.get(serviceId)?.();
 		let attempts = 0;
+		// Long builds must not be abandoned at ~7.5 min: when the fast budget
+		// runs out and the status is still transitional ('building' |
+		// 'deploying' are the transitional states used in this repo), the
+		// watcher switches to a slow 10s cadence with its own budget instead
+		// of stopping. Leaving transitional stops immediately as before.
+		const FAST_TICKS = 300; // 300 × 1.5s ≈ 7.5 min
+		const SLOW_TICKS = 60; // 60 × 10s ≈ +10 min (≈ 18 min total)
+		const SLOW_INTERVAL = 10_000;
+		let slowMode = false;
+		let slowAttempts = 0;
+		let lastSampledStatus = '';
 		// Assigned exactly once below. The pre-initialized `undefined` records
 		// that stop() may run before the interval exists: a replaced watcher's
 		// stopper owns its own timer, so the early clearInterval is a no-op.
@@ -350,10 +361,11 @@ export class ProjectsDomainStore {
 				this.deploymentWatchers.delete(serviceId);
 			}
 		};
-		pollTimer = setInterval(async () => {
+		const tick = async () => {
 			// A slow tick never overlaps the next one.
 			if (inFlight) return;
 			attempts++;
+			if (slowMode) slowAttempts++;
 			inFlight = true;
 			try {
 				const [updatedDep, updatedSvc] = await Promise.all([
@@ -361,6 +373,7 @@ export class ProjectsDomainStore {
 					api.services.get(serviceId).catch(() => null)
 				]);
 				if (updatedDep) {
+					lastSampledStatus = updatedDep.status;
 					const depFingerprint = [
 						updatedDep.status,
 						updatedDep.duration || '',
@@ -403,14 +416,31 @@ export class ProjectsDomainStore {
 						stop();
 					}
 				}
-			} catch (_) {} finally {
+			} catch (_) {
+			} finally {
 				inFlight = false;
 			}
 
-			if (attempts > 300) {
-				stop();
+			// Attempt-budget handling: fast budget exhausted while still
+			// transitional keeps watching at the slow cadence; transitional
+			// already left (or totals spent) stops the watcher.
+			if (attempts > FAST_TICKS) {
+				if (lastSampledStatus === 'building' || lastSampledStatus === 'deploying') {
+					if (!slowMode) {
+						slowMode = true;
+						// Still building: drop to the slow cadence instead of stopping.
+						clearInterval(pollTimer);
+						pollTimer = setInterval(tick, SLOW_INTERVAL);
+					}
+					if (slowAttempts > SLOW_TICKS) {
+						stop();
+					}
+				} else {
+					stop();
+				}
 			}
-		}, 1500);
+		};
+		pollTimer = setInterval(tick, 1500);
 		this.deploymentWatchers.set(serviceId, stop);
 	}
 

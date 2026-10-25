@@ -9,6 +9,7 @@
 	import StorageConsumersTable from './StorageConsumersTable.svelte';
 	import { api } from '$lib/api';
 	import type { SystemDiskUsage, GCPreview } from '$lib/types';
+	import { useKumoToastManager } from 'kumo-svelte';
 	import { onMount } from 'svelte';
 	import {
 		ImageSquare,
@@ -34,6 +35,10 @@
 	let gcPreview = $state<GCPreview | null>(null);
 	let gcRunning = $state(false);
 	let isLoadingGcPreview = $state(false);
+
+	// Same toast pattern as the runtime row actions: destructive actions
+	// surface failures in the UI, not only in the console.
+	const toast = useKumoToastManager();
 
 	let images = $derived(dataStore.images);
 	let volumes = $derived(dataStore.volumes);
@@ -84,6 +89,11 @@
 			}
 		} catch (err) {
 			console.error('Cleanup engine run failed:', err);
+			toast.add({
+				title: 'Cleanup engine failed',
+				description: 'The cleanup run did not finish — check server logs for details.',
+				variant: 'error'
+			});
 		} finally {
 			gcRunning = false;
 			if (recentReclaimedText) {
@@ -243,6 +253,11 @@
 			recentReclaimedText = reclaimed > 0 ? formatBytes(reclaimed) : 'storage cache';
 		} catch (err) {
 			console.error('Failed to prune system:', err);
+			toast.add({
+				title: 'System prune failed',
+				description: 'Could not prune the system — check server logs for details.',
+				variant: 'error'
+			});
 		} finally {
 			pruningTarget = null;
 			if (recentReclaimedText) {
@@ -272,6 +287,11 @@
 			recentReclaimedText = reclaimed > 0 ? formatBytes(reclaimed) : `${type} cache`;
 		} catch (err) {
 			console.error(`Failed to prune ${type}:`, err);
+			toast.add({
+				title: 'Prune failed',
+				description: `Could not prune ${type} — check server logs for details.`,
+				variant: 'error'
+			});
 		} finally {
 			pruningTarget = null;
 			if (recentReclaimedText) {
@@ -293,6 +313,11 @@
 			recentReclaimedText = reclaimed > 0 ? formatBytes(reclaimed) : 'unreferenced volumes';
 		} catch (err) {
 			console.error('Failed to prune volumes:', err);
+			toast.add({
+				title: 'Volume prune failed',
+				description: 'Could not prune volumes — check server logs for details.',
+				variant: 'error'
+			});
 		} finally {
 			pruningTarget = null;
 			if (recentReclaimedText) {
@@ -401,13 +426,15 @@
 					{/if}
 				</div>
 				<p class="text-xs text-[var(--text-tertiary)]">
-					Reclaims dangling image layers, stopped containers, build cache, and quadlet units left
-					by deleted services. Named volumes are never removed automatically.
+					Reclaims dangling image layers, stopped containers, build cache, and quadlet units left by
+					deleted services. Named volumes are never removed automatically.
 				</p>
 				{#if gcPreview}
 					<div class="flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
 						<span class="rounded bg-[var(--bg-surface)] px-2 py-0.5 font-mono"
-							>{gcPreview.danglingImages} dangling image{gcPreview.danglingImages === 1 ? '' : 's'}</span
+							>{gcPreview.danglingImages} dangling image{gcPreview.danglingImages === 1
+								? ''
+								: 's'}</span
 						>
 						<span class="rounded bg-[var(--bg-surface)] px-2 py-0.5 font-mono"
 							>{gcPreview.stoppedContainers} stopped container{gcPreview.stoppedContainers === 1

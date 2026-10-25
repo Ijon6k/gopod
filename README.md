@@ -13,10 +13,10 @@
 
 ## Screenshots
 
-| Projects                                                                                                                     | Service (compose stack)                                                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| <img src="docs/screenshots/projects.png" width="100%" alt="Project view: services, status, domains and recent deployments"/> | <img src="docs/screenshots/service-compose.png" width="100%" alt="Service view: deploy actions and inline compose editor"/> |
-| <img src="docs/screenshots/topology.png" width="100%" alt="Topology graph: pods, containers and Caddy ingress"/>             | <img src="docs/screenshots/monitoring.png" width="100%" alt="Monitoring: host metrics and the workload tree"/>              |
+| Projects                                                                                                            | Service (compose stack)                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| <img src="preview/projects.png" width="100%" alt="Project view: services, status, domains and recent deployments"/> | <img src="preview/service-compose.png" width="100%" alt="Service view: deploy actions and inline compose editor"/> |
+| <img src="preview/topology.png" width="100%" alt="Topology graph: pods, containers and Caddy ingress"/>             | <img src="preview/monitoring.png" width="100%" alt="Monitoring: host metrics and the workload tree"/>              |
 
 ## Background
 
@@ -59,16 +59,36 @@ Stated plainly, because marketing-driven READMEs are exhausting:
 
 ## Quick start
 
-The installer detects your distro and SELinux policy, enables the rootless socket, and installs GOPOD either as native Quadlet units (default) or via Podman Compose:
+### One-Liner Quick Install (Recommended)
+
+Install GOPOD directly on your Linux host with a single command. The installer detects your distribution, configures rootless Podman and unprivileged ports, sets up storage, and brings up the services with a live visual progress indicator:
+
+```bash
+# Production Stable (Default: ghcr.io/ijon6k/gopod:latest)
+curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install.sh | bash
+
+# Beta / Development Preview (ghcr.io/ijon6k/gopod:dev)
+curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install-beta.sh | bash
+
+# Interactive Custom Installation Wizard (Tag, Port, and Mode selection)
+curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/custom-install.sh | bash
+```
+
+### Manual Installation from Git
+
+If you prefer to clone the repository and run locally:
 
 ```bash
 git clone https://github.com/ijon6k/gopod.git
 cd gopod
-./scripts/install.sh                 # quadlet mode (default)
-./scripts/install.sh --mode=compose  # podman compose mode
+./scripts/install.sh                   # Container stack (Default, Recommended)
+./scripts/install.sh --mode=quadlet    # Systemd Quadlet user units (Experimental)
+./scripts/install.sh --channel=dev     # Beta dev channel
+./scripts/install.sh --tag=sha-xxxx    # Specific commit SHA or release tag
+./scripts/test-in-container.sh         # Isolated device sandbox (auto-deletes on exit)
 ```
 
-Quadlet mode installs first-party units you can inspect under [`deploy/`](deploy) — `gopod-server.container`, `gopod.pod`, `gopod-caddy.container`, `gopod-net.network` — and manages them with plain `systemctl --user`.
+For detailed documentation on flags, storage layout, Quadlet vs Container architecture, and troubleshooting, see the [Scripts Documentation](scripts/README.md).
 
 Prefer doing it by hand:
 

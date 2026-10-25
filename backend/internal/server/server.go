@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/fs"
@@ -12,6 +13,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -264,6 +266,12 @@ func NewServer(cfg Config) (http.Handler, error) {
 	auditHandler.RegisterRoutes(mux)
 	activityHandler.RegisterRoutes(mux)
 
+	// ── License & Build Metadata (AGPL-3.0 §13) ──
+	// Public route: any user interacting with the service over the network can
+	// discover under which license, from which repository, and from which VCS
+	// revision the running build was produced.
+	mux.HandleFunc("GET /api/about", aboutHandler)
+
 	// ── SPA & Static Files Handler ──
 	if cfg.DistFS != nil {
 		fileServer := http.FileServer(http.FS(cfg.DistFS))
@@ -330,6 +338,40 @@ func NewServer(cfg Config) (http.Handler, error) {
 	}
 
 	return withMiddleware(mux), nil
+}
+
+// aboutHandler reports the license and provenance metadata of the running
+// build. AGPL-3.0 section 13 requires operators who let users interact with a
+// modified version over a network to offer the Corresponding Source of that
+// version; this endpoint gives every remote user the license identifier, the
+// upstream repository, and the VCS revision the binary was built from, so any
+// modified build can be traced to the source tree it shipped from.
+func aboutHandler(w http.ResponseWriter, r *http.Request) {
+	revision := ""
+	vcsModified := false
+	if bi, ok := debug.ReadBuildInfo(); ok {
+		for _, s := range bi.Settings {
+			switch s.Key {
+			case "vcs.revision":
+				revision = s.Value
+			case "vcs.modified":
+				vcsModified = s.Value == "true"
+			}
+		}
+	}
+	source := "https://github.com/ijon6k/gopod"
+	if revision != "" {
+		source += "/tree/" + revision
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"name":           "GoPod",
+		"license":        "AGPL-3.0-only",
+		"source_url":     source,
+		"build_revision": revision,
+		"vcs_modified":   vcsModified,
+	})
 }
 
 func withMiddleware(next http.Handler) http.Handler {

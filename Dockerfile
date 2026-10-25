@@ -31,6 +31,12 @@ WORKDIR /app
 RUN apk add --no-cache ca-certificates tzdata git podman podman-compose
 
 COPY --from=backend-builder /app/gopod /app/gopod
+COPY LICENSE /app/LICENSE
+
+LABEL org.opencontainers.image.title="GoPod" \
+      org.opencontainers.image.description="Single-binary, daemonless, Podman-native PaaS" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.source="https://github.com/ijon6k/gopod"
 
 ENV PORT=8085
 ENV GOPOD_DB_PATH=/app/data/gopod.db

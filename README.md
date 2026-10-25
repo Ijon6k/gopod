@@ -3,7 +3,7 @@
 > **The Modern, Daemonless, Podman-Native Platform-as-a-Service (PaaS).**  
 > Lightweight, secure by design, and built natively for Linux cgroups v2, Podman rootless sockets, Quadlet systemd units, and Caddy ingress.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![License: AGPL-3.0](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Podman: Native](https://img.shields.io/badge/Podman-Rootless%20%7C%20Pods%20%7C%20Quadlet-892CA0)](https://podman.io)
 [![Backend: Go](https://img.shields.io/badge/Backend-Go%201.26-00ADD8)](https://go.dev)
 [![Frontend: SvelteKit 2](https://img.shields.io/badge/Frontend-SvelteKit%202%20%2B%20Svelte%205-FF3E00)](https://svelte.dev)
@@ -13,7 +13,7 @@
 
 ## 💡 Inspiration & Philosophy
 
-GOPOD was born out of deep appreciation and inspiration from modern self-hosted platforms like **Dokploy**, combined with the aesthetic, high-density dashboard craftsmanship of **Cloudflare's design system (Kumo)**.
+GOPOD exists because platforms like **Dokploy** proved that self-hosted PaaS can feel effortless. That said, GOPOD is an **independent implementation**: it runs a different engine (Go, embedded SQLite, rootless Podman, systemd Quadlet, Caddy) and shares no codebase with any existing platform. There is no affiliation with Dokploy or Cloudflare.
 
 Existing self-hosted PaaS solutions rely strictly on the rootful Docker daemon (`/var/run/docker.sock`), which brings along daemon SPOFs (single point of failure), root privileges, and high idle memory footprints that quickly saturate budget VPS instances (1GB–2GB RAM). Furthermore, none provided first-class support for native Podman features.
 
@@ -215,4 +215,12 @@ npm run build
 
 ## 📄 License
 
-This project is licensed under the [MIT License](LICENSE).
+Copyright 2026 Ijon6k.
+
+GoPod is licensed under the [GNU Affero General Public License v3.0](LICENSE) — SPDX identifier `AGPL-3.0-only`. The LICENSE file is a byte-identical copy of the official text published by GNU.
+
+Releases prior to the AGPL-3.0 relicense were distributed under the MIT License ("Copyright (c) 2026 gopod contributors" — a single-author project). That grant remains in effect for those historical releases; this repository does not revoke previously-granted MIT permissions.
+
+Official repository: https://github.com/ijon6k/gopod, maintained by Ijon6k. Forks must carry their own project identity and must not present modified builds as the official GoPod release.
+
+GoPod serves users over a network. Operators running modified builds must offer every user of that deployment the Corresponding Source of their version, as required by AGPL-3.0 section 13. To make this practical, the server exposes `GET /api/about`, which reports the license identifier, the upstream source location, and the VCS revision of the running build.

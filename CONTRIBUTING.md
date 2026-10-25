@@ -1,91 +1,50 @@
-# Contributing to GOPOD
+# Contributing
 
-Thank you for your interest in contributing to **GOPOD**! GOPOD is a lightweight, self-hosted Platform-as-a-Service (PaaS) built with **Podman Native** (rootless socket, pods, and Quadlet systemd service units), Go, Caddy ingress proxy, and SvelteKit.
+## Stack
 
----
+- `backend/` — Go 1.26, embedded SQLite (modernc), Podman rootless REST client, Caddy admin API client
+- `frontend/` — SvelteKit 2 / Svelte 5 (runes), TypeScript, Tailwind, Bun
+- `caddy/` — Caddy 2, containers join `gopod-net` for routed services
 
-## 🏗️ Architecture Overview
+## Setup
 
-- **Backend (`/backend`)**:
-  - Written in Go (1.26+).
-  - Uses modern SQLite (`modernc.org/sqlite`) for zero-dependency local state persistence.
-  - Interacts directly with the Podman daemon via `/run/podman/podman.sock` (HTTP REST API / libpod).
-  - Communicates with Caddy's dynamic admin API (`http://caddy:2019`).
-- **Frontend (`/frontend`)**:
-  - Written in SvelteKit 2 + Svelte 5 (Runes mode) + TypeScript + Tailwind CSS.
-  - Design system governed by semantic CSS variables (`frontend/src/app.css`).
-  - Managed using **Bun** (`bun run dev`, `bun run build`).
-- **Reverse Proxy (`/caddy`)**:
-  - Caddy 2 Alpine container for zero-touch Let's Encrypt TLS and reverse proxying to `gopod-net`.
-
----
-
-## 🛠️ Development Setup
-
-### Prerequisites
-- [Podman](https://podman.io/) (v4.5+ or v5.x recommended)
-- [Go](https://golang.org/) (v1.23+)
-- [Bun](https://bun.sh/) (v1.1+)
-- Linux environment or WSL2 with systemd and rootless Podman socket enabled:
-  ```bash
-  systemctl --user enable --now podman.socket
-  ```
-
-### Running with Compose (Development)
-You can bring up the entire dev stack (Backend + Frontend + Caddy proxy) using:
 ```bash
+systemctl --user enable --now podman.socket
+
+# full dev stack
 podman compose -f compose.dev.yml up -d --build
-```
-Or run the services individually:
 
-#### 1. Backend
-```bash
-cd backend
-go run ./cmd/server
+# or run halves separately
+cd backend && go run ./cmd/server
+cd frontend && bun install && bun run dev
 ```
 
-#### 2. Frontend
+## Required checks
+
 ```bash
 cd frontend
-bun install
-bun run dev
-```
+bun run check   # typecheck
+bun run lint    # prettier + eslint
 
----
-
-## 🎨 UI & Frontend Design Rules
-
-Contributions to the frontend must follow the **GOPOD UI & Table Design Standards**:
-
-1. **Zero Hardcoded Colors**: Always use semantic design tokens from `frontend/src/app.css` (`var(--bg-table-row)`, `var(--bg-table-row-alt)`, `var(--bg-table-header)`, `var(--accent-muted)`, `var(--text-primary)`, etc.). Never use low-opacity fractional classes (e.g., `/20`) for row differentiation.
-2. **Solid Opaque Table Headers**: Never use `backdrop-blur` on table headers. Use solid `bg-[var(--bg-table-header)]` with `border-b border-[var(--border)]`.
-3. **Natural Table Height**: Do not use inner `max-h-[...]` or inner vertical scrollbars inside data tables. Table height must be content-driven while column headers remain `sticky top-0 z-20`.
-4. **Desktop Sticky Preservation**: Use `overflow-x-auto md:overflow-x-visible` on table containers so outer desktop scrolling preserves sticky header pinning.
-5. **Component Modularity**: Use centralized reusable primitives (`<Modal>`, `<ConfirmDialog>`, `<FormField>`, `<SettingCard>`, `<Button>`, `<Input>`) from `$lib/components/ui` and `$lib/components/primitives` instead of duplicating dialog shells or form labels.
-6. **Language**: All UI copy, labels, tooltips, dialogs, and badges must strictly be in **English**.
-
----
-
-## 🧪 Linting & Quality Checks
-
-Before submitting a Pull Request:
-
-```bash
-# Frontend typecheck & lint
-cd frontend
-bun run check
-bun x eslint .
-
-# Backend test
 cd ../backend
 go test ./...
 ```
 
----
+## Rules
 
-## 🤝 Pull Request Guidelines
+- Go: thin handlers, checked errors, tests for anything touching SQLite or the Podman client.
+- Frontend: use the primitives in `$lib/components/ui` and `$lib/components/primitives`. Do not hand-roll dialog shells, form fields, or labels per feature.
+- Colors come only from the semantic tokens in `frontend/src/app.css`. No hardcoded hex, no `bg-black/20`-style surfaces. Table headers are solid `var(--bg-table-header)` with `border-b`, no blur; tables have no inner scroll; data rows use 13–14px type; row hover actions are at least 28x28px.
+- Table containers use `overflow-x-auto md:overflow-x-visible` so sticky headers keep working on desktop.
+- All user-facing copy is in English.
+- Features must map to real Linux, Podman rootless socket, systemd, and Caddy capabilities. No simulated behavior.
 
-1. Create a feature branch from `main`: `git checkout -b feature/my-cool-feature`.
-2. Commit with descriptive, conventional commit messages: `feat(quadlet): support custom systemd install section`.
-3. Verify that your changes do not break existing podman socket interactions or Caddy reverse proxy routing.
-4. Submit a Pull Request targeting the `main` branch.
+## Commits and PRs
+
+- Conventional commits with a scope: `feat(quadlet): ...`, `fix(ingress): ...`
+- One topic per PR, branch off `main`
+- Changes to the Podman client, Caddy routes, or systemd units must be exercised against a real rootless Podman instance before review — mocks alone are not evidence
+
+## License
+
+By contributing you agree that your work is licensed to this project under the GNU AGPL-3.0 (`AGPL-3.0-only`).

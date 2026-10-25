@@ -35,6 +35,12 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/storage/schedules/{id}/toggle", h.middleware.RequireAuth(h.handleToggleSchedule))
 	mux.HandleFunc("DELETE /api/storage/schedules/{id}", h.middleware.RequireAuth(h.handleDeleteSchedule))
 
+	mux.HandleFunc("GET /api/storage/destinations", h.middleware.RequireAuth(h.handleListDestinations))
+	mux.HandleFunc("POST /api/storage/destinations", h.middleware.RequireAuth(h.handleCreateDestination))
+	mux.HandleFunc("POST /api/storage/destinations/test", h.middleware.RequireAuth(h.handleTestDestinationStruct))
+	mux.HandleFunc("POST /api/storage/destinations/{id}/test", h.middleware.RequireAuth(h.handleTestDestination))
+	mux.HandleFunc("DELETE /api/storage/destinations/{id}", h.middleware.RequireAuth(h.handleDeleteDestination))
+
 	// Frontend compatibility aliases (/api/volumes/*)
 	mux.HandleFunc("GET /api/volumes/snapshots", h.middleware.RequireAuth(h.handleListSnapshots))
 	mux.HandleFunc("POST /api/volumes/snapshots", h.middleware.RequireAuth(h.handleCreateSnapshot))
@@ -46,6 +52,13 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/volumes/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
 	mux.HandleFunc("POST /api/volumes/schedules/{id}/toggle", h.middleware.RequireAuth(h.handleToggleSchedule))
 	mux.HandleFunc("DELETE /api/volumes/schedules/{id}", h.middleware.RequireAuth(h.handleDeleteSchedule))
+
+	// Destination aliases on the same compatibility prefix.
+	mux.HandleFunc("GET /api/volumes/destinations", h.middleware.RequireAuth(h.handleListDestinations))
+	mux.HandleFunc("POST /api/volumes/destinations", h.middleware.RequireAuth(h.handleCreateDestination))
+	mux.HandleFunc("POST /api/volumes/destinations/test", h.middleware.RequireAuth(h.handleTestDestinationStruct))
+	mux.HandleFunc("POST /api/volumes/destinations/{id}/test", h.middleware.RequireAuth(h.handleTestDestination))
+	mux.HandleFunc("DELETE /api/volumes/destinations/{id}", h.middleware.RequireAuth(h.handleDeleteDestination))
 }
 
 // ── Snapshots ──
@@ -148,4 +161,77 @@ func (h *Handler) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, sched)
+}
+
+// ── Destinations ──
+
+// handleListDestinations returns every destination with its secret redacted.
+func (h *Handler) handleListDestinations(w http.ResponseWriter, r *http.Request) {
+	dests, err := h.service.ListDestinations(r.Context())
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, dests)
+}
+
+// handleCreateDestination stores a new S3-compatible destination. The secret
+// in the response is empty by contract: writes are accepted, reads are not.
+func (h *Handler) handleCreateDestination(w http.ResponseWriter, r *http.Request) {
+	var d BackupDestination
+	if err := httputil.DecodeJSONBody(w, r, &d, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+	created, err := h.service.CreateDestination(r.Context(), d)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, created)
+}
+
+// handleDeleteDestination removes the destination; schedules referencing it
+// degrade to local-only snapshots.
+func (h *Handler) handleDeleteDestination(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	if err := h.service.DeleteDestination(r.Context(), id); err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Destination deleted"})
+}
+
+// handleTestDestinationStruct probes an unsaved destination from a form.
+func (h *Handler) handleTestDestinationStruct(w http.ResponseWriter, r *http.Request) {
+	var d BackupDestination
+	if err := httputil.DecodeJSONBody(w, r, &d, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+	if err := h.service.TestDestinationStruct(r.Context(), d); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Destination reachable"})
+}
+
+// handleTestDestination probes a saved destination by id. An optional
+// secretKey body field re-checks credentials before they are persisted.
+func (h *Handler) handleTestDestination(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var body struct {
+		SecretKey string `json:"secretKey"`
+	}
+	if r.ContentLength > 0 {
+		if err := httputil.DecodeJSONBody(w, r, &body, 0); err != nil {
+			httputil.WriteDecodeError(w, err)
+			return
+		}
+	}
+	if err := h.service.TestDestination(r.Context(), id, body.SecretKey); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Destination reachable"})
 }

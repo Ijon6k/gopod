@@ -23,6 +23,7 @@ import type {
 	CaddyAccessLog,
 	VolumeSnapshot,
 	VolumeBackupSchedule,
+	BackupDestination,
 	QuadletUnit
 } from '$lib/types';
 
@@ -388,6 +389,10 @@ export class DataStore {
 		return this.credentialsStore.deleteGitToken(id);
 	}
 
+	get backupDestinations() {
+		return this.storageStore.backupDestinations;
+	}
+
 	// ── Storage Domain Actions ──
 	getProjectVolumeSnapshots(projectId: string) {
 		return this.storageStore.getProjectVolumeSnapshots(projectId);
@@ -409,6 +414,25 @@ export class DataStore {
 	}
 	toggleVolumeSchedule(id: string) {
 		return this.storageStore.toggleVolumeSchedule(id);
+	}
+	createVolumeSchedule(input: {
+		projectId: string;
+		volumeName: string;
+		cron: string;
+		label?: string;
+		retentionCount: number;
+		destinationId?: string;
+	}) {
+		return this.storageStore.createVolumeSchedule(input);
+	}
+	fetchBackupDestinations() {
+		return this.storageStore.fetchBackupDestinations();
+	}
+	createBackupDestination(input: Omit<BackupDestination, 'id'>) {
+		return this.storageStore.createBackupDestination(input);
+	}
+	deleteBackupDestination(id: string) {
+		return this.storageStore.deleteBackupDestination(id);
 	}
 
 	// ── Telemetry & Live Polling Actions ──

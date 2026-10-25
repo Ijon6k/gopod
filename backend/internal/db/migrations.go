@@ -68,6 +68,12 @@ func (d *DB) migrate() error {
 		size_bytes INTEGER DEFAULT 0,
 		status TEXT DEFAULT 'completed',
 		compression TEXT DEFAULT 'zstd',
+		remote_provider TEXT DEFAULT '',
+		remote_destination_id TEXT DEFAULT '',
+		remote_key TEXT DEFAULT '',
+		checksum TEXT DEFAULT '',
+		remote_status TEXT DEFAULT '',
+		remote_error TEXT DEFAULT '',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -80,6 +86,20 @@ func (d *DB) migrate() error {
 		retention_count INTEGER DEFAULT 7,
 		enabled BOOLEAN DEFAULT 1,
 		last_run DATETIME,
+		destination_id TEXT DEFAULT '',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS backup_destinations (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		endpoint TEXT NOT NULL,
+		region TEXT DEFAULT 'us-east-1',
+		access_key TEXT DEFAULT '',
+		secret_enc TEXT DEFAULT '',
+		bucket TEXT NOT NULL,
+		prefix TEXT DEFAULT '',
+		path_style INTEGER DEFAULT 1,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
@@ -243,6 +263,25 @@ func (d *DB) migrate() error {
 		"ALTER TABLE deployments ADD COLUMN trigger TEXT DEFAULT 'manual';",
 		"ALTER TABLE deployments ADD COLUMN number INTEGER DEFAULT 1;",
 		"ALTER TABLE deployments ADD COLUMN image TEXT DEFAULT '';",
+		"ALTER TABLE volume_snapshots ADD COLUMN remote_provider TEXT DEFAULT '';",
+		"ALTER TABLE volume_snapshots ADD COLUMN remote_destination_id TEXT DEFAULT '';",
+		"ALTER TABLE volume_snapshots ADD COLUMN remote_key TEXT DEFAULT '';",
+		"ALTER TABLE volume_snapshots ADD COLUMN checksum TEXT DEFAULT '';",
+		"ALTER TABLE volume_snapshots ADD COLUMN remote_status TEXT DEFAULT '';",
+		"ALTER TABLE volume_snapshots ADD COLUMN remote_error TEXT DEFAULT '';",
+		"ALTER TABLE volume_schedules ADD COLUMN destination_id TEXT DEFAULT '';",
+		"CREATE TABLE IF NOT EXISTS backup_destinations (" +
+			" id TEXT PRIMARY KEY," +
+			" name TEXT NOT NULL," +
+			" endpoint TEXT NOT NULL," +
+			" region TEXT DEFAULT 'us-east-1'," +
+			" access_key TEXT DEFAULT ''," +
+			" secret_enc TEXT DEFAULT ''," +
+			" bucket TEXT NOT NULL," +
+			" prefix TEXT DEFAULT ''," +
+			" path_style INTEGER DEFAULT 1," +
+			" created_at DATETIME DEFAULT CURRENT_TIMESTAMP" +
+			");",
 		"CREATE INDEX IF NOT EXISTS idx_services_webhook ON services(webhook_token);",
 		"CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);",
 		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);",

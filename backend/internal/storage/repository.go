@@ -14,4 +14,20 @@ type Repository interface {
 	CreateSchedule(ctx context.Context, s VolumeSchedule) error
 	UpdateSchedule(ctx context.Context, s VolumeSchedule) error
 	DeleteSchedule(ctx context.Context, id string) error
+
+	// Remote destinations (S3-compatible mirrors).
+	ListDestinations(ctx context.Context) ([]BackupDestination, error)
+	GetDestination(ctx context.Context, id string) (*BackupDestination, error)
+	CreateDestination(ctx context.Context, d BackupDestination, secretEnc string) error
+	DeleteDestination(ctx context.Context, id string) error
+
+	// UpdateSnapshotRemote records the remote-mirror state of a snapshot.
+	UpdateSnapshotRemote(ctx context.Context, id string, result SnapshotRemoteState) error
+}
+
+// RedactDestination returns a copy safe for API serialization: the secret
+// key is dropped from every read path (write-only field).
+func RedactDestination(d BackupDestination) BackupDestination {
+	d.SecretKey = ""
+	return d
 }

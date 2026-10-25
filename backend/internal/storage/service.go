@@ -17,6 +17,8 @@ import (
 	"time"
 
 	"github.com/robfig/cron/v3"
+
+	"gopod/pkg/crypto"
 )
 
 // volumeNamePattern enforces a Podman volume identifier: alphanumeric first
@@ -139,6 +141,19 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 			snap.Status = "failed"
 			_ = os.Remove(filePath)
 		}
+
+		// Remote mirror push (S3-compatible destination), part of the same
+		// operation. PrincFunnyPLES: a remote failure must never destroy the
+		// local hot copy — instead the snapshot is marked "local-only" so the
+		// operator can see that the off-host copy is missing.
+		if snap.Status == "completed" && snap.DestinationID != "" {
+			state := s.mirrorSnapshotToDestination(ctx, &snap, filePath)
+			snap.RemoteStatus = state.Status
+			snap.RemoteProvider = state.Provider
+			snap.RemoteKey = state.RemoteKey
+			snap.Checksum = state.Checksum
+			snap.RemoteError = state.ErrText
+		}
 	} else {
 		snap.Size = "0 MB"
 		snap.Status = "failed"
@@ -146,6 +161,17 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 
 	if err := s.repo.CreateSnapshot(ctx, snap); err != nil {
 		return nil, err
+	}
+	// The remote outcome is written through a dedicated update so a failed
+	// insert can never half-record remote state (and vice versa).
+	if snap.RemoteStatus != "" {
+		_ = s.repo.UpdateSnapshotRemote(ctx, snap.ID, SnapshotRemoteState{
+			Status:    snap.RemoteStatus,
+			Provider:  snap.RemoteProvider,
+			RemoteKey: snap.RemoteKey,
+			Checksum:  snap.Checksum,
+			ErrText:   snap.RemoteError,
+		})
 	}
 	return &snap, nil
 }
@@ -222,9 +248,23 @@ func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}
-	if snap, _ := s.repo.GetSnapshot(ctx, id); snap != nil && snap.Filename != "" {
+	snap, _ := s.repo.GetSnapshot(ctx, id)
+	if snap == nil {
+		return s.repo.DeleteSnapshot(ctx, id)
+	}
+	if snap.Filename != "" {
 		cleanFilename := filepath.Base(snap.Filename)
 		_ = os.Remove(filepath.Join("./data/backups", cleanFilename))
+	}
+	// Best-effort remote cleanup: when the local archive is gone, the mirror
+	// should go too. Failure here only logs — the operator is not stranded by
+	// an unreachable bucket when trying to clean their history.
+	if snap.RemoteStatus == "synced" && snap.RemoteKey != "" && snap.RemoteDestinationID != "" {
+		if dest, _ := s.repo.GetDestination(ctx, snap.RemoteDestinationID); dest != nil {
+			if err := deleteFromDestination(ctx, *dest, snap.RemoteKey); err != nil {
+				fmt.Printf("[storage] mirror cleanup for %s failed: %v (stale remote object kept)\n", snap.RemoteKey, err)
+			}
+		}
 	}
 	return s.repo.DeleteSnapshot(ctx, id)
 }
@@ -377,8 +417,9 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 	_, _ = s.cron.AddFunc(sched.Cron, func() {
 		ctx := context.Background()
 		snap := VolumeSnapshot{
-			ProjectID:  sched.ProjectID,
-			VolumeName: sched.VolumeName,
+			ProjectID:     sched.ProjectID,
+			VolumeName:    sched.VolumeName,
+			DestinationID: sched.DestinationID,
 		}
 		_, err := s.CreateSnapshot(ctx, snap)
 		if err == nil && sched.RetentionCount > 0 && s.repo != nil {
@@ -392,4 +433,131 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 			s.pruneSnapshotsByRetention(ctx, volSnaps, sched.RetentionCount)
 		}
 	})
+}
+
+// ── Destinations (S3-compatible mirrors) ──
+
+// mirrorSnapshotToDestination pushes a completed local snapshot to its
+// configured S3-compatible destination and records the outcome. Semantics are
+// "local snapshot survives": a remote failure never removes the local archive
+// — it downgrades the snapshot to "local-only" so the operator can see that
+// the off-host copy is missing.
+func (s *Service) mirrorSnapshotToDestination(ctx context.Context, snap *VolumeSnapshot, filePath string) SnapshotRemoteState {
+	base := SnapshotRemoteState{
+		Provider:      "s3",
+		DestinationID: snap.DestinationID,
+	}
+	if s.repo == nil {
+		base.Status = "local-only"
+		base.ErrText = "repository unavailable"
+		return base
+	}
+	dest, err := s.repo.GetDestination(ctx, snap.DestinationID)
+	if err != nil || dest == nil {
+		base.Status = "local-only"
+		base.ErrText = "destination not found"
+		return base
+	}
+	key := remoteKeyFor(*dest, *snap)
+	size, checksum, err := uploadToDestination(ctx, *dest, filePath, key)
+	if err != nil {
+		base.Status = "local-only"
+		base.ErrText = err.Error()
+		return base
+	}
+	base.Status = "synced"
+	base.RemoteKey = key
+	base.Checksum = checksum
+	fmt.Printf("[storage] mirrored %s (%s, %d bytes) to destination %q at %s\n",
+		snap.Filename, dest.Name, size, dest.ID, key)
+	return base
+}
+
+// ListDestinations returns every configured S3-compatible destination with
+// its secret stripped (write-only field).
+func (s *Service) ListDestinations(ctx context.Context) ([]BackupDestination, error) {
+	if s.repo == nil {
+		return []BackupDestination{}, nil
+	}
+	dests, err := s.repo.ListDestinations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for i := range dests {
+		dests[i] = RedactDestination(dests[i])
+	}
+	return dests, nil
+}
+
+// CreateDestination validates and stores a new destination. The secret key is
+// encrypted at rest with the master key (pkg/crypto) before it reaches the
+// data layer; every read path redacts it.
+func (s *Service) CreateDestination(ctx context.Context, d BackupDestination) (*BackupDestination, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	d.Name = strings.TrimSpace(d.Name)
+	d.Endpoint = strings.TrimSpace(d.Endpoint)
+	d.Bucket = strings.TrimSpace(d.Bucket)
+	d.Prefix = strings.Trim(strings.TrimSpace(d.Prefix), "/")
+	d.Region = strings.TrimSpace(d.Region)
+	d.Endpoint = strings.TrimSuffix(d.Endpoint, "/")
+	if d.Name == "" {
+		return nil, errors.New("name is required")
+	}
+	if d.Endpoint == "" || d.Bucket == "" || d.AccessKey == "" || d.SecretKey == "" {
+		return nil, errors.New("endpoint, bucket, accessKey and secretKey are required")
+	}
+	if !strings.Contains(d.Endpoint, "://") || !strings.HasPrefix(d.Endpoint, "http") {
+		return nil, errors.New("endpoint must be an http(s) URL")
+	}
+	if d.Region == "" {
+		d.Region = "us-east-1"
+	}
+	if d.ID == "" {
+		b := make([]byte, 4)
+		_, _ = rand.Read(b)
+		d.ID = fmt.Sprintf("dest-%s", hex.EncodeToString(b))
+	}
+	secretEnc, err := crypto.Encrypt(d.SecretKey)
+	if err != nil {
+		return nil, fmt.Errorf("encrypt secret: %w", err)
+	}
+	if err := s.repo.CreateDestination(ctx, d, secretEnc); err != nil {
+		return nil, err
+	}
+	created := RedactDestination(d)
+	return &created, nil
+}
+
+// DeleteDestination removes a destination. Schedules still referencing it
+// keep running in local-only mode (their snapshots stay on this host), which
+// is the documented degradation instead of a hard failure.
+func (s *Service) DeleteDestination(ctx context.Context, id string) error {
+	if s.repo == nil {
+		return errors.New("repository not initialized")
+	}
+	return s.repo.DeleteDestination(ctx, id)
+}
+
+// TestDestination performs a read probe against the configured bucket. It
+// takes the redacted-safe struct plus the raw secret from the request when
+// present (create-then-test flow); otherwise it looks the destination up.
+func (s *Service) TestDestination(ctx context.Context, id string, secretOverride string) error {
+	if s.repo == nil {
+		return errors.New("repository not initialized")
+	}
+	dest, err := s.repo.GetDestination(ctx, id)
+	if err != nil || dest == nil {
+		return fmt.Errorf("destination not found: %s", id)
+	}
+	if secretOverride != "" {
+		dest.SecretKey = secretOverride
+	}
+	return testDestination(ctx, *dest)
+}
+
+// TestDestinationStruct probes a not-yet-saved destination (create form).
+func (s *Service) TestDestinationStruct(ctx context.Context, d BackupDestination) error {
+	return testDestination(ctx, d)
 }

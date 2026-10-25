@@ -3,6 +3,7 @@ package runtime
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 )
@@ -17,6 +18,14 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
+
+	// Escape the server-wide WriteDeadline: this stream lives as long as its
+	// client, while the server defaults to cutting responses after 60s.
+	if rc := http.NewResponseController(w); rc != nil {
+		if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+			log.Printf("[SSE] could not clear write deadline for stats stream: %v", err)
+		}
+	}
 
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()

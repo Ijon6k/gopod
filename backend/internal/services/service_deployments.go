@@ -74,9 +74,6 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 		svc.Image = imageOverride
 	}
 
-	pastDeps, _ := s.repo.ListDeployments(ctx, serviceID)
-	nextNumber := len(pastDeps) + 1
-
 	// Canonicalize pod runtime name before deploying so UI, ingress, and
 	// members always reference the unique pod_<project>-<service>-<rand> name.
 	if svc.Type == "pod" && s.repo != nil {
@@ -95,6 +92,16 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 	// letting parallel deploys interleave and tear each other's work down.
 	if holder := s.tryAcquireDeploy(svc.ID, depID); holder != "" {
 		return nil, fmt.Errorf("%w: deployment %s is still running for this service; cancel it or wait before redeploying", ErrDeployInProgress, holder)
+	}
+
+	// Numbering must happen inside the deploy lock, after it is acquired, and
+	// from a full-history MAX query. The old approach (list length outside the
+	// lock) could mint duplicate numbers; ListDeployments is a 50-row UI
+	// window, so it also froze numbering past the 50th deployment.
+	nextNumber, err := s.repo.NextDeploymentNumber(ctx, svc.ID)
+	if err != nil {
+		s.releaseDeploy(svc.ID, depID)
+		return nil, fmt.Errorf("computing next deployment number: %w", err)
 	}
 
 	commitMsg := "Deployment initiated"
@@ -142,6 +149,12 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 			s.releaseDeploy(svc.ID, depRecord.ID)
 			s.activeCancels.Delete(depRecord.ID)
 			s.activeServiceDeps.Delete(svc.ID)
+			if s.logManager != nil {
+				// The deployment reached its terminal state: end the log
+				// fan-out so SSE handlers parked on the channel return even
+				// when the browser keeps the connection open.
+				s.logManager.CloseSubscribers(depRecord.ID)
+			}
 		}()
 		s.executeDeployment(bgCtx, svc, depRecord, start)
 	}()
@@ -163,9 +176,6 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 		trigger = "manual"
 	}
 
-	pastDeps, _ := s.repo.ListDeployments(ctx, serviceID)
-	nextNumber := len(pastDeps) + 1
-
 	// Canonicalize pod runtime name (see StartDeploy).
 	if svc.Type == "pod" && s.repo != nil {
 		if canonical := PodNameForService(*svc); svc.PodID != canonical {
@@ -182,6 +192,13 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 	// Same per-service deploy mutex as StartDeploy.
 	if holder := s.tryAcquireDeploy(svc.ID, depID); holder != "" {
 		return nil, fmt.Errorf("%w: deployment %s is still running for this service; cancel it or wait before redeploying", ErrDeployInProgress, holder)
+	}
+
+	// Number inside the deploy lock from full history (see StartDeploy).
+	nextNumber, err := s.repo.NextDeploymentNumber(ctx, svc.ID)
+	if err != nil {
+		s.releaseDeploy(svc.ID, depID)
+		return nil, fmt.Errorf("computing next deployment number: %w", err)
 	}
 
 	depRecord := Deployment{
@@ -215,6 +232,10 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 		s.releaseDeploy(svc.ID, depID)
 		s.activeCancels.Delete(depRecord.ID)
 		s.activeServiceDeps.Delete(svc.ID)
+		if s.logManager != nil {
+			// See StartDeploy: end the subscriber fan-out at terminal state.
+			s.logManager.CloseSubscribers(depID)
+		}
 	}()
 
 	s.executeDeployment(depCtx, svc, depRecord, start)
@@ -454,8 +475,10 @@ func (s *WorkloadService) CancelServiceDeployment(ctx context.Context, serviceID
 		}
 	}
 
-	// Also cancel any deployments marked building/deploying in database for this service
-	deps, _ := s.repo.ListDeployments(ctx, serviceID)
+	// Also cancel any deployments marked building/deploying in database for
+	// this service. Deliberately unbounded: a hung in-flight row must never
+	// fall off a LIMIT window.
+	deps, _ := s.repo.ListRunningDeployments(ctx, serviceID)
 	now := time.Now()
 	for _, d := range deps {
 		if d.Status == "building" || d.Status == "deploying" {

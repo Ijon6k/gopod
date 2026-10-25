@@ -104,7 +104,10 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if !authenticated {
-		h.middleware.RequireAuth(func(w http.ResponseWriter, r *http.Request) {
+		// WebSocket clients cannot set an Authorization header during the
+		// upgrade handshake, so the session may arrive in the query string; the
+		// one-time ticket above remains the preferred path.
+		h.middleware.RequireAuthAllowQuery(func(w http.ResponseWriter, r *http.Request) {
 			authenticated = true
 		})(w, r)
 	}

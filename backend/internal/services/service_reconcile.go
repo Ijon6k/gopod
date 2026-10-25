@@ -59,8 +59,10 @@ func (s *WorkloadService) ReconcileOrphanedDeployments(ctx context.Context) erro
 
 	now := time.Now()
 	for _, svc := range services {
-		// Clean up stale deployments
-		deps, _ := s.repo.ListDeployments(ctx, svc.ID)
+		// Clean up stale deployments. Unbounded query on purpose: an
+		// interrupted row must not survive a restart because it aged out of a
+		// LIMIT window.
+		deps, _ := s.repo.ListRunningDeployments(ctx, svc.ID)
 		for _, d := range deps {
 			if d.Status == "building" || d.Status == "deploying" {
 				d.Status = "interrupted"

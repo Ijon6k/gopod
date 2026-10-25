@@ -12,11 +12,19 @@ import (
 
 // LogManager handles deployment log file storage and real-time streaming subscriptions.
 type LogManager struct {
-	baseDir     string
-	mu          sync.RWMutex
-	filesMu     sync.Mutex
-	writers     map[string]*logWriter
+	baseDir string
+	mu      sync.RWMutex
+	filesMu sync.Mutex
+	writers map[string]*logWriter
+	// subscribers maps a deployment to its live SSE channels. Entries exist
+	// only while the stream runs; CloseSubscribers removes and closes them
+	// when the deployment ends.
 	subscribers map[string][]chan string
+	// closedDeployments remembers deployments whose subscriber fan-out has
+	// already been terminated. Without this, an SSE client connecting right
+	// after a deployment finished would register a brand new channel that no
+	// one ever closes again (a goroutine leak for every streaming consumer).
+	closedDeployments map[string]struct{}
 }
 
 type logWriter struct {
@@ -29,9 +37,10 @@ func NewLogManager(baseDir string) *LogManager {
 	dir := filepath.Join(baseDir, "deployments")
 	_ = os.MkdirAll(dir, 0755)
 	return &LogManager{
-		baseDir:     dir,
-		writers:     make(map[string]*logWriter),
-		subscribers: make(map[string][]chan string),
+		baseDir:           dir,
+		writers:           make(map[string]*logWriter),
+		subscribers:       make(map[string][]chan string),
+		closedDeployments: make(map[string]struct{}),
 	}
 }
 
@@ -118,12 +127,50 @@ func (m *LogManager) GetLogs(deploymentID string) (string, error) {
 	return string(data), nil
 }
 
-// Subscribe returns a channel that receives live log lines and an unsubscribe function.
-func (m *LogManager) Subscribe(deploymentID string) (<-chan string, func()) {
-	ch := make(chan string, 100)
+// CloseSubscribers terminates every live log stream for a deployment: each
+// subscriber channel is closed (SSE handlers observe the `!ok` receive and
+// return) and the map entries are dropped. Called when a deployment reaches a
+// terminal state, so no goroutine parks on a channel that will never carry
+// another line.
+//
+// It is double-close-safe: unlike unsubscribe it removes the entries it
+// closes, so a returning handler's deferred cleanup cannot close them again.
+// LogLine sends stay race-free because senders hold the read lock while
+// CloseSubscribers takes the write lock.
+func (m *LogManager) CloseSubscribers(deploymentID string) {
 	m.mu.Lock()
-	m.subscribers[deploymentID] = append(m.subscribers[deploymentID], ch)
+	defer m.mu.Unlock()
+
+	if subs, ok := m.subscribers[deploymentID]; ok {
+		for _, ch := range subs {
+			close(ch)
+		}
+		delete(m.subscribers, deploymentID)
+	}
+	// Tombstone even when nobody was connected: an SSE client connecting right
+	// after the fan-out ended must not register a channel that no one closes.
+	m.closedDeployments[deploymentID] = struct{}{}
+}
+
+// Subscribe returns a channel that receives live log lines and an
+// unsubscribe function. Subscribing to a deployment whose stream already
+// ended returns a pre-closed channel; the SSE handler treats the first
+// `!ok` receive as end-of-stream.
+func (m *LogManager) Subscribe(deploymentID string) (<-chan string, func()) {
+	m.mu.Lock()
+	_, ended := m.closedDeployments[deploymentID]
+	var ch chan string
+	if !ended {
+		ch = make(chan string, 100)
+		m.subscribers[deploymentID] = append(m.subscribers[deploymentID], ch)
+	}
 	m.mu.Unlock()
+
+	if ended {
+		closed := make(chan string)
+		close(closed)
+		return closed, func() {}
+	}
 
 	unsubscribe := func() {
 		m.mu.Lock()

@@ -381,3 +381,47 @@ func (r *SQLiteRepository) ListDeployments(ctx context.Context, serviceID string
 	}
 	return list, rows.Err()
 }
+
+// NextDeploymentNumber returns the highest deployment number of a service
+// plus one. It is the only correct source for sequence logic: the UI-facing
+// ListDeployments stays capped at 50 rows, which would freeze numbering at 51.
+func (r *SQLiteRepository) NextDeploymentNumber(ctx context.Context, serviceID string) (int, error) {
+	var maxNum sql.NullInt64
+	if err := r.db.QueryRowContext(ctx,
+		"SELECT MAX(COALESCE(number, 0)) FROM deployments WHERE service_id = ?",
+		serviceID,
+	).Scan(&maxNum); err != nil {
+		return 0, err
+	}
+	if !maxNum.Valid || maxNum.Int64 < 1 {
+		return 1, nil
+	}
+	return int(maxNum.Int64) + 1, nil
+}
+
+// ListRunningDeployments selects all non-terminal deployments of a service.
+// The set is at most a handful of rows (one live deploy per service), so the
+// query is unbounded by design.
+func (r *SQLiteRepository) ListRunningDeployments(ctx context.Context, serviceID string) ([]Deployment, error) {
+	rows, err := r.db.QueryContext(ctx,
+		"SELECT id, project_id, service_id, COALESCE(number, 1), COALESCE(trigger, 'manual'), COALESCE(image, ''), version, commit_hash, commit_message, status, duration, started_at, finished_at FROM deployments WHERE service_id = ? AND status IN ('building', 'deploying')",
+		serviceID,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []Deployment
+	for rows.Next() {
+		var d Deployment
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Number, &d.Trigger, &d.Image, &d.Version, &d.CommitHash, &d.CommitMessage, &d.Status, &d.Duration, &d.StartedAt, &d.FinishedAt); err != nil {
+			return nil, err
+		}
+		list = append(list, d)
+	}
+	if list == nil {
+		list = []Deployment{}
+	}
+	return list, rows.Err()
+}

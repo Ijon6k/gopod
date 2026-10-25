@@ -22,6 +22,14 @@ type failedAttempt struct {
 // ones.
 const maxTrackedClients = 4096
 
+// pruneWatermark is the target population after an over-capacity eviction.
+// Evicting down to 75% amortizes the O(N log N) sort: one sort per
+// maxEntries/4 new addresses instead of one per request (previously each
+// single-entry eviction re-armed the cap for the very next request, so a
+// saturated table sorted the whole map under the global mutex on every
+// failing call).
+const pruneWatermark = maxTrackedClients * 3 / 4
+
 // LoginRateLimiter enforces a maximum number of failed authentication attempts per client IP within a window.
 type LoginRateLimiter struct {
 	mu         sync.Mutex
@@ -118,14 +126,19 @@ func isTrustedProxy(addr string) bool {
 }
 
 // pruneLocked drops entries whose window has elapsed, then evicts the oldest
-// entries while the map exceeds its cap. Callers hold l.mu.
+// entries down to the watermark while the map exceeds its cap. Callers hold
+// l.mu.
 func (l *LoginRateLimiter) pruneLocked(now time.Time) {
 	for key, att := range l.attempts {
 		if now.Sub(att.lastSeen) > l.window {
 			delete(l.attempts, key)
 		}
 	}
-	if l.maxEntries <= 0 || len(l.attempts) <= l.maxEntries {
+	target := l.maxEntries
+	if pruneWatermark > 0 && pruneWatermark < target {
+		target = pruneWatermark
+	}
+	if l.maxEntries <= 0 || len(l.attempts) <= target {
 		return
 	}
 	type entry struct {
@@ -137,7 +150,7 @@ func (l *LoginRateLimiter) pruneLocked(now time.Time) {
 		entries = append(entries, entry{key: key, lastSeen: att.lastSeen})
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].lastSeen.Before(entries[j].lastSeen) })
-	for i := 0; i < len(entries)-l.maxEntries; i++ {
+	for i := 0; i < len(entries)-target; i++ {
 		delete(l.attempts, entries[i].key)
 	}
 }

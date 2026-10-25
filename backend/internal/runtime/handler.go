@@ -37,7 +37,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/system", h.middleware.RequireAuth(h.handleSystem))
 	mux.HandleFunc("GET /api/stats", h.middleware.RequireAuth(h.handleStats))
 	mux.HandleFunc("GET /api/containers", h.middleware.RequireAuth(h.handleContainers))
-	mux.HandleFunc("GET /api/stats/stream", h.middleware.RequireAuth(h.handleStream))
+	// EventSource cannot set an Authorization header; the query-token fallback
+	// is scoped to exactly this SSE route.
+	mux.HandleFunc("GET /api/stats/stream", h.middleware.RequireAuthAllowQuery(h.handleStream))
 
 	// Protected container actions
 	mux.HandleFunc("POST /api/containers/{id}/start", h.middleware.RequireAuth(h.handleContainerStart))

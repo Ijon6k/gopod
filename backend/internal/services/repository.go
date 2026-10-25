@@ -16,4 +16,12 @@ type Repository interface {
 	UpdateDeployment(ctx context.Context, d Deployment) error
 	GetDeployment(ctx context.Context, id string) (*Deployment, error)
 	ListDeployments(ctx context.Context, serviceID string) ([]Deployment, error)
+	// NextDeploymentNumber returns max(number)+1 across the service's full
+	// deployment history (ListDeployments is a UI window capped at 50 rows and
+	// must never drive sequence logic).
+	NextDeploymentNumber(ctx context.Context, serviceID string) (int, error)
+	// ListRunningDeployments selects non-terminal deployments of a service,
+	// unbounded: cancel/reset sweeps must never skip an in-flight row that
+	// aged out of a LIMIT window.
+	ListRunningDeployments(ctx context.Context, serviceID string) ([]Deployment, error)
 }

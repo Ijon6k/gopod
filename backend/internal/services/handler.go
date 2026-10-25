@@ -4,9 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopod/internal/auth"
 	"gopod/pkg/httputil"
@@ -44,7 +46,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/services/{id}/deployments", h.middleware.RequireAuth(h.handleListDeployments))
 	mux.HandleFunc("GET /api/deployments/{id}", h.middleware.RequireAuth(h.handleGetDeployment))
 	mux.HandleFunc("GET /api/deployments/{id}/logs", h.middleware.RequireAuth(h.handleGetDeploymentLogs))
-	mux.HandleFunc("GET /api/deployments/{id}/logs/stream", h.middleware.RequireAuth(h.handleStreamDeploymentLogs))
+	// Streaming clients (EventSource) cannot set an Authorization header and
+	// the URL query token is scoped to exactly these routes.
+	mux.HandleFunc("GET /api/deployments/{id}/logs/stream", h.middleware.RequireAuthAllowQuery(h.handleStreamDeploymentLogs))
 	mux.HandleFunc("POST /api/deployments/{id}/cancel", h.middleware.RequireAuth(h.handleCancelDeployment))
 	mux.HandleFunc("POST /api/services/{id}/cancel", h.middleware.RequireAuth(h.handleCancelServiceDeployment))
 
@@ -244,6 +248,15 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 
+	// Escape the server-wide WriteDeadline: SSE keeps an open response by
+	// design and the server's 60s WriteTimeout would otherwise sever every
+	// stream a minute after it opened.
+	if rc := http.NewResponseController(w); rc != nil {
+		if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+			log.Printf("[SSE] could not clear write deadline for deployment log stream: %v", err)
+		}
+	}
+
 	// Send current accumulated logs first
 	currentLogs, _ := h.service.GetDeploymentLogs(r.Context(), id)
 	if currentLogs != "" {
@@ -260,11 +273,21 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 	ch, unsub := h.service.SubscribeLogs(id)
 	defer unsub()
 
+	// Keep-alive comment ping so intermediaries do not drop a quiet stream;
+	// a failed write means the client is gone.
+	ping := time.NewTicker(30 * time.Second)
+	defer ping.Stop()
+
 	notify := r.Context().Done()
 	for {
 		select {
 		case <-notify:
 			return
+		case <-ping.C:
+			if _, err := fmt.Fprint(w, ": ping\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case line, ok := <-ch:
 			if !ok {
 				return

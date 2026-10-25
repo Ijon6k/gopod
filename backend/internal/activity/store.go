@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -13,6 +14,24 @@ import (
 
 // EngineEventsCap bounds the engine_events table (ring buffer).
 const EngineEventsCap = 20000
+
+// Ring-buffer amortization: the cap DELETE scans the whole table, so running
+// it on every insert turns each emit into an O(cap) SQLite write and holds
+// the single-writer lock against unrelated endpoints. Both prunes therefore
+// run one round every N inserts; the table may temporarily overshoot its cap
+// by N-1 rows, which is fine for a diagnostic ring buffer.
+const (
+	engineEventPruneEvery = 250
+	ActivityLogCap        = 50000
+	activityLogPruneEvery = 500
+)
+
+// Per-package dashboards of how many inserts each table has seen. Touched
+// exclusively via atomic ops, so it is safe across concurrent emitters.
+var (
+	engineEventSeq atomic.Uint64
+	activityLogSeq atomic.Uint64
+)
 
 var (
 	mu        sync.RWMutex
@@ -83,7 +102,9 @@ func EmitEngineEvent(ctx context.Context, level, scope, serviceID, projectID, ac
 		message = message[:4000]
 	}
 
-	id := "evt-" + uuid.New().String()[:8]
+	// Full-uuid identifier: an 8-hex prefix collides at ~4.5% odds per 20k
+	// rows (birthday bound) and a failed PK insert silently loses the event.
+	id := "evt-" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	now := time.Now().UTC()
 	if ctx == nil {
 		ctx = context.Background()
@@ -94,11 +115,14 @@ func EmitEngineEvent(ctx context.Context, level, scope, serviceID, projectID, ac
 		`INSERT INTO engine_events (id, ts, level, scope, service_id, project_id, actor, action, message, data) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, now, level, scope, serviceID, projectID, actor, action, message, dataStr,
 	)
-	// Ring-buffer cap: single statement, best-effort.
-	_, _ = db.ExecContext(qctx,
-		`DELETE FROM engine_events WHERE id NOT IN (SELECT id FROM engine_events ORDER BY ts DESC, rowid DESC LIMIT ?)`,
-		EngineEventsCap,
-	)
+	// Ring-buffer cap, amortized: with equal-second timestamps the ordering by
+	// rowid is the honest insertion order. Best-effort by design.
+	if engineEventSeq.Add(1)%engineEventPruneEvery == 0 {
+		_, _ = db.ExecContext(qctx,
+			`DELETE FROM engine_events WHERE rowid NOT IN (SELECT rowid FROM engine_events ORDER BY rowid DESC LIMIT ?)`,
+			EngineEventsCap,
+		)
+	}
 }
 
 // RecordActivity inserts a best-effort user-facing activity record.
@@ -121,7 +145,8 @@ func RecordActivity(ctx context.Context, actor, action, entity, entityID, projec
 	if len(detail) > 4000 {
 		detail = detail[:4000]
 	}
-	id := "act-" + uuid.New().String()[:8]
+	// Same anti-collision rule as engine event ids.
+	id := "act-" + strings.ReplaceAll(uuid.NewString(), "-", "")
 	now := time.Now().UTC()
 	if ctx == nil {
 		ctx = context.Background()
@@ -132,4 +157,12 @@ func RecordActivity(ctx context.Context, actor, action, entity, entityID, projec
 		`INSERT INTO activity_log (id, ts, actor, action, entity, entity_id, project_id, service_id, status, detail, ip) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		id, now, actor, action, entity, entityID, projectID, serviceID, status, detail, ip,
 	)
+	// activity_log previously grew without bound; cap and amortize like
+	// engine_events.
+	if activityLogSeq.Add(1)%activityLogPruneEvery == 0 {
+		_, _ = db.ExecContext(qctx,
+			`DELETE FROM activity_log WHERE rowid NOT IN (SELECT rowid FROM activity_log ORDER BY rowid DESC LIMIT ?)`,
+			ActivityLogCap,
+		)
+	}
 }

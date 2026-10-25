@@ -9,6 +9,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -331,15 +332,19 @@ func (s *Service) CreateSecret(ctx context.Context, sec Secret) (*Secret, error)
 	}
 	sec.CreatedAt = time.Now()
 
-	if err := s.repo.CreateSecret(ctx, sec); err != nil {
-		return nil, err
-	}
-
-	// Real Podman secret creation
+	// Create the daemon-side secret FIRST and fail the request on error: the
+	// DB row must never advertise a secret the podman store does not have
+	// (consumers fail at deploy time with "no such secret" otherwise).
 	if _, err := exec.LookPath("podman"); err == nil {
 		cmd := exec.CommandContext(ctx, "podman", "secret", "create", sec.Name, "-")
 		cmd.Stdin = strings.NewReader(sec.Value)
-		_ = cmd.Run()
+		if out, err := cmd.CombinedOutput(); err != nil {
+			return nil, fmt.Errorf("podman secret create %q failed: %s", sec.Name, strings.TrimSpace(string(out)))
+		}
+	}
+
+	if err := s.repo.CreateSecret(ctx, sec); err != nil {
+		return nil, err
 	}
 
 	sec.Value = ""
@@ -355,7 +360,12 @@ func (s *Service) DeleteSecret(ctx context.Context, id string) error {
 		if _, err := exec.LookPath("podman"); err == nil {
 			// Legacy rows may still carry arbitrary names; `--` guarantees the value is
 			// treated as a secret identifier, never as a podman flag.
-			_ = exec.CommandContext(ctx, "podman", "secret", "rm", "--", sec.Name).Run()
+			if rmErr := exec.CommandContext(ctx, "podman", "secret", "rm", "--", sec.Name).Run(); rmErr != nil {
+				// Not fatal for the DB row, but the operator must know a
+				// stale daemon-side secret may shadow future rows of the
+				// same name.
+				log.Printf("[WARN] podman secret rm %q failed (removing DB row anyway): %v", sec.Name, rmErr)
+			}
 		}
 	}
 	return s.repo.DeleteSecret(ctx, id)

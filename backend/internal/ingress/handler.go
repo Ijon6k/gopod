@@ -199,7 +199,14 @@ func (h *Handler) handleGetCaddyfile(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleReloadCaddy(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.ReloadCaddy(r.Context()); err != nil {
-		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		// "Not applied" is an upstream-availability/config problem, not a
+		// caller mistake: previously every outcome answered 200 "reloaded
+		// successfully" (the visible contract change per the ingress audit).
+		status := http.StatusInternalServerError
+		if errors.Is(err, ErrCaddyNotApplied) {
+			status = http.StatusServiceUnavailable
+		}
+		httputil.WriteError(w, status, err.Error())
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Caddy ingress reloaded successfully"})

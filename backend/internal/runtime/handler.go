@@ -80,10 +80,20 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
+	// Liveness is unconditional (this process answered). Podman socket
+	// reachability is reported separately so a wedged engine is visible to
+	// monitors instead of hiding behind a green "healthy" (the old endpoint
+	// hardcoded success and probed nothing).
+	socketOK := h.service.PingSocket()
+	status := "healthy"
+	if !socketOK {
+		status = "degraded"
+	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{
-		"status":    "healthy",
-		"timestamp": time.Now().UTC().Format(time.RFC3339),
-		"socket":    h.service.SocketPath(),
+		"status":           status,
+		"timestamp":        time.Now().UTC().Format(time.RFC3339),
+		"socket":           h.service.SocketPath(),
+		"podman_socket_ok": socketOK,
 	})
 }
 
@@ -159,6 +169,12 @@ func (h *Handler) handlePruneContainers(w http.ResponseWriter, r *http.Request) 
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Containers pruned successfully"})
 }
 
+// maxContainerLogTail caps a client-requested tail count. Without an upper
+// bound `?tail=100000000` is fed straight into the libpod logs endpoint, and
+// the response is fully buffered in memory (io.ReadAll): a single request
+// against a chatty container can spike RSS by the container's whole output.
+const maxContainerLogTail = 10000
+
 func (h *Handler) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	tail := 100
@@ -166,6 +182,9 @@ func (h *Handler) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 		if t, err := strconv.Atoi(tStr); err == nil && t > 0 {
 			tail = t
 		}
+	}
+	if tail > maxContainerLogTail {
+		tail = maxContainerLogTail
 	}
 	logs, err := h.service.GetContainerLogs(r.Context(), id, tail)
 	if err != nil {

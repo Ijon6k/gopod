@@ -137,7 +137,9 @@ func (c *Client) RemoveNetwork(ctx context.Context, name string) error {
 		return fmt.Errorf("podman remove network failed (%d): %s", resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "network", "rm", name)
+	// `--` before the name: a client-supplied name like `--all` must be
+	// treated as a network name (and then fail), never as a podman flag.
+	cmd := exec.CommandContext(ctx, "podman", "network", "rm", "--", name)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "no such network") {
 			return nil

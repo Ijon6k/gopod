@@ -66,6 +66,15 @@ func dialUserBusTimeout(d time.Duration) (*dbus.Conn, error) {
 	case r := <-ch:
 		return r.c, r.err
 	case <-timer.C:
+		// dialUserBusTimeout deliberately returns before the dial completes.
+		// If the handshake finishes after we gave up, the caller has already
+		// returned: without this reaper the fresh connection leaks an fd plus
+		// the godbus receive goroutine on every bus stall over the deadline.
+		go func() {
+			if r := <-ch; r.c != nil {
+				_ = r.c.Close()
+			}
+		}()
 		return nil, fmt.Errorf("user bus dial timeout (%s)", path)
 	}
 }

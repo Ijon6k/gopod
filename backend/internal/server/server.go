@@ -3,7 +3,6 @@ package server
 import (
 	"bufio"
 	"context"
-	"database/sql"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -54,15 +53,14 @@ func NewServer(cfg Config) (http.Handler, error) {
 	}
 
 	database, err := db.Open(cfg.DBPath)
-
 	if err != nil {
-		log.Printf("[ERROR] Failed to open SQLite database: %v", err)
+		// Fail fast: a server built around a nil *sql.DB would panic on the
+		// first request and answer every client with a dropped connection
+		// instead of a comprehensible error. main() turns the returned error
+		// into a clean startup failure ("Refusing to start").
+		return nil, fmt.Errorf("open SQLite database: %w", err)
 	}
-
-	var sqlDB *sql.DB
-	if database != nil {
-		sqlDB = database.DB
-	}
+	sqlDB := database.DB
 
 	// ── Domain Layer Initialization ──
 	authRepo := auth.NewSQLiteRepository(sqlDB)
@@ -397,6 +395,19 @@ func withMiddleware(next http.Handler) http.Handler {
 		}
 
 		wrapped := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+		// Handler panics must answer the client (500) instead of dropping the
+		// connection silently, and must be loud in the log with a stack trace.
+		// http.ErrAbortHandler is repanicked: it is the stdlib's own contract
+		// for aborting a hijacked/streamed response.
+		defer func() {
+			if rec := recover(); rec != nil {
+				if rec == http.ErrAbortHandler {
+					panic(rec)
+				}
+				log.Printf("[PANIC] %s %s: %v\n%s", r.Method, r.URL.Path, rec, debug.Stack())
+				httputil.WriteError(wrapped, http.StatusInternalServerError, "Internal server error")
+			}
+		}()
 		next.ServeHTTP(wrapped, r)
 
 		if strings.HasPrefix(r.URL.Path, "/api/") {

@@ -255,7 +255,9 @@ func (c *Client) RemoveImage(ctx context.Context, id string, force bool) error {
 	if force {
 		args = append(args, "-f")
 	}
-	args = append(args, id)
+	// `--` before the identifier: a client-supplied id like `--all` must be
+	// treated as an image reference (and then fail), never as a podman flag.
+	args = append(args, "--", id)
 	cmd := exec.CommandContext(ctx, "podman", args...)
 	c.SetupCmdEnv(cmd)
 	return cmd.Run()

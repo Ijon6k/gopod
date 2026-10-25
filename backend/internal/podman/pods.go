@@ -146,7 +146,9 @@ func (c *Client) DeletePod(ctx context.Context, idOrName string, force bool) err
 	if force {
 		args = append(args, "-f")
 	}
-	args = append(args, idOrName)
+	// `--` before the identifier: a client-supplied id like `--all` must be
+	// treated as a pod name (and then fail), never as a podman flag.
+	args = append(args, "--", idOrName)
 	cmd := exec.CommandContext(ctx, "podman", args...)
 	c.SetupCmdEnv(cmd)
 	return cmd.Run()

@@ -81,3 +81,43 @@ func TestValidDeploymentLogID(t *testing.T) {
 		}
 	}
 }
+
+// Regression tests for the SEC-7 identifier charset (SEC-7: client-supplied
+// Service.ID / ProjectID used directly in filesystem paths incl.
+// os.RemoveAll). Every valid generated id shape must pass; every traversal,
+// flag-shaped, separator-bearing or spaced value must fail.
+func TestValidateIdentifierAcceptsGeneratedShapes(t *testing.T) {
+	for _, id := range []string{
+		"proj-1_web-app-a1b2c3d4",
+		"nginx.web",
+		"a",
+		"svc.2-b_3",
+	} {
+		if err := ValidateIdentifier("service id", id); err != nil {
+			t.Errorf("id %q must be accepted: %v", id, err)
+		}
+	}
+}
+
+func TestValidateIdentifierRejectsPathFlagAndWhitespace(t *testing.T) {
+	for _, id := range []string{
+		"",
+		"../Victim",
+		"..",
+		".",
+		"a/b",
+		"/abs",
+		"--all",
+		"-rf",
+		"my app",
+		"a b",
+		"a\tb",
+		"a\nb",
+		"a..b",
+		strings.Repeat("a", 200),
+	} {
+		if err := ValidateIdentifier("service id", id); err == nil {
+			t.Errorf("id %q must be rejected", id)
+		}
+	}
+}

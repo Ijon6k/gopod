@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof" // developer pprof endpoints; only served when GOPOD_DEBUG=1
 	"os"
 	"os/signal"
 	"strings"
@@ -92,6 +93,21 @@ func main() {
 		log.Fatalf("Refusing to start: %v", err)
 	}
 
+	// Optional developer diagnostics: opt-in Go pprof on a loopback-only
+	// listener, disabled by default and never registered on the API mux.
+	if os.Getenv("GOPOD_DEBUG") == "1" {
+		go func() {
+			addr := os.Getenv("GOPOD_DEBUG_ADDR")
+			if addr == "" || (!strings.HasPrefix(addr, "127.0.0.1") && !strings.HasPrefix(addr, "localhost")) {
+				addr = "127.0.0.1:6060"
+			}
+			log.Printf("[DEBUG] pprof available at http://%s/debug/pprof/", addr)
+			if err := http.ListenAndServe(addr, nil); err != nil {
+				log.Printf("[DEBUG] pprof listener stopped: %v", err)
+			}
+		}()
+	}
+
 	srv := &http.Server{
 		Addr:         ":" + *port,
 		Handler:      srvHandler,
@@ -123,7 +139,11 @@ func main() {
 	defer shutdownCancel()
 
 	if err := srv.Shutdown(shutdownCtx); err != nil {
-		log.Fatalf("Server forced to shutdown: %v", err)
+		// SSE/WS connections (hijacked or with cleared write deadlines) cannot
+		// be joined by Shutdown; say what actually happened instead of exiting
+		// via Fatal (same exit code, honest message).
+		log.Printf("Server shutdown incomplete (active streams cut): %v", err)
+		os.Exit(1)
 	}
 
 	log.Println("GoPod server cleanly stopped.")

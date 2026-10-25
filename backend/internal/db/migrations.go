@@ -1,6 +1,9 @@
 package db
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 func (d *DB) migrate() error {
 	schema := `
@@ -245,10 +248,21 @@ func (d *DB) migrate() error {
 		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);",
 	}
 	for _, q := range newCols {
-		_, _ = d.Exec(q)
+		if _, err := d.Exec(q); err != nil {
+			// Schema migrations are re-run on every boot; "duplicate column
+			// name" means the statement already succeeded on a previous run
+			// and must not abort startup. Any other failure is fatal: a
+			// partially migrated schema must never boot silently (REL-7).
+			msg := err.Error()
+			if !strings.Contains(msg, "duplicate column name") {
+				return fmt.Errorf("schema migration %q: %w", q, err)
+			}
+		}
 	}
 
-	d.migrateData()
+	if err := d.migrateData(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -259,15 +273,18 @@ var dataMigrations = []string{
 	"UPDATE services SET auto_deploy = 1",
 }
 
-func (d *DB) migrateData() {
+func (d *DB) migrateData() error {
 	var version int
 	if err := d.QueryRow("PRAGMA user_version").Scan(&version); err != nil {
-		return
+		return fmt.Errorf("read PRAGMA user_version: %w", err)
 	}
 	for i := version; i < len(dataMigrations); i++ {
 		if _, err := d.Exec(dataMigrations[i]); err != nil {
-			return
+			return fmt.Errorf("data migration %d %q: %w", i, dataMigrations[i], err)
 		}
-		_, _ = d.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1))
+		if _, err := d.Exec(fmt.Sprintf("PRAGMA user_version = %d", i+1)); err != nil {
+			return fmt.Errorf("advance PRAGMA user_version to %d: %w", i+1, err)
+		}
 	}
+	return nil
 }

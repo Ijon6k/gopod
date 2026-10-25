@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -105,8 +106,19 @@ func (s *Service) CountUsers(ctx context.Context) (int, error) {
 	return s.repo.CountUsers(ctx)
 }
 
+// setupGuard serializes first-run initialization within this process. Count
+// and Create are not in one transaction, so two racing setup requests could
+// both pass the count check and mint two administrators (the users.email
+// UNIQUE constraint only blocks identical emails). MySQL-style BEGIN
+// IMMEDIATE serialisation would be a repo-wide change; a process-level mutex
+// covers the single-binary trust model.
+var setupGuard sync.Mutex
+
 // SetupAdmin creates the initial administrator user and session.
 func (s *Service) SetupAdmin(ctx context.Context, name, email, password string) (*User, string, error) {
+	setupGuard.Lock()
+	defer setupGuard.Unlock()
+
 	count, err := s.CountUsers(ctx)
 	if err != nil {
 		return nil, "", err

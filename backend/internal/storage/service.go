@@ -229,6 +229,20 @@ func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {
 	return s.repo.DeleteSnapshot(ctx, id)
 }
 
+// pruneSnapshotsByRetention keeps the newest keepCount snapshots and deletes
+// the rest. volSnaps must be sorted newest-first (the repository's
+// ListSnapshots contract orders by created_at DESC), so the excess-if-any
+// lives at the TAIL of the slice — deleting from the head would silently
+// destroy the freshest backups this retention run just created.
+func (s *Service) pruneSnapshotsByRetention(ctx context.Context, volSnaps []VolumeSnapshot, keepCount int) {
+	if s.repo == nil || keepCount <= 0 || len(volSnaps) <= keepCount {
+		return
+	}
+	for _, snap := range volSnaps[keepCount:] {
+		_ = s.DeleteSnapshot(ctx, snap.ID)
+	}
+}
+
 // ── Schedules ──
 
 func (s *Service) ListSchedules(ctx context.Context, projectID string) ([]VolumeSchedule, error) {
@@ -375,12 +389,7 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 					volSnaps = append(volSnaps, sn)
 				}
 			}
-			if len(volSnaps) > sched.RetentionCount {
-				excess := len(volSnaps) - sched.RetentionCount
-				for i := 0; i < excess; i++ {
-					_ = s.DeleteSnapshot(ctx, volSnaps[i].ID)
-				}
-			}
+			s.pruneSnapshotsByRetention(ctx, volSnaps, sched.RetentionCount)
 		}
 	})
 }

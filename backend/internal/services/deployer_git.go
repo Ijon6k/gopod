@@ -41,6 +41,12 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 	}
 
 	tmpDir := filepath.Join(os.TempDir(), "gopod-builds", fmt.Sprintf("%s-%s", s.ID, depID))
+	// Belt-and-braces sink guard: identifiers created before the create-time
+	// validation (or hand-inserted rows) must never escape the build tmpdir
+	// with the pre-clone RemoveAll below.
+	if err := ValidateIdentifier("service id", s.ID); err != nil {
+		return nil, fmt.Errorf("refusing git deploy: %w", err)
+	}
 	_ = os.RemoveAll(tmpDir)
 	if err := os.MkdirAll(tmpDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create build temp dir: %w", err)

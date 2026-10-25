@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 	"os"
@@ -189,12 +188,14 @@ func (m *LogManager) Subscribe(deploymentID string) (<-chan string, func()) {
 }
 
 // PipeReader reads lines from an io.Reader and sends each to LogLine.
+// streamLines has no Scanner-style token limit and always drains the reader,
+// so an overlong build-output line can neither abort the pipe nor leave the
+// producer blocked on write().
 func (m *LogManager) PipeReader(deploymentID string, r io.Reader) {
-	scanner := bufio.NewScanner(r)
-	for scanner.Scan() {
-		m.LogLine(deploymentID, scanner.Text())
-	}
-	if err := scanner.Err(); err != nil && err != io.EOF {
+	if err := streamLines(r, func(text string) {
+		m.LogLine(deploymentID, text)
+	}); err != nil && err != io.EOF {
 		m.LogLine(deploymentID, "[log error] "+err.Error())
 	}
+	_, _ = io.Copy(io.Discard, r)
 }

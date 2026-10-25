@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"gopod/internal/podman"
 )
 
 // quadletIdentPattern accepts the base of a systemd unit name: alphanumeric
@@ -50,6 +52,14 @@ func (s *Service) ListQuadlets(ctx context.Context) ([]QuadletUnit, error) {
 	seen := make(map[string]bool)
 	var units []QuadletUnit
 	secretKeys := s.secretEnvKeys()
+
+	// Fetch the container list once (only when the systemctl fallback is
+	// actually needed): per-file calls were an O(N) round-trip + decode cost
+	// on every dashboard refresh.
+	var podmanContainers []podman.ContainerItem
+	if !hasSystemctl && s.client != nil {
+		podmanContainers, _ = s.client.GetContainers(ctx)
+	}
 
 	for _, dir := range quadletSearchDirs() {
 		entries, err := os.ReadDir(dir)
@@ -108,10 +118,12 @@ func (s *Service) ListQuadlets(ctx context.Context) ([]QuadletUnit, error) {
 				} else {
 					status = "inactive"
 				}
-			} else if s.client != nil {
-				// Fallback: check if matching container is running in Podman
-				containers, _ := s.client.GetContainers(ctx)
-				for _, c := range containers {
+			} else if podmanContainers != nil {
+				// Fallback: consult the cached container list (fetched once
+				// above). Pulling the full libpod container list inside this
+				// per-file loop was an N+1: one HTTP round-trip + JSON decode
+				// per unit file, per request.
+				for _, c := range podmanContainers {
 					for _, name := range c.Names {
 						trimmed := strings.TrimPrefix(name, "/")
 						if trimmed == baseName || trimmed == fmt.Sprintf("systemd-%s", baseName) {

@@ -49,9 +49,14 @@ type Reconciler struct {
 	httpPort           int
 	httpsPort          int
 	httpClient         *http.Client
-	mu                 sync.RWMutex
-	hostDomainMap      map[string]Domain
-	serviceResolver    ServiceResolver
+	// reconcileMu serializes full reconciles. Every domain mutation spawns an
+	// asyncReconcile goroutine; without serialization two interleaved runs can
+	// write the same Caddyfile path concurrently (torn file) and race the
+	// admin reload (last-writer-wins with a stale snapshot).
+	reconcileMu     sync.Mutex
+	mu              sync.RWMutex
+	hostDomainMap   map[string]Domain
+	serviceResolver ServiceResolver
 }
 
 // AccessLogItem represents a structured Caddy JSON access log.
@@ -203,8 +208,12 @@ func detectCaddyPorts() (int, int) {
 		}
 	}
 
-	// In dev or rootless, inspect active caddy container ports via Podman CLI
-	cmd := exec.Command("podman", "ps", "--filter", "name=caddy", "--format", "{{.Ports}}")
+	// In dev or rootless, inspect active caddy container ports via Podman CLI.
+	// The CLI talks to a socket that can stall; a request-path call with no
+	// deadline would hang the HTTP handler forever, so it is bounded.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "podman", "ps", "--filter", "name=caddy", "--format", "{{.Ports}}")
 	if out, err := cmd.Output(); err == nil && len(out) > 0 {
 		portsStr := string(out)
 		for _, part := range strings.Split(portsStr, ",") {
@@ -234,7 +243,18 @@ func detectCaddyPorts() (int, int) {
 }
 
 // Reconcile generates the Caddyfile and hot-reloads Caddy via Admin API.
+// ErrCaddyNotApplied reports a reconcile where no running Caddy picked up the
+// result: either no admin endpoint answered (the new Caddyfile was persisted
+// for the next restart) or Caddy actively rejected the config (the previous
+// on-disk Caddyfile stays in charge). Callers must surface this instead of
+// reporting success: `reload.go`/reload endpoints previously returned HTTP 200
+// "reloaded successfully" while nothing changed in Caddy.
+var ErrCaddyNotApplied = errors.New("caddy reload not applied")
+
 func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
+	r.reconcileMu.Lock()
+	defer r.reconcileMu.Unlock()
+
 	r.mu.Lock()
 	r.hostDomainMap = make(map[string]Domain, len(domains))
 	for _, d := range domains {
@@ -348,7 +368,18 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 		}
 	}
 	emitIngressReconcileEvent(ctx, validDomains, reloaded)
-	return nil
+	if reloaded {
+		return nil
+	}
+	// An admin endpoint either never answered or actively rejected the input:
+	// the operator must see a failure, not a green 200 (until now endpoints
+	// returned "reloaded successfully" in both cases).
+	kind := "no admin endpoint answered"
+	if rejected {
+		kind = "config rejected by Caddy"
+	}
+	return fmt.Errorf("ingress %s (Caddyfile at %s stays authoritative): %w: %w",
+		kind, r.caddyfilePath, ErrCaddyNotApplied, lastErr)
 }
 
 // domainRoute is the cleaned, render-ready form of a stored domain rule.

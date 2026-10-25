@@ -361,7 +361,13 @@ func CheckSystemdLinger() (bool, string) {
 	}
 
 	if _, err := exec.LookPath("loginctl"); err == nil {
-		cmd := exec.Command("loginctl", "show-user", currUser, "--property=Linger")
+		// `loginctl` talks to the D-Bus PAM layer, which can stall on a stuck
+		// bus; this endpoint is reachable from request paths, so the call is
+		// bounded and fails open (to the /var/lib/systemd/linger stat done
+		// above) instead of hanging the request forever.
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, "loginctl", "show-user", currUser, "--property=Linger")
 		if out, err := cmd.Output(); err == nil {
 			str := strings.TrimSpace(string(out))
 			if strings.EqualFold(str, "Linger=yes") {

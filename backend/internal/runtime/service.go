@@ -62,6 +62,16 @@ func (s *Service) SocketPath() string {
 	return s.client.SocketPath()
 }
 
+// PingSocket reports whether the podman socket answers a libpod ping probe.
+// Probe-only (no cache/cooldown side effects) so health checks leave the
+// handshake machinery untouched.
+func (s *Service) PingSocket() bool {
+	if s.client == nil {
+		return false
+	}
+	return s.client.Ping()
+}
+
 // GetSystemInfo retrieves host and engine metrics.
 func (s *Service) GetSystemInfo(ctx context.Context) (*podman.SystemInfo, error) {
 	return s.client.GetSystemInfo(ctx)

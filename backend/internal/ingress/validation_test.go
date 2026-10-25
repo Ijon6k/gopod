@@ -2,6 +2,7 @@ package ingress
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -202,8 +203,14 @@ func TestReconcileSkipsPoisonedDomainsOnDisk(t *testing.T) {
 		{ID: "evil", Hostname: "evil.localhost", TargetContainer: "foo}\nroute /pwn { * }", ContainerPort: 80},
 		{ID: "good", Hostname: "good.localhost", ServiceID: "web-gui", ContainerPort: 3000},
 	}
-	if err := r.Reconcile(context.Background(), domains); err != nil {
-		t.Fatalf("Reconcile: %v", err)
+	// Contract per the ingress audit: a reconcile whose generated Caddyfile
+	// could NOT be picked up by a running Caddy (here: a discard-port admin
+	// endpoint) is an error wrapping ErrCaddyNotApplied — "persisted for next
+	// restart" is not a successful live load. The on-disk assertions below
+	// are the actual target of this test.
+	err := r.Reconcile(context.Background(), domains)
+	if !errors.Is(err, ErrCaddyNotApplied) {
+		t.Fatalf("Reconcile must report a not-applied reload (unreachable admin endpoint), got: %v", err)
 	}
 
 	data, err := os.ReadFile(caddyfilePath)

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
@@ -30,6 +31,17 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
+// execWsLimits bound terminal WebSocket frames and sessions. Without a read
+// limit a client can push arbitrarily large frames straight into the input
+// pump; without deadlines a half-open connection keeps the pty child and both
+// pump goroutines alive forever (the client is often a laptop that suspends).
+const (
+	execReadLimit  = 1 << 20 // 1 MiB per frame
+	execWriteWait  = 10 * time.Second
+	execPongWait   = 60 * time.Second
+	execPingPeriod = 25 * time.Second // must stay below execPongWait
+)
+
 // wsWriter serializes writes to the terminal WebSocket. gorilla/websocket
 // permits only one concurrent writer, and both the PTY reader goroutine and
 // the session teardown write to the socket.
@@ -41,6 +53,7 @@ type wsWriter struct {
 func (w *wsWriter) message(msgType int, payload []byte) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	_ = w.conn.SetWriteDeadline(time.Now().Add(execWriteWait))
 	return w.conn.WriteMessage(msgType, payload)
 }
 
@@ -122,6 +135,18 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 	}
 	defer ws.Close()
 	writer := &wsWriter{conn: ws}
+
+	// Session-lifetime guards: the pong handler (browsers answer protocol
+	// pings automatically and pong on their own) resets the read deadline, so
+	// an interactive session with a responsive client stays open
+	// indefinitely. A client that stops ponging hits the read deadline, the
+	// input pump exits, and closeAll() reaps the pty child and its
+	// goroutines.
+	ws.SetReadLimit(execReadLimit)
+	_ = ws.SetReadDeadline(time.Now().Add(execPongWait))
+	ws.SetPongHandler(func(string) error {
+		return ws.SetReadDeadline(time.Now().Add(execPongWait))
+	})
 
 	cmdName := r.URL.Query().Get("cmd")
 	if cmdName == "" {
@@ -251,6 +276,20 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 	defer closeAll()
+
+	// Keepalive: ping the client every execPingPeriod; its automatic pong
+	// resets the read deadline (see the pong handler above). All writes go
+	// through wsWriter so the ping never races the PTY pump.
+	go func() {
+		ticker := time.NewTicker(execPingPeriod)
+		defer ticker.Stop()
+		for range ticker.C {
+			if err := writer.message(websocket.PingMessage, nil); err != nil {
+				closeAll()
+				return
+			}
+		}
+	}()
 
 	// Read PTY -> Write WebSocket
 	go func() {

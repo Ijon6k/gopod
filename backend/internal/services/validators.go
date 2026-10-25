@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"path/filepath"
 	"regexp"
 	"strings"
 )
@@ -53,4 +54,25 @@ var deploymentLogIDRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$`)
 // a log file.
 func ValidDeploymentLogID(id string) bool {
 	return deploymentLogIDRe.MatchString(id)
+}
+
+// serviceIdentifierRe bounds the identifiers clients may choose for entities
+// whose ids are composited into filesystem paths and unit names (git build
+// tmpdirs, compose/kube data dirs, static drop directories). One charset
+// check at the create boundary — instead of guards sprinkled across every
+// sink — plus a filepath.Base equality to reject traversal segments.
+var serviceIdentifierRe = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$`)
+
+// ValidateIdentifier rejects arbitrary client-supplied server identifiers.
+// Filesystem separators, traversal segments, control characters and any
+// leading "-" (so an identifier can never parse as a CLI flag) are all
+// impossible under this shape.
+func ValidateIdentifier(kind, raw string) error {
+	// ".." is refused even mid-string: it is never meaningful in an
+	// identifier and any future sink that concatenates instead of joining
+	// stays safe.
+	if raw == "" || strings.Contains(raw, "..") || !serviceIdentifierRe.MatchString(raw) || filepath.Base(raw) != raw {
+		return fmt.Errorf("invalid %s %q: must be a short identifier of letters, digits, '.', '_' or '-'", kind, raw)
+	}
+	return nil
 }

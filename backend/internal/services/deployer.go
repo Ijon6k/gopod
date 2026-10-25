@@ -1,7 +1,6 @@
 package services
 
 import (
-	"bufio"
 	"context"
 	"crypto/rand"
 	"encoding/hex"
@@ -252,9 +251,7 @@ func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) [
 			done <- true
 			return
 		}
-		scanner := bufio.NewScanner(r)
-		for scanner.Scan() {
-			text := scanner.Text()
+		err := streamLines(r, func(text string) {
 			logLine(text)
 			lower := strings.ToLower(text)
 			if isErr || strings.HasPrefix(text, "Error:") ||
@@ -268,10 +265,14 @@ func (d *Deployer) streamPipes(stdout, stderr io.Reader, logLine func(string)) [
 					mu.Unlock()
 				}
 			}
-		}
-		if err := scanner.Err(); err != nil && err != io.EOF {
+		})
+		if err != nil && err != io.EOF {
 			logLine("[stream error] " + err.Error())
 		}
+		// Drain unconditionally: if the record loop ever stops early (an
+		// unexpected reader error), a child blocked on stdout/stderr write()
+		// must not wedge the entire deploy until the context deadline.
+		_, _ = io.Copy(io.Discard, r)
 		done <- true
 	}
 	go stream(stdout, false)

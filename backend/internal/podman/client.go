@@ -26,6 +26,9 @@ var (
 	writeTimeout = 60 * time.Second
 	pruneTimeout = 120 * time.Second
 	pingTimeout  = 5 * time.Second
+	// healthProbeTimeout bounds the /api/health socket probe so a dead socket
+	// cannot hold the health response for the full handshake budget.
+	healthProbeTimeout = 1500 * time.Millisecond
 	// handshakeCooldown pauses re-probes after a failed handshake so a dead
 	// socket cannot turn every request into a ping storm.
 	handshakeCooldown = time.Minute
@@ -154,6 +157,26 @@ func (c *Client) invalidateVersion() {
 	c.versionMu.Lock()
 	c.negotiated = ""
 	c.versionMu.Unlock()
+}
+
+// Ping reports whether the podman socket answers the libpod ping endpoint.
+// Probe-only: unlike the version handshake path it never touches the
+// negotiated-version cache or the failure cooldown, so health checks cannot
+// disturb the handshake retry logic. Bounded to healthProbeTimeout so a dead
+// socket cannot stall a health response.
+func (c *Client) Ping() bool {
+	probeCtx, cancel := context.WithTimeout(context.Background(), healthProbeTimeout)
+	defer cancel()
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodGet, "http://d/_ping", nil)
+	if err != nil {
+		return false
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // probeVersion asks /_ping for the daemon's libpod API version and falls back

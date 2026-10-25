@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -55,6 +56,13 @@ func Open(customPath string) (*DB, error) {
 	// Optimize connection pool for SQLite: WAL mode supports concurrent readers
 	conn.SetMaxOpenConns(10)
 	conn.SetMaxIdleConns(5)
+	// Bounded connection lifetimes: every modernc.org/sqlite connection owns a
+	// page cache that fills toward a ~2 MiB ceiling inside the Go heap. Without
+	// an idle/lifetime bound, connections opened during traffic bursts never
+	// close and their page caches stay resident forever (a durable share of
+	// the process's steady-state heap).
+	conn.SetConnMaxIdleTime(5 * time.Minute)
+	conn.SetConnMaxLifetime(time.Hour)
 
 	if err := conn.Ping(); err != nil {
 		return nil, fmt.Errorf("failed to ping sqlite database: %w", err)

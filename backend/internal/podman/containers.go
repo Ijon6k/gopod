@@ -444,7 +444,9 @@ func (c *Client) DeleteContainer(ctx context.Context, id string, force bool) err
 	if force {
 		args = append(args, "-f")
 	}
-	args = append(args, id)
+	// `--` before the identifier: a client-supplied id like `--all` must be
+	// treated as a container name (and then fail), never as a podman flag.
+	args = append(args, "--", id)
 	cmd := exec.CommandContext(ctx, "podman", args...)
 	c.SetupCmdEnv(cmd)
 	return cmd.Run()

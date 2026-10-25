@@ -144,6 +144,17 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 	if svc.ProjectID == "" {
 		return nil, errors.New("projectId is required")
 	}
+	// Client-chosen identifiers land in on-disk paths (compose/kube data
+	// dirs, git build tmpdirs, static drops). Validate once here so no sink
+	// has to re-derive path safety. A generated id (below) always passes.
+	if svc.ID != "" {
+		if err := ValidateIdentifier("service id", svc.ID); err != nil {
+			return nil, err
+		}
+	}
+	if err := ValidateIdentifier("projectId", svc.ProjectID); err != nil {
+		return nil, err
+	}
 
 	if svc.ID == "" {
 		randBytes := make([]byte, 8)

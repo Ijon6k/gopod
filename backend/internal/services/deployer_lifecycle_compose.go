@@ -17,7 +17,7 @@ func (d *Deployer) isComposeWorkload(s Service) bool {
 func (d *Deployer) startComposeService(ctx context.Context, s Service) error {
 	projectName := s.ID
 	if projectName == "" {
-		projectName = s.Name
+		projectName = SanitizeQuadletSlug(s.Name)
 	}
 
 	composeFile := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName, "docker-compose.yml")
@@ -116,7 +116,7 @@ func (d *Deployer) stopComposeService(ctx context.Context, s Service) error {
 func (d *Deployer) teardownComposeService(ctx context.Context, s Service, deleteVolumes bool) {
 	projectName := s.ID
 	if projectName == "" {
-		projectName = s.Name
+		projectName = SanitizeQuadletSlug(s.Name)
 	}
 	composeDir := filepath.Join(d.dataDir, "compose", s.ProjectID, projectName)
 	composeFile := filepath.Join(composeDir, "docker-compose.yml")

@@ -15,6 +15,7 @@
 	import LogsTab from '$lib/components/features/services/detail/tabs/LogsTab.svelte';
 	import TerminalTab from '$lib/components/features/services/detail/tabs/TerminalTab.svelte';
 	import AdvancedTab from '$lib/components/features/services/detail/tabs/AdvancedTab.svelte';
+	import BackupsTab from '$lib/components/features/services/detail/tabs/BackupsTab.svelte';
 	import { SpinnerGap } from 'phosphor-svelte';
 	import { createPoller } from '$lib/utils/poller';
 
@@ -234,6 +235,7 @@
 		{ id: 'deployments', label: 'Deployments' },
 		{ id: 'monitoring', label: 'Monitoring' },
 		{ id: 'logs', label: 'Logs' },
+		{ id: 'backups', label: 'Backups' },
 		{ id: 'advanced', label: 'Advanced' }
 	];
 
@@ -300,6 +302,8 @@
 				<MonitoringTab {service} onNavigateTab={(tab: string) => (activeTab = tab)} />
 			{:else if activeTab === 'logs'}
 				<LogsTab {service} />
+			{:else if activeTab === 'backups'}
+				<BackupsTab {service} />
 			{:else if activeTab === 'terminal'}
 				<TerminalTab {service} />
 			{:else if activeTab === 'advanced'}

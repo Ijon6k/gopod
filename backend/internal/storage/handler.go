@@ -29,6 +29,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/storage/snapshots/{id}/restore", h.middleware.RequireAuth(h.handleRestoreSnapshot))
 	mux.HandleFunc("GET /api/storage/snapshots/{id}/download", h.middleware.RequireAuth(h.handleDownloadSnapshot))
 	mux.HandleFunc("DELETE /api/storage/snapshots/{id}", h.middleware.RequireAuth(h.handleDeleteSnapshot))
+	mux.HandleFunc("POST /api/storage/database/dump", h.middleware.RequireAuth(h.handleCreateDatabaseDump))
 
 	mux.HandleFunc("GET /api/storage/schedules", h.middleware.RequireAuth(h.handleListSchedules))
 	mux.HandleFunc("POST /api/storage/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
@@ -48,6 +49,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/volumes/snapshots/{id}/restore", h.middleware.RequireAuth(h.handleRestoreSnapshot))
 	mux.HandleFunc("GET /api/volumes/snapshots/{id}/download", h.middleware.RequireAuth(h.handleDownloadSnapshot))
 	mux.HandleFunc("DELETE /api/volumes/snapshots/{id}", h.middleware.RequireAuth(h.handleDeleteSnapshot))
+	mux.HandleFunc("POST /api/volumes/database/dump", h.middleware.RequireAuth(h.handleCreateDatabaseDump))
 	mux.HandleFunc("GET /api/volumes/schedules", h.middleware.RequireAuth(h.handleListSchedules))
 	mux.HandleFunc("POST /api/volumes/schedules", h.middleware.RequireAuth(h.handleCreateSchedule))
 	mux.HandleFunc("POST /api/volumes/schedules/{id}/toggle", h.middleware.RequireAuth(h.handleToggleSchedule))
@@ -65,12 +67,36 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 func (h *Handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("projectId")
+	serviceID := r.URL.Query().Get("serviceId")
 	snapshots, err := h.service.ListSnapshots(r.Context(), projectID)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if serviceID != "" {
+		filtered := make([]VolumeSnapshot, 0, len(snapshots))
+		for _, s := range snapshots {
+			if s.ServiceID == serviceID {
+				filtered = append(filtered, s)
+			}
+		}
+		snapshots = filtered
+	}
 	httputil.WriteJSON(w, http.StatusOK, snapshots)
+}
+
+func (h *Handler) handleCreateDatabaseDump(w http.ResponseWriter, r *http.Request) {
+	var req DatabaseDumpRequest
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+	snap, err := h.service.CreateDatabaseDump(r.Context(), req)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, snap)
 }
 
 func (h *Handler) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
@@ -121,10 +147,20 @@ func (h *Handler) handleDownloadSnapshot(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("projectId")
+	serviceID := r.URL.Query().Get("serviceId")
 	schedules, err := h.service.ListSchedules(r.Context(), projectID)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if serviceID != "" {
+		filtered := make([]VolumeSchedule, 0, len(schedules))
+		for _, s := range schedules {
+			if s.ServiceID == serviceID {
+				filtered = append(filtered, s)
+			}
+		}
+		schedules = filtered
 	}
 	httputil.WriteJSON(w, http.StatusOK, schedules)
 }

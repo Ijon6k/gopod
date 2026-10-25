@@ -1,10 +1,18 @@
 import apiClient from '../client';
-import type { VolumeSnapshot, VolumeBackupSchedule, BackupDestination } from './types';
+import type {
+	VolumeSnapshot,
+	VolumeBackupSchedule,
+	BackupDestination,
+	DatabaseDumpRequest
+} from './types';
 
 export const storageApi = {
-	async listSnapshots(projectId?: string): Promise<VolumeSnapshot[]> {
+	async listSnapshots(projectId?: string, serviceId?: string): Promise<VolumeSnapshot[]> {
 		const res = await apiClient.get<VolumeSnapshot[]>('/volumes/snapshots', {
-			params: projectId ? { projectId } : undefined
+			params: {
+				...(projectId ? { projectId } : {}),
+				...(serviceId ? { serviceId } : {})
+			}
 		});
 		return res.data;
 	},
@@ -15,6 +23,11 @@ export const storageApi = {
 		serviceId: string;
 	}): Promise<VolumeSnapshot> {
 		const res = await apiClient.post<VolumeSnapshot>('/volumes/snapshot', data);
+		return res.data;
+	},
+
+	async createDatabaseDump(data: DatabaseDumpRequest): Promise<VolumeSnapshot> {
+		const res = await apiClient.post<VolumeSnapshot>('/volumes/database/dump', data);
 		return res.data;
 	},
 
@@ -32,15 +45,19 @@ export const storageApi = {
 		return `/api/volumes/snapshots/${id}/download`;
 	},
 
-	async listSchedules(projectId?: string): Promise<VolumeBackupSchedule[]> {
+	async listSchedules(projectId?: string, serviceId?: string): Promise<VolumeBackupSchedule[]> {
 		const res = await apiClient.get<VolumeBackupSchedule[]>('/volumes/schedules', {
-			params: projectId ? { projectId } : undefined
+			params: {
+				...(projectId ? { projectId } : {}),
+				...(serviceId ? { serviceId } : {})
+			}
 		});
 		return res.data;
 	},
 
 	async createSchedule(data: {
 		projectId: string;
+		serviceId?: string;
 		volumeName: string;
 		cron: string;
 		label?: string;

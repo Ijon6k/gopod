@@ -14,6 +14,20 @@ export class StorageDomainStore {
 		return this.volumeSchedules.filter((s) => s.projectId === projectId);
 	}
 
+	getServiceVolumeSnapshots(serviceId: string): VolumeSnapshot[] {
+		return this.volumeSnapshots.filter((s) => s.serviceId === serviceId);
+	}
+
+	getServiceVolumeSchedules(serviceId: string): VolumeBackupSchedule[] {
+		return this.volumeSchedules.filter((s) => s.serviceId === serviceId);
+	}
+
+	async createDatabaseDump(req: import('$lib/types').DatabaseDumpRequest): Promise<VolumeSnapshot> {
+		const created = await api.volumes.createDatabaseDump(req);
+		this.volumeSnapshots.unshift(created);
+		return created;
+	}
+
 	async createVolumeSnapshot(
 		volumeName: string,
 		projectId: string,
@@ -53,6 +67,7 @@ export class StorageDomainStore {
 
 	async createVolumeSchedule(input: {
 		projectId: string;
+		serviceId?: string;
 		volumeName: string;
 		cron: string;
 		label?: string;

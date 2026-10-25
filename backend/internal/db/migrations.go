@@ -80,6 +80,7 @@ func (d *DB) migrate() error {
 	CREATE TABLE IF NOT EXISTS volume_schedules (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		service_id TEXT DEFAULT '',
 		volume_name TEXT NOT NULL,
 		cron TEXT NOT NULL,
 		label TEXT DEFAULT '',
@@ -270,6 +271,7 @@ func (d *DB) migrate() error {
 		"ALTER TABLE volume_snapshots ADD COLUMN remote_status TEXT DEFAULT '';",
 		"ALTER TABLE volume_snapshots ADD COLUMN remote_error TEXT DEFAULT '';",
 		"ALTER TABLE volume_schedules ADD COLUMN destination_id TEXT DEFAULT '';",
+		"ALTER TABLE volume_schedules ADD COLUMN service_id TEXT DEFAULT '';",
 		"CREATE TABLE IF NOT EXISTS backup_destinations (" +
 			" id TEXT PRIMARY KEY," +
 			" name TEXT NOT NULL," +

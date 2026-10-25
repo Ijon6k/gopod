@@ -54,3 +54,13 @@ export interface VolumeBackupSchedule {
 	/** Optional S3-compatible mirror; empty = local-only snapshots. */
 	destinationId?: string;
 }
+
+export interface DatabaseDumpRequest {
+	projectId: string;
+	serviceId: string;
+	engine: string;
+	database?: string;
+	username?: string;
+	password?: string;
+	destinationId?: string;
+}

@@ -47,6 +47,7 @@ func setupTestStorageDB(t *testing.T) (*sql.DB, func()) {
 	CREATE TABLE volume_schedules (
 		id TEXT PRIMARY KEY,
 		project_id TEXT NOT NULL,
+		service_id TEXT DEFAULT '',
 		volume_name TEXT NOT NULL,
 		cron TEXT NOT NULL,
 		label TEXT DEFAULT '',

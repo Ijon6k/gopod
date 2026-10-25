@@ -96,10 +96,10 @@ func (r *SQLiteRepository) ListSchedules(ctx context.Context, projectID string) 
 	var query string
 	var args []interface{}
 	if projectID != "" {
-		query = "SELECT id, project_id, volume_name, cron, label, retention_count, enabled, last_run, COALESCE(destination_id,''), created_at FROM volume_schedules WHERE project_id = ? ORDER BY created_at DESC"
+		query = "SELECT id, project_id, COALESCE(service_id,''), volume_name, cron, label, retention_count, enabled, last_run, COALESCE(destination_id,''), created_at FROM volume_schedules WHERE project_id = ? ORDER BY created_at DESC"
 		args = append(args, projectID)
 	} else {
-		query = "SELECT id, project_id, volume_name, cron, label, retention_count, enabled, last_run, COALESCE(destination_id,''), created_at FROM volume_schedules ORDER BY created_at DESC"
+		query = "SELECT id, project_id, COALESCE(service_id,''), volume_name, cron, label, retention_count, enabled, last_run, COALESCE(destination_id,''), created_at FROM volume_schedules ORDER BY created_at DESC"
 	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -111,7 +111,7 @@ func (r *SQLiteRepository) ListSchedules(ctx context.Context, projectID string) 
 	var list []VolumeSchedule
 	for rows.Next() {
 		var s VolumeSchedule
-		if err := rows.Scan(&s.ID, &s.ProjectID, &s.VolumeName, &s.Cron, &s.Label, &s.RetentionCount, &s.Enabled, &s.LastRun, &s.DestinationID, &s.CreatedAt); err != nil {
+		if err := rows.Scan(&s.ID, &s.ProjectID, &s.ServiceID, &s.VolumeName, &s.Cron, &s.Label, &s.RetentionCount, &s.Enabled, &s.LastRun, &s.DestinationID, &s.CreatedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, s)
@@ -125,8 +125,8 @@ func (r *SQLiteRepository) ListSchedules(ctx context.Context, projectID string) 
 func (r *SQLiteRepository) GetSchedule(ctx context.Context, id string) (*VolumeSchedule, error) {
 	var s VolumeSchedule
 	err := r.db.QueryRowContext(ctx,
-		"SELECT id, project_id, volume_name, cron, label, retention_count, enabled, last_run, COALESCE(destination_id,''), created_at FROM volume_schedules WHERE id = ?", id).
-		Scan(&s.ID, &s.ProjectID, &s.VolumeName, &s.Cron, &s.Label, &s.RetentionCount, &s.Enabled, &s.LastRun, &s.DestinationID, &s.CreatedAt)
+		"SELECT id, project_id, COALESCE(service_id,''), volume_name, cron, label, retention_count, enabled, last_run, COALESCE(destination_id,''), created_at FROM volume_schedules WHERE id = ?", id).
+		Scan(&s.ID, &s.ProjectID, &s.ServiceID, &s.VolumeName, &s.Cron, &s.Label, &s.RetentionCount, &s.Enabled, &s.LastRun, &s.DestinationID, &s.CreatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -138,9 +138,9 @@ func (r *SQLiteRepository) GetSchedule(ctx context.Context, id string) (*VolumeS
 
 func (r *SQLiteRepository) CreateSchedule(ctx context.Context, s VolumeSchedule) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO volume_schedules (id, project_id, volume_name, cron, label, retention_count, enabled, destination_id)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE(?, ''))`,
-		s.ID, s.ProjectID, s.VolumeName, s.Cron, s.Label, s.RetentionCount, s.Enabled, nullableString(s.DestinationID),
+		`INSERT INTO volume_schedules (id, project_id, service_id, volume_name, cron, label, retention_count, enabled, destination_id)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, ''))`,
+		s.ID, s.ProjectID, nullableString(s.ServiceID), s.VolumeName, s.Cron, s.Label, s.RetentionCount, s.Enabled, nullableString(s.DestinationID),
 	)
 	return err
 }
@@ -148,9 +148,9 @@ func (r *SQLiteRepository) CreateSchedule(ctx context.Context, s VolumeSchedule)
 func (r *SQLiteRepository) UpdateSchedule(ctx context.Context, s VolumeSchedule) error {
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE volume_schedules SET
-			enabled = ?, cron = ?, label = ?, retention_count = ?, destination_id = COALESCE(?, destination_id)
+			enabled = ?, cron = ?, label = ?, retention_count = ?, destination_id = COALESCE(?, destination_id), service_id = COALESCE(?, service_id)
 		 WHERE id = ?`,
-		s.Enabled, s.Cron, s.Label, s.RetentionCount, nullableString(s.DestinationID), s.ID,
+		s.Enabled, s.Cron, s.Label, s.RetentionCount, nullableString(s.DestinationID), nullableString(s.ServiceID), s.ID,
 	)
 	return err
 }

@@ -52,6 +52,7 @@ type BackupDestination struct {
 type VolumeSchedule struct {
 	ID             string     `json:"id"`
 	ProjectID      string     `json:"projectId"`
+	ServiceID      string     `json:"serviceId,omitempty"`
 	VolumeName     string     `json:"volumeName"`
 	Cron           string     `json:"cron"`
 	Label          string     `json:"label"`

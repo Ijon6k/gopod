@@ -400,8 +400,17 @@ export class DataStore {
 	getProjectVolumeSchedules(projectId: string) {
 		return this.storageStore.getProjectVolumeSchedules(projectId);
 	}
+	getServiceVolumeSnapshots(serviceId: string) {
+		return this.storageStore.getServiceVolumeSnapshots(serviceId);
+	}
+	getServiceVolumeSchedules(serviceId: string) {
+		return this.storageStore.getServiceVolumeSchedules(serviceId);
+	}
 	createVolumeSnapshot(volumeName: string, projectId: string, serviceId: string) {
 		return this.storageStore.createVolumeSnapshot(volumeName, projectId, serviceId);
+	}
+	createDatabaseDump(req: import('$lib/types').DatabaseDumpRequest) {
+		return this.storageStore.createDatabaseDump(req);
 	}
 	deleteVolumeSnapshot(id: string) {
 		return this.storageStore.deleteVolumeSnapshot(id);
@@ -417,6 +426,7 @@ export class DataStore {
 	}
 	createVolumeSchedule(input: {
 		projectId: string;
+		serviceId?: string;
 		volumeName: string;
 		cron: string;
 		label?: string;

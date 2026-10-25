@@ -4,7 +4,7 @@
 	import { ConfirmDialog, PageHeader, Tabs } from '$lib/components/ui';
 	import { useKumoToastManager } from 'kumo-svelte';
 	import { dataStore } from '$lib/stores/data.svelte';
-	import { engineLabel } from '$lib/utils/engine';
+	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 	import ContainersTab from '$lib/components/features/runtime/ContainersTab.svelte';
 	import QuadletsTab from '$lib/components/features/runtime/QuadletsTab.svelte';
 	import PodsTab from '$lib/components/features/runtime/PodsTab.svelte';
@@ -21,6 +21,7 @@
 
 	let activeTab = $derived(page.params.tab ?? 'containers');
 	let engineName = $derived(engineLabel(dataStore.server));
+	let engineVersion = $derived(engineVersionLabel(dataStore.server));
 
 	// Layout boot fills the arrays once; here only correct staleness beyond the
 	// TTL window. Live per-container samples then arrive from the shared
@@ -66,11 +67,27 @@
 	<PageHeader
 		title={engineName}
 		subtitle="Containers, pods, images, volumes, and networks, straight from the host engine."
-	/>
+	>
+		{#snippet meta()}
+			{#if engineVersion}
+				<span
+					class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-muted)] select-none"
+					title="Container engine version"
+				>
+					v{engineVersion}
+				</span>
+			{/if}
+		{/snippet}
+	</PageHeader>
 	<Tabs {tabs} bind:active={activeTab} onchange={onTabChange} />
 
 	{#if activeTab === 'containers'}
-		<ContainersTab rows={containers} loading={isRuntimeLoading} {actions} onViewLogs={(c) => (logsContainer = c)} />
+		<ContainersTab
+			rows={containers}
+			loading={isRuntimeLoading}
+			{actions}
+			onViewLogs={(c) => (logsContainer = c)}
+		/>
 	{:else if activeTab === 'quadlets'}
 		<QuadletsTab
 			rows={quadlets}

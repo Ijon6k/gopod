@@ -1,8 +1,11 @@
 <script lang="ts">
-	import { Sidebar as KumoSidebar, useSidebar } from 'kumo-svelte';
+	import { Sidebar as KumoSidebar, useSidebar, DropdownMenu } from 'kumo-svelte';
 	import { page } from '$app/state';
+	import { goto } from '$app/navigation';
 	import { dataStore } from '$lib/stores/data.svelte';
-	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
+	import { authStore } from '$lib/stores/auth.svelte';
+	import { engineLabel } from '$lib/utils/engine';
+	import { cn } from '$lib/utils/cn';
 	import {
 		SquaresFour,
 		FolderOpen,
@@ -13,15 +16,19 @@
 		ChartBar,
 		ShareNetwork,
 		ClockCounterClockwise,
-		GearSix
+		GearSix,
+		SignOut,
+		CaretDown
 	} from 'phosphor-svelte';
 
-	// Engine identity drives naming everywhere: "Podman" on podman hosts,
-	// "Docker" on docker hosts, "Runtime" until system info arrives.
+	// Engine identity drives naming: "Podman" on podman hosts, "Docker" on
+	// docker hosts, "Runtime" until system info arrives.
 	let engineName = $derived(engineLabel(dataStore.server));
-	let engineVersion = $derived(engineVersionLabel(dataStore.server));
-	let serverHostname = $derived(dataStore.server?.hostname ?? 'cpx41-edge');
 	const sidebar = useSidebar();
+
+	// Session profile, mirrored in the sidebar footer.
+	let userName = $derived(authStore.user?.name || 'Administrator');
+	let userInitial = $derived((authStore.user?.name || 'A').charAt(0).toUpperCase());
 
 	function isActive(path: string): boolean {
 		const currentPath = page.url.pathname;
@@ -34,46 +41,36 @@
 	// user-controlled and must survive navigation), only dismissed when the
 	// mobile drawer is actually open on an actual mobile viewport.
 	$effect(() => {
-		page.url.pathname;
+		// Reactive read keeps this effect subscribed to route changes.
+		const _pathname = page.url.pathname;
 		if (!sidebar.isMobile || !sidebar.openMobile) return;
 		sidebar.setOpenMobile(false);
 	});
 </script>
 
 <KumoSidebar>
-	<!-- Header: GOPOD Brand & Collapse Trigger (Top-Right) -->
+	<!-- Header: GOPOD Logo + Collapse Trigger (Top-Right) -->
 	<KumoSidebar.Header
 		class="flex h-12 items-center justify-between border-b border-[var(--border)] px-3"
 	>
 		{#if sidebar.open}
-			<!-- Expanded State: Logo + Title on left, Collapse Trigger on right -->
+			<!-- Expanded State: Logo Icon + Title on left, Collapse Trigger on right -->
 			<a
 				href="/"
-				class="group text-decoration-none flex min-w-0 cursor-pointer items-center gap-2.5 overflow-hidden"
+				class="group text-decoration-none flex min-w-0 cursor-pointer items-center gap-2 overflow-hidden"
 				title="GOPOD Dashboard"
 			>
-				<div
-					class="flex h-6 w-6 shrink-0 items-center justify-center rounded-[5px] bg-[var(--accent)] text-white shadow-xs"
+				<img
+					src="/logo.png"
+					alt=""
+					draggable="false"
+					class="h-7 w-7 shrink-0 rounded-md select-none"
+				/>
+				<span
+					class="truncate text-sm leading-tight font-semibold tracking-normal text-[var(--text-primary)]"
 				>
-					<svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-						<path
-							d="M7 1L12.5 4V10L7 13L1.5 10V4L7 1Z"
-							stroke="currentColor"
-							stroke-width="1.6"
-							stroke-linejoin="round"
-						/>
-					</svg>
-				</div>
-				<div class="flex min-w-0 flex-col">
-					<span
-						class="truncate text-sm leading-tight font-semibold tracking-normal text-[var(--text-primary)]"
-					>
-						GOPOD
-					</span>
-					<span class="truncate font-mono text-[10px] leading-tight text-[var(--text-tertiary)]">
-						{engineName} v{engineVersion}
-					</span>
-				</div>
+					GOPOD
+				</span>
 			</a>
 
 			<KumoSidebar.Trigger
@@ -85,22 +82,16 @@
 			<button
 				type="button"
 				onclick={() => sidebar.toggleSidebar()}
-				class="mx-auto flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-0 outline-none hover:bg-[var(--bg-hover)]"
+				class="mx-auto flex h-9 w-9 cursor-pointer items-center justify-center rounded-lg border-0 bg-transparent p-0 outline-none hover:bg-[var(--bg-hover)]"
 				title="Expand sidebar"
 				aria-label="Expand sidebar"
 			>
-				<div
-					class="flex h-6 w-6 items-center justify-center rounded-[5px] bg-[var(--accent)] text-white shadow-xs"
-				>
-					<svg width="12" height="12" viewBox="0 0 14 14" fill="none">
-						<path
-							d="M7 1L12.5 4V10L7 13L1.5 10V4L7 1Z"
-							stroke="currentColor"
-							stroke-width="1.6"
-							stroke-linejoin="round"
-						/>
-					</svg>
-				</div>
+				<img
+					src="/logo.png"
+					alt=""
+					draggable="false"
+					class="h-7 w-7 shrink-0 rounded-md select-none"
+				/>
 			</button>
 		{/if}
 	</KumoSidebar.Header>
@@ -233,13 +224,57 @@
 		</KumoSidebar.Group>
 	</KumoSidebar.Content>
 
-	<!-- Footer: Server status indicator -->
-	<KumoSidebar.Footer
-		class="flex items-center justify-center border-t border-[var(--border)] px-3 group-not-data-[state=collapsed]/sidebar:justify-start"
-	>
-		<div class="flex items-center gap-1.5 font-mono text-[11px] text-[var(--text-muted)]">
-			<span class="inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--status-green)]"></span>
-			<span class="truncate group-data-[state=collapsed]/sidebar:hidden">{serverHostname}</span>
-		</div>
+	<!-- Footer: Account Profile -->
+	<KumoSidebar.Footer class="flex flex-col items-center border-t border-[var(--border)] px-2 py-2">
+		<DropdownMenu>
+			<DropdownMenu.Trigger
+				title="Account profile"
+				class={cn(
+					'flex w-full cursor-pointer items-center gap-2 rounded-md border-0 bg-transparent',
+					'p-1.5 outline-none hover:bg-[var(--bg-hover)]',
+					'group-not-data-[state=collapsed]/sidebar:justify-start',
+					'group-data-[state=collapsed]/sidebar:justify-center'
+				)}
+			>
+				<div
+					class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[var(--accent-muted)] text-[11px] font-semibold text-[var(--accent)]"
+				>
+					{userInitial}
+				</div>
+				<span
+					class="min-w-0 flex-1 truncate text-left text-xs font-medium text-[var(--text-primary)] group-data-[state=collapsed]/sidebar:hidden"
+				>
+					{userName}
+				</span>
+				<CaretDown
+					size={11}
+					class="shrink-0 text-[var(--text-tertiary)] group-data-[state=collapsed]/sidebar:hidden"
+				/>
+			</DropdownMenu.Trigger>
+			<DropdownMenu.Content class="w-52" side="top" align="start">
+				<div class="mb-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
+					<p class="truncate text-xs font-semibold text-[var(--text-primary)]">
+						{userName}
+					</p>
+					<p class="truncate text-[11px] text-[var(--text-tertiary)]">
+						{authStore.user?.email || 'admin@gopod.dev'}
+					</p>
+				</div>
+				<DropdownMenu.Item onclick={() => goto('/settings')} icon={GearSix}>
+					<span class="text-xs">Settings</span>
+				</DropdownMenu.Item>
+				<DropdownMenu.Separator />
+				<DropdownMenu.Item
+					variant="danger"
+					icon={SignOut}
+					onclick={async () => {
+						await authStore.logout();
+						goto('/login');
+					}}
+				>
+					<span class="text-xs">Sign out</span>
+				</DropdownMenu.Item>
+			</DropdownMenu.Content>
+		</DropdownMenu>
 	</KumoSidebar.Footer>
 </KumoSidebar>

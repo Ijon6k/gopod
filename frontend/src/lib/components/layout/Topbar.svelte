@@ -4,14 +4,11 @@
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 	import { projects, services } from '$lib/data';
-	import { dataStore } from '$lib/stores/data.svelte';
-	import { authStore } from '$lib/stores/auth.svelte';
-	import { engineLabel, engineVersionLabel } from '$lib/utils/engine';
 	import { ui } from '$lib/stores/ui.svelte';
 	import { DropdownMenu, useSidebar } from 'kumo-svelte';
 	import { Kbd } from '$lib/components/ui';
 	import CommandPaletteModal from './CommandPaletteModal.svelte';
-	import { MagnifyingGlass, Plus, CaretDown, Sun, Moon, GearSix, SignOut, List } from 'phosphor-svelte';
+	import { MagnifyingGlass, Plus, CaretDown, Sun, Moon, List } from 'phosphor-svelte';
 
 	let openCommandPalette = $state(false);
 	let isMac = $state(false);
@@ -74,11 +71,6 @@
 	let projectServices = $derived(
 		crumbs.project ? services.filter((s) => s.projectId === crumbs.project?.id) : []
 	);
-
-	let podmanStatus = $derived(dataStore.server?.status ?? 'online');
-	// Engine-aware pill: mirrors the sidebar naming (Podman | Docker | Runtime).
-	let engineName = $derived(engineLabel(dataStore.server));
-	let engineVersion = $derived(engineVersionLabel(dataStore.server) || '–');
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -186,23 +178,8 @@
 		</nav>
 	</div>
 
-	<!-- Right section: Quick Search (Cmd+K), Engine Status, Theme Toggle & User Profile -->
+	<!-- Right section: Quick Search (Cmd+K), Theme Toggle & Profile-free layout -->
 	<div class="flex items-center gap-2">
-		<!-- Engine Status Pill Badge -->
-		<div
-			class="hidden shrink-0 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] px-2 py-0.5 font-mono text-[11px] text-[var(--text-secondary)] select-none lg:flex"
-			title="Container engine status"
-		>
-			<span
-				class={cn(
-					'h-1.5 w-1.5 rounded-full',
-					podmanStatus === 'online' ? 'bg-[var(--status-green)]' : 'bg-[var(--status-red)]'
-				)}
-			></span>
-			<span class="font-medium text-[var(--text-primary)]">{engineName}</span>
-			<span class="text-[var(--text-muted)]">v{engineVersion}</span>
-		</div>
-
 		<!-- Unified Search Bar & Command Palette Trigger (Cmd+K / Ctrl+K) -->
 		<button
 			type="button"
@@ -239,50 +216,6 @@
 				<Moon size={14} />
 			{/if}
 		</button>
-
-		<!-- User Profile Dropdown using Kumo DropdownMenu -->
-		<DropdownMenu>
-			<DropdownMenu.Trigger
-				class="flex cursor-pointer items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--bg-surface)] p-0.5 pr-1.5 outline-none hover:border-[var(--accent)]"
-				title="Account profile"
-			>
-				<div
-					class="flex h-6 w-6 items-center justify-center rounded-full bg-[var(--accent-muted)] text-[11px] font-semibold text-[var(--accent)]"
-				>
-					{authStore.user?.name ? authStore.user.name.charAt(0).toUpperCase() : 'A'}
-				</div>
-				<span
-					class="hidden max-w-[80px] truncate text-xs font-medium text-[var(--text-primary)] sm:inline"
-				>
-					{authStore.user?.name || 'Admin'}
-				</span>
-				<CaretDown size={10} class="text-[var(--text-tertiary)]" />
-			</DropdownMenu.Trigger>
-			<DropdownMenu.Content class="w-52" align="end">
-				<div class="mb-1 border-b border-[var(--border-subtle)] px-2 py-1.5">
-					<p class="truncate text-xs font-semibold text-[var(--text-primary)]">
-						{authStore.user?.name || 'Administrator'}
-					</p>
-					<p class="truncate text-[11px] text-[var(--text-tertiary)]">
-						{authStore.user?.email || 'admin@gopod.dev'}
-					</p>
-				</div>
-				<DropdownMenu.Item onclick={() => goto('/settings')} icon={GearSix}>
-					<span class="text-xs">Settings</span>
-				</DropdownMenu.Item>
-				<DropdownMenu.Separator />
-				<DropdownMenu.Item
-					variant="danger"
-					icon={SignOut}
-					onclick={async () => {
-						await authStore.logout();
-						goto('/login');
-					}}
-				>
-					<span class="text-xs">Sign out</span>
-				</DropdownMenu.Item>
-			</DropdownMenu.Content>
-		</DropdownMenu>
 	</div>
 </header>
 

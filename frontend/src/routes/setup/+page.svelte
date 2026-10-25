@@ -64,11 +64,12 @@
 	<!-- Branding / Header -->
 	<div class="mb-6 text-center">
 		<div class="mb-3 inline-flex items-center justify-center gap-2">
-			<div
-				class="flex h-10 w-10 items-center justify-center rounded-xl border border-[var(--accent)]/30 bg-[var(--accent-muted)] text-[var(--accent)] shadow-xs"
-			>
-				<ShieldCheck size={24} weight="duotone" />
-			</div>
+			<img
+				src="/logo.png"
+				alt="GOPOD logo"
+				draggable="false"
+				class="h-10 w-10 rounded-xl shadow-xs select-none"
+			/>
 			<div class="text-left">
 				<div class="flex items-center gap-1.5">
 					<span class="font-mono text-lg font-semibold text-[var(--text-primary)]">GOPOD</span>

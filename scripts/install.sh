@@ -1003,16 +1003,18 @@ task_verify_readiness() {
 }
 run_task "Verifying service readiness & health check" task_verify_readiness
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Success Summary
-# ─────────────────────────────────────────────────────────────────────────────
-
-SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+# Detect Public IP for VPS or fallback to local IP
+PUBLIC_IP=$(curl -4s --max-time 2 https://api.ipify.org 2>/dev/null || curl -4s --max-time 2 https://ifconfig.me 2>/dev/null || true)
+if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    SERVER_IP="$PUBLIC_IP"
+else
+    SERVER_IP=$(hostname -I 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
+fi
 
 echo -e "\n${GREEN}${BOLD}=============================================================="
 echo -e "          GOPOD Installation Completed Successfully!          "
 echo -e "==============================================================${NC}"
-echo -e " Web Dashboard : ${BOLD}http://${SERVER_IP}:${GOPOD_PORT}${NC} (or http://localhost:${GOPOD_PORT})"
+echo -e " Web Dashboard : ${BOLD}http://${SERVER_IP}:${GOPOD_PORT}${NC}$([ "$SERVER_IP" != "127.0.0.1" ] && echo -e " ${DIM}(or http://localhost:${GOPOD_PORT})${NC}" || true)"
 echo -e " Ingress URL   : ${BOLD}http://${SERVER_IP}:${CADDY_HTTP_PORT}${NC}"
 echo -e " Release Tag   : ${CYAN}${DISPLAY_TAG}${NC} (${GOPOD_IMAGE})"
 echo -e " Running Mode  : ${BOLD}${RUN_MODE}${NC} (Auto-restart enabled)"

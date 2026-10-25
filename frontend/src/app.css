@@ -313,6 +313,31 @@ html.light {
 }
 
 /* ──────────────────────────────────────────────
+   Form Placeholder Colors
+   ──────────────────────────────────────────────
+
+   Unify every placeholder surface on the GOPOD text hierarchy:
+   - Kumo Input/Textarea ship `.kumo-input-placeholder::placeholder`,
+     Kumo Select ships `.text-kumo-placeholder`, both fed by the internal
+     `--text-color-kumo-placeholder` token (Tailwind neutral grays).
+   - Raw inputs/textareas inherit Tailwind preflight's 50%-currentColor
+     placeholder, which reads as near-white on dark surfaces.
+   Both now resolve to the same muted `--text-tertiary` tone as the
+   search bar placeholders, so placeholders can never be mistaken for
+   pre-filled values. Declared unlayered so it wins over Kumo's
+   layered token declarations in both dark and light modes.
+   ────────────────────────────────────────────── */
+
+:root {
+	--text-color-kumo-placeholder: var(--text-tertiary);
+}
+
+input::placeholder,
+textarea::placeholder {
+	color: var(--text-tertiary);
+}
+
+/* ──────────────────────────────────────────────
    Base Resets
    ────────────────────────────────────────────── */
 

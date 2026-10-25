@@ -232,10 +232,13 @@
 		parsedLogs = [];
 	}
 
+	// Return the fetch promise so the poller's in-flight latch engages: a
+	// dropped result would let a second tick overlap a slow request, and the
+	// later (older) response could clobber the fresher one.
 	const logPoller = createPoller(
 		3000,
 		() => {
-			if (follow) fetchLogs();
+			if (follow) return fetchLogs();
 		},
 		{ pauseWhenHidden: true }
 	);

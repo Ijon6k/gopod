@@ -25,9 +25,10 @@
 	}: Props = $props();
 
 	let projectOverride = $state<string | null>(null);
-	let selectedProjectId = $derived(
-		projectOverride ?? (projectId || (projects[0]?.id ?? 'aerochat'))
-	);
+	// No fabricated project id: on a fresh install with zero projects there is
+	// no valid target, so the form stays disabled until the operator creates
+	// one. A hardcoded fallback id would fail the projects FK at request time.
+	let selectedProjectId = $derived(projectOverride ?? (projectId || projects[0]?.id || ''));
 	let selectedType = $state<WorkloadChoice>('application');
 
 	$effect(() => {
@@ -45,7 +46,7 @@
 	let isCreating = $state(false);
 	let createError = $state<string | null>(null);
 
-	let isFormValid = $derived(serviceName.trim().length > 0);
+	let isFormValid = $derived(serviceName.trim().length > 0 && selectedProjectId !== '');
 
 	function slugify(text: string) {
 		return text
@@ -267,6 +268,15 @@ WantedBy=default.target`;
 				</div>
 			{/if}
 
+			{#if !projectId && projects.length === 0}
+				<Banner variant="alert" size="sm">
+					<div class="text-xs">
+						<span class="font-medium">No project available:</span>
+						<span>create a project before adding a service.</span>
+					</div>
+				</Banner>
+			{/if}
+
 			<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
 
 			<!-- Details card -->
@@ -405,6 +415,15 @@ WantedBy=default.target`;
 		>
 			<!-- Vertical Workload Type Selector -->
 			<WorkloadTypeSelector selected={selectedType} onselect={(t) => (selectedType = t)} />
+
+			{#if !projectId && projects.length === 0}
+				<Banner variant="alert" size="sm">
+					<div class="text-xs">
+						<span class="font-medium">No project available:</span>
+						<span>create a project before adding a service.</span>
+					</div>
+				</Banner>
+			{/if}
 
 			{#if selectedType === 'compose'}
 				<div

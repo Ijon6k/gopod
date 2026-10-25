@@ -1,5 +1,6 @@
 import type { Project, Service, Deployment, Domain } from '$lib/types';
 import { api } from '$lib/api';
+import { formatTimeAgo } from '$lib/utils/format';
 
 export class ProjectsDomainStore {
 	projects = $state<Project[]>([]);
@@ -297,7 +298,10 @@ export class ProjectsDomainStore {
 					branch: (res as any).branch || svc?.branch || 'main',
 					status: (res as any).status || 'building',
 					duration: (res as any).duration || 'Running…',
-					timeAgo: 'Just now',
+					// Derived from the real backend timestamp instead of a
+					// fabricated constant ('Just now' froze on posts from hours
+					// ago when the table re-rendered without a refetch).
+					timeAgo: formatTimeAgo((res as any).startedAt || Date.now()),
 					startedAt: (res as any).startedAt || new Date().toISOString(),
 					finishedAt: (res as any).finishedAt || '',
 					trigger: (res as any).trigger || trigger,
@@ -329,7 +333,10 @@ export class ProjectsDomainStore {
 	startDeploymentWatcher(serviceId: string, depId: string) {
 		this.deploymentWatchers.get(serviceId)?.();
 		let attempts = 0;
-		let pollTimer: ReturnType<typeof setInterval>;
+		// Assigned exactly once below. The pre-initialized `undefined` records
+		// that stop() may run before the interval exists: a replaced watcher's
+		// stopper owns its own timer, so the early clearInterval is a no-op.
+		let pollTimer: ReturnType<typeof setInterval> | undefined = undefined;
 		let inFlight = false;
 		// Change detection: only write state when the payload actually moved.
 		// Every 1.5s otherwise re-derived every consumer of the arrays.
@@ -373,6 +380,10 @@ export class ProjectsDomainStore {
 							dep.commitMessage = updatedDep.commitMessage || dep.commitMessage;
 							dep.version = updatedDep.version || dep.version;
 							dep.image = updatedDep.image || dep.image;
+							// Re-age the relative label at exactly the moments the row
+							// content changes, so terminal states never render the
+							// ingest-time "When" hours later.
+							dep.timeAgo = formatTimeAgo(updatedDep.startedAt || dep.startedAt);
 						}
 					}
 					if (updatedDep.status === 'failed' || updatedDep.status === 'success') {
@@ -550,7 +561,9 @@ export class ProjectsDomainStore {
 								...dep,
 								commit: dep.commit || dep.commitHash || '',
 								branch: dep.branch || svc?.branch || 'main',
-								timeAgo: dep.startedAt ? 'Recently' : 'Just now',
+								// Derived from the real backend timestamp; the old
+								// code stamped a constant 'Recently' on every row.
+								timeAgo: dep.startedAt ? formatTimeAgo(dep.startedAt) : '',
 								projectName:
 									proj?.name || dep.projectName || svc?.projectName || targetProjId || 'Default',
 								serviceName: svc?.name || dep.serviceName || dep.serviceId || 'Service'

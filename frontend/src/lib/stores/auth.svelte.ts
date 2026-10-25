@@ -88,6 +88,22 @@ class AuthStore {
 		}
 	}
 
+	// sessionExpired tears down local session state after the API reported a
+	// 401 on a protected route. It deliberately does NOT call the backend
+	// logout endpoint: the session is already dead, another round-trip would
+	// just 401 again. Clearing isAuthenticated flips the layout routeGuard,
+	// which redirects to /login and unmounts the data-hungry views.
+	sessionExpired(): void {
+		// Stop store-owned background work (deploy pollers, streams) first so
+		// no queued tick fires another 401 after the state reset.
+		dataStore.cleanup();
+		if (typeof window !== 'undefined') {
+			localStorage.removeItem('gopod_token');
+		}
+		this.user = null;
+		this.isAuthenticated = false;
+	}
+
 	clearError() {
 		this.error = null;
 	}

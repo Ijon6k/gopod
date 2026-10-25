@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { DataTable, StatusBadge } from '$lib/components/ui';
+	import { formatTimeAgo } from '$lib/utils/format';
 	import type { Project, Deployment } from '$lib/types';
 
 	interface Props {
@@ -28,7 +29,7 @@
 			{ key: 'commit', label: 'Commit', mono: true },
 			{ key: 'status', label: 'Status', render: depStatusSnippet },
 			{ key: 'duration', label: 'Duration' },
-			{ key: 'timeAgo', label: 'When' }
+			{ key: 'timeAgo', label: 'When', render: depWhenSnippet }
 		]}
 		rows={displayedDeployments}
 		keyExtractor={(d) => d.id}
@@ -40,4 +41,10 @@
 
 {#snippet depStatusSnippet(row: Deployment)}
 	<StatusBadge status={row.status} size="sm" />
+{/snippet}
+
+<!-- Live-derived "when" column; the stored timeAgo string would freeze at the
+	last fetch otherwise. -->
+{#snippet depWhenSnippet(row: Deployment)}
+	{formatTimeAgo(row.startedAt)}
 {/snippet}

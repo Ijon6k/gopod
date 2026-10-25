@@ -68,6 +68,12 @@ export class TelemetryDomainStore {
 		let restartAttempt = 0;
 		const open = () => {
 			this.isStreaming = true;
+			// Every (re)connection re-arms the REST watchdog. Starting the
+			// watchdog only at startStreamingStats() was not enough: the error
+			// path calls stopStreamingStats(), which stops the watchdog
+			// alongside the stream, so the first reconnect would have left the
+			// UI blind to a silently wedged SSE forever.
+			this.startWatchdog();
 			this.stopStream = api.system.streamStats(
 				(data) => {
 					restartAttempt = 0;
@@ -119,8 +125,6 @@ export class TelemetryDomainStore {
 			);
 		};
 
-		this.startWatchdog();
-
 		try {
 			open();
 		} catch {
@@ -130,7 +134,8 @@ export class TelemetryDomainStore {
 
 	// Every 3s: if no system sample arrived through the stream for 8s
 	// (wedged SSE, dropped connection without error), poll the REST endpoint
-	// so the rolling buffers never go blind.
+	// so the rolling buffers never go blind. startWatchdog is self-clearing —
+	// it may be called on every (re)open without leaking intervals.
 	private startWatchdog() {
 		this.stopWatchdog();
 		this.watchdog = setInterval(() => {

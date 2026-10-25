@@ -64,14 +64,35 @@
 		setTimeout(() => (isRefreshing = false), 500);
 	}
 
+	// Stream ownership: a single $effect keyed on refreshRate + tab visibility
+	// owns the whole lifecycle. Every re-run (mount, rate change, visibility)
+	// stops the previous stream before starting the current one, so the
+	// consumer refcount stays balanced — earlier start/stop pairs scattered
+	// across onMount / handlers leaked the SSE connection permanently: change
+	// the rate three times and the connection outlived the page forever.
+	let tabHidden = $state(false);
+	$effect(() => {
+		if (refreshRate === 'paused' || tabHidden) {
+			// No ownership action needed: the teardown of the previous run
+			// already released the stream seat.
+			return undefined;
+		}
+		dataStore.startStreamingStats();
+		return () => dataStore.stopStreamingStats();
+	});
+
 	onMount(() => {
 		// When monitoring page is opened, ensure complete projects & service topology is loaded.
 		// TTL-guarded: the layout already fetched everything on boot.
 		dataStore.fetchInitialData(25_000);
 
-		if (refreshRate !== 'paused') {
-			dataStore.startStreamingStats();
-		}
+		// Visibility is not a reactive source, so it feeds the stream effect
+		// through a tracked $state flag (start/stop stay paired per re-run).
+		const handleVisibilityChange = () => {
+			tabHidden = document.hidden;
+		};
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		tabHidden = document.hidden;
 
 		const secTimer = setInterval(() => {
 			if (refreshRate !== 'paused') {
@@ -79,30 +100,15 @@
 			}
 		}, 1000);
 
-		const handleVisibilityChange = () => {
-			if (document.hidden) {
-				dataStore.stopStreamingStats();
-			} else if (refreshRate !== 'paused') {
-				dataStore.startStreamingStats();
-			}
-		};
-		document.addEventListener('visibilitychange', handleVisibilityChange);
-
 		return () => {
 			// Clean up when user navigates away
 			document.removeEventListener('visibilitychange', handleVisibilityChange);
-			dataStore.stopStreamingStats();
 			clearInterval(secTimer);
 		};
 	});
 
 	function handleRefreshRateChange(val: string) {
 		refreshRate = val as '3s' | '5s' | '15s' | 'paused';
-		if (refreshRate === 'paused') {
-			dataStore.stopStreamingStats();
-		} else {
-			dataStore.startStreamingStats();
-		}
 	}
 </script>
 

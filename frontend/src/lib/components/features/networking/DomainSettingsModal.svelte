@@ -2,7 +2,7 @@
 	import type { Domain } from '$lib/types';
 	import { services, server } from '$lib/data';
 	import { api } from '$lib/api';
-	import { Button, Input, Select, Switch } from '$lib/components/ui';
+	import { Banner, Button, Input, Select, Switch } from '$lib/components/ui';
 	import { parseComposeServices } from '$lib/parsers/compose';
 	import {
 		X,
@@ -43,6 +43,10 @@
 	let basicAuthPass = $state('');
 
 	let selectedService = $derived(services.find((s) => s.id === selectedServiceId));
+	// Edited rules can reference a service that has since been deleted; the
+	// Select then shows a stale entry while Save would silently do nothing.
+	// Surfacing that state beats a dead button.
+	let staleServiceSelected = $derived(selectedServiceId !== '' && !selectedService);
 	// Basic auth is only meaningful with a username and a password. On edit, an
 	// already stored hash allows leaving the password blank (empty = keep).
 	let basicAuthIncomplete = $derived(
@@ -188,6 +192,11 @@
 	function handleSave() {
 		if (!hostname.trim() || !selectedServiceId || basicAuthIncomplete) return;
 		const svc = services.find((s) => s.id === selectedServiceId);
+		// A missing service means stale store data. Posting a rule anyway with a
+		// fabricated project id ('aerochat' was a leftover from a foreign
+		// template) would only fail the projects FK server-side. Bail out —
+		// the caller just re-opens on refreshed data.
+		if (!svc) return;
 
 		let cleanHost = hostname.trim().toLowerCase();
 		cleanHost = cleanHost.replace(/^https?:\/\//, '');
@@ -203,9 +212,9 @@
 		const updated: Domain = {
 			id: domain?.id || crypto.randomUUID(),
 			hostname: cleanHost,
-			projectId: svc?.projectId || 'aerochat',
+			projectId: svc.projectId,
 			serviceId: selectedServiceId,
-			serviceName: svc?.name || 'web',
+			serviceName: svc.name,
 			targetContainer: targetContainer.trim() || undefined,
 			tls,
 			status: 'active',
@@ -326,6 +335,15 @@
 					}))}
 					size="sm"
 				/>
+
+				{#if staleServiceSelected}
+					<Banner variant="alert" size="sm">
+						<div class="text-xs">
+							<span class="font-medium">Target service no longer exists:</span>
+							<span>refresh the services list and pick a workload before saving.</span>
+						</div>
+					</Banner>
+				{/if}
 
 				{#if detectedTargets.length > 0}
 					<Select
@@ -536,7 +554,7 @@
 				<Button
 					variant="primary"
 					size="sm"
-					disabled={!hostname.trim() || !selectedServiceId || basicAuthIncomplete}
+					disabled={!hostname.trim() || !selectedServiceId || !selectedService || basicAuthIncomplete}
 					onclick={handleSave}
 				>
 					Save Domain Configuration

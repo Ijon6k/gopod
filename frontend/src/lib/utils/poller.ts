@@ -37,6 +37,12 @@ export function createPoller(
 		inFlight = true;
 		try {
 			await fn();
+		} catch (e) {
+			// Callbacks now hand over their promise, so a rejecting callback
+			// would otherwise surface as an unhandled rejection from the
+			// interval. Data errors stay the callback's responsibility to
+			// surface in the UI; we only keep the loop alive.
+			console.warn('[poller] tick failed:', e);
 		} finally {
 			inFlight = false;
 		}

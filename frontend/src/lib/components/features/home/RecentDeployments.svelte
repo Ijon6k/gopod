@@ -16,10 +16,24 @@
 	// Latest rollout per service. A service with ten green builds contributes
 	// one row, so this board ranks services that changed rather than repeating
 	// builds of the same service — the full history lives behind "View all".
+	// The source array is grouped per service (service A's whole history, then
+	// service B's, …), not globally chronological, so it must be sorted by
+	// startedAt before the dedupe picks its first-seen row — otherwise the
+	// board shows whichever service was appended first, not the recent ones.
+	// timeKey: missing/unparseable timestamps sort as the oldest entries
+	// (-1) instead of relying on engine-specific `Date.parse('0')` behavior.
+	function timeKey(d: Deployment): number {
+		if (!d.startedAt) return -1;
+		const parsed = Date.parse(d.startedAt);
+		return Number.isNaN(parsed) ? -1 : parsed;
+	}
 	let latest = $derived.by(() => {
+		let sorted = [...deployments].sort(
+			(a, b) => timeKey(b) - timeKey(a)
+		);
 		const seen = new Set<string>();
 		const out: Deployment[] = [];
-		for (const d of deployments) {
+		for (const d of sorted) {
 			const key = d.serviceId || `${d.projectId}-${d.serviceName}`;
 			if (seen.has(key)) continue;
 			seen.add(key);

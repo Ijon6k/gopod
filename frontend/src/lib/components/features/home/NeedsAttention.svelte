@@ -2,7 +2,7 @@
 	import { cn } from '$lib/utils/cn';
 	import { goto } from '$app/navigation';
 	import { Banner, BannerAction, LayerCard } from 'kumo-svelte';
-	import { pluralize } from '$lib/utils/format';
+	import { formatTimeAgo, pluralize } from '$lib/utils/format';
 	import type { Deployment } from '$lib/types';
 
 	interface Props {
@@ -32,7 +32,9 @@
 	function failedDetail(): string {
 		if (failed.length === 1) {
 			const d = failed[0];
-			const when = d.timeAgo || '';
+			// Live-derives so a long-open dashboard does not freeze the "when"
+			// on the value stamped at fetch time.
+			const when = d.startedAt ? formatTimeAgo(d.startedAt) : d.timeAgo || '';
 			return [when, d.version || d.commitHash?.slice(0, 7)].filter(Boolean).join(' · ') || 'Open it for build logs';
 		}
 		return names(failed.map((d) => d.serviceName || d.projectName || d.serviceId));

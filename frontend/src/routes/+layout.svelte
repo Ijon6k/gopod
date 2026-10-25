@@ -5,11 +5,19 @@
 	import { dataStore } from '$lib/stores/data.svelte';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import { api } from '$lib/api';
+	import { setUnauthorizedHandler } from '$lib/api/client';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
 
 	let { children } = $props();
 	let initialCheckDone = $state(false);
+
+	// Session-expiry wiring: the API client funnels the first 401 of a dead
+	// session here (single-flight, auth routes exempted). Clearing the flag is
+	// enough — the routeGuard effect below redirects to /login.
+	setUnauthorizedHandler(() => {
+		authStore.sessionExpired();
+	});
 
 	function routeGuard(initialized: boolean | null, authenticated: boolean, pathname: string) {
 		if (initialized === null) return;
@@ -79,9 +87,20 @@
 	});
 
 	$effect(() => {
-		if (initialCheckDone) {
-			routeGuard(authStore.isInitialized, authStore.isAuthenticated, page.url.pathname);
-		}
+		let lastAuthed = false;
+		$effect(() => {
+			if (initialCheckDone) {
+				const authed = authStore.isAuthenticated;
+				routeGuard(authStore.isInitialized, authed, page.url.pathname);
+				// Every login transition (post-expiry re-login included) re-baselines
+				// the non-system data: this SPA layout never remounts, so a fresh
+				// session would otherwise keep serving the pre-expiry snapshot.
+				if (authed && !lastAuthed) {
+					dataStore.fetchInitialData();
+				}
+				lastAuthed = authed;
+			}
+		});
 	});
 </script>
 

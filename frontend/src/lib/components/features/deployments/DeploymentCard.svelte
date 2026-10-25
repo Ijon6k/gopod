@@ -2,6 +2,7 @@
 	import type { Deployment } from '$lib/types';
 	import { Button, Badge } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
+	import { formatTimeAgo } from '$lib/utils/format';
 	import {
 		Terminal,
 		ArrowCounterClockwise,
@@ -236,7 +237,7 @@
 			<span class="text-kumo-hairline">•</span>
 			<span class="inline-flex items-center gap-1" title={deployment.startedAt}>
 				<Clock size={13} />
-				{deployment.timeAgo}
+				{formatTimeAgo(deployment.startedAt)}
 			</span>
 		</div>
 	</div>

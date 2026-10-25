@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Badge, Banner, Button, Empty, LayerCard, Select, Tabs } from '$lib/components/ui';
 	import { api } from '$lib/api';
 	import { createPoller } from '$lib/utils/poller';
@@ -13,11 +14,12 @@
 	let { services }: Props = $props();
 
 	// Engine tail poller: guarded against overlapping fetches and paused while
-	// the browser tab is hidden.
+	// the browser tab is hidden. The callback returns the fetch promise so the
+	// poller's in-flight latch actually engages.
 	const tailPoller = createPoller(
 		3000,
 		() => {
-			if (tailing && !notAvailable) void fetchEngine(true);
+			if (tailing && !notAvailable) return fetchEngine(true);
 		},
 		{ pauseWhenHidden: true }
 	);
@@ -47,7 +49,12 @@
 		if (!poll) loading = true;
 		error = null;
 		try {
-			const latest = items[0]?.ts;
+			// untrack: reads `items` outside the reactivity context. Inside the
+			// filter-change $effect below this call runs while tracking, and a
+			// tracked `items` read here would register it as an effect
+			// dependency, making `items = incoming...` below re-trigger the
+			// effect and pump the API forever.
+			const latest = untrack(() => items[0]?.ts);
 			const res = await api.engineEvents.list({
 				level: levelFilter !== 'all' ? levelFilter : undefined,
 				serviceId: consoleServiceId !== 'all' ? consoleServiceId : undefined,

@@ -38,12 +38,14 @@ jobs:
         run: go vet ./...
         working-directory: backend
 
-      # NB: not -coverprofile. go1.26.0 dropped the covdata binary from the
-      # distribution, so merging a coverage profile fails with
-      # `go: no such tool "covdata"` on every package. -cover keeps the
-      # per-package percentages in the log without the tool.
+      # Plain race run on purpose: with go1.26.0, ANY -cover flag makes the go
+      # command reach for the covdata binary when handling packages without
+      # test files, and that binary is no longer shipped in the distribution —
+      # the no-test packages abort with `go: no such tool "covdata"` and poison
+      # the exit code even though every test-bearing package passes. Coverage
+      # in CI was dropped (nothing consumed it).
       - name: Test (race enabled; podman E2E suite is env opt-in and skipped here)
-        run: go test -race -cover ./...
+        run: go test -race ./...
         working-directory: backend
 
   frontend:

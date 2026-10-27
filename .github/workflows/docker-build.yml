@@ -15,9 +15,14 @@ permissions:
   contents: read
   packages: write
 
+concurrency:
+  group: docker-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -59,6 +64,8 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64,linux/arm64
+          # PRs only need to prove the build compiles — skip the slow arm64
+          # QEMU build there, but keep multi-arch for real releases.
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

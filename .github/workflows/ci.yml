@@ -1,0 +1,116 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - dev
+  push:
+    branches:
+      - dev
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: Backend — build · vet · test
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go (matches backend/go.mod)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Build
+        run: go build ./...
+        working-directory: backend
+
+      - name: Vet
+        run: go vet ./...
+        working-directory: backend
+
+      - name: Test (race enabled; podman E2E suite is env opt-in and skipped here)
+        run: go test -race -coverprofile=coverage.out ./...
+        working-directory: backend
+
+      - name: Upload coverage artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage.out
+          if-no-files-found: ignore
+
+  frontend:
+    name: Frontend — check · build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies (frozen lockfile)
+        run: bun install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Svelte check (type + template diagnostics)
+        run: bun run check
+        working-directory: frontend
+
+      - name: Production build
+        run: bun run build
+        working-directory: frontend
+
+  # Informational for now: the repo carries pre-existing formatting drift
+  # (gofmt in backend/internal/podman/types.go, prettier in ~42 frontend
+  # files). Once those are swept, remove continue-on-error to make this
+  # job a hard gate.
+  lint:
+    name: Lint (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go (toolchain for gofmt; eslint ts resolution)
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+        working-directory: frontend
+
+      - name: Check Go formatting
+        run: |
+          unformatted=$(gofmt -l backend)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt drift in: $unformatted"
+            exit 1
+          fi
+
+      - name: Prettier + eslint check
+        run: bun run lint
+        working-directory: frontend

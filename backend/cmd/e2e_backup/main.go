@@ -325,6 +325,52 @@ func main() {
 	}
 	fmt.Printf("  ✅ Verified compose stack restored: 'gopod:cluster:status' = %s (MATCH!)\n", recoveredVal)
 
+	// ----------------------------------------------------
+	// SCENARIO 4: GoPod Instance Disaster Recovery (Self-Backup)
+	// ----------------------------------------------------
+	fmt.Println("\n▶ [Scenario 4] GoPod Instance Self-Backup & Key Verification...")
+
+	svc.SetSystemSource(db, tmpDir)
+
+	// 4a. Trigger instance backup
+	sysSnap, err := svc.CreateSystemBackup(ctx, "")
+	if err != nil {
+		fmt.Printf("❌ CreateSystemBackup failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("  • Instance disaster recovery archive generated: %s (%s, %s)\n", sysSnap.ID, sysSnap.Filename, sysSnap.Size)
+
+	// 4b. Verify Key Status
+	keyStatus := svc.GetKeyStatus()
+	if !keyStatus.KeyExists || keyStatus.Fingerprint == "" {
+		fmt.Printf("❌ Key status verification failed: %+v\n", keyStatus)
+		os.Exit(1)
+	}
+	fmt.Printf("  • Master Encryption Key Verified (Algorithm: %s, Fingerprint: sha256:%s)\n", keyStatus.Algorithm, keyStatus.Fingerprint)
+
+	// 4c. Verify archive file on disk
+	sysArchivePath, _, err := svc.GetSnapshotFilePath(ctx, sysSnap.ID)
+	if err != nil {
+		fmt.Printf("❌ Archive file not found via service: %v\n", err)
+		os.Exit(1)
+	}
+	fi, err := os.Stat(sysArchivePath)
+	if err != nil || fi.Size() == 0 {
+		fmt.Printf("❌ Archive file check failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("  • Archive verified on disk (%d bytes).\n", fi.Size())
+
+	// 4d. Test System Backup Schedule Policy
+	sched, err := svc.SaveSystemBackupSchedule(ctx, "0 3 * * *", 14, "", true)
+	if err != nil {
+		fmt.Printf("❌ SaveSystemBackupSchedule failed: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("  • Saved system backup schedule: %s (Retention: %d copies, Enabled: %v)\n", sched.Cron, sched.RetentionCount, sched.Enabled)
+
+	fmt.Println("  ✅ Verified GoPod self-backup engine & master key integrity! (MATCH!)")
+
 	// Cleanup test resources
 	fmt.Println("\n🧹 Cleaning up test containers & volumes...")
 	_, _ = execCmd("podman", "rm", "-f", "test_e2e_app", "test_e2e_pg", "test_e2e_compose_redis")
@@ -333,6 +379,7 @@ func main() {
 	_ = os.Remove(filepath.Join("./data/backups", dumpSnap.Filename))
 	_ = os.Remove(filepath.Join("./data/backups", pgVolSnap.Filename))
 	_ = os.Remove(filepath.Join("./data/backups", redisSnap.Filename))
+	_ = os.Remove(sysArchivePath)
 
 	fmt.Println("\n==================================================")
 	fmt.Println("🎉 ALL E2E SCENARIOS PASSED WITH LIVE CONTAINERS!")

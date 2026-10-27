@@ -37,13 +37,13 @@
 			defaultOpen={true}
 			collapsible="icon"
 			defaultWidth={240}
-			class="h-screen max-h-screen w-screen max-w-full overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)]"
+			class="h-dvh max-h-dvh w-screen max-w-full overflow-hidden bg-[var(--bg-canvas)] text-[var(--text-primary)]"
 		>
 			<!-- Level 2: Left Docked Navigation (Handles desktop rail & mobile drawer) -->
 			<Sidebar />
 
 			<!-- Main Workspace (Edge-to-Edge Natural Flow, No Wrapper Box Clutter) -->
-			<div class="flex h-screen min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+			<div class="flex h-dvh min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 				<!-- Level 1: Global Context - Sticky Docked Topbar -->
 				<Topbar />
 
@@ -51,7 +51,7 @@
 				<main
 					class="min-h-0 w-full flex-1 {isFullBleed
 						? 'overflow-hidden p-0'
-						: 'overflow-x-hidden overflow-y-auto px-4 py-5 md:px-6 md:py-6'}"
+						: 'overflow-x-hidden overflow-y-auto px-4 pt-4 pb-28 md:px-6 md:py-6'}"
 				>
 					{@render children()}
 				</main>

@@ -228,7 +228,7 @@
 	</KumoSidebar.Content>
 
 	<!-- Footer: Account Profile -->
-	<KumoSidebar.Footer class="flex flex-col items-center border-t border-[var(--border)] px-2 py-2">
+	<KumoSidebar.Footer class="flex flex-col items-center border-t border-[var(--border)] px-2 py-2 pb-6 md:pb-2">
 		<DropdownMenu>
 			<DropdownMenu.Trigger
 				title="Account profile"

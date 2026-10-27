@@ -40,13 +40,39 @@ jobs:
 
       # Plain race run on purpose: with go1.26.0, ANY -cover flag makes the go
       # command reach for the covdata binary when handling packages without
-      # test files, and that binary is no longer shipped in the distribution —
-      # the no-test packages abort with `go: no such tool "covdata"` and poison
-      # the exit code even though every test-bearing package passes. Coverage
-      # in CI was dropped (nothing consumed it).
+      # test files, and that binary is no longer shipped in the distribution.
+      # The raw log is tee'd to /tmp; on failure the failing lines are
+      # re-emitted as ::error:: annotations (they render on the public job
+      # page) plus a digest into the run summary, so the failure context is
+      # legible without digging through archived logs.
       - name: Test (race enabled; podman E2E suite is env opt-in and skipped here)
-        run: go test -race ./...
+        id: gotest
+        continue-on-error: true
         working-directory: backend
+        run: set -o pipefail; go test -race ./... 2>&1 | tee /tmp/gotest.log
+
+      - name: Surface test failures (annotations + summary digest)
+        if: steps.gotest.outcome != 'success'
+        working-directory: backend
+        run: |
+          set +e
+          {
+            echo "## go test failure context"
+            echo
+            echo '```'
+            grep -nE '^--- FAIL|^FAIL|^panic|WARNING: DATA RACE|^go:|^#' /tmp/gotest.log | cut -c1-220 | head -40
+            echo
+            echo '- last 180 lines of raw output -'
+            echo
+            tail -180 /tmp/gotest.log | head -c 60000
+            echo
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -E '^--- FAIL|^FAIL|^panic|WARNING: DATA RACE|^go:' /tmp/gotest.log | cut -c1-180 | head -30 | while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            printf '::error::%s\n' "$line"
+          done
+          exit 1
 
   frontend:
     name: Frontend — check · build

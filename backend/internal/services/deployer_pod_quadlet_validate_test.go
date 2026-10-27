@@ -12,6 +12,9 @@ import (
 // writing units systemd silently ignores.
 
 func TestBuildPodQuadletBundlePassesQuadletDryRun(t *testing.T) {
+	if quadletBinary() == "" {
+		t.Skip("quadlet dryrun binary not present; the negative-control assertion needs the real quadlet")
+	}
 	// Negative control: the harness must reject the pre-fix key set, otherwise
 	// this test could pass vacuously.
 	broken := map[string]string{
@@ -41,6 +44,9 @@ func TestBuildPodQuadletBundlePassesQuadletDryRun(t *testing.T) {
 }
 
 func TestGenerateDefaultQuadletContentPassesQuadletDryRun(t *testing.T) {
+	if quadletBinary() == "" {
+		t.Skip("quadlet dryrun binary not present; generator-backed assertions need the real quadlet for full fidelity")
+	}
 	d := NewDeployer(nil, nil, nil, t.TempDir())
 	s := Service{
 		ID:          "svc-multi-1",

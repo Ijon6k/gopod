@@ -256,6 +256,21 @@ func extractDirective(content string, key string) string {
 }
 
 // ValidateQuadletFiles runs official podman quadlet dryrun validation in an isolated directory.
+// quadletBinary locates the host's quadlet generator binary, mirroring the
+// lookup the validator performs; an empty result means dry-run validation is
+// unavailable and only structural (AST) checks apply.
+func quadletBinary() string {
+	for _, candidate := range []string{"/usr/libexec/podman/quadlet", "/usr/lib/podman/quadlet"} {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate
+		}
+	}
+	if path, err := exec.LookPath("quadlet"); err == nil {
+		return path
+	}
+	return ""
+}
+
 func ValidateQuadletFiles(files map[string]string) (bool, string, error) {
 	if len(files) == 0 {
 		return false, "", fmt.Errorf("no Quadlet unit files provided")
@@ -286,15 +301,9 @@ func ValidateQuadletFiles(files map[string]string) (bool, string, error) {
 	}
 
 	// 2. Binary dry-run validator if available
-	quadletBin := "/usr/libexec/podman/quadlet"
-	if _, err := os.Stat(quadletBin); err != nil {
-		if path, err := exec.LookPath("quadlet"); err == nil {
-			quadletBin = path
-		} else if _, err := os.Stat("/usr/lib/podman/quadlet"); err == nil {
-			quadletBin = "/usr/lib/podman/quadlet"
-		} else {
-			return true, "Syntax valid (AST verified). Quadlet dryrun binary not present.", nil
-		}
+	quadletBin := quadletBinary()
+	if quadletBin == "" {
+		return true, "Syntax valid (AST verified). Quadlet dryrun binary not present.", nil
 	}
 
 	tempDir, err := os.MkdirTemp("", "gopod-quadlet-val-*")

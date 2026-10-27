@@ -4,6 +4,7 @@
 	import { CodeEditor } from '$lib/components/ui';
 	import { CopyButton } from '$lib/components/ui';
 	import { LayerCard, Button, Banner, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import {
 		FileText,
 		Check,
@@ -100,11 +101,9 @@
 		} catch (err: any) {
 			console.error('Failed to save Quadlet config:', err);
 			saveStatus = 'idle';
-			toast.add({
-				title: 'Quadlet Save Failed',
-				description: err?.message || 'Failed to save Quadlet config',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Quadlet Save Failed', err?.message || 'Failed to save Quadlet config')
+			);
 		}
 	}
 </script>

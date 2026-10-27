@@ -3,6 +3,7 @@
 	import { Input, Select } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { GitBranch, Package, UploadSimple, Check, SpinnerGap } from 'phosphor-svelte';
 
 	interface Props {
@@ -47,11 +48,12 @@
 
 	async function uploadZipFile(file: File) {
 		if (!file.name.toLowerCase().endsWith('.zip')) {
-			toast.add({
-				title: 'Invalid file format',
-				description: 'Please upload a .zip archive containing your static files or dist folder.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Invalid file format',
+					'Please upload a .zip archive containing your static files or dist folder.'
+				)
+			);
 			return;
 		}
 
@@ -89,11 +91,9 @@
 			}
 			await dataStore.updateService(service);
 		} catch (err: any) {
-			toast.add({
-				title: 'Upload Failed',
-				description: err?.message || 'Failed to process static archive',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Upload Failed', err?.message || 'Failed to process static archive')
+			);
 		} finally {
 			isUploading = false;
 		}

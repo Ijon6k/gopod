@@ -3,6 +3,7 @@
 	import { volumes, dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import {
 		Button,
 		Field,
@@ -141,11 +142,7 @@
 		} catch (err: unknown) {
 			console.error('DB dump failed:', err);
 			const message = err instanceof Error ? err.message : 'Dump failed';
-			toast.add({
-				title: 'Database dump failed',
-				description: message,
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Database dump failed', message));
 		} finally {
 			isDumpingDb = false;
 		}
@@ -163,11 +160,7 @@
 		} catch (err: unknown) {
 			console.error('Volume snapshot failed:', err);
 			const message = err instanceof Error ? err.message : 'Snapshot failed';
-			toast.add({
-				title: 'Snapshot failed',
-				description: message,
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Snapshot failed', message));
 		} finally {
 			isSnapshottingVol = null;
 		}

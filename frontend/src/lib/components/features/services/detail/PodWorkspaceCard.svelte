@@ -3,6 +3,7 @@
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { Banner, Button, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { Tabs } from '$lib/components/ui';
 	import { Info, WarningCircle, ArrowClockwise } from 'phosphor-svelte';
 	import PodPortForwardCard from './pod/PodPortForwardCard.svelte';
@@ -283,11 +284,7 @@
 				variant: 'success'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Recreation Failed',
-				description: err?.message || 'Error deploying pod',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Recreation Failed', err?.message || 'Error deploying pod'));
 		} finally {
 			isDeploying = false;
 		}
@@ -297,7 +294,8 @@
 		clearPending();
 		toast.add({
 			title: 'Notice Dismissed',
-			description: 'Pending recreation banner dismissed. Manifest changes remain saved in configuration.',
+			description:
+				'Pending recreation banner dismissed. Manifest changes remain saved in configuration.',
 			variant: 'default'
 		});
 	}
@@ -368,7 +366,9 @@
 			<Info size={18} weight="fill" class="shrink-0 text-[var(--accent)]" />
 		{/snippet}
 		<div class="text-xs">
-			<span class="font-semibold text-[var(--color-kumo-default)]">Localhost network namespace:</span>
+			<span class="font-semibold text-[var(--color-kumo-default)]"
+				>Localhost network namespace:</span
+			>
 			<span class="text-[var(--color-kumo-subtle)]">
 				Member containers inside this pod communicate directly with one another on
 				<code
@@ -382,12 +382,7 @@
 	<!-- 3. Workload View: Visual OR Kubernetes Manifest -->
 	{#if viewMode === 'visual'}
 		<!-- Card 1: Pod Infrastructure & Exposed Ports -->
-		<PodPortForwardCard
-			{service}
-			{podName}
-			{memberServices}
-			onportschange={handleVisualChanged}
-		/>
+		<PodPortForwardCard {service} {podName} {memberServices} onportschange={handleVisualChanged} />
 
 		<!-- Card 2: Pod Member Containers Table -->
 		<PodMembersTable
@@ -399,12 +394,7 @@
 		/>
 	{:else}
 		<!-- Card: Kubernetes YAML Declarative Manifest Editor -->
-		<PodKubernetesEditorCard
-			{service}
-			{podName}
-			{memberServices}
-			onmanifestchange={markPending}
-		/>
+		<PodKubernetesEditorCard {service} {podName} {memberServices} onmanifestchange={markPending} />
 	{/if}
 </div>
 

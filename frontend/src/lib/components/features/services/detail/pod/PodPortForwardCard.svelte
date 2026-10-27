@@ -14,6 +14,7 @@
 		TableCell,
 		useKumoToastManager
 	} from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { Package, PlugsConnected, Globe, Plus } from 'phosphor-svelte';
 	import { dataStore } from '$lib/data';
 	import {
@@ -130,11 +131,12 @@
 
 			onportschange?.();
 		} catch (err: any) {
-			toast.add({
-				title: 'Failed to Save Ports',
-				description: err?.message || 'Error updating port configuration',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Failed to Save Ports',
+					err?.message || 'Error updating port configuration'
+				)
+			);
 		} finally {
 			isSaving = false;
 		}
@@ -145,29 +147,36 @@
 		const pPort = parseInt(newPodPort.trim(), 10);
 
 		if (!hPort || hPort < 1 || hPort > 65535) {
-			toast.add({
-				title: 'Invalid Host Port',
-				description: 'Host port must be an integer between 1 and 65535.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Invalid Host Port', 'Host port must be an integer between 1 and 65535.')
+			);
 			return;
 		}
 
 		if (!pPort || pPort < 1 || pPort > 65535) {
-			toast.add({
-				title: 'Invalid Pod Port',
-				description: 'Pod target port must be an integer between 1 and 65535.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Invalid Pod Port',
+					'Pod target port must be an integer between 1 and 65535.'
+				)
+			);
 			return;
 		}
 
-		if (portsList.some((p) => p.hostPort === hPort && p.protocol === newProtocol && normalizePortHostIp(p.hostIp) === newHostIp)) {
-			toast.add({
-				title: 'Port Collision',
-				description: `Host port ${newHostIp}:${hPort}/${newProtocol.toUpperCase()} is already bound in this pod configuration.`,
-				variant: 'error'
-			});
+		if (
+			portsList.some(
+				(p) =>
+					p.hostPort === hPort &&
+					p.protocol === newProtocol &&
+					normalizePortHostIp(p.hostIp) === newHostIp
+			)
+		) {
+			toast.add(
+				errorToastOptions(
+					'Port Collision',
+					`Host port ${newHostIp}:${hPort}/${newProtocol.toUpperCase()} is already bound in this pod configuration.`
+				)
+			);
 			return;
 		}
 
@@ -205,26 +214,43 @@
 		const pPort = parseInt(editPodPort.trim(), 10);
 
 		if (!hPort || hPort < 1 || hPort > 65535 || !pPort || pPort < 1 || pPort > 65535) {
-			toast.add({
-				title: 'Invalid Port Number',
-				description: 'Both host and pod ports must be between 1 and 65535.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Invalid Port Number',
+					'Both host and pod ports must be between 1 and 65535.'
+				)
+			);
 			return;
 		}
 
-		if (portsList.some((p) => p.id !== item.id && p.hostPort === hPort && p.protocol === editProtocol && normalizePortHostIp(p.hostIp) === editHostIp)) {
-			toast.add({
-				title: 'Port Collision',
-				description: `Host port ${editHostIp}:${hPort}/${editProtocol.toUpperCase()} is already bound to another forward rule.`,
-				variant: 'error'
-			});
+		if (
+			portsList.some(
+				(p) =>
+					p.id !== item.id &&
+					p.hostPort === hPort &&
+					p.protocol === editProtocol &&
+					normalizePortHostIp(p.hostIp) === editHostIp
+			)
+		) {
+			toast.add(
+				errorToastOptions(
+					'Port Collision',
+					`Host port ${editHostIp}:${hPort}/${editProtocol.toUpperCase()} is already bound to another forward rule.`
+				)
+			);
 			return;
 		}
 
 		const updated = portsList.map((p) =>
 			p.id === item.id
-				? { ...p, id: portBindingId(hPort, pPort, editProtocol, editHostIp), hostPort: hPort, podPort: pPort, protocol: editProtocol, hostIp: editHostIp }
+				? {
+						...p,
+						id: portBindingId(hPort, pPort, editProtocol, editHostIp),
+						hostPort: hPort,
+						podPort: pPort,
+						protocol: editProtocol,
+						hostIp: editHostIp
+					}
 				: p
 		);
 
@@ -252,7 +278,9 @@
 	</LayerCard.Secondary>
 
 	<!-- Metadata overview -->
-	<div class="grid grid-cols-1 gap-6 border-b border-[var(--color-kumo-hairline)] p-5 sm:grid-cols-3">
+	<div
+		class="grid grid-cols-1 gap-6 border-b border-[var(--color-kumo-hairline)] p-5 sm:grid-cols-3"
+	>
 		<div class="flex flex-col gap-1">
 			<span class="text-xs text-[var(--color-kumo-subtle)]">Pod Name</span>
 			<span class="font-mono text-sm font-semibold text-[var(--color-kumo-default)]">
@@ -277,7 +305,8 @@
 			<div class="flex items-center gap-1.5">
 				<Globe size={14} class="text-[var(--color-kumo-subtle)]" />
 				<span class="text-sm font-medium text-[var(--color-kumo-default)]">
-					{portsList.length} {portsList.length === 1 ? 'binding' : 'bindings'} configured
+					{portsList.length}
+					{portsList.length === 1 ? 'binding' : 'bindings'} configured
 				</span>
 			</div>
 			<span class="text-xs text-[var(--color-kumo-subtle)]">Bound to host interface</span>
@@ -292,16 +321,12 @@
 					Host port forwardings
 				</h4>
 				<p class="m-0 mt-0.5 text-xs text-[var(--color-kumo-subtle)]">
-					Forward host traffic into internal member container ports. Bind to all interfaces or loopback only.
+					Forward host traffic into internal member container ports. Bind to all interfaces or
+					loopback only.
 				</p>
 			</div>
 			{#if !isAddingPort}
-				<Button
-					variant="secondary"
-					size="sm"
-					onclick={() => (isAddingPort = true)}
-					class="gap-1.5"
-				>
+				<Button variant="secondary" size="sm" onclick={() => (isAddingPort = true)} class="gap-1.5">
 					<Plus size={13} />
 					<span>Add port binding</span>
 				</Button>
@@ -371,9 +396,7 @@
 					<Button variant="primary" size="sm" onclick={handleAddPort} disabled={isSaving}>
 						Save binding
 					</Button>
-					<Button variant="ghost" size="sm" onclick={() => (isAddingPort = false)}>
-						Cancel
-					</Button>
+					<Button variant="ghost" size="sm" onclick={() => (isAddingPort = false)}>Cancel</Button>
 				</div>
 			</div>
 		{/if}
@@ -386,11 +409,17 @@
 				>
 					<TableRow>
 						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case">Host Port</TableHead>
-						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case">Bind Address</TableHead>
-						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case">Target Pod Port</TableHead>
+						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case">Bind Address</TableHead
+						>
+						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case"
+							>Target Pod Port</TableHead
+						>
 						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case">Protocol</TableHead>
-						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case">Routing Path</TableHead>
-						<TableHead class="px-4 py-2.5 text-right text-xs font-semibold normal-case">Actions</TableHead>
+						<TableHead class="px-4 py-2.5 text-xs font-semibold normal-case">Routing Path</TableHead
+						>
+						<TableHead class="px-4 py-2.5 text-right text-xs font-semibold normal-case"
+							>Actions</TableHead
+						>
 					</TableRow>
 				</TableHeader>
 				<TableBody class="divide-y divide-[var(--border)]">
@@ -450,9 +479,7 @@
 											<Button variant="primary" size="sm" onclick={() => saveEdit(item)}>
 												Save
 											</Button>
-											<Button variant="ghost" size="sm" onclick={cancelEdit}>
-												Cancel
-											</Button>
+											<Button variant="ghost" size="sm" onclick={cancelEdit}>Cancel</Button>
 										</div>
 									</TableCell>
 								{:else}

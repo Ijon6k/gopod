@@ -3,6 +3,7 @@
 	import { api } from '$lib/api';
 	import { Button, CopyButton, Input, Select } from '$lib/components/ui';
 	import { Badge, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { ArrowsClockwise, CheckCircle, GitBranch, Warning } from 'phosphor-svelte';
 
 	interface Props {
@@ -91,11 +92,12 @@
 				variant: 'success'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Could not generate secret',
-				description: err?.message || 'The signing secret was not changed.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Could not generate secret',
+					err?.message || 'The signing secret was not changed.'
+				)
+			);
 		} finally {
 			rotating = false;
 		}

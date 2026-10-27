@@ -4,6 +4,7 @@
 	import { api } from '$lib/api';
 	import { SectionCard, Button, Banner } from '$lib/components/ui';
 	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { ArrowsClockwise, CheckCircle, FileCode, WarningCircle } from 'phosphor-svelte';
 
 	interface Props {
@@ -24,11 +25,9 @@
 		try {
 			preview = await api.services.quadletPreview(service.id);
 		} catch (err: any) {
-			toast.add({
-				title: 'Preview failed',
-				description: err?.message || 'The generator rejected the request',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Preview failed', err?.message || 'The generator rejected the request')
+			);
 		} finally {
 			loading = false;
 		}

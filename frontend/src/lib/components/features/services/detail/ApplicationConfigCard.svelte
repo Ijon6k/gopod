@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import { LayerCard, Button, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { untrack } from 'svelte';
 	import { dataStore } from '$lib/data';
 	import { Cube, Check, ArrowClockwise } from 'phosphor-svelte';
@@ -157,11 +158,12 @@
 			// 1. Source & Image validation
 			if (sourceType === 'git') {
 				if (!repoUrl.trim()) {
-					toast.add({
-						title: 'Repository URL is required',
-						description: 'Please specify a Git clone URL for this application.',
-						variant: 'error'
-					});
+					toast.add(
+						errorToastOptions(
+							'Repository URL is required',
+							'Please specify a Git clone URL for this application.'
+						)
+					);
 					return;
 				}
 				const buildArgs = parseBuildArgs(buildArgsText);
@@ -171,11 +173,12 @@
 					return /\s/.test(arg.slice(0, separator).trim());
 				});
 				if (invalidArg) {
-					toast.add({
-						title: 'Invalid build argument',
-						description: `"${invalidArg}" must use the KEY=VALUE form.`,
-						variant: 'error'
-					});
+					toast.add(
+						errorToastOptions(
+							'Invalid build argument',
+							`"${invalidArg}" must use the KEY=VALUE form.`
+						)
+					);
 					return;
 				}
 				service.sourceType = 'git';
@@ -191,11 +194,12 @@
 				service.image = undefined;
 			} else if (sourceType === 'image') {
 				if (!rawImageName.trim()) {
-					toast.add({
-						title: 'Container image is required',
-						description: 'Please specify an image name (e.g. redis:alpine, nginx:latest).',
-						variant: 'error'
-					});
+					toast.add(
+						errorToastOptions(
+							'Container image is required',
+							'Please specify an image name (e.g. redis:alpine, nginx:latest).'
+						)
+					);
 					return;
 				}
 				service.sourceType = 'image';
@@ -209,11 +213,12 @@
 			if (containerPort.trim()) {
 				const cp = parseInt(containerPort.trim(), 10);
 				if (isNaN(cp) || cp < 1 || cp > 65535) {
-					toast.add({
-						title: 'Invalid container port',
-						description: 'Container internal port must be a number between 1 and 65535.',
-						variant: 'error'
-					});
+					toast.add(
+						errorToastOptions(
+							'Invalid container port',
+							'Container internal port must be a number between 1 and 65535.'
+						)
+					);
 					return;
 				}
 				service.port = cp;
@@ -224,11 +229,12 @@
 			if (hostPort.trim()) {
 				const hp = parseInt(hostPort.trim(), 10);
 				if (isNaN(hp) || hp < 1 || hp > 65535) {
-					toast.add({
-						title: 'Invalid host port',
-						description: 'Published host port must be a number between 1 and 65535.',
-						variant: 'error'
-					});
+					toast.add(
+						errorToastOptions(
+							'Invalid host port',
+							'Published host port must be a number between 1 and 65535.'
+						)
+					);
 					return;
 				}
 				service.hostPort = hp;
@@ -259,11 +265,9 @@
 			});
 			setTimeout(() => (saveStatus = 'idle'), 2000);
 		} catch (err: any) {
-			toast.add({
-				title: 'Save failed',
-				description: err?.message || 'Could not save application configuration',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Save failed', err?.message || 'Could not save application configuration')
+			);
 		} finally {
 			isSaving = false;
 		}

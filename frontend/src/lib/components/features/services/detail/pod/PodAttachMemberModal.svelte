@@ -1,6 +1,7 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import { Button, Input, Select, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { Modal, Tabs } from '$lib/components/ui';
 	import { Package } from 'phosphor-svelte';
 	import { dataStore } from '$lib/data';
@@ -15,7 +16,14 @@
 		onmemberattached?: () => void;
 	}
 
-	let { open = $bindable(false), service, podName, candidateServices, onclose, onmemberattached }: Props = $props();
+	let {
+		open = $bindable(false),
+		service,
+		podName,
+		candidateServices,
+		onclose,
+		onmemberattached
+	}: Props = $props();
 
 	const toast = useKumoToastManager();
 
@@ -54,11 +62,7 @@
 			onmemberattached?.();
 			onclose();
 		} catch (err: any) {
-			toast.add({
-				title: 'Attach Failed',
-				description: err?.message || 'Failed to attach service',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Attach Failed', err?.message || 'Failed to attach service'));
 		} finally {
 			isSubmitting = false;
 		}
@@ -115,11 +119,7 @@
 			onmemberattached?.();
 			onclose();
 		} catch (err: any) {
-			toast.add({
-				title: 'Failed to Create Container',
-				description: err?.message || 'Creation error',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Failed to Create Container', err?.message || 'Creation error'));
 		} finally {
 			isSubmitting = false;
 		}

@@ -3,6 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { PageHeader, Tabs, Button } from '$lib/components/ui';
 	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { server, dataStore } from '$lib/data';
 	import type { Domain } from '$lib/types';
 	import { api } from '$lib/api';
@@ -98,11 +99,9 @@
 			});
 			await loadCaddyfile();
 		} catch (err: any) {
-			toast.add({
-				title: 'Reload Failed',
-				description: err?.message || 'Failed to reload Caddy ingress daemon.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Reload Failed', err?.message || 'Failed to reload Caddy ingress daemon.')
+			);
 		} finally {
 			isReloadingCaddy = false;
 		}

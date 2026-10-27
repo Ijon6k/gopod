@@ -20,7 +20,10 @@
 	});
 </script>
 
-<Toasty>
+<!-- The direct toast children are height-clamped by kumo to the frontmost
+     toast's 80px fallback box; relaxed so long messages stay fully readable
+     (the measured height then reflects real content). -->
+<Toasty class="[&>*]:h-auto!">
 	{#if isAuthPage}
 		<!-- Standalone Fullscreen View for Setup & Login -->
 		<div

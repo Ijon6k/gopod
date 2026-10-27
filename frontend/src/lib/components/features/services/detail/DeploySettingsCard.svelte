@@ -3,6 +3,7 @@
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { LayerCard, Badge, Button, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { Sparkle, CheckCircle, Info, FileCode } from 'phosphor-svelte';
 	import DeployActionsBar from './deploy/DeployActionsBar.svelte';
 	import DeployPodStrategyBanner from './deploy/DeployPodStrategyBanner.svelte';
@@ -58,11 +59,9 @@
 			await api.runtime.quadlets.reload();
 			showFeedback('Systemd user daemon reloaded successfully', 'success');
 		} catch (err: any) {
-			toast.add({
-				title: 'Reload Failed',
-				description: err?.message || 'Failed to reload systemd daemon',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Reload Failed', err?.message || 'Failed to reload systemd daemon')
+			);
 		} finally {
 			isReloadingDaemon = false;
 		}

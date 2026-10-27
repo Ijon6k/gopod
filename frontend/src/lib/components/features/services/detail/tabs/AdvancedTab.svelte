@@ -5,6 +5,7 @@
 	import { api } from '$lib/api';
 	import { onMount, untrack } from 'svelte';
 	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { Check, FloppyDisk, SpinnerGap, WarningCircle } from 'phosphor-svelte';
 
 	import RuntimeSecurityCard from '../advanced/RuntimeSecurityCard.svelte';
@@ -265,11 +266,9 @@
 				variant: 'success'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Demote Failed',
-				description: err?.message || 'Failed to demote quadlet workload',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Demote Failed', err?.message || 'Failed to demote quadlet workload')
+			);
 		} finally {
 			isDemoting = false;
 		}
@@ -280,20 +279,22 @@
 
 	async function handleSave() {
 		if (hasValidationErrors) {
-			toast.add({
-				title: 'Fix the highlighted fields first',
-				description: 'Invalid values are never sent to the engine.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Fix the highlighted fields first',
+					'Invalid values are never sent to the engine.'
+				)
+			);
 			return;
 		}
 		const swap = normalizeSwapLimit(swapText);
 		if (swap.value !== '' && swap.value !== '-1' && !parseMemoryMb(memText)) {
-			toast.add({
-				title: 'Memory limit required',
-				description: 'podman bounds swap against the memory limit — set a memory limit as well.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Memory limit required',
+					'podman bounds swap against the memory limit — set a memory limit as well.'
+				)
+			);
 			return;
 		}
 		// Make sure the change is not lost silently: running services only get

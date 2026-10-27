@@ -13,6 +13,7 @@
 		TableBody,
 		useKumoToastManager
 	} from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { Package, ArrowsClockwise, Stop, Play, Terminal, Plus, FileCode } from 'phosphor-svelte';
 	import { parseDocument } from 'yaml';
 	import { dataStore } from '$lib/data';
@@ -59,11 +60,7 @@
 				variant: 'info'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Restart Failed',
-				description: err?.message || 'Error restarting container',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Restart Failed', err?.message || 'Error restarting container'));
 		}
 	}
 
@@ -77,11 +74,7 @@
 				variant: 'info'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Stop Failed',
-				description: err?.message || 'Error stopping container',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Stop Failed', err?.message || 'Error stopping container'));
 		}
 	}
 
@@ -98,11 +91,7 @@
 			});
 			onmemberchange?.();
 		} catch (err: any) {
-			toast.add({
-				title: 'Removal Failed',
-				description: err?.message || 'Error detaching container',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Removal Failed', err?.message || 'Error detaching container'));
 		}
 	}
 
@@ -115,11 +104,7 @@
 				variant: 'info'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Restart Failed',
-				description: err?.message || 'Error restarting container',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Restart Failed', err?.message || 'Error restarting container'));
 		}
 	}
 
@@ -133,11 +118,7 @@
 				variant: 'info'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Stop Failed',
-				description: err?.message || 'Error stopping container',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Stop Failed', err?.message || 'Error stopping container'));
 		}
 	}
 
@@ -151,11 +132,7 @@
 				variant: 'success'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Start Failed',
-				description: err?.message || 'Error starting container',
-				variant: 'error'
-			});
+			toast.add(errorToastOptions('Start Failed', err?.message || 'Error starting container'));
 		}
 	}
 
@@ -181,11 +158,9 @@
 				}
 			}
 		} catch (err: any) {
-			toast.add({
-				title: 'Detach Failed',
-				description: err?.message || 'Error removing container from manifest',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Detach Failed', err?.message || 'Error removing container from manifest')
+			);
 		}
 	}
 </script>
@@ -313,7 +288,11 @@
 									{#if csList.length > 0}
 										<div class="flex flex-col gap-0.5">
 											{#each csList as cs}
-												<span>{cs.name}: localhost:{cs.ports.length > 0 ? cs.ports.join(', localhost:') : (member.port || 80)}</span>
+												<span
+													>{cs.name}: localhost:{cs.ports.length > 0
+														? cs.ports.join(', localhost:')
+														: member.port || 80}</span
+												>
 											{/each}
 										</div>
 									{:else}
@@ -384,7 +363,7 @@
 										{mw.name}
 									</span>
 									<span
-										class="rounded bg-[var(--bg-table-row-alt)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--accent)] border border-[var(--border-subtle)] uppercase"
+										class="rounded border border-[var(--border-subtle)] bg-[var(--bg-table-row-alt)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--accent)] uppercase"
 									>
 										{mw.role}
 									</span>
@@ -407,7 +386,7 @@
 									</Badge>
 								{:else}
 									<span
-										class="inline-flex items-center rounded bg-[var(--bg-table-row-alt)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-tertiary)] border border-[var(--border-subtle)]"
+										class="inline-flex items-center rounded border border-[var(--border-subtle)] bg-[var(--bg-table-row-alt)] px-2 py-0.5 text-[11px] font-medium text-[var(--text-tertiary)]"
 									>
 										Previewed
 									</span>
@@ -474,7 +453,9 @@
 												variant="secondary"
 												size="sm"
 												onclick={() =>
-													goto(`/projects/${service.projectId}/services/${service.id}?tab=terminal`)}
+													goto(
+														`/projects/${service.projectId}/services/${service.id}?tab=terminal`
+													)}
 												aria-label={`Terminal for ${mw.name}`}
 											>
 												<Terminal size={13} />
@@ -483,7 +464,7 @@
 									</div>
 								{:else}
 									<div class="flex items-center justify-end gap-1.5">
-										<span class="text-[11px] text-[var(--text-tertiary)] italic mr-1">
+										<span class="mr-1 text-[11px] text-[var(--text-tertiary)] italic">
 											Previewed in manifest
 										</span>
 										<Button

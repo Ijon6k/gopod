@@ -11,6 +11,7 @@
 		TableCell,
 		useKumoToastManager
 	} from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import {
 		Globe,
 		Lock,
@@ -86,11 +87,9 @@
 				variant: updated.dnsStatus === 'valid' || isLoopback ? 'success' : 'warning'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Verification Failed',
-				description: err?.message || 'Failed to revalidate DNS record.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Verification Failed', err?.message || 'Failed to revalidate DNS record.')
+			);
 		} finally {
 			const done = new Set(revalidatingIds);
 			done.delete(domainId);

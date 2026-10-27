@@ -3,6 +3,7 @@
 	import { dataStore } from '$lib/data';
 	import { CodeEditor } from '$lib/components/ui';
 	import { LayerCard, Button, Switch, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { Stack, Eye, Check, Info } from 'phosphor-svelte';
 	import { getDefaultComposeYaml } from '../manifests/defaults';
 	import { parseComposeManifest } from '$lib/parsers/manifest-engine';
@@ -65,11 +66,12 @@
 		// so a fast save right after typing cannot bypass syntax errors.
 		const current = parseComposeManifest(composeYaml);
 		if (!current.valid) {
-			toast.add({
-				title: 'Invalid Compose Syntax',
-				description: current.errors[0] || 'Please resolve syntax errors before saving.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Invalid Compose Syntax',
+					current.errors[0] || 'Please resolve syntax errors before saving.'
+				)
+			);
 			return;
 		}
 
@@ -97,11 +99,12 @@
 			}, 2000);
 		} catch (err: any) {
 			saveStatus = 'idle';
-			toast.add({
-				title: 'Failed to save specification',
-				description: err?.message || 'Error occurred while saving manifest',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Failed to save specification',
+					err?.message || 'Error occurred while saving manifest'
+				)
+			);
 		}
 	}
 </script>

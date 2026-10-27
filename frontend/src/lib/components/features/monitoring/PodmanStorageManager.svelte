@@ -10,6 +10,7 @@
 	import { api } from '$lib/api';
 	import type { SystemDiskUsage, GCPreview } from '$lib/types';
 	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { onMount } from 'svelte';
 	import {
 		ImageSquare,
@@ -89,11 +90,12 @@
 			}
 		} catch (err) {
 			console.error('Cleanup engine run failed:', err);
-			toast.add({
-				title: 'Cleanup engine failed',
-				description: 'The cleanup run did not finish — check server logs for details.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Cleanup engine failed',
+					'The cleanup run did not finish — check server logs for details.'
+				)
+			);
 		} finally {
 			gcRunning = false;
 			if (recentReclaimedText) {
@@ -253,11 +255,12 @@
 			recentReclaimedText = reclaimed > 0 ? formatBytes(reclaimed) : 'storage cache';
 		} catch (err) {
 			console.error('Failed to prune system:', err);
-			toast.add({
-				title: 'System prune failed',
-				description: 'Could not prune the system — check server logs for details.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'System prune failed',
+					'Could not prune the system — check server logs for details.'
+				)
+			);
 		} finally {
 			pruningTarget = null;
 			if (recentReclaimedText) {
@@ -287,11 +290,12 @@
 			recentReclaimedText = reclaimed > 0 ? formatBytes(reclaimed) : `${type} cache`;
 		} catch (err) {
 			console.error(`Failed to prune ${type}:`, err);
-			toast.add({
-				title: 'Prune failed',
-				description: `Could not prune ${type} — check server logs for details.`,
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Prune failed',
+					`Could not prune ${type} — check server logs for details.`
+				)
+			);
 		} finally {
 			pruningTarget = null;
 			if (recentReclaimedText) {
@@ -313,11 +317,12 @@
 			recentReclaimedText = reclaimed > 0 ? formatBytes(reclaimed) : 'unreferenced volumes';
 		} catch (err) {
 			console.error('Failed to prune volumes:', err);
-			toast.add({
-				title: 'Volume prune failed',
-				description: 'Could not prune volumes — check server logs for details.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Volume prune failed',
+					'Could not prune volumes — check server logs for details.'
+				)
+			);
 		} finally {
 			pruningTarget = null;
 			if (recentReclaimedText) {

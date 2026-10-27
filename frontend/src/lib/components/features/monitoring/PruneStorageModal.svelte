@@ -3,6 +3,7 @@
 	import { api } from '$lib/api';
 	import type { SystemDiskUsage } from '$lib/types';
 	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import {
 		Broom,
 		CircleNotch,
@@ -107,11 +108,12 @@
 			}, 1400);
 		} catch (err) {
 			console.error('Podman storage prune error:', err);
-			toast.add({
-				title: 'Prune failed',
-				description: 'One of the prune steps did not finish — check server logs for details.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Prune failed',
+					'One of the prune steps did not finish — check server logs for details.'
+				)
+			);
 		} finally {
 			isPruning = false;
 		}

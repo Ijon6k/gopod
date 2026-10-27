@@ -4,6 +4,7 @@
 	import { dataStore } from '$lib/data';
 	import { untrack } from 'svelte';
 	import { Button, Banner, LayerCard, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import {
 		Table,
 		FileCode,
@@ -66,11 +67,12 @@
 			}
 		} catch (err: any) {
 			previewError = err?.message || 'Failed to generate unit files';
-			toast.add({
-				title: 'Quadlet preview failed',
-				description: err?.message || 'Could not load generated unit files',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Quadlet preview failed',
+					err?.message || 'Could not load generated unit files'
+				)
+			);
 		} finally {
 			isLoadingPreview = false;
 		}
@@ -109,11 +111,12 @@
 				variant: res.valid ? 'success' : 'error'
 			});
 		} catch (err: any) {
-			toast.add({
-				title: 'Validation request failed',
-				description: err?.message || 'Could not reach the backend validator',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Validation request failed',
+					err?.message || 'Could not reach the backend validator'
+				)
+			);
 		} finally {
 			isValidating = false;
 		}
@@ -132,11 +135,9 @@
 			// Reload so the cards reflect the backend-healed truth.
 			loadedFor = '';
 		} catch (err: any) {
-			toast.add({
-				title: 'Save failed',
-				description: err?.message || 'Could not save Quadlet configuration',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions('Save failed', err?.message || 'Could not save Quadlet configuration')
+			);
 		} finally {
 			isSaving = false;
 		}
@@ -174,11 +175,12 @@
 			dryrunOutput = res.dryrun || '';
 			isPromotionReviewOpen = true;
 		} catch (err: any) {
-			toast.add({
-				title: 'Quadlet preview failed',
-				description: err?.message || 'Could not generate unit files for promotion',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Quadlet preview failed',
+					err?.message || 'Could not generate unit files for promotion'
+				)
+			);
 		} finally {
 			isLoadingPreview = false;
 		}
@@ -242,11 +244,12 @@
 				text: `Promotion activation failed: ${err?.message || 'systemd daemon-reload error'}. Previous state restored.`,
 				success: false
 			};
-			toast.add({
-				title: 'Promotion Failed (Rolled Back)',
-				description: err?.message || 'Systemd daemon-reload failed. Restored to previous state.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Promotion Failed (Rolled Back)',
+					err?.message || 'Systemd daemon-reload failed. Restored to previous state.'
+				)
+			);
 		} finally {
 			isPromoting = false;
 		}

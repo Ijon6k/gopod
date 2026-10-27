@@ -3,6 +3,7 @@
 	import { dataStore } from '$lib/data';
 	import { CodeEditor, CopyButton } from '$lib/components/ui';
 	import { LayerCard, Badge, Button, useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
 	import { FileCode, Check, FloppyDisk, Info } from 'phosphor-svelte';
 	import {
 		parseDetailedPorts,
@@ -82,11 +83,12 @@
 		// so a fast save right after typing cannot bypass syntax errors.
 		const current = parseKubernetesPodManifest(k8sYaml);
 		if (!current.valid) {
-			toast.add({
-				title: 'Invalid Manifest Syntax',
-				description: current.errors[0] || 'Please resolve syntax errors before saving manifest.',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Invalid Manifest Syntax',
+					current.errors[0] || 'Please resolve syntax errors before saving manifest.'
+				)
+			);
 			return;
 		}
 
@@ -97,18 +99,19 @@
 			// Bi-directional sync: parse ports from the edited Kubernetes manifest.
 			// Always keep composeYaml in sync (even when no ports remain) so Visual view never goes stale.
 			// K8s manifests carry no bind address, so preserve each binding's existing
-		// hostIp (matched by host/pod port + protocol); new bindings default to 0.0.0.0.
-		const previousPorts = service.composeYaml ? parseDetailedPorts(service.composeYaml) : [];
-		const previousIpByBinding = new Map(
-			previousPorts.map((p) => [
-				`${p.hostPort}:${p.podPort}:${p.protocol}`,
-				normalizePortHostIp(p.hostIp)
-			])
-		);
-		const extractedPorts = parseK8sPodPorts(k8sYaml).map((p) => {
-			const hostIp = previousIpByBinding.get(`${p.hostPort}:${p.podPort}:${p.protocol}`) ?? '0.0.0.0';
-			return { ...p, hostIp, id: portBindingId(p.hostPort, p.podPort, p.protocol, hostIp) };
-		});
+			// hostIp (matched by host/pod port + protocol); new bindings default to 0.0.0.0.
+			const previousPorts = service.composeYaml ? parseDetailedPorts(service.composeYaml) : [];
+			const previousIpByBinding = new Map(
+				previousPorts.map((p) => [
+					`${p.hostPort}:${p.podPort}:${p.protocol}`,
+					normalizePortHostIp(p.hostIp)
+				])
+			);
+			const extractedPorts = parseK8sPodPorts(k8sYaml).map((p) => {
+				const hostIp =
+					previousIpByBinding.get(`${p.hostPort}:${p.podPort}:${p.protocol}`) ?? '0.0.0.0';
+				return { ...p, hostIp, id: portBindingId(p.hostPort, p.podPort, p.protocol, hostIp) };
+			});
 			if (extractedPorts.length > 0) {
 				service.hostPort = extractedPorts[0].hostPort;
 				service.port = extractedPorts[0].podPort;
@@ -116,7 +119,11 @@
 				service.hostPort = 0;
 				service.port = 0;
 			}
-			service.composeYaml = serializePodComposeYaml(service.name, extractedPorts, service.composeYaml);
+			service.composeYaml = serializePodComposeYaml(
+				service.name,
+				extractedPorts,
+				service.composeYaml
+			);
 
 			await dataStore.updateService(service);
 
@@ -127,17 +134,19 @@
 
 			toast.add({
 				title: 'Kubernetes Manifest Saved',
-				description: 'Configuration updated. Recreate the pod to apply changes to running containers.',
+				description:
+					'Configuration updated. Recreate the pod to apply changes to running containers.',
 				variant: 'success'
 			});
 
 			onmanifestchange?.();
 		} catch (err: any) {
-			toast.add({
-				title: 'Failed to Save Manifest',
-				description: err?.message || 'Error updating Kubernetes YAML manifest',
-				variant: 'error'
-			});
+			toast.add(
+				errorToastOptions(
+					'Failed to Save Manifest',
+					err?.message || 'Error updating Kubernetes YAML manifest'
+				)
+			);
 		} finally {
 			isSaving = false;
 		}
@@ -172,11 +181,16 @@
 	</LayerCard.Secondary>
 
 	<!-- Explanatory note -->
-	<div class="border-b border-[var(--color-kumo-hairline)] bg-[var(--bg-panel)] px-5 py-2.5 text-xs text-[var(--color-kumo-subtle)]">
+	<div
+		class="border-b border-[var(--color-kumo-hairline)] bg-[var(--bg-panel)] px-5 py-2.5 text-xs text-[var(--color-kumo-subtle)]"
+	>
 		<div class="flex items-center gap-2">
 			<Info size={14} class="shrink-0 text-[var(--accent)]" />
 			<span>
-				This declarative manifest is executed by Podman via <code class="font-mono text-[var(--accent)]">podman play kube</code>. Port bindings and container configurations saved here automatically synchronize with the Visual view. Bind addresses (0.0.0.0 vs 127.0.0.1) are managed in the Visual view.
+				This declarative manifest is executed by Podman via <code
+					class="font-mono text-[var(--accent)]">podman play kube</code
+				>. Port bindings and container configurations saved here automatically synchronize with the
+				Visual view. Bind addresses (0.0.0.0 vs 127.0.0.1) are managed in the Visual view.
 			</span>
 		</div>
 	</div>

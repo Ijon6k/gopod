@@ -36,7 +36,8 @@ import { TelemetryDomainStore } from './domains/telemetry.svelte';
 import {
 	extractContainerHealth,
 	parseContainerPortMappings,
-	resolveContainerMetadata as resolveContainerMeta
+	resolveContainerMetadata as resolveContainerMeta,
+	resolveVolumeMetadata as resolveVolumeMeta
 } from './container-meta';
 
 export class DataStore {
@@ -97,7 +98,19 @@ export class DataStore {
 	}
 
 	get volumes(): Volume[] {
-		return this.runtimeStore.volumes;
+		// Ownership is resolved at read time so a volume list taken before the
+		// services snapshot still re-attaches to the right project/service the
+		// moment both datasets exist (mirrors relinkContainers for containers).
+		return this.runtimeStore.volumes.map((v) => {
+			const meta = this.resolveVolumeMetadata(v.name, v.labels);
+			return {
+				...v,
+				projectId: meta.projId,
+				projectName: meta.projName,
+				serviceId: meta.servId,
+				serviceName: meta.servName
+			};
+		});
 	}
 	set volumes(val: Volume[]) {
 		this.runtimeStore.volumes = val;
@@ -575,6 +588,17 @@ export class DataStore {
 		labels?: Record<string, string>
 	): { projId: string; projName: string; servId: string; servName: string } {
 		return resolveContainerMeta(name, labels, {
+			services: this.services,
+			projects: this.projectsStore.projects,
+			getProjectServices: (projectId: string) => this.getProjectServices(projectId)
+		});
+	}
+
+	resolveVolumeMetadata(
+		name: string,
+		labels?: Record<string, string>
+	): { projId: string; projName: string; servId: string; servName: string } {
+		return resolveVolumeMeta(name, labels, {
 			services: this.services,
 			projects: this.projectsStore.projects,
 			getProjectServices: (projectId: string) => this.getProjectServices(projectId)

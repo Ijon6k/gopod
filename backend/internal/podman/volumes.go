@@ -33,6 +33,68 @@ func getVolumeSize(mountPoint string) string {
 	return formatBytes(total)
 }
 
+// volumeSizes reports per-volume disk usage from the podman system df
+// dataset. Walking volume mountpoints from this process is unreliable once
+// GoPod itself runs inside a container: the host storage root is not mounted
+// there, so every walk would quietly measure zero bytes. Podman owns the
+// storage tree, so its numbers are authoritative.
+func (c *Client) volumeSizes(ctx context.Context) map[string]int64 {
+	sizes := make(map[string]int64)
+
+	type dfVolume struct {
+		VolumeName string `json:"VolumeName"`
+		Size       int64  `json:"Size"`
+	}
+	var df struct {
+		Volumes []dfVolume `json:"Volumes"`
+	}
+
+	if c.httpClient != nil {
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://d/"+c.libpodVersion()+"/libpod/system/df", nil)
+		if err != nil {
+			return sizes
+		}
+		resp, cancel, err := c.do(ctx, readTimeout, req)
+		if err != nil {
+			return sizes
+		}
+		defer cancel()
+		defer resp.Body.Close()
+		if resp.StatusCode != http.StatusOK {
+			return sizes
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&df); err != nil {
+			return sizes
+		}
+	} else {
+		cmd := exec.CommandContext(ctx, "podman", "system", "df", "--format", "json")
+		var stdout bytes.Buffer
+		cmd.Stdout = &stdout
+		if err := cmd.Run(); err != nil {
+			return sizes
+		}
+		if err := json.Unmarshal(stdout.Bytes(), &df); err != nil {
+			return sizes
+		}
+	}
+
+	for _, v := range df.Volumes {
+		if v.VolumeName != "" {
+			sizes[v.VolumeName] = v.Size
+		}
+	}
+	return sizes
+}
+
+// volumeSizeLabel prefers podman's reported usage and falls back to a local
+// filesystem walk for volumes the df dataset does not cover.
+func volumeSizeLabel(sizes map[string]int64, name, mountPoint string) string {
+	if used, ok := sizes[name]; ok {
+		return formatBytes(used)
+	}
+	return getVolumeSize(mountPoint)
+}
+
 // GetVolumes returns list of local named volumes.
 func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 	if c.httpClient != nil {
@@ -63,12 +125,13 @@ func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 		}
 
 		var vols []VolumeItem
+		sizes := c.volumeSizes(ctx)
 		for _, item := range raw {
 			vols = append(vols, VolumeItem{
 				Name:       item.Name,
 				Driver:     item.Driver,
 				MountPoint: item.Mountpoint,
-				Size:       getVolumeSize(item.Mountpoint),
+				Size:       volumeSizeLabel(sizes, item.Name, item.Mountpoint),
 				Labels:     item.Labels,
 			})
 		}
@@ -88,13 +151,14 @@ func (c *Client) GetVolumes(ctx context.Context) ([]VolumeItem, error) {
 	}
 
 	var vols []VolumeItem
+	sizes := c.volumeSizes(ctx)
 	for _, item := range raw {
 		mountPoint := getString(item, "Mountpoint")
 		vols = append(vols, VolumeItem{
 			Name:       getString(item, "Name"),
 			Driver:     getString(item, "Driver"),
 			MountPoint: mountPoint,
-			Size:       getVolumeSize(mountPoint),
+			Size:       volumeSizeLabel(sizes, getString(item, "Name"), mountPoint),
 			Labels:     getLabels(item, "Labels"),
 		})
 	}

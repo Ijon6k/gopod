@@ -34,8 +34,10 @@ export function resolveContainerMetadata(
 	}
 
 	// 2. Compose Project labels (Docker & Podman Compose parity)
-	const composeProj = labels?.['com.docker.compose.project'] || labels?.['io.podman.compose.project'];
-	const composeServ = labels?.['com.docker.compose.service'] || labels?.['io.podman.compose.service'];
+	const composeProj =
+		labels?.['com.docker.compose.project'] || labels?.['io.podman.compose.project'];
+	const composeServ =
+		labels?.['com.docker.compose.service'] || labels?.['io.podman.compose.service'];
 
 	if (composeProj) {
 		const matched = ctx.services.find((s: Service) => {
@@ -152,9 +154,9 @@ export function resolveContainerMetadata(
 		if (potentialProj) {
 			projId = potentialProj.id;
 			projName = potentialProj.name;
-			const matchedServInProj = ctx.getProjectServices(potentialProj.id).find(
-				(s) => name.includes(s.name) || name.includes(s.id)
-			);
+			const matchedServInProj = ctx
+				.getProjectServices(potentialProj.id)
+				.find((s) => name.includes(s.name) || name.includes(s.id));
 			if (matchedServInProj) {
 				servId = matchedServInProj.id;
 				servName = matchedServInProj.name;
@@ -163,6 +165,52 @@ export function resolveContainerMetadata(
 				servId = `${projId}-${servName}`;
 			}
 		}
+	}
+
+	return { projId, projName, servId, servName };
+}
+
+/**
+ * Resolve a named Podman volume to its owning project/service using the same
+ * ownership conventions as containers. Named volumes created by GoPod deploys
+ * carry io.gopod.* labels; compose deploys run with the service id as the
+ * compose project name, which makes the engine name volumes
+ * `<serviceId>_<volume>` (podman-compose) or `<serviceId>-<volume>`.
+ * Anything else stays in the global "Host Storage" bucket: ownership cannot
+ * be proven for unlabeled volumes created by manual podman commands.
+ */
+export function resolveVolumeMetadata(
+	name: string,
+	labels: Record<string, string> | undefined,
+	ctx: ContainerMetaContext
+): { projId: string; projName: string; servId: string; servName: string } {
+	let projName = 'Host Storage';
+	let projId = 'system';
+	let servName = 'volume';
+	let servId = 'volume';
+
+	// 1. Explicit GOPOD volume labels (attached before first use at deploy).
+	if (labels && labels['io.gopod.project']) {
+		projId = labels['io.gopod.project'];
+		projName = ctx.projects.find((p) => p.id === projId)?.name || projId;
+		servId = labels['io.gopod.service'] || servId;
+		servName = ctx.services.find((s) => s.id === servId)?.name || servId;
+		return { projId, projName, servId, servName };
+	}
+
+	// 2. Compose naming convention: the compose project name IS the service id,
+	// so the engine prefixes every created volume with it. Match the service id
+	// followed by the separator the tooling used (never a bare prefix).
+	const matchByService = ctx.services.find((s) => {
+		if (!s.id) return false;
+		return name === s.id || name.startsWith(`${s.id}_`) || name.startsWith(`${s.id}-`);
+	});
+	if (matchByService) {
+		servId = matchByService.id;
+		servName = matchByService.name;
+		projId = matchByService.projectId;
+		projName = ctx.projects.find((p) => p.id === projId)?.name || projId;
+		return { projId, projName, servId, servName };
 	}
 
 	return { projId, projName, servId, servName };

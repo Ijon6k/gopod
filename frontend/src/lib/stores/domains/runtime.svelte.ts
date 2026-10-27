@@ -209,9 +209,11 @@ export class RuntimeDomainStore {
 				this.volumes = volumesData.map((v: any) => ({
 					id: v.name,
 					name: v.name,
-					projectId: 'system',
-					projectName: 'Host Storage',
-					serviceId: 'volume',
+					// Ownership (projectId/serviceId/projectName) is resolved by the
+					// data store layer via resolveVolumeMetadata — this store keeps
+					// the raw engine payload only. serviceId stays filled to
+					// satisfy the Volume contract; the store getter overrides it.
+					serviceId: v.labels?.['io.gopod.service'] ?? 'volume',
 					serviceName: v.driver || 'local',
 					mount: v.mount || v.mountPoint || '—',
 					size: v.size || 'Active',

@@ -5,7 +5,8 @@ import type {
 	SystemDiskUsage,
 	SystemLingerResponse,
 	GCPreview,
-	GCResult
+	GCResult,
+	KeyStatusResponse
 } from './types';
 
 export const systemApi = {
@@ -44,16 +45,62 @@ export const systemApi = {
 		return res.data;
 	},
 
+	async reloadQuadlets(): Promise<{ message: string }> {
+		const res = await apiClient.post<{ message: string }>('/quadlets/reload');
+		return res.data;
+	},
+
+	async getKeyStatus(): Promise<KeyStatusResponse> {
+		const res = await apiClient.get<KeyStatusResponse>('/system/security/key-status');
+		return res.data;
+	},
+
+	async listBackups(): Promise<import('../storage/types').VolumeSnapshot[]> {
+		const res = await apiClient.get<import('../storage/types').VolumeSnapshot[]>('/system/backups');
+		return res.data;
+	},
+
+	/** Runs the backend offline integrity inspection of one stored archive. */
+	async verifyBackup(id: string): Promise<import('./types').SystemBackupVerification> {
+		const res = await apiClient.get<import('./types').SystemBackupVerification>(
+			`/system/backups/${encodeURIComponent(id)}/verify`
+		);
+		return res.data;
+	},
+
+	async createBackup(destinationId?: string): Promise<import('../storage/types').VolumeSnapshot> {
+		const res = await apiClient.post<import('../storage/types').VolumeSnapshot>('/system/backup', {
+			destinationId
+		});
+		return res.data;
+	},
+
+	async getBackupSchedule(): Promise<import('../storage/types').VolumeBackupSchedule | null> {
+		const res = await apiClient.get<import('../storage/types').VolumeBackupSchedule | null>(
+			'/system/backup/schedule'
+		);
+		return res.data;
+	},
+
+	async setBackupSchedule(data: {
+		cron: string;
+		retentionCount: number;
+		destinationId?: string;
+		enabled: boolean;
+	}): Promise<import('../storage/types').VolumeBackupSchedule> {
+		const res = await apiClient.post<import('../storage/types').VolumeBackupSchedule>(
+			'/system/backup/schedule',
+			data
+		);
+		return res.data;
+	},
+
 	async gcPreview(): Promise<GCPreview> {
 		const res = await apiClient.get<GCPreview>('/system/gc/preview');
 		return res.data;
 	},
 
-	async runGC(
-		scope: string,
-		includeVolumes = false,
-		volumes: string[] = []
-	): Promise<GCResult> {
+	async runGC(scope: string, includeVolumes = false, volumes: string[] = []): Promise<GCResult> {
 		const res = await apiClient.post<GCResult>('/system/gc', { scope, includeVolumes, volumes });
 		return res.data;
 	},

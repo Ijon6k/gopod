@@ -94,6 +94,16 @@ func KeyFromEnv() bool {
 	return os.Getenv("GOPOD_ENCRYPTION_KEY") != ""
 }
 
+// KeyFingerprint returns a sha256 checksum of the master key.
+func KeyFingerprint() (string, error) {
+	k, err := getKey()
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.Sum256(k)
+	return hex.EncodeToString(hash[:]), nil
+}
+
 // Encrypt encrypts plaintext using AES-256-GCM.
 func Encrypt(plaintext string) (string, error) {
 	if plaintext == "" {

@@ -42,6 +42,10 @@ func (r *SQLiteRepository) ListSnapshots(ctx context.Context, projectID string) 
 		if err := rows.Scan(&s.ID, &s.ProjectID, &s.ServiceID, &s.VolumeName, &s.Filename, &s.Size, &s.SizeBytes, &s.Status, &s.Compression, &s.RemoteProvider, &s.RemoteDestinationID, &s.RemoteKey, &s.Checksum, &s.RemoteStatus, &s.RemoteError, &s.CreatedAt); err != nil {
 			return nil, err
 		}
+		// The stored size string predates the KB-capable formatter; always
+		// re-derive the display label from the byte count so historical rows
+		// pick up the current format as well.
+		s.Size = formatSnapshotSize(s.SizeBytes)
 		list = append(list, s)
 	}
 	if list == nil {

@@ -16,7 +16,7 @@ func NewSQLiteRepository(db *sql.DB) *SQLiteRepository {
 }
 
 func (r *SQLiteRepository) List(ctx context.Context) ([]Project, error) {
-	rows, err := r.db.QueryContext(ctx, "SELECT id, name, description, created_at FROM projects ORDER BY created_at DESC")
+	rows, err := r.db.QueryContext(ctx, "SELECT id, name, description, created_at FROM projects WHERE id != 'system' ORDER BY created_at DESC")
 	if err != nil {
 		return nil, err
 	}

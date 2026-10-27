@@ -185,6 +185,7 @@ func NewServer(cfg Config) (http.Handler, error) {
 
 	storageRepo := storage.NewSQLiteRepository(sqlDB)
 	storageService := storage.NewService(storageRepo)
+	storageService.SetSystemSource(sqlDB, dataDir)
 	storageService.StartScheduler(context.Background())
 	storageHandler := storage.NewHandler(storageService, authMiddleware)
 
@@ -202,6 +203,7 @@ func NewServer(cfg Config) (http.Handler, error) {
 
 	authService.SetAuditRecorder(auditService)
 	workloadService.SetAuditRecorder(auditService)
+	storageService.SetAuditRecorder(auditService)
 
 	projectService.SetServiceChecker(func(ctx context.Context, projectID string) (int, error) {
 		svcs, err := serviceRepo.List(ctx, projectID)

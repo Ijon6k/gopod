@@ -287,6 +287,7 @@ func (d *DB) migrate() error {
 		"CREATE INDEX IF NOT EXISTS idx_services_webhook ON services(webhook_token);",
 		"CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);",
 		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);",
+		"INSERT OR IGNORE INTO projects (id, name, description) VALUES ('system', 'GoPod System', 'Internal system placeholder for platform disaster recovery snapshots');",
 	}
 	for _, q := range newCols {
 		if _, err := d.Exec(q); err != nil {
@@ -312,6 +313,8 @@ var dataMigrations = []string{
 	// auto_deploy existed as an inert column, so every stored false value is
 	// the zero value rather than an operator choice. Start everyone enabled.
 	"UPDATE services SET auto_deploy = 1",
+	// Ensure system placeholder project exists for platform disaster recovery snapshots & schedules
+	"INSERT OR IGNORE INTO projects (id, name, description) VALUES ('system', 'GoPod System', 'Internal system placeholder for platform disaster recovery snapshots')",
 }
 
 func (d *DB) migrateData() error {

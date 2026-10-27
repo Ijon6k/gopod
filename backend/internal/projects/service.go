@@ -200,6 +200,9 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProjectInput) (
 
 // DeleteProject deletes a project by ID, preventing deletion if services exist.
 func (s *Service) DeleteProject(ctx context.Context, id string) error {
+	if id == "system" {
+		return errors.New("cannot delete system project")
+	}
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}

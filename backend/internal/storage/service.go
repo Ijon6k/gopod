@@ -4,10 +4,12 @@ import (
 	"compress/gzip"
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/robfig/cron/v3"
 
+	"gopod/internal/activity"
 	"gopod/pkg/crypto"
 )
 
@@ -39,11 +42,57 @@ func validateVolumeName(raw string) error {
 	return nil
 }
 
+// Sentinel errors for precise HTTP status mapping.
+var (
+	// ErrBackupInProgress reports an overlapping backup creation attempt.
+	ErrBackupInProgress = errors.New("a backup operation is already in progress")
+	// ErrInconsistentDatabase reports that a transactionally consistent copy of
+	// the live database could not be captured. The backup aborts instead of
+	// shipping a torn archive under a "completed" status.
+	ErrInconsistentDatabase = errors.New("could not capture a consistent database copy")
+	// ErrSnapshotNotFound reports a snapshot id that does not resolve.
+	ErrSnapshotNotFound = errors.New("snapshot not found")
+	// ErrScheduleNotFound reports a schedule id that does not resolve.
+	ErrScheduleNotFound = errors.New("schedule not found")
+	// ErrSystemRestoreUnsupported rejects restore attempts for instance-level
+	// disaster recovery archives; their home is an offline host recovery.
+	ErrSystemRestoreUnsupported = errors.New("instance disaster recovery archives cannot be restored into container volumes; download the archive and extract during host recovery")
+)
+
+// AuditRecorder records storage and backup audit events.
+type AuditRecorder interface {
+	Record(ctx context.Context, action, actor, target, category, ip, status string) error
+}
+
 // Service encapsulates storage backups and snapshot lifecycle business logic.
 type Service struct {
-	repo Repository
-	cron *cron.Cron
-	mu   sync.Mutex
+	repo     Repository
+	cron     *cron.Cron
+	sqlDB    *sql.DB
+	dataDir  string
+	audit    AuditRecorder
+	mu       sync.Mutex
+	backupMu sync.Mutex
+}
+
+func (s *Service) getDataDir() string {
+	if s.dataDir != "" {
+		return s.dataDir
+	}
+	return "./data"
+}
+
+// backupDir is the single source of truth for where local archives live.
+// Hardcoding "./data/backups" in individual callers desynchronizes writes
+// (create) from reads (download/restore/delete) whenever the configured data
+// directory differs from the process working directory.
+func (s *Service) backupDir() string {
+	return filepath.Join(s.getDataDir(), "backups")
+}
+
+// SetAuditRecorder configures audit recording for storage lifecycle operations.
+func (s *Service) SetAuditRecorder(ar AuditRecorder) {
+	s.audit = ar
 }
 
 // NewService creates a new storage domain service.
@@ -77,6 +126,9 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 	if snap.VolumeName == "" {
 		return nil, errors.New("volumeName is required")
 	}
+	if snap.VolumeName == "system:gopod" {
+		return s.CreateSystemBackup(ctx, snap.DestinationID)
+	}
 
 	if snap.ID == "" {
 		b := make([]byte, 4)
@@ -99,9 +151,13 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 	}
 	snap.CreatedAt = time.Now()
 
-	// Perform real Podman volume export with standard gzip compression
-	backupDir := "./data/backups"
-	_ = os.MkdirAll(backupDir, 0755)
+	// Perform real Podman volume export with standard gzip compression.
+	// Archives round-trip potentially confidential volume data, so both the
+	// directory and the files keep owner-only permissions.
+	backupDir := s.backupDir()
+	if err := os.MkdirAll(backupDir, 0700); err != nil {
+		return nil, fmt.Errorf("prepare snapshot directory: %w", err)
+	}
 	filePath := filepath.Join(backupDir, snap.Filename)
 
 	outFile, err := os.Create(filePath)
@@ -134,10 +190,11 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 		// is removed in both failure cases so nothing fake stays downloadable.
 		if fi, statErr := os.Stat(filePath); statErr == nil && fi.Size() > 0 {
 			snap.SizeBytes = fi.Size()
-			snap.Size = fmt.Sprintf("%.2f MB", float64(fi.Size())/(1024*1024))
+			snap.Size = formatSnapshotSize(fi.Size())
 			snap.Status = "completed"
+			_ = os.Chmod(filePath, 0600)
 		} else {
-			snap.Size = "0 MB"
+			snap.Size = formatSnapshotSize(0)
 			snap.Status = "failed"
 			_ = os.Remove(filePath)
 		}
@@ -155,23 +212,29 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 			snap.RemoteError = state.ErrText
 		}
 	} else {
-		snap.Size = "0 MB"
+		snap.Size = formatSnapshotSize(0)
 		snap.Status = "failed"
 	}
 
+	// The database row is written before the mirror update so a crash between
+	// the two steps always leaves a locally recorded snapshot rather than an
+	// orphaned remote object with no metadata to clean it up later.
 	if err := s.repo.CreateSnapshot(ctx, snap); err != nil {
 		return nil, err
 	}
-	// The remote outcome is written through a dedicated update so a failed
-	// insert can never half-record remote state (and vice versa).
 	if snap.RemoteStatus != "" {
-		_ = s.repo.UpdateSnapshotRemote(ctx, snap.ID, SnapshotRemoteState{
+		if err := s.repo.UpdateSnapshotRemote(ctx, snap.ID, SnapshotRemoteState{
 			Status:    snap.RemoteStatus,
 			Provider:  snap.RemoteProvider,
 			RemoteKey: snap.RemoteKey,
 			Checksum:  snap.Checksum,
 			ErrText:   snap.RemoteError,
-		})
+		}); err != nil {
+			// The local archive and its row are intact; only metadata about the
+			// mirror is missing. Operators delete by snapshot id, so silently
+			// dropping the error would leave stale remote objects behind.
+			log.Printf("[storage] WARNING: remote mirror state not recorded for snapshot %s: %v", snap.ID, err)
+		}
 	}
 	return &snap, nil
 }
@@ -183,7 +246,11 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 	}
 	snap, err := s.repo.GetSnapshot(ctx, id)
 	if err != nil || snap == nil {
-		return fmt.Errorf("snapshot not found: %s", id)
+		return fmt.Errorf("%w: %s", ErrSnapshotNotFound, id)
+	}
+
+	if snap.VolumeName == "system:gopod" || snap.ProjectID == "system" {
+		return ErrSystemRestoreUnsupported
 	}
 
 	// Stored rows are replayed against the shell/daemon below; re-validate the
@@ -193,7 +260,7 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 	}
 
 	cleanFilename := filepath.Base(snap.Filename)
-	filePath := filepath.Join("./data/backups", cleanFilename)
+	filePath := filepath.Join(s.getDataDir(), "backups", cleanFilename)
 	inFile, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("snapshot file missing: %w", err)
@@ -234,10 +301,10 @@ func (s *Service) GetSnapshotFilePath(ctx context.Context, id string) (string, s
 	}
 	snap, err := s.repo.GetSnapshot(ctx, id)
 	if err != nil || snap == nil {
-		return "", "", fmt.Errorf("snapshot not found: %s", id)
+		return "", "", fmt.Errorf("%w: %s", ErrSnapshotNotFound, id)
 	}
 	cleanFilename := filepath.Base(snap.Filename)
-	filePath := filepath.Join("./data/backups", cleanFilename)
+	filePath := filepath.Join(s.backupDir(), cleanFilename)
 	if _, err := os.Stat(filePath); err != nil {
 		return "", "", fmt.Errorf("snapshot file not found on disk: %w", err)
 	}
@@ -248,13 +315,22 @@ func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}
-	snap, _ := s.repo.GetSnapshot(ctx, id)
+	snap, err := s.repo.GetSnapshot(ctx, id)
+	if err != nil {
+		return err
+	}
 	if snap == nil {
-		return s.repo.DeleteSnapshot(ctx, id)
+		// Only the row-delete side effect may run (a concurrent retention pass
+		// may have removed the row moments ago); report the miss accurately so
+		// callers can honor 404 semantics instead of a phantom success.
+		if deleteErr := s.repo.DeleteSnapshot(ctx, id); deleteErr != nil {
+			return deleteErr
+		}
+		return fmt.Errorf("%w: %s", ErrSnapshotNotFound, id)
 	}
 	if snap.Filename != "" {
 		cleanFilename := filepath.Base(snap.Filename)
-		_ = os.Remove(filepath.Join("./data/backups", cleanFilename))
+		_ = os.Remove(filepath.Join(s.backupDir(), cleanFilename))
 	}
 	// Best-effort remote cleanup: when the local archive is gone, the mirror
 	// should go too. Failure here only logs — the operator is not stranded by
@@ -266,7 +342,15 @@ func (s *Service) DeleteSnapshot(ctx context.Context, id string) error {
 			}
 		}
 	}
-	return s.repo.DeleteSnapshot(ctx, id)
+	err = s.repo.DeleteSnapshot(ctx, id)
+	if err == nil {
+		log.Printf("[backup] Snapshot deleted: %s", id)
+		if s.audit != nil {
+			_ = s.audit.Record(ctx, "system.backup_delete", "admin", id, "storage", "", "success")
+		}
+		activity.EmitEngineEvent(ctx, "info", "system", "", "", "admin", "system.backup_delete", "Backup snapshot deleted: "+id, nil)
+	}
+	return err
 }
 
 // pruneSnapshotsByRetention keeps the newest keepCount snapshots and deletes
@@ -349,7 +433,7 @@ func (s *Service) ToggleSchedule(ctx context.Context, id string) (*VolumeSchedul
 		return nil, err
 	}
 	if sched == nil {
-		return nil, errors.New("schedule not found")
+		return nil, fmt.Errorf("%w: %s", ErrScheduleNotFound, id)
 	}
 
 	sched.Enabled = !sched.Enabled
@@ -385,7 +469,12 @@ func (s *Service) StartScheduler(ctx context.Context) {
 }
 
 // RestartScheduler resets running cron jobs to match updated database state.
+// The caller's request context is deliberately detached: an HTTP client that
+// disconnects right after saving a schedule would otherwise cancel the
+// re-registration query and silently leave every backup schedule unregistered
+// until the next process restart.
 func (s *Service) RestartScheduler(ctx context.Context) {
+	ctx = context.WithoutCancel(ctx)
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -422,7 +511,18 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 			DestinationID: sched.DestinationID,
 		}
 		_, err := s.CreateSnapshot(ctx, snap)
-		if err == nil && sched.RetentionCount > 0 && s.repo != nil {
+		if err != nil {
+			// Scheduled backups run in the background where no one looks at a
+			// return value: emit the failure into the engine feed and system
+			// log so a broken backup policy cannot fail silently for weeks.
+			log.Printf("[backup] scheduled backup failed for volume %s: %v", sched.VolumeName, err)
+			if sched.VolumeName != "system:gopod" {
+				// Self-backups already emit system.backup_failed inside
+				// CreateSystemBackup; only volume backups need this event.
+				activity.EmitEngineEvent(ctx, "error", sched.ProjectID, "", sched.VolumeName, "admin", "backup_failed",
+					fmt.Sprintf("Scheduled backup for volume %s failed: %v", sched.VolumeName, err), nil)
+			}
+		} else if sched.RetentionCount > 0 && s.repo != nil {
 			allSnaps, _ := s.repo.ListSnapshots(ctx, sched.ProjectID)
 			var volSnaps []VolumeSnapshot
 			for _, sn := range allSnaps {

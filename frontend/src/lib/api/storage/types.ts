@@ -47,9 +47,9 @@ export interface VolumeBackupSchedule {
 	cron: string;
 	label?: string;
 	retentionCount?: number;
-	keepCount?: number;
 	enabled: boolean;
 	lastRun?: string;
+	/** Only shipped when a future backend computes it; the UI shows '—' otherwise. */
 	nextRun?: string;
 	/** Optional S3-compatible mirror; empty = local-only snapshots. */
 	destinationId?: string;

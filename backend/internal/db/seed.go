@@ -11,7 +11,7 @@ func (d *DB) seedIfEmpty() error {
 	}
 
 	var count int
-	err := d.QueryRow("SELECT COUNT(*) FROM projects").Scan(&count)
+	err := d.QueryRow("SELECT COUNT(*) FROM projects WHERE id != 'system'").Scan(&count)
 	if err != nil {
 		return err
 	}

@@ -1,6 +1,8 @@
 package storage
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -61,6 +63,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/volumes/destinations/test", h.middleware.RequireAuth(h.handleTestDestinationStruct))
 	mux.HandleFunc("POST /api/volumes/destinations/{id}/test", h.middleware.RequireAuth(h.handleTestDestination))
 	mux.HandleFunc("DELETE /api/volumes/destinations/{id}", h.middleware.RequireAuth(h.handleDeleteDestination))
+
+	// System / Self-Backup endpoints
+	mux.HandleFunc("POST /api/system/backup", h.middleware.RequireAuth(h.handleCreateSystemBackup))
+	mux.HandleFunc("GET /api/system/backups", h.middleware.RequireAuth(h.handleListSystemBackups))
+	mux.HandleFunc("GET /api/system/backups/{id}/verify", h.middleware.RequireAuth(h.handleVerifySystemBackup))
+	mux.HandleFunc("GET /api/system/backup/schedule", h.middleware.RequireAuth(h.handleGetSystemBackupSchedule))
+	mux.HandleFunc("POST /api/system/backup/schedule", h.middleware.RequireAuth(h.handleSaveSystemBackupSchedule))
+	mux.HandleFunc("GET /api/system/security/key-status", h.middleware.RequireAuth(h.handleGetKeyStatus))
 }
 
 // ── Snapshots ──
@@ -117,6 +127,10 @@ func (h *Handler) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.service.DeleteSnapshot(r.Context(), id); err != nil {
+		if errors.Is(err, ErrSnapshotNotFound) {
+			httputil.WriteError(w, http.StatusNotFound, err.Error())
+			return
+		}
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -126,7 +140,15 @@ func (h *Handler) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleRestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	if err := h.service.RestoreSnapshot(r.Context(), id); err != nil {
-		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		switch {
+		case errors.Is(err, ErrSnapshotNotFound):
+			httputil.WriteError(w, http.StatusNotFound, err.Error())
+		case errors.Is(err, ErrSystemRestoreUnsupported):
+			// Rejection is a client-side semantic mistake, not a server fault.
+			httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		default:
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		}
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Snapshot restored successfully"})
@@ -193,6 +215,10 @@ func (h *Handler) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	sched, err := h.service.ToggleSchedule(r.Context(), id)
 	if err != nil {
+		if errors.Is(err, ErrScheduleNotFound) {
+			httputil.WriteError(w, http.StatusNotFound, err.Error())
+			return
+		}
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
@@ -270,4 +296,96 @@ func (h *Handler) handleTestDestination(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Destination reachable"})
+}
+
+// ── System / Self-Backup Handlers ──
+
+func (h *Handler) handleCreateSystemBackup(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		DestinationID string `json:"destinationId"`
+	}
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+	// A cancelled HTTP request must not abort the backup mid-flight: the local
+	// archive would be deleted and a possibly-uploaded remote copy orphaned.
+	// Values are kept so db/drive layers preserve any propagated context.
+	ctx := context.WithoutCancel(r.Context())
+	snap, err := h.service.CreateSystemBackup(ctx, req.DestinationID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrBackupInProgress):
+			httputil.WriteError(w, http.StatusConflict, err.Error())
+		case errors.Is(err, ErrInconsistentDatabase):
+			httputil.WriteError(w, http.StatusServiceUnavailable, err.Error())
+		default:
+			httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		}
+		return
+	}
+	httputil.WriteJSON(w, http.StatusCreated, snap)
+}
+
+func (h *Handler) handleListSystemBackups(w http.ResponseWriter, r *http.Request) {
+	snaps, err := h.service.ListSystemBackups(r.Context())
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, snaps)
+}
+
+// handleVerifySystemBackup inspects one stored disaster recovery archive on
+// request. Verification is read-only work but potentially seconds-long; the
+// request context is detached so a closing browser tab never aborts the
+// integrity probe halfway through.
+func (h *Handler) handleVerifySystemBackup(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	ctx := context.WithoutCancel(r.Context())
+	report, err := h.service.VerifySystemBackup(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrSnapshotNotFound) {
+			httputil.WriteError(w, http.StatusNotFound, err.Error())
+			return
+		}
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// A broken archive is still a successful verification: the report itself
+	// carries the failure for the UI to render.
+	httputil.WriteJSON(w, http.StatusOK, report)
+}
+
+func (h *Handler) handleGetSystemBackupSchedule(w http.ResponseWriter, r *http.Request) {
+	sched, err := h.service.GetSystemBackupSchedule(r.Context())
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, sched)
+}
+
+func (h *Handler) handleSaveSystemBackupSchedule(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Cron           string `json:"cron"`
+		RetentionCount int    `json:"retentionCount"`
+		DestinationID  string `json:"destinationId"`
+		Enabled        bool   `json:"enabled"`
+	}
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+	sched, err := h.service.SaveSystemBackupSchedule(r.Context(), req.Cron, req.RetentionCount, req.DestinationID, req.Enabled)
+	if err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, sched)
+}
+
+func (h *Handler) handleGetKeyStatus(w http.ResponseWriter, r *http.Request) {
+	status := h.service.GetKeyStatus()
+	httputil.WriteJSON(w, http.StatusOK, status)
 }

@@ -49,3 +49,36 @@ func TestMigrateBackfillsAutoDeployOnce(t *testing.T) {
 		t.Fatalf("data migration ran twice and re-enabled auto-deploy")
 	}
 }
+
+func TestMigrateSystemProjectAndVolumeSnapshots(t *testing.T) {
+	database, err := Open(filepath.Join(t.TempDir(), "system_snap.db"))
+	if err != nil {
+		t.Fatalf("open database: %v", err)
+	}
+	defer database.Close()
+
+	// Verify system project exists
+	var sysName string
+	err = database.QueryRow(`SELECT name FROM projects WHERE id = 'system'`).Scan(&sysName)
+	if err != nil {
+		t.Fatalf("system project missing after migrate: %v", err)
+	}
+
+	// Verify inserting a system snapshot succeeds with foreign keys enabled
+	_, err = database.Exec(`
+		INSERT INTO volume_snapshots (id, project_id, service_id, volume_name, filename, size, size_bytes, status, compression)
+		VALUES ('snap-sys-1', 'system', 'gopod', 'system:gopod', 'backup.tar.gz', '1.2 MB', 123456, 'completed', 'gzip')
+	`)
+	if err != nil {
+		t.Fatalf("inserting system snapshot failed: %v", err)
+	}
+
+	// Verify inserting a system schedule succeeds with foreign keys enabled
+	_, err = database.Exec(`
+		INSERT INTO volume_schedules (id, project_id, service_id, volume_name, cron, label, retention_count, enabled)
+		VALUES ('sched-sys-1', 'system', 'gopod', 'system:gopod', '0 3 * * *', 'System Backup', 7, 1)
+	`)
+	if err != nil {
+		t.Fatalf("inserting system schedule failed: %v", err)
+	}
+}

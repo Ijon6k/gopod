@@ -28,6 +28,7 @@ export interface Server {
 }
 
 export interface SystemInfoResponse {
+	ip?: string;
 	hostname: string;
 	os: string;
 	kernel: string;
@@ -107,4 +108,32 @@ export interface GCResult {
 	unitFilesRemoved?: string[] | null;
 	volumesRemoved?: string[] | null;
 	errors?: string[] | null;
+}
+
+export interface KeyStatusResponse {
+	keyFilePath: string;
+	keyExists: boolean;
+	keyFromEnv: boolean;
+	fingerprint: string;
+	algorithm: string;
+}
+
+/** Offline integrity report for one disaster recovery archive (backend verify probe). */
+export interface SystemBackupVerification {
+	valid: boolean;
+	checkedAt: string;
+	archiveReadable: boolean;
+	manifestFound: boolean;
+	manifestVersion?: number;
+	manifestCreatedAt?: string;
+	manifestKeyFromEnv: boolean;
+	keyBundleFound: boolean;
+	databaseFound: boolean;
+	/** "ok" or the integrity failure description; empty when not probed. */
+	databaseIntegrity?: string;
+	/** "match" | "mismatch" | "unavailable" */
+	checksumMatch: string;
+	entries?: string[];
+	errors?: string[];
+	warnings?: string[];
 }

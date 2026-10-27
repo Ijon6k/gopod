@@ -262,7 +262,7 @@ func (s *Service) CreateDatabaseDump(ctx context.Context, req DatabaseDumpReques
 	fi, statErr := os.Stat(filePath)
 	if dumpErr == nil && statErr == nil && fi.Size() > 0 {
 		snap.SizeBytes = fi.Size()
-		snap.Size = fmt.Sprintf("%.2f MB", float64(fi.Size())/(1024*1024))
+		snap.Size = formatSnapshotSize(fi.Size())
 		snap.Status = "completed"
 
 		// Remote mirror push if destination specified
@@ -276,7 +276,7 @@ func (s *Service) CreateDatabaseDump(ctx context.Context, req DatabaseDumpReques
 			snap.RemoteError = state.ErrText
 		}
 	} else {
-		snap.Size = "0 MB"
+		snap.Size = formatSnapshotSize(0)
 		snap.Status = "failed"
 		_ = os.Remove(filePath)
 		if dumpErr != nil {

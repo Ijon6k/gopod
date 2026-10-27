@@ -346,9 +346,7 @@ func TestAntiLoopGuardsInPrepareQuadlet(t *testing.T) {
 }
 
 func TestValidateQuadletDryRun(t *testing.T) {
-	if quadletBinary() == "" {
-		t.Skip("quadlet dryrun binary not present; the generator-backed invalid-unit assertion needs the real quadlet")
-	}
+	requireQuadletGenerator(t)
 	validUnit := `[Unit]
 Description=DryRun Test Service
 After=network-online.target

@@ -1,9 +1,11 @@
 package ingress
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"gopod/internal/auth"
 	"gopod/pkg/httputil"
@@ -21,6 +23,32 @@ type Handler struct {
 type domainPayload struct {
 	Domain
 	BasicAuthPass string `json:"basicAuthPass"`
+}
+
+func (p *domainPayload) UnmarshalJSON(data []byte) error {
+	type alias domainPayload
+	var raw struct {
+		alias
+		RawPort json.RawMessage `json:"containerPort"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	*p = domainPayload(raw.alias)
+	if len(raw.RawPort) > 0 {
+		var intPort int
+		if err := json.Unmarshal(raw.RawPort, &intPort); err == nil {
+			p.ContainerPort = intPort
+		} else {
+			var strPort string
+			if err := json.Unmarshal(raw.RawPort, &strPort); err == nil {
+				if parsed, err := strconv.Atoi(strings.TrimSpace(strPort)); err == nil {
+					p.ContainerPort = parsed
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func (p domainPayload) toDomain() Domain {

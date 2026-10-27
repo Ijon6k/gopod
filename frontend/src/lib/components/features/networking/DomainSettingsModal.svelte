@@ -209,6 +209,8 @@
 			cleanHost === 'localhost';
 		const dnsStatus = isLocal || dnsVerified ? 'valid' : 'pending';
 
+		const portNum = parseInt(String(containerPort), 10) || 3000;
+
 		const updated: Domain = {
 			id: domain?.id || crypto.randomUUID(),
 			hostname: cleanHost,
@@ -219,8 +221,8 @@
 			tls,
 			status: 'active',
 			proxyPort: domain?.proxyPort || 8300 + Math.floor(Math.random() * 90),
-			containerPort,
-			publishedPort: containerPort,
+			containerPort: portNum,
+			publishedPort: portNum,
 			dnsStatus,
 			resolvedIp: server.ip,
 			httpsRedirect,

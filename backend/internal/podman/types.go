@@ -52,17 +52,17 @@ type ContainerStat struct {
 
 // ContainerItem represents a container listing.
 type ContainerItem struct {
-	ID      string            `json:"id"`
-	Names   []string          `json:"names"`
-	Image   string            `json:"image"`
-	Status  string            `json:"status"`
-	State   string            `json:"state"`
-	Created string            `json:"created"`
+	ID      string   `json:"id"`
+	Names   []string `json:"names"`
+	Image   string   `json:"image"`
+	Status  string   `json:"status"`
+	State   string   `json:"state"`
+	Created string   `json:"created"`
 	// StartedAt is the container start time (RFC3339) or empty when unknown.
 	StartedAt string            `json:"startedAt,omitempty"`
 	Ports     string            `json:"ports"`
-	Labels  map[string]string `json:"labels,omitempty"`
-	Stats   *ContainerStat    `json:"stats,omitempty"`
+	Labels    map[string]string `json:"labels,omitempty"`
+	Stats     *ContainerStat    `json:"stats,omitempty"`
 }
 
 // PodItem represents a Podman pod.

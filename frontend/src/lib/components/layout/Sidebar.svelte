@@ -1,4 +1,5 @@
 <script lang="ts">
+	import { untrack } from 'svelte';
 	import { Sidebar as KumoSidebar, useSidebar, DropdownMenu } from 'kumo-svelte';
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
@@ -36,15 +37,17 @@
 		return currentPath === path || currentPath.startsWith(path + '/');
 	}
 
-	// Close the mobile offcanvas drawer when navigation changes it. Guarded on
-	// kumo's documented pattern: untouched on desktop (the collapsed state is
-	// user-controlled and must survive navigation), only dismissed when the
-	// mobile drawer is actually open on an actual mobile viewport.
+	// Close the mobile offcanvas drawer only when navigation actually changes route.
+	// Tracking previous pathname prevents an immediate re-render close loop when the drawer opens.
+	let previousPath = page.url.pathname;
 	$effect(() => {
-		// Reactive read keeps this effect subscribed to route changes.
-		const _pathname = page.url.pathname;
-		if (!sidebar.isMobile || !sidebar.openMobile) return;
-		sidebar.setOpenMobile(false);
+		const currentPath = page.url.pathname;
+		if (currentPath !== previousPath) {
+			previousPath = currentPath;
+			if (sidebar.isMobile && untrack(() => sidebar.openMobile)) {
+				sidebar.setOpenMobile(false);
+			}
+		}
 	});
 </script>
 
@@ -53,7 +56,7 @@
 	<KumoSidebar.Header
 		class="flex h-12 items-center justify-between border-b border-[var(--border)] px-3"
 	>
-		{#if sidebar.open}
+		{#if sidebar.open || sidebar.isMobile}
 			<!-- Expanded State: Logo Icon + Title on left, Collapse Trigger on right -->
 			<a
 				href="/"

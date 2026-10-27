@@ -250,6 +250,21 @@ func TestMigrateBasicAuthHashesOnce(t *testing.T) {
 	}
 }
 
+func TestDomainPayloadStringPort(t *testing.T) {
+	for _, body := range []string{
+		`{"hostname":"app.example.com","containerPort":"8080","serviceId":"web-gui"}`,
+		`{"hostname":"app.example.com","containerPort":8080,"serviceId":"web-gui"}`,
+	} {
+		var p domainPayload
+		if err := json.Unmarshal([]byte(body), &p); err != nil {
+			t.Fatalf("decode %s: %v", body, err)
+		}
+		if p.ContainerPort != 8080 {
+			t.Fatalf("expected containerPort 8080, got %d from %s", p.ContainerPort, body)
+		}
+	}
+}
+
 func TestDomainPayloadAcceptsWriteOnlyPassword(t *testing.T) {
 	var p domainPayload
 	body := []byte(`{"hostname":"app.example.com","containerPort":80,"serviceId":"web-gui","basicAuth":true,"basicAuthUser":"admin","basicAuthPass":"secret"}`)

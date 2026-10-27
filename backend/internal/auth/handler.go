@@ -37,6 +37,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/login", h.handleLogin)
 	mux.HandleFunc("POST /api/auth/logout", h.handleLogout)
 	mux.HandleFunc("GET /api/auth/me", h.handleMe)
+	mux.HandleFunc("POST /api/auth/password", h.handlePasswordChange)
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -175,6 +176,34 @@ func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	httputil.WriteJSON(w, http.StatusOK, map[string]interface{}{"user": user})
+}
+
+func (h *Handler) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
+	session, user, err := h.service.GetSessionUser(r)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if session == nil || user == nil {
+		httputil.WriteError(w, http.StatusUnauthorized, "Not authenticated")
+		return
+	}
+
+	var req struct {
+		CurrentPassword string `json:"currentPassword"`
+		NewPassword     string `json:"newPassword"`
+	}
+	if err := httputil.DecodeJSONBody(w, r, &req, 0); err != nil {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+
+	if err := h.service.ChangePassword(r.Context(), user.ID, req.CurrentPassword, req.NewPassword, session.Token); err != nil {
+		httputil.WriteError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Password changed successfully"})
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {

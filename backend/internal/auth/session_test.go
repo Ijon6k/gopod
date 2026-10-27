@@ -67,6 +67,49 @@ func TestCreateSessionStoresHashedToken(t *testing.T) {
 	}
 }
 
+func TestPasswordChangeRevokesOtherSessions(t *testing.T) {
+	repo, ctx := newSessionTestRepo(t)
+
+	// Three live sessions plus one legacy plaintext row (skip migration).
+	current := "gopod_sess_current123456"
+	other := "gopod_sess_other000000000"
+	legacy := "raw-legacy-plaintext-token"
+	for _, tok := range []string{current, other, legacy} {
+		if _, err := repo.db.ExecContext(ctx,
+			"INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)",
+			tok, "u-sess", time.Now().Add(time.Hour)); err != nil {
+			t.Fatalf("insert session: %v", err)
+		}
+	}
+
+	if err := repo.UpdatePassword(ctx, "u-sess", "newhash"); err != nil {
+		t.Fatalf("update password: %v", err)
+	}
+	if _, err := repo.DeleteOtherSessions(ctx, "u-sess", current); err != nil {
+		t.Fatalf("delete other sessions: %v", err)
+	}
+
+	// The kept session survives with hashed lookup.
+	s, _, err := repo.GetSession(ctx, current)
+	if err != nil || s == nil {
+		t.Fatalf("current session must survive (session=%v err=%v)", s, err)
+	}
+	// Stolen tokens — hashed and legacy plaintext — are gone.
+	if s, _, _ := repo.GetSession(ctx, other); s != nil {
+		t.Fatalf("other session must be revoked")
+	}
+	if s, _, _ := repo.GetSession(ctx, legacy); s != nil {
+		t.Fatalf("legacy plaintext session must be revoked")
+	}
+	var count int
+	if err := repo.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM sessions").Scan(&count); err != nil {
+		t.Fatalf("count sessions: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected exactly 1 surviving session, got %d", count)
+	}
+}
+
 func TestGetSessionLegacyPlaintextFallback(t *testing.T) {
 	repo, ctx := newSessionTestRepo(t)
 	if _, err := repo.db.ExecContext(ctx,

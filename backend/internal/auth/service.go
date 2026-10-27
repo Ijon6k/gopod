@@ -238,3 +238,66 @@ func (s *Service) StartSessionCleanup(ctx context.Context) {
 		}
 	}
 }
+
+// ChangePassword verifies current password and updates it with the new
+// password. Every other active session of the account is revoked afterwards:
+// a password change without session revocation leaves stolen session tokens
+// valid indefinitely, which—the promise the settings UI makes—is a lie.
+// The current session (keepSessionToken, raw token) is intentionally kept so
+// the operator is not logged out of the browser they are typing in.
+func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, newPassword, keepSessionToken string) error {
+	if len(newPassword) < 8 {
+		return errors.New("new password must be at least 8 characters long")
+	}
+	if len(newPassword) > 128 {
+		return errors.New("new password cannot exceed 128 characters")
+	}
+	if currentPassword == newPassword {
+		return errors.New("new password cannot be the same as current password")
+	}
+
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return errors.New("user not found")
+	}
+
+	if err := bcrypt.CompareHashAndPassword([]byte(user.PasswordHash), []byte(currentPassword)); err != nil {
+		log.Printf("[auth] WARNING: Failed password change attempt for user %s", user.Email)
+		if s.audit != nil {
+			_ = s.audit.Record(ctx, "auth.password_change_failed", user.Email, user.ID, "security", "", "failure")
+		}
+		return errors.New("current password is incorrect")
+	}
+
+	hash, err := bcrypt.GenerateFromPassword([]byte(newPassword), bcrypt.DefaultCost)
+	if err != nil {
+		return err
+	}
+
+	if err := s.repo.UpdatePassword(ctx, userID, string(hash)); err != nil {
+		return err
+	}
+
+	// Revoke all remaining sessions except the one carrying out the change.
+	// The repository keeps both the hashed and any legacy plaintext twin of
+	// the current token, so the operator's own browser stays logged in.
+	if keepSessionToken != "" {
+		revoked, revokeErr := s.repo.DeleteOtherSessions(ctx, userID, keepSessionToken)
+		if revokeErr != nil {
+			// The password itself is already updated; a failed revocation must
+			// be visible in the logs, but does not roll back the change.
+			log.Printf("[auth] WARNING: could not revoke other sessions after password change for user %s: %v", user.Email, revokeErr)
+		} else if revoked > 0 {
+			log.Printf("[auth] Revoked %d other session(s) after password change for user %s", revoked, user.Email)
+		}
+	}
+
+	log.Printf("[auth] Password updated for user %s (%s)", user.Email, user.ID)
+	if s.audit != nil {
+		_ = s.audit.Record(ctx, "auth.password_change", user.Email, user.ID, "security", "", "success")
+	}
+	return nil
+}

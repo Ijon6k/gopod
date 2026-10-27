@@ -142,3 +142,123 @@ func TestAuthStatusAndSetupFlow(t *testing.T) {
 		t.Fatalf("expected status 200 for logout, got %d", w.Code)
 	}
 }
+
+func TestPasswordChangeHTTP(t *testing.T) {
+	handler, _ := setupTestHandler(t)
+	mux := http.NewServeMux()
+	handler.RegisterRoutes(mux)
+
+	// Setup initial user
+	setupPayload := SetupRequest{
+		Name:     "Admin",
+		Email:    "admin@test.local",
+		Password: "oldpassword123",
+	}
+	body, _ := json.Marshal(setupPayload)
+	req := httptest.NewRequest("POST", "/api/auth/setup", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusCreated {
+		t.Fatalf("setup failed: %d", w.Code)
+	}
+
+	var sessionCookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "gopod_session" {
+			sessionCookie = c
+			break
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("session cookie missing")
+	}
+
+	// 1. Password change without auth cookie -> 401
+	chPayload := map[string]string{
+		"currentPassword": "oldpassword123",
+		"newPassword":     "newpassword456",
+	}
+	chBody, _ := json.Marshal(chPayload)
+	req = httptest.NewRequest("POST", "/api/auth/password", bytes.NewReader(chBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 Unauthorized without session, got %d", w.Code)
+	}
+
+	// 2. Password change with wrong current password -> 400
+	chPayload["currentPassword"] = "wrongpassword"
+	chBody, _ = json.Marshal(chPayload)
+	req = httptest.NewRequest("POST", "/api/auth/password", bytes.NewReader(chBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for incorrect password, got %d", w.Code)
+	}
+
+	// 3. Password change with short new password -> 400
+	chPayload["currentPassword"] = "oldpassword123"
+	chPayload["newPassword"] = "short"
+	chBody, _ = json.Marshal(chPayload)
+	req = httptest.NewRequest("POST", "/api/auth/password", bytes.NewReader(chBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for short password, got %d", w.Code)
+	}
+
+	// 4. Password change with same password -> 400
+	chPayload["newPassword"] = "oldpassword123"
+	chBody, _ = json.Marshal(chPayload)
+	req = httptest.NewRequest("POST", "/api/auth/password", bytes.NewReader(chBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request for identical password, got %d", w.Code)
+	}
+
+	// 5. Successful password change -> 200
+	chPayload["newPassword"] = "brandnewsecret123"
+	chBody, _ = json.Marshal(chPayload)
+	req = httptest.NewRequest("POST", "/api/auth/password", bytes.NewReader(chBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(sessionCookie)
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for valid password update, got %d: %s", w.Code, w.Body.String())
+	}
+
+	// 6. Login with old password -> should fail
+	loginPayload := LoginRequest{
+		Email:    "admin@test.local",
+		Password: "oldpassword123",
+	}
+	loginBody, _ := json.Marshal(loginPayload)
+	req = httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 Unauthorized for old password, got %d", w.Code)
+	}
+
+	// 7. Login with new password -> should succeed
+	loginPayload.Password = "brandnewsecret123"
+	loginBody, _ = json.Marshal(loginPayload)
+	req = httptest.NewRequest("POST", "/api/auth/login", bytes.NewReader(loginBody))
+	req.Header.Set("Content-Type", "application/json")
+	w = httptest.NewRecorder()
+	mux.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for new password, got %d", w.Code)
+	}
+}

@@ -44,6 +44,25 @@ func (r *SQLiteRepository) GetUserByEmail(ctx context.Context, email string) (*U
 	return &u, nil
 }
 
+func (r *SQLiteRepository) GetUserByID(ctx context.Context, id string) (*User, error) {
+	var u User
+	err := r.db.QueryRowContext(ctx,
+		"SELECT id, email, password_hash, name, role, created_at FROM users WHERE id = ?", id).
+		Scan(&u.ID, &u.Email, &u.PasswordHash, &u.Name, &u.Role, &u.CreatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &u, nil
+}
+
+func (r *SQLiteRepository) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE users SET password_hash = ? WHERE id = ?", passwordHash, userID)
+	return err
+}
+
 func (r *SQLiteRepository) CreateUser(ctx context.Context, u User) error {
 	_, err := r.db.ExecContext(ctx,
 		"INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)",
@@ -119,6 +138,21 @@ func (r *SQLiteRepository) DeleteSession(ctx context.Context, token string) erro
 // of removed rows.
 func (r *SQLiteRepository) PruneExpiredSessions(ctx context.Context) (int64, error) {
 	res, err := r.db.ExecContext(ctx, "DELETE FROM sessions WHERE expires_at < ?", time.Now())
+	if err != nil {
+		return 0, err
+	}
+	n, _ := res.RowsAffected()
+	return n, nil
+}
+
+// DeleteOtherSessions invalidates every session of a user except the provided
+// client token. Both the hashed form and any legacy plaintext twin of the kept
+// token survive, while every other session — hashed or not — is removed, so a
+// password change kicks out stolen session tokens.
+func (r *SQLiteRepository) DeleteOtherSessions(ctx context.Context, userID, keepToken string) (int64, error) {
+	res, err := r.db.ExecContext(ctx,
+		"DELETE FROM sessions WHERE user_id = ? AND token NOT IN (?, ?)",
+		userID, hashSessionToken(keepToken), keepToken)
 	if err != nil {
 		return 0, err
 	}

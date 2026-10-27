@@ -19,7 +19,13 @@ type mockAuthRepo struct {
 func (m *mockAuthRepo) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	return nil, nil
 }
+func (m *mockAuthRepo) GetUserByID(ctx context.Context, id string) (*User, error) {
+	return m.user, nil
+}
 func (m *mockAuthRepo) CreateUser(ctx context.Context, user User) error {
+	return nil
+}
+func (m *mockAuthRepo) UpdatePassword(ctx context.Context, userID, passwordHash string) error {
 	return nil
 }
 func (m *mockAuthRepo) CountUsers(ctx context.Context) (int, error) {
@@ -39,6 +45,9 @@ func (m *mockAuthRepo) DeleteSession(ctx context.Context, token string) error {
 	return nil
 }
 func (m *mockAuthRepo) PruneExpiredSessions(ctx context.Context) (int64, error) {
+	return 0, nil
+}
+func (m *mockAuthRepo) DeleteOtherSessions(ctx context.Context, userID, keepToken string) (int64, error) {
 	return 0, nil
 }
 

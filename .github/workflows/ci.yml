@@ -22,10 +22,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go (matches backend/go.mod)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum
@@ -38,17 +38,13 @@ jobs:
         run: go vet ./...
         working-directory: backend
 
+      # NB: not -coverprofile. go1.26.0 dropped the covdata binary from the
+      # distribution, so merging a coverage profile fails with
+      # `go: no such tool "covdata"` on every package. -cover keeps the
+      # per-package percentages in the log without the tool.
       - name: Test (race enabled; podman E2E suite is env opt-in and skipped here)
-        run: go test -race -coverprofile=coverage.out ./...
+        run: go test -race -cover ./...
         working-directory: backend
-
-      - name: Upload coverage artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: backend-coverage
-          path: backend/coverage.out
-          if-no-files-found: ignore
 
   frontend:
     name: Frontend — check · build
@@ -56,7 +52,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Bun
         uses: oven-sh/setup-bun@v2
@@ -86,10 +82,10 @@ jobs:
     continue-on-error: true
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Set up Go (toolchain for gofmt; eslint ts resolution)
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v7
         with:
           go-version-file: backend/go.mod
           cache-dependency-path: backend/go.sum

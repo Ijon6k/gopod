@@ -65,9 +65,6 @@
 	--color-kumo-muted: var(--color-kumo-muted);
 	--color-kumo-control: var(--color-kumo-control);
 	--color-kumo-default: var(--color-kumo-contrast);
-	--color-kumo-danger: var(--status-red);
-	--color-kumo-success: var(--status-green);
-	--color-kumo-warning: var(--status-amber);
 	--color-kumo-brand: var(--accent);
 
 	/* ──────────────────────────────────────────────
@@ -264,6 +261,31 @@
 	--text-24: 24px;
 }
 
+/* ──────────────────────────────────────────────
+   Kumo semantic color bridge — GoPod palette (all modes)
+
+   Kumo's theme blocks re-assert its light/dark reds and grays after the plain
+   mappings above — `:root,:host` base later in the bundle and
+   `:root[data-mode=dark]` at higher specificity for dark — which rendered
+   failed/stopped status chips with near-invisible dark-red dots. These rules
+   redefine only the status colors with a specificity above every scope Kumo
+   ships (html:root = 0-1-1 beats 0-1-0; html[data-mode=X]:root = 0-2-1 beats
+   the 0-2-0 dark/light themes), so both modes stay on the app palette.
+   ────────────────────────────────────────────── */
+html:root,
+html[data-mode='light']:root,
+html[data-mode='dark']:root {
+	--color-kumo-danger: var(--status-red);
+	--color-kumo-danger-tint: var(--status-red-muted);
+	--color-kumo-success: var(--status-green);
+	--color-kumo-success-tint: var(--status-green-muted);
+	--color-kumo-warning: var(--status-amber);
+	--color-kumo-warning-tint: var(--status-amber-muted);
+	--color-kumo-badge-red: var(--status-red);
+	--color-kumo-badge-orange: var(--status-amber);
+	--color-kumo-badge-neutral: var(--status-gray);
+}
+
 [data-theme='light'],
 [data-mode='light'],
 html.light {
@@ -397,7 +419,13 @@ body {
 
 input,
 textarea,
-select,
+select {
+	/* Kumo draws its control boxes with Tailwind `ring` (box-shadow); only the
+	   outline is reset here so Kumo's own resting/focus rings survive. */
+	outline: none !important;
+	-webkit-tap-highlight-color: transparent;
+}
+
 button {
 	outline: none !important;
 	box-shadow: none !important;
@@ -409,7 +437,11 @@ input:focus-visible,
 textarea:focus,
 textarea:focus-visible,
 select:focus,
-select:focus-visible,
+select:focus-visible {
+	outline: none !important;
+	outline-offset: 0 !important;
+}
+
 button:focus,
 button:focus-visible {
 	outline: none !important;
@@ -420,6 +452,13 @@ button:focus-visible {
 *:focus-visible {
 	outline: 1.5px solid var(--accent);
 	outline-offset: 2px;
+}
+
+/* Kumo sources carry .kumo-input-placeholder and manage their own focus ring;
+   the accent outline would stack a second indicator on top of it. */
+.kumo-input-placeholder:focus,
+.kumo-input-placeholder:focus-visible {
+	outline: none !important;
 }
 
 ::selection {
@@ -558,9 +597,14 @@ button:focus-visible {
 	padding: 0 !important;
 }
 
-/* Form inputs: explicit, crisp borders so inputs are unmistakably distinct from labels */
-input:not([type='checkbox']):not([type='radio']),
-textarea,
+/* Form inputs: explicit, crisp borders so inputs are unmistakably distinct
+   from labels. Kumo sources are excluded: Input/Textarea/InputGroupInput/
+   SensitiveInput (all tagged .kumo-input-placeholder) draw their single box
+   on their container via Tailwind `ring`; adding an inner border here is
+   what produced the "two stacked boxes" look the component inventory
+   rejects. Native/raw inputs keep this skin. */
+input:not(.kumo-input-placeholder):not([type='checkbox']):not([type='radio']),
+textarea:not(.kumo-input-placeholder),
 select {
 	border: 1px solid var(--color-kumo-line) !important;
 	background-color: var(--color-kumo-control) !important;
@@ -571,16 +615,26 @@ select {
 		box-shadow 0.15s ease;
 }
 
-input:not([type='checkbox']):not([type='radio']):focus,
-textarea:focus,
+input:not(.kumo-input-placeholder):not([type='checkbox']):not([type='radio']):focus,
+textarea:not(.kumo-input-placeholder):focus,
 select:focus {
 	border-color: var(--accent) !important;
 	outline: none !important;
 	box-shadow: 0 0 0 1.5px var(--accent-muted) !important;
 }
 
-input:not([type='checkbox']):not([type='radio']):hover,
-textarea:hover,
+input:not(.kumo-input-placeholder):not([type='checkbox']):not([type='radio']):hover,
+textarea:not(.kumo-input-placeholder):hover,
 select:hover {
 	border-color: var(--color-kumo-subtle) !important;
+}
+
+/* Browsers paint autofilled fields with an opaque inset box-shadow; shift it
+   onto our surface and text colors so filled values stay readable on dark. */
+input:-webkit-autofill,
+textarea:-webkit-autofill {
+	-webkit-box-shadow: 0 0 0 1000px var(--bg-input) inset;
+	-webkit-text-fill-color: var(--text-primary);
+	caret-color: var(--text-primary);
+	transition: background-color 99999s ease-in-out 0s;
 }

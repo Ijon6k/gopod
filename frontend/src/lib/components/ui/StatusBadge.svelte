@@ -21,7 +21,7 @@
 		mounted: { variant: 'success', label: 'Mounted' },
 		success: { variant: 'success', label: 'Success' },
 
-		stopped: { variant: 'neutral', label: 'Stopped' },
+		stopped: { variant: 'error', label: 'Stopped' },
 		cancelled: { variant: 'neutral', label: 'Cancelled' },
 		unmounted: { variant: 'neutral', label: 'Unmounted' },
 
@@ -45,12 +45,24 @@
 			label: status || 'Unknown'
 		}
 	);
+
+	// Dot appearance keeps the label gray by default; status words should be
+	// readable at a glance, so tint the text alongside the status dot.
+	const textTint: Partial<Record<BadgeVariant, string>> = {
+		error: 'text-[var(--status-red)]',
+		success: 'text-[var(--status-green)]',
+		warning: 'text-[var(--status-amber)]'
+	};
 </script>
 
 <Badge
 	variant={info.variant}
 	appearance="dot"
-	class={cn(size === 'sm' ? 'px-1.5 py-0 text-[11px]' : 'text-xs', className)}
+	class={cn(
+		size === 'sm' ? 'px-1.5 py-0 text-[11px]' : 'text-xs',
+		textTint[info.variant],
+		className
+	)}
 >
 	{label ?? info.label}
 </Badge>

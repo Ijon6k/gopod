@@ -23,7 +23,7 @@ func TestDeployGitFailsWhenSSHKeyUnavailable(t *testing.T) {
 		ID:       "svc-ssh",
 		GitRepo:  "file:///tmp/does-not-matter.git",
 		SSHKeyID: "key-1",
-	}, "dep-1", func(string) {})
+	}, "dep-1", "manual", func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "load ssh key") {
 		t.Fatalf("expected a clear ssh key error, got %v", err)
 	}

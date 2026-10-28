@@ -40,6 +40,12 @@ type Config struct {
 	DistFS       fs.FS
 }
 
+type activityRecorderFunc func(ctx context.Context, actor, action, resourceType, resourceID, projectID, serviceID, status, message, ip string)
+
+func (f activityRecorderFunc) Record(ctx context.Context, actor, action, resourceType, resourceID, projectID, serviceID, status, message, ip string) {
+	f(ctx, actor, action, resourceType, resourceID, projectID, serviceID, status, message, ip)
+}
+
 // NewServer configures http.Handler with domain API routes and SPA fallback.
 // It returns an error when a hard prerequisite (the encryption master key)
 // cannot be established, so the caller can refuse to boot instead of running
@@ -202,6 +208,7 @@ func NewServer(cfg Config) (http.Handler, error) {
 	activityHandler := activity.NewHandler(activityStore, authMiddleware)
 
 	authService.SetAuditRecorder(auditService)
+	authService.SetActivityRecorder(activityRecorderFunc(activity.RecordActivity))
 	workloadService.SetAuditRecorder(auditService)
 	storageService.SetAuditRecorder(auditService)
 

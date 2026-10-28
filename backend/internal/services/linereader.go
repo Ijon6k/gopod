@@ -3,7 +3,6 @@ package services
 import (
 	"bufio"
 	"io"
-	"strings"
 )
 
 // maxStreamLine bounds a single log record held in memory while streaming.
@@ -14,7 +13,7 @@ import (
 // per-line allocations.
 const maxStreamLine = 256 << 10
 
-// streamLines emits newline-delimited records from r without the
+// streamLines emits newline- or carriage-return-delimited records from r without
 // bufio.Scanner's 64 KiB hard limit. Records longer than maxStreamLine are emitted once,
 // truncated, with an explicit marker suffix; the reader always keeps
 // consuming until EOF so a producer blocked on write() can never wedge the
@@ -24,47 +23,57 @@ func streamLines(r io.Reader, emit func(string)) error {
 	var (
 		buf       []byte
 		truncated bool
+		sawCR     bool
 	)
 
-	slice, err := reader.ReadSlice('\n')
 	for {
-		switch {
-		case err == bufio.ErrBufferFull:
-			// Partial record: retain at most maxStreamLine bytes and drop
-			// the rest; remember the truncation for the final emit.
-			if room := maxStreamLine - len(buf); room > 0 {
-				if room > len(slice) {
-					room = len(slice)
+		b, err := reader.ReadByte()
+		if err != nil {
+			if len(buf) > 0 || truncated {
+				line := string(buf)
+				if truncated {
+					line += " ...[truncated line]"
 				}
-				buf = append(buf, slice[:room]...)
+				emit(line)
 			}
-			if len(buf) >= maxStreamLine {
-				truncated = true
-			}
-			slice, err = reader.ReadSlice('\n')
-			continue
-
-		case err == nil || err == io.EOF:
-			// True EOF with nothing buffered: no record to emit (otherwise a
-			// file ending in "\n" would gain one bogus empty record).
-			if err == io.EOF && !truncated && len(buf) == 0 && len(slice) == 0 {
-				return nil
-			}
-			switch {
-			case truncated:
-				emit(string(buf) + " ...[truncated line]")
-			default:
-				emit(strings.TrimRight(string(buf)+string(slice), "\n"))
-			}
-			buf = buf[:0]
-			truncated = false
 			if err == io.EOF {
 				return nil
 			}
-			slice, err = reader.ReadSlice('\n')
-
-		default:
 			return err
+		}
+
+		if b == '\r' {
+			line := string(buf)
+			if truncated {
+				line += " ...[truncated line]"
+			}
+			emit(line)
+			buf = buf[:0]
+			truncated = false
+			sawCR = true
+			continue
+		}
+
+		if b == '\n' {
+			if sawCR {
+				sawCR = false
+				continue
+			}
+			line := string(buf)
+			if truncated {
+				line += " ...[truncated line]"
+			}
+			emit(line)
+			buf = buf[:0]
+			truncated = false
+			continue
+		}
+
+		sawCR = false
+		if len(buf) < maxStreamLine {
+			buf = append(buf, b)
+		} else {
+			truncated = true
 		}
 	}
 }

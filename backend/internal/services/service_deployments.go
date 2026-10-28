@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -65,6 +66,35 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 		imageOverride = overrides[1]
 	}
 
+	start := time.Now()
+	b := make([]byte, 4)
+	_, _ = rand.Read(b)
+	depID := fmt.Sprintf("dep-%d-%s", start.Unix(), hex.EncodeToString(b))
+
+	// Reject a second concurrent deployment for the same service instead of
+	// letting parallel deploys interleave and tear each other's work down.
+	if holder := s.tryAcquireDeploy(svc.ID, depID); holder != "" {
+		return nil, fmt.Errorf("%w: deployment %s is still running for this service; cancel it or wait before redeploying", ErrDeployInProgress, holder)
+	}
+
+	// Apply rollback snapshot or overrides only after deploy lock is secured
+	var rollbackSnapshotNote string
+	if trigger == "rollback" && len(overrides) > 2 && overrides[2] != "" {
+		targetDepID := overrides[2]
+		if oldDep, err := s.repo.GetDeployment(ctx, targetDepID); err == nil && oldDep != nil && strings.TrimSpace(oldDep.ConfigSnapshot) != "" {
+			var snapSvc Service
+			if err := json.Unmarshal([]byte(oldDep.ConfigSnapshot), &snapSvc); err == nil {
+				// Restore service snapshot configuration
+				snapSvc.ID = svc.ID
+				snapSvc.ProjectID = svc.ProjectID
+				snapSvc.CreatedAt = svc.CreatedAt
+				*svc = snapSvc
+				_ = s.repo.Update(ctx, *svc)
+				rollbackSnapshotNote = fmt.Sprintf("⏪ Rollback: Restored configuration snapshot from Deployment #%d (%s)", oldDep.Number, oldDep.ID)
+			}
+		}
+	}
+
 	// Apply rollback commit/image overrides if specified
 	if commitOverride != "" {
 		svc.GitBranch = commitOverride
@@ -81,17 +111,6 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 			svc.PodID = canonical
 			_ = s.repo.Update(ctx, *svc)
 		}
-	}
-
-	start := time.Now()
-	b := make([]byte, 4)
-	_, _ = rand.Read(b)
-	depID := fmt.Sprintf("dep-%d-%s", start.Unix(), hex.EncodeToString(b))
-
-	// Reject a second concurrent deployment for the same service instead of
-	// letting parallel deploys interleave and tear each other's work down.
-	if holder := s.tryAcquireDeploy(svc.ID, depID); holder != "" {
-		return nil, fmt.Errorf("%w: deployment %s is still running for this service; cancel it or wait before redeploying", ErrDeployInProgress, holder)
 	}
 
 	// Numbering must happen inside the deploy lock, after it is acquired, and
@@ -126,11 +145,26 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 		CommitMessage: commitMsg,
 		Image:         svc.Image,
 		Status:        "building",
+		Duration:      "Running…",
 		StartedAt:     start,
 	}
 
 	if err := s.repo.CreateDeployment(ctx, depRecord); err != nil {
 		log.Printf("[Deploy] Initial CreateDeployment error: %v", err)
+	}
+
+	if s.logManager != nil {
+		s.logManager.LogLine(depRecord.ID, fmt.Sprintf("🚀 [Deployment #%d] Initializing rollout for service '%s' (Trigger: %s)...", nextNumber, svc.Name, trigger))
+		if rollbackSnapshotNote != "" {
+			s.logManager.LogLine(depRecord.ID, rollbackSnapshotNote)
+		}
+		s.logManager.LogLine(depRecord.ID, fmt.Sprintf("📋 Service Details: Type=%s, RuntimeTarget=%s, InPod=%v", svc.Type, svc.RuntimeTarget, svc.InPod))
+		if svc.Image != "" {
+			s.logManager.LogLine(depRecord.ID, fmt.Sprintf("🎯 Target Image: %s", svc.Image))
+		}
+		if svc.GitRepo != "" {
+			s.logManager.LogLine(depRecord.ID, fmt.Sprintf("📦 Source Repository: %s (Branch: %s)", svc.GitRepo, svc.GitBranch))
+		}
 	}
 
 	svc.Status = "deploying"
@@ -148,7 +182,7 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 			cancel()
 			s.releaseDeploy(svc.ID, depRecord.ID)
 			s.activeCancels.Delete(depRecord.ID)
-			s.activeServiceDeps.Delete(svc.ID)
+			s.activeServiceDeps.CompareAndDelete(svc.ID, depRecord.ID)
 			if s.logManager != nil {
 				// The deployment reached its terminal state: end the log
 				// fan-out so SSE handlers parked on the channel return even
@@ -211,10 +245,23 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 		CommitHash:    "",
 		CommitMessage: "Deployment initiated",
 		Status:        "building",
+		Duration:      "Running…",
 		StartedAt:     start,
 	}
 
 	_ = s.repo.CreateDeployment(ctx, depRecord)
+
+	if s.logManager != nil {
+		s.logManager.LogLine(depRecord.ID, fmt.Sprintf("🚀 [Deployment #%d] Initializing rollout for service '%s' (Trigger: %s)...", nextNumber, svc.Name, trigger))
+		s.logManager.LogLine(depRecord.ID, fmt.Sprintf("📋 Service Details: Type=%s, RuntimeTarget=%s, InPod=%v", svc.Type, svc.RuntimeTarget, svc.InPod))
+		if svc.Image != "" {
+			s.logManager.LogLine(depRecord.ID, fmt.Sprintf("🎯 Target Image: %s", svc.Image))
+		}
+		if svc.GitRepo != "" {
+			s.logManager.LogLine(depRecord.ID, fmt.Sprintf("📦 Source Repository: %s (Branch: %s)", svc.GitRepo, svc.GitBranch))
+		}
+	}
+
 	svc.Status = "deploying"
 	_ = s.repo.Update(ctx, *svc)
 
@@ -231,7 +278,7 @@ func (s *WorkloadService) Deploy(ctx context.Context, serviceID, trigger string)
 		cancel()
 		s.releaseDeploy(svc.ID, depID)
 		s.activeCancels.Delete(depRecord.ID)
-		s.activeServiceDeps.Delete(svc.ID)
+		s.activeServiceDeps.CompareAndDelete(svc.ID, depRecord.ID)
 		if s.logManager != nil {
 			// See StartDeploy: end the subscriber fan-out at terminal state.
 			s.logManager.CloseSubscribers(depID)
@@ -369,11 +416,30 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 		}
 	}
 
+	// Guard against overwriting an explicit operator cancellation
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer checkCancel()
+	if currentDep, err := s.repo.GetDeployment(checkCtx, depRecord.ID); err == nil && currentDep != nil {
+		if currentDep.Status == "cancelled" {
+			log.Printf("[Deploy] Deployment %s was cancelled by operator; preserving cancelled status", depRecord.ID)
+			return
+		}
+	}
+
 	depRecord.Status = status
 	depRecord.Duration = duration
 	depRecord.FinishedAt = &finished
 
-	if err := s.repo.UpdateDeployment(ctx, depRecord); err != nil {
+	// If successful, take immutable snapshot of service configuration for rollback
+	if status == "success" {
+		if snapBytes, err := json.Marshal(svc); err == nil {
+			depRecord.ConfigSnapshot = string(snapBytes)
+		}
+	}
+
+	saveCtx, saveCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer saveCancel()
+	if err := s.repo.UpdateDeployment(saveCtx, depRecord); err != nil {
 		log.Printf("[Deploy] UpdateDeployment error: %v", err)
 	}
 
@@ -382,10 +448,10 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 		if depRecord.Trigger == "promote-quadlet" || svc.Type == "quadlet" {
 			action = "service.promote_quadlet"
 		}
-		_ = s.audit.Record(ctx, action, "operator", svc.Name, "deployment", "127.0.0.1", status)
-		activity.RecordActivity(ctx, "operator", action, "deployment", depRecord.ID, svc.ProjectID, svc.ID, status,
+		_ = s.audit.Record(saveCtx, action, "operator", svc.Name, "deployment", "127.0.0.1", status)
+		activity.RecordActivity(saveCtx, "operator", action, "deployment", depRecord.ID, svc.ProjectID, svc.ID, status,
 			fmt.Sprintf("Deploy #%d finished for service '%s' (trigger=%s)", depRecord.Number, svc.Name, depRecord.Trigger), "127.0.0.1")
-		activity.EmitEngineEvent(ctx, engineLevelForStatus(status), "service", svc.ID, svc.ProjectID, "engine", "service.deploy_finish",
+		activity.EmitEngineEvent(saveCtx, engineLevelForStatus(status), "service", svc.ID, svc.ProjectID, "engine", "service.deploy_finish",
 			fmt.Sprintf("Deploy %s finished for service '%s' with status %s", depRecord.ID, svc.Name, status),
 			map[string]any{"deployment": depRecord.ID, "trigger": depRecord.Trigger, "status": status})
 	}
@@ -416,8 +482,12 @@ func (s *WorkloadService) CancelDeployment(ctx context.Context, depID string) (*
 			cancel()
 		}
 		s.activeCancels.Delete(depID)
-		s.activeServiceDeps.Delete(dep.ServiceID)
+		s.activeServiceDeps.CompareAndDelete(dep.ServiceID, depID)
 	}
+
+	// Release deploy mutex immediately so subsequent deployments are not blocked
+	// by subprocess cleanup or pipe draining in the background worker.
+	s.releaseDeploy(dep.ServiceID, depID)
 
 	now := time.Now()
 	dep.Status = "cancelled"
@@ -504,6 +574,9 @@ func (s *WorkloadService) CancelServiceDeployment(ctx context.Context, serviceID
 		svc.Status = "stopped"
 	}
 	_ = s.repo.Update(ctx, *svc)
+
+	// Release deploy lock defensively so subsequent attempts cannot be stuck
+	s.releaseDeploy(serviceID, "")
 
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "service.cancel_deployment", "operator", svc.Name, "deployment", "127.0.0.1", "cancelled")

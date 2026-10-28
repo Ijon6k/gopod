@@ -66,7 +66,13 @@
 	async function handleRollback(dep: Deployment) {
 		try {
 			const targetCommit = dep.commit || dep.commitHash;
-			await dataStore.deployService(dep.serviceId, 'rollback', targetCommit, dep.image);
+			const newDep = await dataStore.deployService(dep.serviceId, 'rollback', targetCommit, dep.image, {
+				targetDeploymentId: dep.id
+			});
+			if (newDep) {
+				selectedLogDep = newDep;
+				isLogsModalOpen = true;
+			}
 		} catch (err) {
 			console.error('Rollback deploy error:', err);
 		}

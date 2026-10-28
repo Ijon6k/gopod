@@ -5,8 +5,10 @@
 	import { projects, getProjectServices, getProjectDomains } from '$lib/data';
 	import { formatMemory, pluralize } from '$lib/utils/format';
 	import { Plus, ArrowRight, FolderOpen } from 'phosphor-svelte';
+	import { CreateProjectModal } from '$lib/components/features/projects';
 
 	let search = $state('');
+	let isCreateModalOpen = $state(false);
 
 	let filtered = $derived(
 		projects.filter((p) =>
@@ -28,7 +30,7 @@
 			<span class="ml-0.5 text-xs text-[var(--text-tertiary)]">{projects.length} active</span>
 		{/snippet}
 		{#snippet actions()}
-			<Button variant="primary" size="sm" onclick={() => goto('/projects/new')}>
+			<Button variant="primary" size="sm" onclick={() => (isCreateModalOpen = true)}>
 				<Plus size={13} /> New project
 			</Button>
 		{/snippet}
@@ -119,3 +121,10 @@
 		</Empty>
 	{/if}
 </div>
+
+{#if isCreateModalOpen}
+	<CreateProjectModal
+		bind:open={isCreateModalOpen}
+		onclose={() => (isCreateModalOpen = false)}
+	/>
+{/if}

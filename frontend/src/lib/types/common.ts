@@ -11,6 +11,7 @@ export type Status =
 	| 'starting'
 	| 'stopping'
 	| 'cancelled'
+	| 'interrupted'
 	| 'queued';
 
 export interface TimeSeriesPoint {

@@ -8,9 +8,13 @@
 	import { DropdownMenu, useSidebar } from 'kumo-svelte';
 	import { Kbd } from '$lib/components/ui';
 	import CommandPaletteModal from './CommandPaletteModal.svelte';
+	import CreateServiceModal from '$lib/components/features/services/create/CreateServiceModal.svelte';
+	import { CreateProjectModal } from '$lib/components/features/projects';
 	import { MagnifyingGlass, Plus, CaretDown, Sun, Moon, List } from 'phosphor-svelte';
 
 	let openCommandPalette = $state(false);
+	let isCreateProjectOpen = $state(false);
+	let isCreateServiceOpen = $state(false);
 	let isMac = $state(false);
 	const sidebar = useSidebar();
 
@@ -124,11 +128,18 @@
 								<DropdownMenu.Item onclick={() => goto('/projects')}>
 									<span class="text-xs">All projects</span>
 								</DropdownMenu.Item>
-								<DropdownMenu.Item onclick={() => goto('/projects/new')}>
+								<DropdownMenu.Item onclick={() => (isCreateProjectOpen = true)}>
 									<span class="flex items-center gap-1.5 text-xs font-medium text-[var(--accent)]">
 										<Plus size={12} /> New project
 									</span>
 								</DropdownMenu.Item>
+								{#if crumbs.project}
+									<DropdownMenu.Item onclick={() => (isCreateServiceOpen = true)}>
+										<span class="flex items-center gap-1.5 text-xs font-medium text-[var(--accent)]">
+											<Plus size={12} /> New service
+										</span>
+									</DropdownMenu.Item>
+								{/if}
 							</DropdownMenu.Content>
 						</DropdownMenu>
 					{:else if crumbs.service && crumb === crumbs.service.name}
@@ -161,9 +172,7 @@
 									</div>
 								{/if}
 								<DropdownMenu.Separator />
-								<DropdownMenu.Item
-									onclick={() => goto(`/projects/${crumbs.project?.id}/new-service`)}
-								>
+								<DropdownMenu.Item onclick={() => (isCreateServiceOpen = true)}>
 									<span class="flex items-center gap-1.5 text-xs font-medium text-[var(--accent)]">
 										<Plus size={12} /> New service
 									</span>
@@ -220,3 +229,18 @@
 </header>
 
 <CommandPaletteModal bind:open={openCommandPalette} />
+
+{#if isCreateProjectOpen}
+	<CreateProjectModal
+		bind:open={isCreateProjectOpen}
+		onclose={() => (isCreateProjectOpen = false)}
+	/>
+{/if}
+
+{#if isCreateServiceOpen}
+	<CreateServiceModal
+		projectId={crumbs.project?.id}
+		bind:open={isCreateServiceOpen}
+		onclose={() => (isCreateServiceOpen = false)}
+	/>
+{/if}

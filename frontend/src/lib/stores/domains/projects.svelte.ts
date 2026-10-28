@@ -28,6 +28,32 @@ export class ProjectsDomainStore {
 		return this.deployments.filter((d) => d.serviceId === serviceId);
 	}
 
+	async fetchServiceDeployments(serviceId: string): Promise<Deployment[]> {
+		try {
+			const deps = await api.services.deployments(serviceId);
+			if (Array.isArray(deps)) {
+				const svc = this.services.find((s) => s.id === serviceId);
+				const targetProjId = svc?.projectId || '';
+				const proj = this.projects.find((p) => p.id === targetProjId);
+				const formatted: Deployment[] = deps.map((dep) => ({
+					...dep,
+					commit: dep.commit || dep.commitHash || '',
+					branch: dep.branch || svc?.branch || 'main',
+					timeAgo: dep.startedAt ? formatTimeAgo(dep.startedAt) : '',
+					projectName:
+						proj?.name || dep.projectName || (svc as any)?.projectName || targetProjId || 'Default',
+					serviceName: svc?.name || dep.serviceName || dep.serviceId || 'Service'
+				}));
+				const others = this.deployments.filter((d) => d.serviceId !== serviceId);
+				this.deployments = [...formatted, ...others];
+				return formatted;
+			}
+		} catch (err) {
+			console.warn('Failed to fetch service deployments:', err);
+		}
+		return this.getServiceDeployments(serviceId);
+	}
+
 	getProjectById(projectId: string): Project | undefined {
 		return this.projects.find((p) => p.id === projectId);
 	}
@@ -61,6 +87,9 @@ export class ProjectsDomainStore {
 			dep.duration = 'Cancelled by operator';
 			dep.finishedAt = new Date().toISOString();
 			this.deployments = [...this.deployments];
+			if (dep.serviceId) {
+				this.deploymentWatchers.get(dep.serviceId)?.();
+			}
 		}
 		try {
 			await api.services.cancelDeployment(deploymentId);
@@ -77,6 +106,7 @@ export class ProjectsDomainStore {
 	}
 
 	async cancelServiceDeployment(serviceId: string): Promise<void> {
+		this.deploymentWatchers.get(serviceId)?.();
 		const svc = this.services.find((s) => s.id === serviceId);
 		if (svc) {
 			svc.status = 'stopped';
@@ -279,14 +309,15 @@ export class ProjectsDomainStore {
 		serviceId: string,
 		trigger = 'manual',
 		commit?: string,
-		image?: string
+		image?: string,
+		options?: { noCache?: boolean; freshVolumes?: boolean; targetDeploymentId?: string }
 	): Promise<Deployment> {
 		const svc = this.services.find((s) => s.id === serviceId);
 		if (svc) {
 			svc.status = 'deploying';
 		}
 		try {
-			const res = await api.services.deploy(serviceId, trigger, commit, image);
+			const res = await api.services.deploy(serviceId, trigger, commit, image, options);
 			if (res) {
 				const targetProjId = (res as any).projectId || svc?.projectId || '';
 				const foundProj = this.projects.find((p) => p.id === targetProjId);
@@ -320,8 +351,9 @@ export class ProjectsDomainStore {
 				const existingIdx = this.deployments.findIndex((d) => d.id === dep.id);
 				if (existingIdx >= 0) {
 					this.deployments[existingIdx] = dep;
+					this.deployments = [...this.deployments];
 				} else {
-					this.deployments.unshift(dep);
+					this.deployments = [dep, ...this.deployments];
 				}
 
 				// Active watcher: poll deployment & service status every 1.5s until
@@ -409,15 +441,22 @@ export class ProjectsDomainStore {
 							dep.timeAgo = formatTimeAgo(updatedDep.startedAt || dep.startedAt);
 						}
 					}
-					if (updatedDep.status === 'failed' || updatedDep.status === 'success') {
+					if (
+						updatedDep.status === 'failed' ||
+						updatedDep.status === 'success' ||
+						updatedDep.status === 'cancelled' ||
+						updatedDep.status === 'interrupted'
+					) {
 						const sIdx = this.services.findIndex((s) => s.id === serviceId);
 						if (sIdx >= 0) {
 							const terminalStatus =
 								updatedSvc?.status && updatedSvc.status !== 'deploying'
 									? updatedSvc.status
-									: updatedDep.status === 'failed'
+									: updatedDep.status === 'failed' || updatedDep.status === 'interrupted'
 										? 'failed'
-										: 'running';
+										: updatedDep.status === 'cancelled'
+											? 'stopped'
+											: 'running';
 							if (terminalStatus !== lastServiceStatus) {
 								lastServiceStatus = terminalStatus;
 								this.services[sIdx].status = terminalStatus;

@@ -32,6 +32,12 @@
 		return dataStore.getServiceDeployments(service.id);
 	});
 
+	$effect(() => {
+		if (service?.id) {
+			dataStore.fetchServiceDeployments(service.id);
+		}
+	});
+
 	let isDeploying = $state(false);
 
 	// Filtered deployments
@@ -99,7 +105,13 @@
 		isDeploying = true;
 		try {
 			const targetCommit = dep.commit || dep.commitHash;
-			await dataStore.deployService(service.id, 'rollback', targetCommit, dep.image);
+			const newDep = await dataStore.deployService(service.id, 'rollback', targetCommit, dep.image, {
+				targetDeploymentId: dep.id
+			});
+			if (newDep) {
+				selectedLogDep = newDep;
+				isLogsModalOpen = true;
+			}
 		} catch (err) {
 			console.error('Rollback error:', err);
 		} finally {

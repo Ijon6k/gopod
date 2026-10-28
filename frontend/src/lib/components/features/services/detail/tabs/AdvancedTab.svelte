@@ -394,7 +394,6 @@
 				size="sm"
 				disabled={isSaving}
 				onclick={handleSave}
-				title={hasValidationErrors ? 'Fix the invalid fields first' : 'Save advanced settings'}
 			>
 				{#if isSaving}
 					<SpinnerGap size={13} class="animate-spin" /> Saving…

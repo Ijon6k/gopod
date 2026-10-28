@@ -324,9 +324,9 @@ func (r *SQLiteRepository) CreateDeployment(ctx context.Context, d Deployment) e
 		d.Number = 1
 	}
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO deployments (id, project_id, service_id, number, trigger, image, version, commit_hash, commit_message, status, duration, started_at, finished_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		d.ID, d.ProjectID, d.ServiceID, d.Number, d.Trigger, d.Image, d.Version, d.CommitHash, d.CommitMessage, d.Status, d.Duration, d.StartedAt, d.FinishedAt,
+		`INSERT INTO deployments (id, project_id, service_id, number, trigger, image, version, commit_hash, commit_message, status, duration, config_snapshot, started_at, finished_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		d.ID, d.ProjectID, d.ServiceID, d.Number, d.Trigger, d.Image, d.Version, d.CommitHash, d.CommitMessage, d.Status, d.Duration, d.ConfigSnapshot, d.StartedAt, d.FinishedAt,
 	)
 	return err
 }
@@ -335,10 +335,10 @@ func (r *SQLiteRepository) UpdateDeployment(ctx context.Context, d Deployment) e
 	_, err := r.db.ExecContext(ctx,
 		`UPDATE deployments SET
 			version = ?, commit_hash = ?, commit_message = ?, status = ?,
-			duration = ?, finished_at = ?, image = ?
+			duration = ?, config_snapshot = ?, finished_at = ?, image = ?
 		 WHERE id = ?`,
 		d.Version, d.CommitHash, d.CommitMessage, d.Status,
-		d.Duration, d.FinishedAt, d.Image, d.ID,
+		d.Duration, d.ConfigSnapshot, d.FinishedAt, d.Image, d.ID,
 	)
 	return err
 }
@@ -346,9 +346,9 @@ func (r *SQLiteRepository) UpdateDeployment(ctx context.Context, d Deployment) e
 func (r *SQLiteRepository) GetDeployment(ctx context.Context, id string) (*Deployment, error) {
 	var d Deployment
 	err := r.db.QueryRowContext(ctx,
-		"SELECT id, project_id, service_id, COALESCE(number, 1), COALESCE(trigger, 'manual'), COALESCE(image, ''), version, commit_hash, commit_message, status, duration, started_at, finished_at FROM deployments WHERE id = ?",
+		"SELECT id, project_id, service_id, COALESCE(number, 1), COALESCE(trigger, 'manual'), COALESCE(image, ''), version, commit_hash, commit_message, status, duration, COALESCE(config_snapshot, ''), started_at, finished_at FROM deployments WHERE id = ?",
 		id,
-	).Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Number, &d.Trigger, &d.Image, &d.Version, &d.CommitHash, &d.CommitMessage, &d.Status, &d.Duration, &d.StartedAt, &d.FinishedAt)
+	).Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Number, &d.Trigger, &d.Image, &d.Version, &d.CommitHash, &d.CommitMessage, &d.Status, &d.Duration, &d.ConfigSnapshot, &d.StartedAt, &d.FinishedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -360,7 +360,7 @@ func (r *SQLiteRepository) GetDeployment(ctx context.Context, id string) (*Deplo
 
 func (r *SQLiteRepository) ListDeployments(ctx context.Context, serviceID string) ([]Deployment, error) {
 	rows, err := r.db.QueryContext(ctx,
-		"SELECT id, project_id, service_id, COALESCE(number, 1), COALESCE(trigger, 'manual'), COALESCE(image, ''), version, commit_hash, commit_message, status, duration, started_at, finished_at FROM deployments WHERE service_id = ? ORDER BY started_at DESC LIMIT 50",
+		"SELECT id, project_id, service_id, COALESCE(number, 1), COALESCE(trigger, 'manual'), COALESCE(image, ''), version, commit_hash, commit_message, status, duration, COALESCE(config_snapshot, ''), started_at, finished_at FROM deployments WHERE service_id = ? ORDER BY started_at DESC LIMIT 50",
 		serviceID,
 	)
 	if err != nil {
@@ -371,7 +371,7 @@ func (r *SQLiteRepository) ListDeployments(ctx context.Context, serviceID string
 	var list []Deployment
 	for rows.Next() {
 		var d Deployment
-		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Number, &d.Trigger, &d.Image, &d.Version, &d.CommitHash, &d.CommitMessage, &d.Status, &d.Duration, &d.StartedAt, &d.FinishedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Number, &d.Trigger, &d.Image, &d.Version, &d.CommitHash, &d.CommitMessage, &d.Status, &d.Duration, &d.ConfigSnapshot, &d.StartedAt, &d.FinishedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, d)
@@ -404,7 +404,7 @@ func (r *SQLiteRepository) NextDeploymentNumber(ctx context.Context, serviceID s
 // query is unbounded by design.
 func (r *SQLiteRepository) ListRunningDeployments(ctx context.Context, serviceID string) ([]Deployment, error) {
 	rows, err := r.db.QueryContext(ctx,
-		"SELECT id, project_id, service_id, COALESCE(number, 1), COALESCE(trigger, 'manual'), COALESCE(image, ''), version, commit_hash, commit_message, status, duration, started_at, finished_at FROM deployments WHERE service_id = ? AND status IN ('building', 'deploying')",
+		"SELECT id, project_id, service_id, COALESCE(number, 1), COALESCE(trigger, 'manual'), COALESCE(image, ''), version, commit_hash, commit_message, status, duration, COALESCE(config_snapshot, ''), started_at, finished_at FROM deployments WHERE service_id = ? AND status IN ('building', 'deploying')",
 		serviceID,
 	)
 	if err != nil {
@@ -415,7 +415,7 @@ func (r *SQLiteRepository) ListRunningDeployments(ctx context.Context, serviceID
 	var list []Deployment
 	for rows.Next() {
 		var d Deployment
-		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Number, &d.Trigger, &d.Image, &d.Version, &d.CommitHash, &d.CommitMessage, &d.Status, &d.Duration, &d.StartedAt, &d.FinishedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.ProjectID, &d.ServiceID, &d.Number, &d.Trigger, &d.Image, &d.Version, &d.CommitHash, &d.CommitMessage, &d.Status, &d.Duration, &d.ConfigSnapshot, &d.StartedAt, &d.FinishedAt); err != nil {
 			return nil, err
 		}
 		list = append(list, d)

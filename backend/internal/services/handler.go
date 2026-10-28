@@ -160,16 +160,24 @@ func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	trigger := "manual"
 	var body struct {
-		Trigger string `json:"trigger"`
-		Commit  string `json:"commit"`
-		Image   string `json:"image"`
+		Trigger            string `json:"trigger"`
+		Commit             string `json:"commit"`
+		Image              string `json:"image"`
+		TargetDeploymentID string `json:"targetDeploymentId"`
+		NoCache            bool   `json:"noCache"`
+		FreshVolumes       bool   `json:"freshVolumes"`
 	}
 	if err := httputil.DecodeJSONBody(w, r, &body, 0); err == nil {
 		if body.Trigger != "" {
 			trigger = body.Trigger
 		}
+		if body.FreshVolumes && trigger != "rollback" {
+			trigger = "fresh_volumes"
+		} else if body.NoCache && trigger != "rollback" {
+			trigger = "rebuild"
+		}
 	}
-	dep, err := h.service.StartDeploy(r.Context(), id, trigger, body.Commit, body.Image)
+	dep, err := h.service.StartDeploy(r.Context(), id, trigger, body.Commit, body.Image, body.TargetDeploymentID)
 	if err != nil {
 		if errors.Is(err, ErrDeployInProgress) {
 			httputil.WriteError(w, http.StatusConflict, err.Error())

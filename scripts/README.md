@@ -4,7 +4,7 @@ This directory contains automated, battle-tested installation scripts for deploy
 
 ---
 
-## ⚡ Quick Start (One-Liner Installation)
+## Quick Start
 
 You can install GOPOD with a single `curl` command. Choose the release channel that fits your environment:
 
@@ -38,7 +38,7 @@ Runs a full installation trial inside an isolated virtual device container (`qua
 
 ---
 
-## 📂 Scripts Overview
+## Scripts Overview
 
 | Script | Purpose | Default Image Tag | Default Mode |
 | :--- | :--- | :--- | :--- |
@@ -49,7 +49,32 @@ Runs a full installation trial inside an isolated virtual device container (`qua
 
 ---
 
-## 🔍 What the Installer Does Under the Hood
+## Privilege Models: Rootless vs Rootful
+
+GOPOD defaults to rootless execution. All services and deployed applications run inside an isolated user namespace via `/run/user/$UID/podman/podman.sock`.
+
+### Comparison
+
+| Dimension | Rootless Mode (Default) | Rootful Mode (Advanced) |
+| :--- | :--- | :--- |
+| **Security Context** | User namespace (UID 1000+) | Host root (UID 0) |
+| **Host Isolation** | Strict filesystem & process isolation | Full host capabilities |
+| **Port Binding (<1024)** | Configured via `net.ipv4.ip_unprivileged_port_start=80` | Native |
+| **Target Workloads** | Web apps, APIs, databases, workers, reverse proxy | Kernel drivers, host WireGuard TUN/TAP, eBPF |
+| **Installer Action** | Automatically provisions unprivileged `gopod` user | Skips user isolation with `--allow-root` |
+
+### When is Rootful Required?
+
+Rootful mode is only needed when workloads require elevated Linux kernel privileges:
+- Direct host network manipulation (WireGuard interface creation, raw iptables/nftables).
+- Linux kernel tracing and eBPF instrumentation (Falco, Tetragon).
+- Direct raw block device partitioning or formatting.
+
+Standard web applications (Node.js, Go, Python, PHP, Ruby, Postgres, Redis, Caddy) do not require rootful privileges and run securely under rootless mode.
+
+---
+
+## What the Installer Does Under the Hood
 
 The installer runs a 7-stage automated pipeline with live visual progress bars and diagnostic logging:
 
@@ -97,7 +122,7 @@ Pre-creates all required persistent directories before launching containers to p
 
 ---
 
-## 🏗️ Deployment Architecture: Container vs Quadlet
+## Deployment Architecture: Container vs Quadlet
 
 | Feature | Container / Compose Mode (Default) | Systemd Quadlet Mode (Experimental) |
 | :--- | :--- | :--- |
@@ -109,7 +134,7 @@ Pre-creates all required persistent directories before launching containers to p
 
 ---
 
-## ⚙️ Command-Line Parameters Reference
+## Command-Line Parameters Reference
 
 `install.sh` accepts flexible CLI flags for automated or custom deployments:
 
@@ -138,7 +163,8 @@ Storage Directories:
   --config-dir=<PATH>   Configuration path (Default: ~/.config/gopod)
 
 Security & User Context:
-  --rootless            Enforce rootless execution with dedicated 'gopod' user (Default on host OS)
+  --rootless            Enforce rootless execution (Default on host OS)
+  --user=<USERNAME>     Specify dedicated service user for rootless mode (Default: gopod)
   --allow-root, --root  Allow running directly under root (rootful mode)
 
 Execution Control:
@@ -161,59 +187,67 @@ Execution Control:
 # Install on a custom dashboard port (9000):
 ./scripts/install.sh --port=9000 -y
 
+# Install under custom service user:
+./scripts/install.sh --user=deployer -y
+
 # Install as Systemd Quadlet service:
 ./scripts/install.sh --mode=quadlet -y
 ```
 
 ---
 
-## 🛠️ Operations & Maintenance
+## Operations & Maintenance
 
-### Checking Service Status
+GOPOD installs an auto-configured CLI helper at `/usr/local/bin/gopod`. It automatically bridges rootless user sessions, runtime sockets, and compose specs so you never need to manually switch users (`su - gopod`) or export environment variables (`XDG_RUNTIME_DIR`).
+
+### Quick CLI Management
+
+```bash
+# Check system health, rootless socket, and running containers:
+gopod status
+
+# List active GOPOD containers:
+gopod ps
+
+# Stream live unified logs (all services or specific container):
+gopod logs -f
+gopod logs caddy
+
+# Restart GOPOD PaaS and Caddy Ingress:
+gopod restart
+gopod restart caddy
+
+# Stop or Start GOPOD service stack:
+gopod stop
+gopod start
+
+# Open interactive shell in container:
+gopod shell
+gopod shell caddy
+
+# Pull latest images and recreate container stack:
+gopod update
+
+# View runtime configuration, socket path, and ports:
+gopod info
+
+# Run any Podman command directly within rootless service context:
+gopod podman stats
+gopod podman images
+```
+
+### Manual Podman Commands (Alternative)
 
 ```bash
 # Container / Compose mode:
 podman ps --filter name=gopod
-
-# Quadlet mode:
-systemctl --user status gopod-server gopod-caddy
-```
-
-### Viewing Logs
-
-```bash
-# Container / Compose mode:
 podman compose -f ~/.config/gopod/compose.yml logs -f
-
-# Quadlet mode:
-journalctl --user -u gopod-server -f
-journalctl --user -u gopod-caddy -f
-
-# Ingress Access Logs:
-tail -f ~/.local/share/gopod/logs/access.log
-```
-
-### Restarting GOPOD
-
-```bash
-# Container / Compose mode:
 podman compose -f ~/.config/gopod/compose.yml restart
 
 # Quadlet mode:
+systemctl --user status gopod-pod.service
+journalctl --user -u gopod-pod.service -f
 systemctl --user restart gopod-pod.service
-```
-
-### Upgrading GOPOD
-
-To upgrade to the latest stable image or development build:
-
-```bash
-# Pull newest image and restart (Container mode):
-podman pull ghcr.io/ijon6k/gopod:latest
-podman compose -f ~/.config/gopod/compose.yml up -d
-
-# Or simply re-run the installer (it preserves your database and Caddyfile):
-curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install.sh | bash
 ```
 
 ### Uninstalling GOPOD
@@ -236,7 +270,7 @@ rm -f ~/.config/containers/systemd/gopod-*
 
 ---
 
-## ❓ Troubleshooting
+## Troubleshooting
 
 ### 1. Permission Denied Binding to Ports 80 or 443
 Rootless Podman requires the kernel to allow unprivileged users to bind low ports:

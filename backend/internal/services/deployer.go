@@ -154,6 +154,26 @@ func (d *Deployer) setupCmdEnv(cmd *exec.Cmd) {
 		}
 	}
 
+	// Ensure short-name resolution works in headless/non-interactive subprocesses
+	// (e.g. pulling postgres:16-alpine or redis:7-alpine in podman-compose without TTY prompt error).
+	hasRegistriesConf := false
+	for _, e := range newEnv {
+		if strings.HasPrefix(e, "CONTAINERS_REGISTRIES_CONF=") {
+			hasRegistriesConf = true
+			break
+		}
+	}
+	if !hasRegistriesConf && d.dataDir != "" {
+		registriesPath := filepath.Join(d.dataDir, "registries.conf")
+		if _, err := os.Stat(registriesPath); os.IsNotExist(err) {
+			content := "unqualified-search-registries = [\"docker.io\", \"quay.io\"]\nshort-name-mode = \"permissive\"\n"
+			_ = os.WriteFile(registriesPath, []byte(content), 0644)
+		}
+		if _, err := os.Stat(registriesPath); err == nil {
+			newEnv = append(newEnv, fmt.Sprintf("CONTAINERS_REGISTRIES_CONF=%s", registriesPath))
+		}
+	}
+
 	cmd.Env = newEnv
 }
 
@@ -197,6 +217,11 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 
 	logLine(fmt.Sprintf("🚀 Starting deployment for service '%s' (type: %s, trigger: %s)", s.Name, s.Type, trig))
 
+	if trig == "fresh_volumes" || trig == "fresh" {
+		logLine("🧹 Fresh volumes requested: purging existing service volumes before deployment...")
+		d.PurgeServiceVolumes(ctx, s, logLine)
+	}
+
 	// ── 1. POD WORKLOAD (Must precede k8s/compose to prevent interception) ──
 	if s.Type == "pod" || s.SourceType == "pod" || (s.RuntimeTarget == "pod" && s.Image == "" && s.GitRepo == "") {
 		return d.deployPod(ctx, s, depID, logLine)
@@ -224,7 +249,7 @@ func (d *Deployer) DeployService(ctx context.Context, s Service, depID string, t
 
 	// ── 6. GIT WORKLOAD ──
 	if isGitSource(s) {
-		return d.deployGit(ctx, s, depID, logLine)
+		return d.deployGit(ctx, s, depID, trig, logLine)
 	}
 
 	// ── 7. DIRECT IMAGE WORKLOAD ──

@@ -155,17 +155,18 @@ func (s *Service) UnmarshalJSON(data []byte) error {
 
 // Deployment represents a build/deploy execution record.
 type Deployment struct {
-	ID            string     `json:"id"`
-	ProjectID     string     `json:"projectId"`
-	ServiceID     string     `json:"serviceId"`
-	Number        int        `json:"number"`
-	Trigger       string     `json:"trigger"`
-	Image         string     `json:"image,omitempty"`
-	Version       string     `json:"version"`
-	CommitHash    string     `json:"commitHash"`
-	CommitMessage string     `json:"commitMessage"`
-	Status        string     `json:"status"`
-	Duration      string     `json:"duration"`
-	StartedAt     time.Time  `json:"startedAt"`
-	FinishedAt    *time.Time `json:"finishedAt,omitempty"`
+	ID             string     `json:"id"`
+	ProjectID      string     `json:"projectId"`
+	ServiceID      string     `json:"serviceId"`
+	Number         int        `json:"number"`
+	Trigger        string     `json:"trigger"`
+	Image          string     `json:"image,omitempty"`
+	Version        string     `json:"version"`
+	CommitHash     string     `json:"commitHash"`
+	CommitMessage  string     `json:"commitMessage"`
+	Status         string     `json:"status"`
+	Duration       string     `json:"duration"`
+	ConfigSnapshot string     `json:"configSnapshot,omitempty"`
+	StartedAt      time.Time  `json:"startedAt"`
+	FinishedAt     *time.Time `json:"finishedAt,omitempty"`
 }

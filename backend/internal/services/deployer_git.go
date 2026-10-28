@@ -20,7 +20,7 @@ var ErrDockerfileNotFound = errors.New("dockerfile not found")
 var ErrGitCredentialMissing = errors.New("git credential not found")
 
 // deployGit clones repository, builds image with Podman, and starts container.
-func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLine func(string)) (*DeployResult, error) {
+func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, trigger string, logLine func(string)) (*DeployResult, error) {
 	containerName := s.ID
 	if containerName == "" {
 		containerName = GenerateContainerName(s.ProjectID, s.Name)
@@ -176,6 +176,10 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, logLi
 		logLine(fmt.Sprintf("⚠️ Ignored %d malformed build argument(s); expected KEY=VALUE", len(rejected)))
 	}
 	buildCmdArgs := []string{"build", "-t", imageTag, "-f", dockerfile}
+	if trigger == "rebuild" || trigger == "no_cache" || trigger == "no-cache" {
+		buildCmdArgs = append(buildCmdArgs, "--no-cache", "--pull")
+		logLine("🧹 Clean build requested: adding --no-cache and --pull flags.")
+	}
 	for _, arg := range buildArgs {
 		buildCmdArgs = append(buildCmdArgs, "--build-arg", arg)
 	}

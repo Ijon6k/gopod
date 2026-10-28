@@ -170,7 +170,7 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger st
 		}
 	}
 
-	shouldPull := !hasImage || trigger == "pull" || trigger == "force-pull" || trigger == "update"
+	shouldPull := !hasImage || trigger == "pull" || trigger == "force-pull" || trigger == "update" || trigger == "rebuild"
 	if shouldPull {
 		logLine(fmt.Sprintf("📦 Pulling container image '%s'...", imageToRun))
 		reg := d.resolveRegistry(ctx, s)

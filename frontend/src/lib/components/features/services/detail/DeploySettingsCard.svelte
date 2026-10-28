@@ -161,15 +161,21 @@
 		showFeedback(
 			service.type === 'quadlet'
 				? 'Compiling Quadlet unit & generating systemd service...'
-				: 'Deployment initiated. Building and rolling out workload...',
-			'info'
+				: 'Queueing deployment...',
+			'info',
+			false
 		);
 		try {
 			await dataStore.deployService(service.id, 'manual');
-			service.status = 'running';
-			showFeedback('Deployment completed successfully.', 'success');
+			showFeedback('Deployment initiated in background. Follow logs in Deployments tab.', 'info', true);
 		} catch (err: any) {
-			showFeedback(err?.message || 'Deployment error', 'info');
+			const isConflict = err?.status === 409 || err?.message?.includes('already in progress');
+			const title = isConflict ? 'Deploy Blocked' : 'Deployment Failed';
+			const msg = isConflict
+				? 'A deployment is already running for this service.'
+				: err?.message || 'Failed to initiate deployment';
+			toast.add(errorToastOptions(title, msg));
+			feedbackMessage = null;
 		} finally {
 			isDeploying = false;
 		}
@@ -178,12 +184,18 @@
 	async function handleRebuild() {
 		if (isRebuilding) return;
 		isRebuilding = true;
-		showFeedback('Pulling latest base images and initiating clean build...', 'info');
+		showFeedback('Queueing clean rebuild (no-cache)...', 'info', false);
 		try {
-			await dataStore.deployService(service.id, 'manual');
-			showFeedback('Rebuild and deployment complete.', 'success');
+			await dataStore.deployService(service.id, 'rebuild', undefined, undefined, { noCache: true });
+			showFeedback('Clean rebuild initiated in background. Follow logs in Deployments tab.', 'info', true);
 		} catch (err: any) {
-			showFeedback(err?.message || 'Rebuild error', 'info');
+			const isConflict = err?.status === 409 || err?.message?.includes('already in progress');
+			const title = isConflict ? 'Rebuild Blocked' : 'Rebuild Failed';
+			const msg = isConflict
+				? 'A deployment is already running for this service.'
+				: err?.message || 'Failed to initiate clean rebuild';
+			toast.add(errorToastOptions(title, msg));
+			feedbackMessage = null;
 		} finally {
 			isRebuilding = false;
 		}
@@ -193,18 +205,24 @@
 		if (isFreshingVolumes) return;
 		if (
 			!confirm(
-				'Are you sure you want to deploy with fresh volumes? Existing container volume mounts will be recreated.'
+				'Are you sure you want to deploy with fresh volumes? Existing container volume mounts will be deleted and recreated.'
 			)
 		) {
 			return;
 		}
 		isFreshingVolumes = true;
-		showFeedback('Purging volume mounts and recreating workload container...', 'info');
+		showFeedback('Purging volume mounts and queueing deployment...', 'info', false);
 		try {
-			await dataStore.deployService(service.id, 'manual');
-			showFeedback('Workload redeployed with fresh storage volumes.', 'success');
+			await dataStore.deployService(service.id, 'fresh_volumes', undefined, undefined, { freshVolumes: true });
+			showFeedback('Fresh volumes deployment initiated in background. Follow logs in Deployments tab.', 'info', true);
 		} catch (err: any) {
-			showFeedback(err?.message || 'Failed to deploy with fresh volumes', 'info');
+			const isConflict = err?.status === 409 || err?.message?.includes('already in progress');
+			const title = isConflict ? 'Deploy Blocked' : 'Fresh Volumes Deploy Failed';
+			const msg = isConflict
+				? 'A deployment is already running for this service.'
+				: err?.message || 'Failed to deploy with fresh volumes';
+			toast.add(errorToastOptions(title, msg));
+			feedbackMessage = null;
 		} finally {
 			isFreshingVolumes = false;
 		}
@@ -239,14 +257,15 @@
 	async function handleCancelDeployment() {
 		if (isCancelling) return;
 		isCancelling = true;
-		showFeedback('Cancelling active deployment...', 'info');
+		showFeedback('Cancelling active deployment...', 'info', false);
 		try {
 			await dataStore.cancelServiceDeployment(service.id);
 			service.status = 'stopped';
 			isDeploying = false;
-			showFeedback('Deployment cancelled successfully.', 'success');
+			showFeedback('Deployment cancelled successfully.', 'success', true);
 		} catch (err: any) {
-			showFeedback(err?.message || 'Failed to cancel deployment', 'info');
+			toast.add(errorToastOptions('Cancel Failed', err?.message || 'Failed to cancel deployment'));
+			feedbackMessage = null;
 		} finally {
 			isCancelling = false;
 		}

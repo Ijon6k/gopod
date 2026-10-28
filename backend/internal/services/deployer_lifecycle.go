@@ -229,9 +229,32 @@ func (d *Deployer) cleanPreflightConflicts(ctx context.Context, s Service, logLi
 				if !exists || !containerOwnedBy(c, s) {
 					continue
 				}
-				_ = d.podmanClient.StopContainer(ctx, name)
-				if delErr := d.podmanClient.DeleteContainer(ctx, name, true); delErr != nil {
-					cmdRm := exec.CommandContext(ctx, "podman", "rm", "-f", name)
+				target := c.ID
+				if target == "" {
+					target = name
+				}
+				_ = d.podmanClient.StopContainer(ctx, target)
+				if delErr := d.podmanClient.DeleteContainer(ctx, target, true); delErr != nil {
+					cmdRm := exec.CommandContext(ctx, "podman", "rm", "-f", target)
+					d.setupCmdEnv(cmdRm)
+					_ = cmdRm.Run()
+				}
+				if target != name {
+					_ = d.podmanClient.DeleteContainer(ctx, name, true)
+				}
+			}
+		}
+
+		// Comprehensive label sweep: ensure any leftover, zombie, or half-created
+		// compose/quadlet member belonging to this service is removed before recreation.
+		if containers, err := d.podmanClient.GetContainers(ctx); err == nil {
+			for _, c := range containers {
+				if !containerOwnedBy(c, s) {
+					continue
+				}
+				_ = d.podmanClient.StopContainer(ctx, c.ID)
+				if delErr := d.podmanClient.DeleteContainer(ctx, c.ID, true); delErr != nil {
+					cmdRm := exec.CommandContext(ctx, "podman", "rm", "-f", c.ID)
 					d.setupCmdEnv(cmdRm)
 					_ = cmdRm.Run()
 				}
@@ -263,6 +286,68 @@ func (d *Deployer) cleanPreflightConflicts(ctx context.Context, s Service, logLi
 	}
 	if logLine != nil && len(candContainers) > 0 {
 		logLine(fmt.Sprintf("🧹 Pre-flight cleanup: reconciled %d candidate targets (%s)", len(candContainers), strings.Join(candContainers, ", ")))
+	}
+}
+
+// PurgeServiceVolumes purges all named volumes associated with a service.
+func (d *Deployer) PurgeServiceVolumes(ctx context.Context, s Service, logLine func(string)) {
+	if d.podmanClient == nil {
+		return
+	}
+	_, candContainers, _ := d.findServiceUnitFilesAndCandidates(s)
+	vols, err := d.podmanClient.GetVolumes(ctx)
+	if err != nil {
+		return
+	}
+	purged := 0
+	for _, v := range vols {
+		owned := volumeOwnedBy(v, s)
+		if !owned {
+			for _, cand := range candContainers {
+				if v.Name == cand || strings.HasPrefix(v.Name, cand+"_") {
+					owned = true
+					break
+				}
+			}
+		}
+		if owned {
+			if err := d.podmanClient.DeleteVolume(ctx, v.Name, true); err == nil {
+				purged++
+				if logLine != nil {
+					logLine(fmt.Sprintf("🗑️ Purged volume '%s'", v.Name))
+				}
+			}
+		}
+	}
+	if strings.TrimSpace(s.QuadletConfig) != "" {
+		parsed := ParseQuadlet(s.QuadletConfig)
+		for _, qv := range parsed.Volumes {
+			volName := strings.Split(qv, ":")[0]
+			if volName != "" && !strings.HasPrefix(volName, "/") && !strings.HasPrefix(volName, ".") {
+				if err := d.podmanClient.DeleteVolume(ctx, volName, true); err == nil {
+					purged++
+					if logLine != nil {
+						logLine(fmt.Sprintf("🗑️ Purged quadlet volume '%s'", volName))
+					}
+				}
+			}
+		}
+	}
+	if s.Advanced != nil {
+		for _, vm := range s.Advanced.Storage.Volumes {
+			src := strings.TrimSpace(vm.Source)
+			if src != "" && !strings.HasPrefix(src, "/") && !strings.HasPrefix(src, ".") {
+				if err := d.podmanClient.DeleteVolume(ctx, src, true); err == nil {
+					purged++
+					if logLine != nil {
+						logLine(fmt.Sprintf("🗑️ Purged configured volume '%s'", src))
+					}
+				}
+			}
+		}
+	}
+	if logLine != nil && purged > 0 {
+		logLine(fmt.Sprintf("✨ Fresh volumes cleanup finished: %d volume(s) removed.", purged))
 	}
 }
 
@@ -341,13 +426,17 @@ func (d *Deployer) TeardownService(ctx context.Context, s Service, deleteVolumes
 				if !ok || !containerOwnedBy(c, s) {
 					continue
 				}
-				_ = d.podmanClient.StopContainer(teardownCtx, cName)
+				target := c.ID
+				if target == "" {
+					target = cName
+				}
+				_ = d.podmanClient.StopContainer(teardownCtx, target)
 				// CLI fork only as fallback when the REST delete fails.
-				if delErr := d.podmanClient.DeleteContainer(teardownCtx, cName, true); delErr != nil {
-					cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", cName)
+				if delErr := d.podmanClient.DeleteContainer(teardownCtx, target, true); delErr != nil {
+					cmdRm := exec.CommandContext(teardownCtx, "podman", "rm", "-f", target)
 					d.setupCmdEnv(cmdRm)
 					if rmErr := cmdRm.Run(); rmErr != nil {
-						log.Printf("[teardown] failed to remove container %s (REST: %v, CLI: %v)", cName, delErr, rmErr)
+						log.Printf("[teardown] failed to remove container %s (REST: %v, CLI: %v)", target, delErr, rmErr)
 					}
 				}
 			}

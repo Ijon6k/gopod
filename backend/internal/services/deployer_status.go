@@ -39,19 +39,33 @@ func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 			}
 
 			if len(matched) > 0 {
-				hasRunning := false
+				runningCount := 0
 				for _, m := range matched {
 					st := strings.ToLower(m.State)
 					rawSt := strings.ToLower(m.Status)
 					if st == "running" || strings.HasPrefix(rawSt, "up") {
-						hasRunning = true
-						break
+						runningCount++
 					}
 				}
-				if hasRunning {
-					return "running"
+
+				expected := 1
+				if s.Type == "compose" {
+					if count := CountComposeServices(s.ComposeYaml); count > 0 {
+						expected = count
+					} else if len(matched) > 1 {
+						expected = len(matched)
+					}
+				} else if len(matched) > 1 {
+					expected = len(matched)
 				}
-				return "stopped"
+
+				if runningCount == 0 {
+					return "stopped"
+				}
+				if runningCount < expected {
+					return "degraded"
+				}
+				return "running"
 			}
 		}
 
@@ -71,7 +85,10 @@ func (d *Deployer) GetRuntimeStatus(ctx context.Context, s Service) string {
 					(expectedPod != "" && pName == expectedPod) ||
 					(s.PodID != "" && (pName == s.PodID || pName == fmt.Sprintf("pod_%s", s.PodID))) {
 					pSt := strings.ToLower(p.Status)
-					if pSt == "running" || pSt == "degraded" {
+					if pSt == "degraded" {
+						return "degraded"
+					}
+					if pSt == "running" {
 						return "running"
 					}
 					return "stopped"
@@ -150,32 +167,45 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 
 		// 2. Match Containers — label-only matching: unlabeled
 		// containers are never counted.
-		matchedRunning := false
-		matchedFound := false
+		matchedCount := 0
+		runningCount := 0
 		for _, c := range containers {
 			if !containerOwnedBy(c, s) {
 				continue
 			}
-			matchedFound = true
+			matchedCount++
 			st := strings.ToLower(c.State)
 			rawSt := strings.ToLower(c.Status)
 			if st == "running" || strings.HasPrefix(rawSt, "up") {
-				matchedRunning = true
-				break
+				runningCount++
 			}
 		}
 
-		if matchedRunning {
-			result[s.ID] = "running"
-			continue
-		}
-		if matchedFound {
-			result[s.ID] = "stopped"
+		if matchedCount > 0 {
+			expected := 1
+			if s.Type == "compose" {
+				if count := CountComposeServices(s.ComposeYaml); count > 0 {
+					expected = count
+				} else if matchedCount > 1 {
+					expected = matchedCount
+				}
+			} else if matchedCount > 1 {
+				expected = matchedCount
+			}
+
+			if runningCount == 0 {
+				result[s.ID] = "stopped"
+			} else if runningCount < expected {
+				result[s.ID] = "degraded"
+			} else {
+				result[s.ID] = "running"
+			}
 			continue
 		}
 
 		// 3. Match Pods
-		podRunning := false
+		podMatched := false
+		podStatus := ""
 		podSlug := SanitizeQuadletSlug(strings.TrimPrefix(strings.TrimSpace(s.PodID), "pod_"))
 		expectedPod := ""
 		if podSlug != "" {
@@ -188,15 +218,20 @@ func (d *Deployer) BatchRuntimeStatus(ctx context.Context, svcs []Service) map[s
 				pName == fmt.Sprintf("%s-%s", s.ProjectID, s.Name) ||
 				(expectedPod != "" && pName == expectedPod) ||
 				(s.PodID != "" && (pName == s.PodID || pName == fmt.Sprintf("pod_%s", s.PodID))) {
+				podMatched = true
 				pSt := strings.ToLower(p.Status)
-				if pSt == "running" || pSt == "degraded" {
-					podRunning = true
-					break
+				if pSt == "degraded" {
+					podStatus = "degraded"
+				} else if pSt == "running" {
+					podStatus = "running"
+				} else {
+					podStatus = "stopped"
 				}
+				break
 			}
 		}
-		if podRunning {
-			result[s.ID] = "running"
+		if podMatched {
+			result[s.ID] = podStatus
 			continue
 		}
 

@@ -111,13 +111,66 @@ func (d *Deployer) pullImage(ctx context.Context, image string, reg *credentials
 	defer cleanup()
 	args = append(args, image)
 
-	pullCmd := exec.CommandContext(ctx, "podman", args...)
+	if logLine != nil {
+		logLine(fmt.Sprintf("📥 Initiating stream pull for image: %s", image))
+	}
+
+	fullArgs := append([]string{"--log-level=info"}, args...)
+	pullCmd := exec.CommandContext(ctx, "podman", fullArgs...)
 	d.setupCmdEnv(pullCmd)
+	// Force colored/progress terminal output to enable Podman download progress bars
+	pullCmd.Env = append(pullCmd.Env, "TERM=vt100")
 	pStdout, _ := pullCmd.StdoutPipe()
 	pStderr, _ := pullCmd.StderrPipe()
 	if err := pullCmd.Start(); err != nil {
+		if logLine != nil {
+			logLine(fmt.Sprintf("❌ Failed to spawn podman pull: %v", err))
+		}
 		return err
 	}
-	d.streamPipes(pStdout, pStderr, logLine)
-	return pullCmd.Wait()
+	d.streamPipes(pStdout, pStderr, func(line string) {
+		if logLine == nil {
+			return
+		}
+		clean := strings.TrimSpace(line)
+		if clean == "" {
+			return
+		}
+		// Strip ANSI escape codes if present so log viewer renders clean progress
+		if strings.Contains(clean, "\x1b[") {
+			var b strings.Builder
+			inEsc := false
+			for i := 0; i < len(clean); i++ {
+				if clean[i] == 0x1b {
+					inEsc = true
+					continue
+				}
+				if inEsc {
+					if (clean[i] >= 'A' && clean[i] <= 'Z') || (clean[i] >= 'a' && clean[i] <= 'z') {
+						inEsc = false
+					}
+					continue
+				}
+				b.WriteByte(clean[i])
+			}
+			clean = strings.TrimSpace(b.String())
+		}
+		if clean != "" {
+			// Prefix download layer progress with icon if relevant
+			if strings.Contains(clean, "Downloading") || strings.Contains(clean, "Extracting") || strings.Contains(clean, "Copying blob") || strings.Contains(clean, "Writing manifest") {
+				logLine("⏳ " + clean)
+			} else {
+				logLine(clean)
+			}
+		}
+	})
+	err := pullCmd.Wait()
+	if err != nil {
+		if logLine != nil {
+			logLine(fmt.Sprintf("⚠️ Podman pull finished with notice/error: %v", err))
+		}
+	} else if logLine != nil {
+		logLine(fmt.Sprintf("✅ Successfully pulled image '%s'", image))
+	}
+	return err
 }

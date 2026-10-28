@@ -557,6 +557,29 @@ func TestComposeEnv_PreservesCommentsAndFormatting(t *testing.T) {
 	}
 }
 
+func TestCountComposeServices(t *testing.T) {
+	yaml3 := `version: '3.8'
+services:
+  web:
+    image: nginx:alpine
+  api:
+    image: node:alpine
+  db:
+    image: postgres:alpine
+`
+	if got := CountComposeServices(yaml3); got != 3 {
+		t.Errorf("expected 3 services, got %d", got)
+	}
+
+	if got := CountComposeServices(""); got != 0 {
+		t.Errorf("expected 0 services for empty YAML, got %d", got)
+	}
+
+	if got := CountComposeServices("invalid: yaml: ["); got != 0 {
+		t.Errorf("expected 0 services for invalid YAML, got %d", got)
+	}
+}
+
 // Helpers
 
 func countRootKey(content, key string) int {

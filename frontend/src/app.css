@@ -66,6 +66,7 @@
 	--color-kumo-control: var(--color-kumo-control);
 	--color-kumo-default: var(--color-kumo-contrast);
 	--color-kumo-brand: var(--accent);
+	--color-kumo-focus: var(--color-kumo-focus);
 
 	/* ──────────────────────────────────────────────
      Typography Scale Tokens
@@ -162,6 +163,7 @@
 	--bg-input: var(--color-kumo-base);
 	--border-input: var(--color-kumo-line);
 	--border-input-focus: var(--accent);
+	--color-kumo-focus: var(--accent);
 
 	/* Text hierarchy */
 	--text-primary: var(--color-kumo-contrast);
@@ -275,6 +277,7 @@
 html:root,
 html[data-mode='light']:root,
 html[data-mode='dark']:root {
+	--color-kumo-focus: var(--accent);
 	--color-kumo-danger: var(--status-red);
 	--color-kumo-danger-tint: var(--status-red-muted);
 	--color-kumo-success: var(--status-green);
@@ -455,10 +458,19 @@ button:focus-visible {
 }
 
 /* Kumo sources carry .kumo-input-placeholder and manage their own focus ring;
-   the accent outline would stack a second indicator on top of it. */
+   ensure focus border remains crisp and visible using GOPOD accent color. */
 .kumo-input-placeholder:focus,
 .kumo-input-placeholder:focus-visible {
 	outline: none !important;
+}
+
+.kumo-input-placeholder:focus:not([aria-invalid='true']):not(.ring-kumo-danger),
+.kumo-input-placeholder:focus-visible:not([aria-invalid='true']):not(.ring-kumo-danger) {
+	--tw-ring-color: var(--accent) !important;
+}
+
+[data-slot='input-group']:not(.has-\[input\[aria-invalid\=true\]\]):focus-within {
+	--tw-ring-color: var(--accent) !important;
 }
 
 ::selection {

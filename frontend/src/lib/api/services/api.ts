@@ -46,12 +46,16 @@ export const servicesApi = {
 		id: string,
 		trigger = 'manual',
 		commit?: string,
-		image?: string
+		image?: string,
+		options?: { noCache?: boolean; freshVolumes?: boolean; targetDeploymentId?: string }
 	): Promise<DeployResponse> {
 		const res = await apiClient.post<DeployResponse>(`/services/${id}/deploy`, {
 			trigger,
 			commit,
-			image
+			image,
+			noCache: options?.noCache,
+			freshVolumes: options?.freshVolumes,
+			targetDeploymentId: options?.targetDeploymentId
 		});
 		return res.data;
 	},

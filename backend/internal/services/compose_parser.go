@@ -119,6 +119,11 @@ func ExtractComposeWorkload(composeYaml string) ExtractedCompose {
 	return result
 }
 
+// CountComposeServices returns the number of services declared in a Compose YAML.
+func CountComposeServices(composeYaml string) int {
+	return len(ExtractAllComposeServices(composeYaml))
+}
+
 // ExtractAllComposeServices parses every service in Compose YAML.
 func ExtractAllComposeServices(composeYaml string) []ExtractedCompose {
 	var results []ExtractedCompose

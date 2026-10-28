@@ -113,6 +113,7 @@ func (d *DB) migrate() error {
 		commit_message TEXT DEFAULT '',
 		status TEXT DEFAULT 'running',
 		duration TEXT DEFAULT '0s',
+		config_snapshot TEXT DEFAULT '',
 		started_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		finished_at DATETIME
 	);
@@ -264,6 +265,7 @@ func (d *DB) migrate() error {
 		"ALTER TABLE deployments ADD COLUMN trigger TEXT DEFAULT 'manual';",
 		"ALTER TABLE deployments ADD COLUMN number INTEGER DEFAULT 1;",
 		"ALTER TABLE deployments ADD COLUMN image TEXT DEFAULT '';",
+		"ALTER TABLE deployments ADD COLUMN config_snapshot TEXT DEFAULT '';",
 		"ALTER TABLE volume_snapshots ADD COLUMN remote_provider TEXT DEFAULT '';",
 		"ALTER TABLE volume_snapshots ADD COLUMN remote_destination_id TEXT DEFAULT '';",
 		"ALTER TABLE volume_snapshots ADD COLUMN remote_key TEXT DEFAULT '';",

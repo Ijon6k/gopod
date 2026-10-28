@@ -450,7 +450,12 @@
 				clear
 			</button>
 
-			<Button variant="ghost" size="sm" onclick={() => reconnect()} title="Reconnect session">
+			<Button
+				variant="ghost"
+				size="sm"
+				onclick={() => reconnect()}
+				aria-label="Reconnect session"
+			>
 				<ArrowClockwise size={13} />
 			</Button>
 
@@ -458,7 +463,7 @@
 				variant="ghost"
 				size="sm"
 				onclick={toggleFullscreen}
-				title={isFullscreen ? 'Exit full screen (100dvh)' : 'Full screen (100dvh)'}
+				aria-label={isFullscreen ? 'Exit full screen (100dvh)' : 'Full screen (100dvh)'}
 				class="text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
 			>
 				{#if isFullscreen}

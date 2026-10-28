@@ -235,6 +235,9 @@ export class DataStore {
 	getServiceDeployments(serviceId: string) {
 		return this.projectsStore.getServiceDeployments(serviceId);
 	}
+	fetchServiceDeployments(serviceId: string) {
+		return this.projectsStore.fetchServiceDeployments(serviceId);
+	}
 	deleteDeployment(id: string) {
 		this.projectsStore.deleteDeployment(id);
 	}
@@ -268,8 +271,14 @@ export class DataStore {
 	deleteService(id: string, deleteVolumes = false) {
 		return this.projectsStore.deleteService(id, deleteVolumes);
 	}
-	deployService(serviceId: string, trigger = 'manual', commit?: string, image?: string) {
-		return this.projectsStore.deployService(serviceId, trigger, commit, image);
+	deployService(
+		serviceId: string,
+		trigger = 'manual',
+		commit?: string,
+		image?: string,
+		options?: { noCache?: boolean; freshVolumes?: boolean; targetDeploymentId?: string }
+	) {
+		return this.projectsStore.deployService(serviceId, trigger, commit, image, options);
 	}
 	upsertDeployment(dep: Partial<Deployment> & { id: string }) {
 		this.projectsStore.upsertDeployment(dep);

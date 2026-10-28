@@ -9,7 +9,7 @@
 	import { createPoller } from '$lib/utils/poller';
 	import { getDeploymentSteps, getDeploymentLogs } from '$lib/utils/deploymentLogs';
 	import { dataStore } from '$lib/stores/data.svelte';
-	import { Copy, Check, DownloadSimple } from 'phosphor-svelte';
+	import { Copy, Check, DownloadSimple, CaretDown } from 'phosphor-svelte';
 
 	interface Props {
 		deployment: Deployment | null;
@@ -58,6 +58,8 @@
 	}
 
 	let steps = $derived(activeDep ? getDeploymentSteps(activeDep) : []);
+	let completedSteps = $derived(steps.filter((s) => s.status === 'success').length);
+	let showPipelineMobile = $state(false);
 	let logs = $derived.by(() => {
 		const source =
 			fetchedLogs.length > 0
@@ -89,6 +91,30 @@
 
 	let depId = $derived(deployment?.id ?? '');
 	let isLive = $derived(activeDep?.status === 'building' || activeDep?.status === 'deploying');
+
+	let now = $state(Date.now());
+	$effect(() => {
+		if (!open || !isLive) return;
+		const timer = setInterval(() => {
+			now = Date.now();
+		}, 1000);
+		return () => clearInterval(timer);
+	});
+
+	let liveDuration = $derived.by(() => {
+		if (!activeDep) return '—';
+		if (isLive && activeDep.startedAt) {
+			const start = new Date(activeDep.startedAt).getTime();
+			if (!isNaN(start) && start > 0) {
+				const diff = Math.max(0, Math.floor((now - start) / 1000));
+				const m = Math.floor(diff / 60);
+				const s = diff % 60;
+				return m > 0 ? `${m}m ${s}s` : `${s}s`;
+			}
+			return 'Running…';
+		}
+		return activeDep.duration || '—';
+	});
 
 	// Fingerprint of the last store write. Identical poll responses are skipped
 	// so the store keeps stable identities and nothing downstream re-subscribes.
@@ -255,15 +281,15 @@
 	>
 		<LayerDialog.Content
 			size="xl"
-			class="flex h-[85vh] max-h-[860px] min-h-[560px] flex-col overflow-hidden p-0 sm:max-w-4xl [&>div]:h-full [&>div]:flex-1 [&>div>div]:h-full [&>div>div]:flex-1"
+			class="flex h-dvh! max-h-dvh! min-h-0! w-full! max-w-none! inset-0! rounded-none! p-0! sm:inset-auto! sm:h-[85vh]! sm:max-h-[860px]! sm:min-h-[560px]! sm:max-w-4xl! sm:rounded-xl! sm:p-1.5! flex-col overflow-hidden [&>div]:h-full [&>div]:min-h-0 [&>div]:flex-1 [&>div]:rounded-none sm:[&>div]:rounded-lg [&>div>[aria-hidden]]:hidden"
 		>
 			{#if activeDep}
 				<!-- Top Modal Header (Padding-right reserved for Kumo's close X button) -->
 				<div
-					class="flex shrink-0 items-center justify-between border-b border-kumo-hairline bg-kumo-base px-5 py-3.5 pr-14"
+					class="flex shrink-0 items-center justify-between border-b border-kumo-hairline bg-kumo-base px-4 py-3 pr-14 sm:px-5 sm:py-3.5"
 				>
-					<div class="flex min-w-0 items-center gap-3">
-						<div class="flex items-center gap-2">
+					<div class="flex min-w-0 items-center gap-2 sm:gap-3">
+						<div class="flex items-center gap-1.5 sm:gap-2">
 							<span class="font-mono text-sm font-semibold text-kumo-default">
 								#{activeDep.number}
 							</span>
@@ -293,16 +319,16 @@
 
 						<span class="hidden text-kumo-hairline sm:inline">•</span>
 
-						<div class="flex min-w-0 items-center gap-2">
+						<div class="flex min-w-0 items-center gap-1.5 sm:gap-2">
 							<span
-								class="max-w-[320px] truncate text-sm font-medium text-kumo-default"
+								class="max-w-[130px] truncate text-xs font-medium text-kumo-default sm:max-w-[320px] sm:text-sm"
 								title={activeDep.commitMessage}
 							>
 								{activeDep.commitMessage}
 							</span>
 							{#if activeDep.commit && activeDep.commit !== '—'}
 								<span
-									class="rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-xs text-kumo-subtle ring ring-kumo-hairline/60"
+									class="rounded bg-kumo-recessed px-1.5 py-0.5 font-mono text-[11px] text-kumo-subtle ring ring-kumo-hairline/60 sm:text-xs"
 								>
 									{activeDep.commit.substring(0, 7)}
 								</span>
@@ -313,71 +339,94 @@
 					<div
 						class="hidden shrink-0 items-center gap-2 text-xs text-kumo-subtle tabular-nums sm:flex"
 					>
-						<span>Duration: {activeDep.duration}</span>
+						<span>Duration: {liveDuration}</span>
 					</div>
 				</div>
 
-				<!-- Minimalist Pipeline Stages Stepper -->
-				<div class="shrink-0 border-b border-kumo-hairline bg-kumo-base px-5 py-3">
+				<!-- Minimalist Pipeline Stages Stepper (Collapsible on mobile) -->
+				<div class="shrink-0 border-b border-kumo-hairline bg-kumo-base px-4 py-2 sm:px-5 sm:py-3">
 					<div class="flex flex-col gap-1.5">
-						<div class="flex items-center justify-between">
-							<span class="text-xs font-medium text-kumo-subtle">Pipeline stages</span>
+						<button
+							type="button"
+							class="flex w-full items-center justify-between text-left cursor-pointer sm:cursor-default"
+							onclick={() => (showPipelineMobile = !showPipelineMobile)}
+						>
+							<div class="flex items-center gap-1.5">
+								<span class="text-xs font-medium text-kumo-subtle">Pipeline stages</span>
+								<span class="text-[11px] text-kumo-subtle/80 sm:hidden">
+									({completedSteps}/{steps.length} completed)
+								</span>
+								<CaretDown
+									size={12}
+									class="text-kumo-subtle transition-transform sm:hidden {showPipelineMobile
+										? 'rotate-180'
+										: ''}"
+								/>
+							</div>
 							<span class="font-mono text-xs text-kumo-subtle tabular-nums sm:hidden">
-								Duration: {activeDep.duration}
+								Duration: {liveDuration}
 							</span>
+						</button>
+						<div class="{showPipelineMobile ? 'block' : 'hidden sm:block'} pt-1 sm:pt-0">
+							<DeploymentPipelineStepper {steps} />
 						</div>
-						<DeploymentPipelineStepper {steps} />
 					</div>
 				</div>
 
 				<!-- Terminal Logs Toolbar -->
 				<div
-					class="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-kumo-hairline bg-kumo-base px-5 py-2.5"
+					class="flex shrink-0 flex-col gap-2 border-b border-kumo-hairline bg-kumo-base px-4 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-5 sm:py-2.5"
 				>
 					<!-- Search Filter -->
-					<SearchInput
-						bind:value={searchQuery}
-						placeholder="Search deployment logs…"
-						class="max-w-[320px] flex-1 text-sm"
-					/>
+					<div class="flex flex-1 items-center gap-2">
+						<SearchInput
+							bind:value={searchQuery}
+							placeholder="Search deployment logs…"
+							class="w-full text-xs sm:text-sm"
+						/>
+					</div>
 
 					<!-- Actions: AutoScroll, Copy, Download -->
-					<div class="flex items-center gap-3">
+					<div class="flex items-center justify-between gap-2 sm:justify-end sm:gap-3">
 						<Switch size="sm" bind:checked={autoScroll} label="Auto-scroll" />
 
-						<div class="h-4 w-px bg-kumo-hairline"></div>
+						<div class="h-3.5 w-px bg-kumo-hairline"></div>
 
-						<Button
-							variant="ghost"
-							size="sm"
-							onclick={copyAllLogs}
-							class="h-7 gap-1.5 text-xs text-kumo-default"
-						>
-							{#if copiedLogs}
-								<Check size={13} class="text-kumo-success" />
-								<span class="font-medium text-kumo-success">Copied</span>
-							{:else}
-								<Copy size={13} />
-								<span>Copy logs</span>
-							{/if}
-						</Button>
+						<div class="flex items-center gap-1 sm:gap-1.5">
+							<Button
+								variant="ghost"
+								size="sm"
+								onclick={copyAllLogs}
+								class="h-7 px-2 text-xs text-kumo-default"
+								aria-label="Copy logs"
+							>
+								{#if copiedLogs}
+									<Check size={13} class="text-kumo-success" />
+									<span class="font-medium text-kumo-success">Copied</span>
+								{:else}
+									<Copy size={13} />
+									<span class="hidden xs:inline sm:inline">Copy logs</span>
+								{/if}
+							</Button>
 
-						<Button
-							variant="ghost"
-							size="sm"
-							onclick={downloadLogFile}
-							class="h-7 gap-1.5 text-xs text-kumo-default"
-						>
-							<DownloadSimple size={13} />
-							<span>Download</span>
-						</Button>
+							<Button
+								variant="ghost"
+								size="sm"
+								onclick={downloadLogFile}
+								class="h-7 px-2 text-xs text-kumo-default"
+								aria-label="Download logs"
+							>
+								<DownloadSimple size={13} />
+								<span class="hidden xs:inline sm:inline">Download</span>
+							</Button>
+						</div>
 					</div>
 				</div>
 
 				<!-- Terminal Logs Canvas -->
 				<div
 					bind:this={logContainer}
-					class="min-h-0 flex-1 overflow-y-auto bg-[var(--bg-terminal)] p-4 font-mono text-[13px] leading-5 select-text selection:bg-[var(--accent)]/30"
+					class="min-h-0 flex-1 overflow-x-auto overflow-y-auto bg-[var(--bg-terminal)] p-3 sm:p-4 font-mono text-xs sm:text-[13px] leading-5 select-text selection:bg-[var(--accent)]/30"
 				>
 					{#if filteredLogs.length === 0}
 						<div class="py-14 text-center font-sans text-sm text-kumo-subtle">
@@ -393,10 +442,10 @@
 								{@const isPodman = line.includes('[podman]')}
 								{@const isSystemd = line.includes('[systemd]')}
 								<div
-									class="group flex items-start gap-3 rounded px-1.5 py-0.5 transition-colors hover:bg-white/[0.03]"
+									class="group flex items-start gap-2.5 rounded px-1 sm:px-1.5 py-0.5 transition-colors hover:bg-white/[0.03]"
 								>
 									<span
-										class="min-w-[28px] text-right text-xs text-kumo-subtle/50 select-none group-hover:text-kumo-subtle"
+										class="min-w-[24px] sm:min-w-[28px] text-right text-[11px] sm:text-xs text-kumo-subtle/50 select-none group-hover:text-kumo-subtle"
 									>
 										{idx + 1}
 									</span>
@@ -423,11 +472,11 @@
 
 				<!-- Modal Footer -->
 				<div
-					class="flex shrink-0 items-center justify-between border-t border-kumo-hairline bg-kumo-base px-5 py-2.5 text-xs text-kumo-subtle"
+					class="flex shrink-0 items-center justify-between border-t border-kumo-hairline bg-kumo-base px-4 py-2 sm:px-5 sm:py-2.5 text-xs text-kumo-subtle"
 				>
-					<div class="flex items-center gap-2">
+					<div class="flex min-w-0 items-center gap-2">
 						<span
-							class="size-1.5 rounded-full {activeDep.status === 'running' ||
+							class="size-1.5 shrink-0 rounded-full {activeDep.status === 'running' ||
 							activeDep.status === 'healthy' ||
 							activeDep.status === 'success'
 								? 'bg-kumo-success'
@@ -435,11 +484,11 @@
 									? 'bg-kumo-danger'
 									: 'bg-[var(--accent)]'}"
 						></span>
-						<span
-							>{activeDep.status === 'building' || activeDep.status === 'deploying'
-								? 'Streaming live deployment logs'
-								: 'Deployment completed'} • {logs.length} lines captured</span
-						>
+						<span class="truncate">
+							{activeDep.status === 'building' || activeDep.status === 'deploying'
+								? 'Streaming live'
+								: 'Completed'} • {logs.length} lines captured
+						</span>
 					</div>
 
 					<Button variant="secondary" size="sm" onclick={onclose}>Close</Button>

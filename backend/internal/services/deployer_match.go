@@ -87,8 +87,8 @@ func volumeOwnedBy(v podman.VolumeItem, s Service) bool {
 }
 
 // ownedContainersByName returns the current containers of service s keyed by
-// their exact runtime names (leading slash stripped). Used wherever a
-// unit-identity derived NAME must be resolved to an actual container before a
+// their exact runtime names (leading slash stripped) and container IDs. Used wherever a
+// unit-identity derived NAME or ID must be resolved to an actual container before a
 // destructive operation (never delete by name alone).
 func (d *Deployer) ownedContainersByName(ctx context.Context, s Service) (map[string]podman.ContainerItem, error) {
 	if d.podmanClient == nil {
@@ -98,8 +98,11 @@ func (d *Deployer) ownedContainersByName(ctx context.Context, s Service) (map[st
 	if err != nil {
 		return nil, err
 	}
-	out := make(map[string]podman.ContainerItem, len(containers))
+	out := make(map[string]podman.ContainerItem, len(containers)*2)
 	for _, c := range containers {
+		if c.ID != "" {
+			out[c.ID] = c
+		}
 		for _, n := range c.Names {
 			out[strings.TrimPrefix(n, "/")] = c
 		}

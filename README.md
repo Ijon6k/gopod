@@ -74,6 +74,17 @@ curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install-b
 curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/custom-install.sh | bash
 ```
 
+### Security and Privilege Context
+
+GOPOD runs 100% rootless by default. Containers execute within an isolated user namespace (`/run/user/$UID/podman/podman.sock`) with no root daemon and zero container-escape access to the host filesystem.
+
+| Mode | Workloads | Installation Command |
+| :--- | :--- | :--- |
+| **Rootless (Default)** | Web applications, APIs, databases, background workers, reverse proxy | `curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install.sh \| bash` |
+| **Rootful (Advanced)** | Kernel networking (WireGuard host TUN/TAP), raw block storage, eBPF probes | `curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install.sh \| bash -s -- --allow-root` |
+
+When executed as `root` on a fresh machine, the default installer automatically provisions a dedicated unprivileged `gopod` service user and installs the `/usr/local/bin/gopod` CLI wrapper. Operators can run management commands (`gopod ps`, `gopod logs`, `gopod restart`) directly without switching users or configuring environment variables.
+
 ### Manual Installation from Git
 
 If you prefer to clone the repository and run locally:

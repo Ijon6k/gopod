@@ -19,10 +19,16 @@ type AuditRecorder interface {
 	Record(ctx context.Context, action, actor, target, category, ip, status string) error
 }
 
+// ActivityRecorder records operational activity logs.
+type ActivityRecorder interface {
+	Record(ctx context.Context, actor, action, resourceType, resourceID, projectID, serviceID, status, message, ip string)
+}
+
 // Service encapsulates authentication and user session business logic.
 type Service struct {
-	repo  Repository
-	audit AuditRecorder
+	repo     Repository
+	audit    AuditRecorder
+	activity ActivityRecorder
 }
 
 // NewService creates a new auth domain service.
@@ -33,6 +39,11 @@ func NewService(repo Repository) *Service {
 // SetAuditRecorder configures audit recording.
 func (s *Service) SetAuditRecorder(ar AuditRecorder) {
 	s.audit = ar
+}
+
+// SetActivityRecorder configures activity recording without circular imports.
+func (s *Service) SetActivityRecorder(act ActivityRecorder) {
+	s.activity = act
 }
 
 // GenerateRandomToken generates cryptographically secure hex tokens.
@@ -198,6 +209,9 @@ func (s *Service) Login(ctx context.Context, email, password string) (*User, str
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "user.login", user.Email, "auth.session", "security", "", "success")
 	}
+	if s.activity != nil {
+		s.activity.Record(ctx, user.Email, "auth.login", "auth.session", user.ID, "", "", "success", "User logged in", "")
+	}
 
 	return user, token, nil
 }
@@ -209,6 +223,9 @@ func (s *Service) Logout(ctx context.Context, token string) error {
 	}
 	if s.audit != nil {
 		_ = s.audit.Record(ctx, "user.logout", "authenticated-user", "auth.session", "security", "", "success")
+	}
+	if s.activity != nil {
+		s.activity.Record(ctx, "operator", "auth.logout", "auth.session", "", "", "", "success", "User logged out", "")
 	}
 	return s.repo.DeleteSession(ctx, token)
 }

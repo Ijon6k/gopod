@@ -58,26 +58,39 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT INT TERM
 
 # ─────────────────────────────────────────────────────────────────────────────
-# UI Helpers: Visual Progress Bar & Task Spinner (Dokploy-style)
+# UI Helpers: Step Header & Task Spinners
 # ─────────────────────────────────────────────────────────────────────────────
 
 render_progress_bar() {
     local step_num="$1"
     local step_title="$2"
-    local width=22
-    local pct=$(( step_num * 100 / TOTAL_STEPS ))
-    local filled_len=$(( step_num * width / TOTAL_STEPS ))
-    local empty_len=$(( width - filled_len ))
-
-    local bar=""
-    for ((i=0; i<filled_len; i++)); do bar="${bar}${CHAR_FILLED}"; done
-    for ((i=0; i<empty_len; i++)); do bar="${bar}${CHAR_EMPTY}"; done
 
     if [ "$IS_TTY" = true ]; then
-        printf "\n${CYAN}[%s]${NC} ${BOLD}%3d%%${NC}  ${BLUE}[%d/%d]${NC} ${BOLD}%s${NC}\n" \
-            "$bar" "$pct" "$step_num" "$TOTAL_STEPS" "$step_title"
+        printf "\n${CYAN}${BOLD}[%d/%d]${NC} ${BOLD}%s${NC}\n" \
+            "$step_num" "$TOTAL_STEPS" "$step_title"
     else
-        echo -e "\n[Step ${step_num}/${TOTAL_STEPS}] (${pct}%) ${step_title}"
+        echo -e "\n[Step ${step_num}/${TOTAL_STEPS}] ${step_title}"
+    fi
+}
+
+run_live_task() {
+    local task_label="$1"
+    shift
+    local cmd=("$@")
+
+    if [ "$DRY_RUN" = true ]; then
+        echo -e "  ${DIM}[DRY-RUN] ${task_label}: ${cmd[*]}${NC}"
+        return 0
+    fi
+
+    echo -e "  ${CYAN}==>${NC} ${task_label}..."
+    if "${cmd[@]}"; then
+        echo -e "  ${GREEN}${CHAR_CHECK}${NC} ${task_label} completed.\n"
+        return 0
+    else
+        local err=$?
+        echo -e "  ${RED}${CHAR_CROSS}${NC} ${task_label} failed!"
+        return $err
     fi
 }
 
@@ -153,6 +166,356 @@ run_privileged() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
+# GOPOD CLI Wrapper Generator (/usr/local/bin/gopod)
+# ─────────────────────────────────────────────────────────────────────────────
+
+create_cli_wrapper() {
+    local wrapper_user="${1:-$CURRENT_USER}"
+    local wrapper_uid="${2:-$USER_UID}"
+    local wrapper_home="${3:-$USER_HOME}"
+    local wrapper_config="${4:-${wrapper_home}/.config/gopod}"
+    local wrapper_data="${5:-${wrapper_home}/.local/share/gopod}"
+    local wrapper_port="${6:-$GOPOD_PORT}"
+    local wrapper_caddy="${7:-$CADDY_HTTP_PORT}"
+
+    local tmp_wrapper
+    tmp_wrapper="$(mktemp /tmp/gopod-cli.XXXXXX 2>/dev/null || echo "/tmp/gopod-cli-$$")"
+
+    cat << 'WRAPPER_HEADER' > "$tmp_wrapper"
+#!/usr/bin/env bash
+# ─────────────────────────────────────────────────────────────────────────────
+# GOPOD CLI Management Helper
+# Unified CLI for rootless GOPOD PaaS & Caddy Ingress services.
+# Automatically bridges user context, sockets, and environment variables.
+# ─────────────────────────────────────────────────────────────────────────────
+set -e
+
+WRAPPER_HEADER
+
+    cat << WRAPPER_VARS >> "$tmp_wrapper"
+GOPOD_USER="${wrapper_user}"
+GOPOD_UID="${wrapper_uid}"
+GOPOD_HOME="${wrapper_home}"
+GOPOD_CONFIG="${wrapper_config}"
+GOPOD_DATA="${wrapper_data}"
+DEFAULT_PORT="${wrapper_port}"
+DEFAULT_CADDY_PORT="${wrapper_caddy}"
+WRAPPER_VARS
+
+    cat << 'WRAPPER_BODY' >> "$tmp_wrapper"
+COMPOSE_FILE="${GOPOD_CONFIG}/compose.yml"
+RUNTIME_DIR="/run/user/${GOPOD_UID}"
+PODMAN_SOCK="${RUNTIME_DIR}/podman/podman.sock"
+if [ "$GOPOD_UID" -eq 0 ]; then
+    RUNTIME_DIR="/run"
+    PODMAN_SOCK="/run/podman/podman.sock"
+fi
+
+# Determine active ports (dynamically from compose.yml if present, otherwise defaults)
+ACTUAL_PORT="$DEFAULT_PORT"
+ACTUAL_CADDY_PORT="$DEFAULT_CADDY_PORT"
+if [ -f "$COMPOSE_FILE" ]; then
+    FOUND_PORT=$(grep -oE '[0-9]+:8085' "$COMPOSE_FILE" 2>/dev/null | head -n1 | cut -d: -f1 || true)
+    if [ -n "$FOUND_PORT" ]; then ACTUAL_PORT="$FOUND_PORT"; fi
+    FOUND_CADDY=$(grep -oE '[0-9]+:80' "$COMPOSE_FILE" 2>/dev/null | head -n1 | cut -d: -f1 || true)
+    if [ -n "$FOUND_CADDY" ]; then ACTUAL_CADDY_PORT="$FOUND_CADDY"; fi
+fi
+
+BOLD="$(printf '\033[1m')"
+DIM="$(printf '\033[2m')"
+GREEN="$(printf '\033[0;32m')"
+YELLOW="$(printf '\033[1;33m')"
+CYAN="$(printf '\033[0;36m')"
+RED="$(printf '\033[0;31m')"
+BLUE="$(printf '\033[0;34m')"
+NC="$(printf '\033[0m')"
+
+# Ensure rootless socket is running if systemd session exists
+ensure_socket() {
+    if [ "$GOPOD_UID" -ne 0 ] && [ ! -S "$PODMAN_SOCK" ]; then
+        if [ "$(id -u)" -eq 0 ] && command -v systemctl &>/dev/null; then
+            systemctl start "user@${GOPOD_UID}.service" 2>/dev/null || true
+        fi
+        run_rootless systemctl --user start podman.socket 2>/dev/null || true
+    fi
+}
+
+# Run commands within service user's rootless context
+run_rootless() {
+    if [ "$(id -u)" -eq "$GOPOD_UID" ]; then
+        export XDG_RUNTIME_DIR="${RUNTIME_DIR}"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=${RUNTIME_DIR}/bus"
+        export DOCKER_HOST="unix://${PODMAN_SOCK}"
+        "$@"
+    elif [ "$(id -u)" -eq 0 ]; then
+        local escaped_cmd=""
+        for arg in "$@"; do
+            escaped_cmd+="$(printf '%q ' "$arg")"
+        done
+        su - "$GOPOD_USER" -c "export XDG_RUNTIME_DIR='${RUNTIME_DIR}' DBUS_SESSION_BUS_ADDRESS='unix:path=${RUNTIME_DIR}/bus' DOCKER_HOST='unix://${PODMAN_SOCK}'; ${escaped_cmd}"
+    elif command -v sudo >/dev/null 2>&1; then
+        sudo -u "$GOPOD_USER" env XDG_RUNTIME_DIR="${RUNTIME_DIR}" DBUS_SESSION_BUS_ADDRESS="unix:path=${RUNTIME_DIR}/bus" DOCKER_HOST="unix://${PODMAN_SOCK}" "$@"
+    else
+        echo -e "${RED}Error: Must run as '${GOPOD_USER}' or root (or with sudo).${NC}" >&2
+        return 1
+    fi
+}
+
+is_quadlet() {
+    run_rootless systemctl --user is-active --quiet gopod-pod.service 2>/dev/null
+}
+
+run_compose() {
+    local action="$1"
+    shift || true
+
+    if run_rootless podman compose version &>/dev/null; then
+        run_rootless podman compose -f "$COMPOSE_FILE" "$action" "$@"
+    elif run_rootless command -v podman-compose &>/dev/null; then
+        run_rootless podman-compose -f "$COMPOSE_FILE" "$action" "$@"
+    elif run_rootless command -v docker-compose &>/dev/null; then
+        run_rootless docker-compose -f "$COMPOSE_FILE" "$action" "$@"
+    else
+        case "$action" in
+            logs)
+                run_rootless podman logs "$@" gopod
+                ;;
+            restart)
+                run_rootless podman restart gopod gopod-caddy
+                ;;
+            stop)
+                run_rootless podman stop gopod gopod-caddy
+                ;;
+            start|up)
+                run_rootless podman start gopod gopod-caddy
+                ;;
+            ps)
+                run_rootless podman ps -a --filter name=gopod
+                ;;
+            pull)
+                run_rootless podman pull ghcr.io/ijon6k/gopod:latest 2>/dev/null || true
+                ;;
+            *)
+                echo -e "${RED}Error: Compose command not found and action '${action}' not supported in fallback.${NC}" >&2
+                return 1
+                ;;
+        esac
+    fi
+}
+
+show_help() {
+    cat << EOF
+${BLUE}${BOLD}GOPOD CLI${NC} — Management Helper for Rootless GOPOD PaaS
+
+${BOLD}Usage:${NC}
+  gopod <command> [arguments]
+
+${BOLD}Commands:${NC}
+  ${CYAN}status${NC}               Check system health, socket, and container state
+  ${CYAN}ps${NC}                   List all GOPOD containers
+  ${CYAN}logs${NC} [-f] [caddy]     View or stream logs (default: all services)
+  ${CYAN}restart${NC} [service]    Restart GOPOD containers or systemd unit
+  ${CYAN}start${NC}                Start GOPOD service stack
+  ${CYAN}stop${NC}                 Stop GOPOD service stack
+  ${CYAN}shell${NC} [caddy]        Open interactive shell inside container (default: gopod)
+  ${CYAN}exec${NC} <ctr> <cmd...>  Execute command inside specific container
+  ${CYAN}update${NC}               Pull latest container image and restart stack
+  ${CYAN}info${NC}                 Show service user, ports, socket, and storage paths
+  ${CYAN}podman${NC} <args...>     Run any Podman command directly in rootless context
+  ${CYAN}help${NC}, -h, --help     Show this help screen
+
+${BOLD}Context:${NC}
+  Service User : ${BOLD}${GOPOD_USER}${NC} (UID: ${GOPOD_UID})
+  Socket       : ${DIM}${PODMAN_SOCK}${NC}
+  Dashboard    : ${BOLD}http://localhost:${ACTUAL_PORT}${NC}
+EOF
+}
+
+CMD="${1:-help}"
+shift || true
+
+case "$CMD" in
+    status)
+        echo -e "${BLUE}${BOLD}=== GOPOD Service Status ===${NC}"
+        # 1. Health check
+        if curl -fsSL -o /dev/null "http://127.0.0.1:${ACTUAL_PORT}" 2>/dev/null; then
+            echo -e "  Health Check : ${GREEN}${BOLD}Healthy${NC} (HTTP 200 on :${ACTUAL_PORT})"
+        else
+            echo -e "  Health Check : ${RED}${BOLD}Unreachable / Starting${NC} (: ${ACTUAL_PORT})"
+        fi
+
+        # 2. Socket check
+        ensure_socket
+        if [ -S "$PODMAN_SOCK" ] || run_rootless test -S "$PODMAN_SOCK" 2>/dev/null; then
+            echo -e "  Podman Socket: ${GREEN}Active${NC} (${PODMAN_SOCK})"
+        else
+            echo -e "  Podman Socket: ${YELLOW}Not found or inactive${NC} (${PODMAN_SOCK})"
+        fi
+
+        # 3. Running mode
+        if is_quadlet; then
+            echo -e "  Running Mode : ${CYAN}Quadlet${NC} (systemd user unit active)"
+        elif [ -f "$COMPOSE_FILE" ]; then
+            echo -e "  Running Mode : ${CYAN}Container / Compose${NC} (${COMPOSE_FILE})"
+        fi
+
+        echo ""
+        run_rootless podman ps -a --filter name=gopod --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+        ;;
+
+    ps)
+        ensure_socket
+        run_rootless podman ps -a --filter name=gopod "$@"
+        ;;
+
+    logs)
+        ensure_socket
+        if [ -f "$COMPOSE_FILE" ]; then
+            run_compose logs "$@"
+        else
+            local target="gopod"
+            if [ "${1:-}" = "caddy" ] || [ "${1:-}" = "gopod-caddy" ]; then
+                target="gopod-caddy"
+                shift || true
+            fi
+            run_rootless podman logs "$@" "$target"
+        fi
+        ;;
+
+    restart)
+        ensure_socket
+        local target="${1:-}"
+        if [ -n "$target" ]; then
+            case "$target" in
+                caddy|gopod-caddy) run_rootless podman restart gopod-caddy ;;
+                server|app|gopod) run_rootless podman restart gopod ;;
+                *) run_rootless podman restart "$target" ;;
+            esac
+        elif is_quadlet; then
+            run_rootless systemctl --user restart gopod-pod.service
+        elif [ -f "$COMPOSE_FILE" ]; then
+            run_compose restart
+        else
+            run_rootless podman restart gopod gopod-caddy
+        fi
+        ;;
+
+    start)
+        ensure_socket
+        if is_quadlet; then
+            run_rootless systemctl --user start gopod-pod.service
+        elif [ -f "$COMPOSE_FILE" ]; then
+            run_compose up -d
+        else
+            run_rootless podman start gopod gopod-caddy
+        fi
+        ;;
+
+    stop)
+        ensure_socket
+        if is_quadlet; then
+            run_rootless systemctl --user stop gopod-pod.service
+        elif [ -f "$COMPOSE_FILE" ]; then
+            run_compose stop
+        else
+            run_rootless podman stop gopod gopod-caddy
+        fi
+        ;;
+
+    shell)
+        ensure_socket
+        local target="${1:-gopod}"
+        if [ "$target" = "caddy" ]; then target="gopod-caddy"; fi
+        if [ -t 0 ] && [ -t 1 ]; then
+            run_rootless podman exec -it "$target" sh -c "exec bash 2>/dev/null || exec sh"
+        else
+            run_rootless podman exec -i "$target" sh -c "exec bash 2>/dev/null || exec sh"
+        fi
+        ;;
+
+    exec)
+        ensure_socket
+        if [ -t 0 ] && [ -t 1 ]; then
+            run_rootless podman exec -it "$@"
+        else
+            run_rootless podman exec -i "$@"
+        fi
+        ;;
+
+    update)
+        ensure_socket
+        echo -e "${CYAN}==>${NC} Pulling latest GOPOD images..."
+        if [ -f "$COMPOSE_FILE" ]; then
+            run_compose pull
+            echo -e "${CYAN}==>${NC} Recreating GOPOD services..."
+            run_compose up -d
+        elif is_quadlet; then
+            run_rootless podman auto-update
+            run_rootless systemctl --user restart gopod-pod.service
+        fi
+        ;;
+
+    podman)
+        ensure_socket
+        run_rootless podman "$@"
+        ;;
+
+    info)
+        cat << EOF
+${BLUE}${BOLD}=== GOPOD System & Environment Info ===${NC}
+  Service User : ${BOLD}${GOPOD_USER}${NC} (UID: ${GOPOD_UID})
+  Home Dir     : ${DIM}${GOPOD_HOME}${NC}
+  Config Dir   : ${DIM}${GOPOD_CONFIG}${NC}
+  Data Dir     : ${DIM}${GOPOD_DATA}${NC}
+  Compose File : ${DIM}${COMPOSE_FILE}${NC}
+  Podman Socket: ${DIM}${PODMAN_SOCK}${NC}
+  Dashboard URL: ${BOLD}http://localhost:${ACTUAL_PORT}${NC}
+  Ingress HTTP : ${BOLD}http://localhost:${ACTUAL_CADDY_PORT}${NC}
+EOF
+        ;;
+
+    help|-h|--help)
+        show_help
+        ;;
+
+    *)
+        echo -e "${RED}Unknown command: '${CMD}'${NC}\n" >&2
+        show_help >&2
+        exit 1
+        ;;
+esac
+WRAPPER_BODY
+
+    # Install wrapper to /usr/local/bin/gopod
+    chmod 0755 "$tmp_wrapper"
+    if [ "$(id -u)" -eq 0 ]; then
+        mkdir -p /usr/local/bin 2>/dev/null || true
+        cp "$tmp_wrapper" /usr/local/bin/gopod 2>/dev/null || true
+        chmod 0755 /usr/local/bin/gopod 2>/dev/null || true
+        ln -sf /usr/local/bin/gopod /usr/bin/gopod 2>/dev/null || true
+    elif command -v sudo &>/dev/null && sudo -n true 2>/dev/null; then
+        sudo mkdir -p /usr/local/bin 2>/dev/null || true
+        sudo cp "$tmp_wrapper" /usr/local/bin/gopod 2>/dev/null || true
+        sudo chmod 0755 /usr/local/bin/gopod 2>/dev/null || true
+        sudo ln -sf /usr/local/bin/gopod /usr/bin/gopod 2>/dev/null || true
+    elif [ -w /usr/local/bin ]; then
+        cp "$tmp_wrapper" /usr/local/bin/gopod 2>/dev/null || true
+        chmod 0755 /usr/local/bin/gopod 2>/dev/null || true
+    fi
+
+    # Also install to ~/.local/bin/gopod for the user
+    mkdir -p "${wrapper_home}/.local/bin" 2>/dev/null || true
+    cp "$tmp_wrapper" "${wrapper_home}/.local/bin/gopod" 2>/dev/null || true
+    chmod 0755 "${wrapper_home}/.local/bin/gopod" 2>/dev/null || true
+    if [ "$(id -u)" -eq 0 ] && [ "$wrapper_user" != "root" ]; then
+        chown -R "${wrapper_user}:${wrapper_user}" "${wrapper_home}/.local/bin" 2>/dev/null || true
+    fi
+
+    rm -f "$tmp_wrapper" 2>/dev/null || true
+    return 0
+}
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Default Configuration Values & Parameter Parsing
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -176,6 +539,7 @@ DRY_RUN=false
 VERBOSE=false
 ALLOW_ROOT=false
 AS_USER=false
+SERVICE_USER="gopod"
 
 # Container environment detection
 IS_IN_CONTAINER=false
@@ -199,6 +563,7 @@ Deployment Mode:
 
 Security & User Context:
   --rootless            Enforce rootless execution (Default on host OS)
+  --user=<USERNAME>     Specify dedicated service user for rootless mode (Default: gopod)
   --allow-root, --root  Allow running directly under root (rootful mode)
 
 Release Channels & Tags:
@@ -301,6 +666,12 @@ while [[ $# -gt 0 ]]; do
         --rootless)
             ALLOW_ROOT=false
             ;;
+        --user=*)
+            SERVICE_USER="${1#*=}"
+            ;;
+        --user)
+            SERVICE_USER="$2"; shift
+            ;;
         --as-user)
             AS_USER=true
             ;;
@@ -359,52 +730,59 @@ install_packages_as_root() {
 }
 
 if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
-    # In container sandbox, default to rootful unless user explicitly asked for rootless
-    if [ "$IS_IN_CONTAINER" = true ]; then
-        ALLOW_ROOT=true
-    fi
-
     if [ "$ALLOW_ROOT" = false ]; then
-        TTY_DEV="/dev/tty"
-        CHOICE_USER="Y"
-
-        if [ "$NON_INTERACTIVE" = false ] && ([ -e "$TTY_DEV" ] || [ -t 0 ]); then
-            exec 3< "$TTY_DEV" 2>/dev/null || exec 3<&0
-            echo -e "${CYAN}${BOLD}"
-            echo "┌─────────────────────────────────────────────────────────────┐"
-            echo "│         Rootless Execution & Security Recommendation        │"
-            echo "└─────────────────────────────────────────────────────────────┘"
-            echo -e "${NC}"
-            echo -e "You are currently running this installer as '${BOLD}root${NC}' (UID 0)."
-            echo -e "For container security and enterprise compliance, GOPOD recommends"
-            echo -e "running under a dedicated unprivileged user '${BOLD}gopod${NC}' (100% Rootless).\n"
-            echo -e "  ${GREEN}${CHAR_CHECK}${NC} Complete isolation from host root filesystem"
-            echo -e "  ${GREEN}${CHAR_CHECK}${NC} Mitigates container escape risks"
-            echo -e "  ${GREEN}${CHAR_CHECK}${NC} System service user (no password required)\n"
-            read -r -u 3 -p "Create and install under dedicated 'gopod' user? [Y/n] (Default: Y): " INPUT_USER_CHOICE
-            exec 3<&-
-            if [[ "$INPUT_USER_CHOICE" =~ ^[nN]$ ]]; then
-                CHOICE_USER="N"
+        if [ "$INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
+            TTY_DEV="/dev/tty"
+            if [ -e "$TTY_DEV" ] || [ -t 0 ]; then
+                exec 3< "$TTY_DEV" 2>/dev/null || exec 3<&0
+                echo -e "${CYAN}${BOLD}"
+                echo "┌─────────────────────────────────────────────────────────────┐"
+                echo "│              Privilege & Security Context                   │"
+                echo "└─────────────────────────────────────────────────────────────┘"
+                echo -e "${NC}"
+                echo -e "Installer running as root (UID 0)."
+                echo -e "Choose privilege execution mode:\n"
+                echo -e "  ${BOLD}1)${NC} ${GREEN}Rootless (Recommended)${NC} — Dedicated unprivileged user (PaaS standard)"
+                echo -e "  ${BOLD}2)${NC} ${YELLOW}Rootful (Advanced)${NC}     — Direct UID 0 (WireGuard, eBPF, raw block storage)\n"
+                read -r -u 3 -p "Select mode [1/2] (default: 1): " CHOICE_PRIV
+                case "$CHOICE_PRIV" in
+                    2|rootful|root)
+                        ALLOW_ROOT=true
+                        echo -e "\n  ${YELLOW}${CHAR_WARN} Selected Rootful mode (UID 0).${NC}\n"
+                        ;;
+                    *)
+                        ALLOW_ROOT=false
+                        read -r -u 3 -p "Enter service username [${SERVICE_USER}]: " INPUT_USER
+                        if [ -n "$INPUT_USER" ]; then
+                            if [[ "$INPUT_USER" =~ ^[a-z_][a-z0-9_-]*$ ]]; then
+                                SERVICE_USER="$INPUT_USER"
+                            else
+                                echo -e "${YELLOW}Invalid username format. Using default '${SERVICE_USER}'.${NC}"
+                            fi
+                        fi
+                        ;;
+                esac
+                exec 3<&-
             fi
         fi
 
-        if [ "$CHOICE_USER" = "N" ]; then
-            ALLOW_ROOT=true
-            echo -e "\n  ${YELLOW}${CHAR_WARN} Continuing installation in Rootful mode (UID 0)...${NC}\n"
-        else
-            echo -e "\n${CYAN}${BOLD}==> Provisioning dedicated 'gopod' service user for rootless execution...${NC}"
+        if [ "$ALLOW_ROOT" = false ]; then
+            echo -e "\n${CYAN}${BOLD}==> Provisioning dedicated '${SERVICE_USER}' service user for rootless execution...${NC}"
 
             # 1. Create service user if missing
-            if ! id -u gopod &>/dev/null; then
-                useradd -m -s /bin/bash gopod 2>/dev/null || adduser -D -s /bin/bash gopod 2>/dev/null
-                echo -e "  ${GREEN}${CHAR_CHECK}${NC} Created dedicated service user: ${BOLD}gopod${NC}"
+            if ! id -u "$SERVICE_USER" &>/dev/null; then
+                useradd -m -s /bin/bash "$SERVICE_USER" 2>/dev/null || adduser -D -s /bin/bash "$SERVICE_USER" 2>/dev/null
+                echo -e "  ${GREEN}${CHAR_CHECK}${NC} Created dedicated service user: ${BOLD}${SERVICE_USER}${NC}"
             else
-                echo -e "  ${GREEN}${CHAR_CHECK}${NC} Using existing service user: ${BOLD}gopod${NC}"
+                echo -e "  ${GREEN}${CHAR_CHECK}${NC} Using existing service user: ${BOLD}${SERVICE_USER}${NC}"
             fi
 
+            SERVICE_HOME=$(eval echo "~${SERVICE_USER}")
+            GOPOD_SERVICE_UID=$(id -u "$SERVICE_USER")
+
             # 2. Configure subordinate UID/GID mappings
-            usermod --add-subuids 100000-165535 gopod 2>/dev/null || true
-            usermod --add-subgids 100000-165535 gopod 2>/dev/null || true
+            usermod --add-subuids 100000-165535 "$SERVICE_USER" 2>/dev/null || true
+            usermod --add-subgids 100000-165535 "$SERVICE_USER" 2>/dev/null || true
             echo -e "  ${GREEN}${CHAR_CHECK}${NC} Subordinate UID/GID ranges configured (100000-165535)"
 
             # 3. Configure sysctl for unprivileged port binding (:80 & :443)
@@ -417,8 +795,8 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
 
             # 4. Enable systemd lingering
             if command -v loginctl &>/dev/null; then
-                loginctl enable-linger gopod 2>/dev/null || true
-                echo -e "  ${GREEN}${CHAR_CHECK}${NC} Systemd process lingering enabled for 'gopod'"
+                loginctl enable-linger "$SERVICE_USER" 2>/dev/null || true
+                echo -e "  ${GREEN}${CHAR_CHECK}${NC} Systemd process lingering enabled for '${SERVICE_USER}'"
             fi
 
             # 5. Install packages as root before delegating
@@ -426,10 +804,9 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
             install_packages_as_root
 
             # 6. Ensure runtime directory
-            GOPOD_SERVICE_UID=$(id -u gopod)
             GOPOD_RUNTIME_DIR="/run/user/${GOPOD_SERVICE_UID}"
             mkdir -p "$GOPOD_RUNTIME_DIR" 2>/dev/null || true
-            chown -R gopod:gopod "$GOPOD_RUNTIME_DIR" 2>/dev/null || true
+            chown -R "${SERVICE_USER}:${SERVICE_USER}" "$GOPOD_RUNTIME_DIR" 2>/dev/null || true
             chmod 700 "$GOPOD_RUNTIME_DIR" 2>/dev/null || true
 
             # Activate systemd user manager if available
@@ -437,7 +814,10 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
                 systemctl start "user@${GOPOD_SERVICE_UID}.service" 2>/dev/null || true
             fi
 
-            # 7. Re-execute script under gopod user
+            # Provision CLI wrapper early as root
+            create_cli_wrapper "$SERVICE_USER" "$GOPOD_SERVICE_UID" "$SERVICE_HOME" "${SERVICE_HOME}/.config/gopod" "${SERVICE_HOME}/.local/share/gopod" "$GOPOD_PORT" "$CADDY_HTTP_PORT"
+
+            # 7. Re-execute script under service user
             SCRIPT_TEMP="/tmp/gopod-installer-$$.sh"
             if [ -f "$0" ] && [ -r "$0" ]; then
                 cp "$0" "$SCRIPT_TEMP"
@@ -446,10 +826,13 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
             fi
             chmod 755 "$SCRIPT_TEMP"
 
-            echo -e "  ${GREEN}${CHAR_CHECK}${NC} Switching execution to user '${BOLD}gopod${NC}'...\n"
-            su - gopod -c "XDG_RUNTIME_DIR=${GOPOD_RUNTIME_DIR} DBUS_SESSION_BUS_ADDRESS=unix:path=${GOPOD_RUNTIME_DIR}/bus bash ${SCRIPT_TEMP} ${ORIGINAL_ARGS[*]} --as-user"
+            echo -e "  ${GREEN}${CHAR_CHECK}${NC} Switching execution to user '${BOLD}${SERVICE_USER}${NC}'...\n"
+            su - "$SERVICE_USER" -c "XDG_RUNTIME_DIR=${GOPOD_RUNTIME_DIR} DBUS_SESSION_BUS_ADDRESS=unix:path=${GOPOD_RUNTIME_DIR}/bus bash ${SCRIPT_TEMP} ${ORIGINAL_ARGS[*]} --as-user"
             SUB_EXIT=$?
             rm -f "$SCRIPT_TEMP" 2>/dev/null || true
+            if [ $SUB_EXIT -eq 0 ]; then
+                create_cli_wrapper "$SERVICE_USER" "$GOPOD_SERVICE_UID" "$SERVICE_HOME" "${SERVICE_HOME}/.config/gopod" "${SERVICE_HOME}/.local/share/gopod" "$GOPOD_PORT" "$CADDY_HTTP_PORT"
+            fi
             exit $SUB_EXIT
         fi
     fi
@@ -784,19 +1167,19 @@ EOF
 run_task "Creating configuration and persistent data directories" task_init_storage
 
 # ─────────────────────────────────────────────────────────────────────────────
-# [6/7] Pulling Container Images (Clean Progress, Verbose Hidden)
+# [6/7] Pulling Container Images (Realtime Progress)
 # ─────────────────────────────────────────────────────────────────────────────
 render_progress_bar 6 "Pulling container images (${DISPLAY_TAG})"
 
 task_pull_gopod() {
     podman pull "$GOPOD_IMAGE"
 }
-run_task "Downloading GOPOD control plane (${GOPOD_IMAGE})" task_pull_gopod
+run_live_task "Downloading GOPOD control plane (${GOPOD_IMAGE})" task_pull_gopod
 
 task_pull_caddy() {
     podman pull "$CADDY_IMAGE"
 }
-run_task "Downloading Caddy reverse proxy ingress (${CADDY_IMAGE})" task_pull_caddy
+run_live_task "Downloading Caddy reverse proxy ingress (${CADDY_IMAGE})" task_pull_caddy
 
 # ─────────────────────────────────────────────────────────────────────────────
 # [7/7] Generating Manifests & Starting Service
@@ -1003,6 +1386,11 @@ task_verify_readiness() {
 }
 run_task "Verifying service readiness & health check" task_verify_readiness
 
+task_install_cli_wrapper() {
+    create_cli_wrapper "$CURRENT_USER" "$USER_UID" "$USER_HOME" "$CONFIG_DIR" "$DATA_DIR" "$GOPOD_PORT" "$CADDY_HTTP_PORT"
+}
+run_task "Installing GOPOD CLI management wrapper (/usr/local/bin/gopod)" task_install_cli_wrapper
+
 # Detect Public IP for VPS or fallback to local IP
 PUBLIC_IP=$(curl -4s --max-time 2 https://api.ipify.org 2>/dev/null || curl -4s --max-time 2 https://ifconfig.me 2>/dev/null || true)
 if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -1022,16 +1410,17 @@ echo -e " Service User  : ${BOLD}${CURRENT_USER}${NC} $([ "$CURRENT_USER" = "roo
 echo -e " Podman Socket : ${DIM}${DETECTED_SOCKET}${NC}"
 echo -e " Storage Path  : ${DIM}${GOPOD_DATA}${NC}"
 echo -e " Compose Spec  : ${DIM}${GOPOD_CONFIG}/compose.yml${NC}"
+echo -e " CLI Helper    : ${CYAN}${BOLD}/usr/local/bin/gopod${NC} ${GREEN}(Auto-configured, ready to use)${NC}"
 echo "──────────────────────────────────────────────────────────────"
-echo -e "${BOLD}Quick Management Commands:${NC}"
-if [ "$CURRENT_USER" != "root" ] && [ "$(id -u)" -eq 0 ]; then
-    echo -e "  Switch user  : ${CYAN}su - ${CURRENT_USER}${NC}"
-    echo -e "  Check status : ${CYAN}su - ${CURRENT_USER} -c 'podman ps --filter name=gopod'${NC}"
-    echo -e "  View logs    : ${CYAN}su - ${CURRENT_USER} -c 'podman compose -f ~/.config/gopod/compose.yml logs -f'${NC}"
-    echo -e "  Restart      : ${CYAN}su - ${CURRENT_USER} -c 'podman compose -f ~/.config/gopod/compose.yml restart'${NC}"
-else
-    echo -e "  Check status : ${CYAN}podman ps --filter name=gopod${NC}"
-    echo -e "  View logs    : ${CYAN}podman compose -f ${GOPOD_CONFIG}/compose.yml logs -f${NC}"
-    echo -e "  Restart      : ${CYAN}podman compose -f ${GOPOD_CONFIG}/compose.yml restart${NC}"
-fi
+echo -e "${BOLD}Management Cheat Sheet (Run directly from any terminal):${NC}"
+echo -e "  ${CYAN}gopod status${NC}           Check health, podman socket, & container state"
+echo -e "  ${CYAN}gopod ps${NC}               List running GOPOD containers"
+echo -e "  ${CYAN}gopod logs -f${NC}          Stream live unified service logs"
+echo -e "  ${CYAN}gopod restart${NC}          Restart GOPOD PaaS & Caddy Ingress"
+echo -e "  ${CYAN}gopod stop${NC}             Stop all GOPOD services"
+echo -e "  ${CYAN}gopod start${NC}            Start GOPOD services"
+echo -e "  ${CYAN}gopod shell [caddy]${NC}    Open interactive shell inside container"
+echo -e "  ${CYAN}gopod update${NC}           Pull latest container images & restart stack"
+echo -e "  ${CYAN}gopod info${NC}             Show runtime environment & config paths"
+echo -e "  ${CYAN}gopod podman <args>${NC}   Run any podman command in rootless context"
 echo -e "\n${BLUE}Open your browser at ${BOLD}http://${SERVER_IP}:${GOPOD_PORT}${NC}${BLUE} to begin the setup wizard.${NC}\n"

@@ -747,7 +747,7 @@ WRAPPER_BODY
     cp "$tmp_wrapper" "${wrapper_home}/.local/bin/gopod" 2>/dev/null || true
     chmod 0755 "${wrapper_home}/.local/bin/gopod" 2>/dev/null || true
     if [ "$(id -u)" -eq 0 ] && [ "$wrapper_user" != "root" ]; then
-        chown -R "${wrapper_user}:${wrapper_user}" "${wrapper_home}/.local/bin" 2>/dev/null || true
+        chown -R "${wrapper_user}:${wrapper_user}" "${wrapper_home}/.local" 2>/dev/null || true
     fi
 
     rm -f "$tmp_wrapper" 2>/dev/null || true
@@ -1034,6 +1034,11 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
             SERVICE_HOME=$(eval echo "~${SERVICE_USER}")
             GOPOD_SERVICE_UID=$(id -u "$SERVICE_USER")
 
+            # Ensure service home exists with proper base ownership
+            mkdir -p "$SERVICE_HOME"
+            chown -R "${SERVICE_USER}:${SERVICE_USER}" "$SERVICE_HOME" 2>/dev/null || true
+            chmod 750 "$SERVICE_HOME" 2>/dev/null || true
+
             # 2. Configure subordinate UID/GID mappings
             usermod --add-subuids 100000-165535 "$SERVICE_USER" 2>/dev/null || true
             usermod --add-subgids 100000-165535 "$SERVICE_USER" 2>/dev/null || true
@@ -1079,6 +1084,9 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
                 curl -fsSL "https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install.sh" -o "$SCRIPT_TEMP"
             fi
             chmod 755 "$SCRIPT_TEMP"
+
+            # Ensure entire service home is owned by service user before dropping privileges
+            chown -R "${SERVICE_USER}:${SERVICE_USER}" "$SERVICE_HOME" 2>/dev/null || true
 
             echo -e "  ${GREEN}${CHAR_CHECK}${NC} Switching execution to user '${BOLD}${SERVICE_USER}${NC}'...\n"
             su - "$SERVICE_USER" -c "XDG_RUNTIME_DIR=${GOPOD_RUNTIME_DIR} DBUS_SESSION_BUS_ADDRESS=unix:path=${GOPOD_RUNTIME_DIR}/bus bash ${SCRIPT_TEMP} ${ORIGINAL_ARGS[*]} --as-user"

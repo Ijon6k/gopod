@@ -5,12 +5,16 @@ After=gopod-pod.service
 
 [Container]
 ContainerName=gopod-caddy
+# Pod=gopod.pod  — for standalone deployment without a pod:
+# remove Pod= and PartOf=; add Network=gopod-net.network, PublishPort=80:80, PublishPort=443:443.
 Pod=gopod.pod
 Image=docker.io/library/caddy:alpine
 AutoUpdate=registry
 Volume=%h/.config/gopod/caddy:/etc/caddy:Z
 Volume=%h/.local/share/gopod/caddy/data:/data:Z
-Volume=%h/.local/share/gopod/logs:/var/log/caddy:Z
+Volume=%h/.local/share/gopod/logs:/var/log/caddy:z
+# Must be writable by the Caddy process: it is what creates the admin socket.
+Volume=%h/.local/share/gopod/caddy-admin:/run/gopod-caddy:z
 
 [Service]
 Restart=always

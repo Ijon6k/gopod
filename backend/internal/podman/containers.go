@@ -369,6 +369,13 @@ func (c *Client) RunContainer(ctx context.Context, opts RunContainerOptions) (st
 	}
 	for _, vol := range opts.Volumes {
 		if vol != "" {
+			// Engine-level choke point: every deployment route (image,
+			// quadlet, compose reachability, restart paths) funnels volume
+			// specs through here, so reserved host paths are refused exactly
+			// once regardless of where the request originated.
+			if err := ValidateRunVolumeSpec(vol); err != nil {
+				return "", err
+			}
 			args = append(args, "-v", vol)
 		}
 	}

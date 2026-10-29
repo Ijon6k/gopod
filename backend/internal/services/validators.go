@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	"gopod/internal/podman"
 )
 
 // ValidateGitBranch mirrors `git check-ref-format --branch`: it accepts every
@@ -73,6 +75,32 @@ func ValidateIdentifier(kind, raw string) error {
 	// stays safe.
 	if raw == "" || strings.Contains(raw, "..") || !serviceIdentifierRe.MatchString(raw) || filepath.Base(raw) != raw {
 		return fmt.Errorf("invalid %s %q: must be a short identifier of letters, digits, '.', '_' or '-'", kind, raw)
+	}
+	return nil
+}
+
+// ValidateVolumeMount checks a structured client-supplied
+// Advanced.Storage.Volumes bind-mount before it reaches the deployer. The
+// actual policy lives in internal/podman (single source of truth at the
+// engine choke point); this wrapper adds the "both halves required" rule for
+// the structured form.
+func ValidateVolumeMount(source, target string) error {
+	if strings.ContainsAny(source, "\x00\n\r:") {
+		return errors.New("volume source contains invalid characters or colons")
+	}
+	src := strings.TrimSpace(source)
+	dst := strings.TrimSpace(target)
+	if src == "" || dst == "" {
+		return errors.New("volume mount requires both source and target")
+	}
+	if strings.ContainsAny(dst, "\x00\n\r:") {
+		return errors.New("volume target contains invalid characters or colons")
+	}
+	if !strings.HasPrefix(dst, "/") {
+		return errors.New("volume target must be an absolute path")
+	}
+	if err := podman.ValidateVolumeSource(src); err != nil {
+		return err
 	}
 	return nil
 }

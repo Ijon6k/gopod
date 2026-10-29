@@ -77,6 +77,16 @@ type AccessLogItem struct {
 	ServiceName string  `json:"serviceName,omitempty"`
 }
 
+// unixDialContextFunc builds an http.DialContext that dials a unix domain
+// socket instead of TCP. It is used for CADDY_ADMIN_URL=unix://... so the
+// admin API transport matches Caddy's "admin unix//path" bind.
+func unixDialContextFunc(path string) func(ctx context.Context, network, addr string) (net.Conn, error) {
+	return func(ctx context.Context, network, addr string) (net.Conn, error) {
+		d := &net.Dialer{Timeout: 5 * time.Second}
+		return d.DialContext(ctx, "unix", path)
+	}
+}
+
 // NewReconciler creates a Caddy synchronizer.
 func NewReconciler(adminURL, caddyfilePath string) *Reconciler {
 	if adminURL == "" {
@@ -131,8 +141,31 @@ func NewReconciler(adminURL, caddyfilePath string) *Reconciler {
 		caddyfilePath:      caddyfilePath,
 		logFilePath:        logPath,
 		controlPort:        ctrlPort,
-		httpClient:         &http.Client{Timeout: 5 * time.Second},
+		httpClient:         newAdminHTTPClient(adminURL),
 	}
+}
+
+// newAdminHTTPClient builds the HTTP client used for Caddy admin API calls.
+// When the configured endpoint is a unix:// URL the client dials the socket
+// (request URLs still use the "http://unix" pseudo-host scheme); otherwise a
+// plain TCP client with a bounded timeout is returned.
+func newAdminHTTPClient(adminURL string) *http.Client {
+	if isAdminUDS(adminURL) {
+		path := adminSocketPath(adminURL)
+		if path == "" {
+			return &http.Client{Timeout: 5 * time.Second}
+		}
+		return &http.Client{
+			Timeout: 5 * time.Second,
+			Transport: &http.Transport{
+				DialContext:        unixDialContextFunc(path),
+				MaxIdleConns:       2,
+				IdleConnTimeout:    30 * time.Second,
+				DisableCompression: true,
+			},
+		}
+	}
+	return &http.Client{Timeout: 5 * time.Second}
 }
 
 // SetControlPort sets the GOPOD dashboard/control plane port for reverse proxying.
@@ -296,11 +329,22 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 	// must never be persisted to disk: a broken Caddyfile would make Caddy
 	// refuse to start at next boot. When no admin endpoint answers at all the
 	// file is still written, so the config reaches Caddy on its next restart.
-	endpoints := []string{r.adminURL}
-	if r.adminURL == "http://caddy:2019" {
-		endpoints = append(endpoints, "http://127.0.0.1:2019", "http://localhost:2019")
-	} else if strings.Contains(r.adminURL, "127.0.0.1") || strings.Contains(r.adminURL, "localhost") {
-		endpoints = append(endpoints, "http://caddy:2019")
+	//
+	// Unix-socket endpoints never contribute TCP fallback candidates: the
+	// socket is the whole transport, and its absence means Caddy is not
+	// running at the configured path (a genuine not-applied condition) rather
+	// than a bind-address mismatch to work around.
+	//
+	// adminRequestURL (definition below) maps a configured admin endpoint to
+	// its request-usable URL: unix:// endpoints become the pseudo host
+	// "http://unix" because the custom transport dials the socket path itself.
+	endpoints := []string{adminRequestURL(r.adminURL)}
+	if !isAdminUDS(r.adminURL) {
+		if r.adminURL == "http://caddy:2019" {
+			endpoints = append(endpoints, "http://127.0.0.1:2019", "http://localhost:2019")
+		} else if strings.Contains(r.adminURL, "127.0.0.1") || strings.Contains(r.adminURL, "localhost") {
+			endpoints = append(endpoints, "http://caddy:2019")
+		}
 	}
 
 	var lastErr error
@@ -338,8 +382,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 			continue
 		}
 
-		r.adminURL = endpoint
-		log.Printf("✅ Caddy ingress updated with %d domain rules via %s", validDomains, endpoint)
+		// Track the endpoint: for unix sockets, preserve the configured
+		// URL instead of the synthetic "http://unix" request URL. For TCP,
+		// keep the working fallback endpoint to avoid future retry timeouts.
+		if isAdminUDS(r.configuredAdminURL) {
+			r.adminURL = r.configuredAdminURL
+		} else {
+			r.adminURL = endpoint
+		}
+		log.Printf("✅ Caddy ingress updated with %d domain rules via %s", validDomains, r.adminURL)
 		reloaded = true
 		rejected = false
 		break
@@ -472,16 +523,64 @@ func (r *Reconciler) buildDomainRoute(d Domain) (domainRoute, error) {
 	return domainRoute{Hostname: host, Upstream: upstreamHost, Path: cleanPath}, nil
 }
 
+// adminSocketPath extracts the filesystem path from a "unix://" configured
+// admin URL. Accepted forms: unix:///run/x.sock, unix:/run/x.sock,
+// unix//run/x.sock (Caddyfile literal already normalized upstream).
+func adminSocketPath(raw string) string {
+	value := strings.TrimSpace(raw)
+	value = strings.TrimPrefix(value, "unix:")
+	value = strings.TrimPrefix(value, "unix")
+	value = strings.TrimLeft(value, "/")
+	if value == "" {
+		return ""
+	}
+	return "/" + value
+}
+
+// adminRequestURL maps a configured admin endpoint to a request-usable HTTP
+// URL. Unix-socket endpoints get the pseudo host "http://unix": the custom
+// transport dials the socket path and the URL host is ignored.
+func adminRequestURL(adminURL string) string {
+	if isAdminUDS(adminURL) {
+		return "http://unix"
+	}
+	return adminURL
+}
+
+// isAdminUDS reports whether the configured admin endpoint is a unix domain
+// socket rather than a TCP address.
+func isAdminUDS(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	return strings.HasPrefix(trimmed, "unix:") || strings.HasPrefix(trimmed, "unix/")
+}
+
 // adminListenAddress derives the admin API bind address for the generated
 // Caddyfile.
 //
-// Host-mode installs (the default) run GOPOD and Caddy on the same machine, so
-// the admin API only needs the loopback interface. Containerized deployments
-// reach Caddy by its podman-network name (e.g. CADDY_ADMIN_URL is
-// http://caddy:2019) and therefore require a non-loopback bind inside the
-// container. The CADDY_ADMIN_HOST override may narrow the bind to localhost or
-// a specific IP address, never a wildcard.
+// Precedence:
+//  1. Unix socket (CADDY_ADMIN_URL=unix://...): the bind is a filesystem
+//     path, not an IP — the generated Caddyfile uses Caddy's
+//     "admin unix//<path>" form. This is the recommended default for every
+//     deployment shape (Quadlet pod, standalone Quadlet, compose, host): no TCP
+//     port exists at all, access is governed by filesystem permissions, and it
+//     works identically whether GOPOD and Caddy share a pod network namespace
+//     or live in separate containers joined by a shared volume mount.
+//  2. CADDY_ADMIN_HOST override: narrows the TCP bind to localhost or one
+//     specific IP. Wildcards (0.0.0.0 / ::) and unix sockets are rejected.
+//  3. Host-mode default (the default when the configured endpoint is
+//     loopback): the admin API only needs the loopback interface.
+//  4. Containerized legacy endpoint (CADDY_ADMIN_URL=http://caddy:2019):
+//     GOPOD and Caddy live in separate network namespaces joined only by a
+//     shared docker/podman network, so a non-loopback bind is required for the
+//     API to stay reachable. Unix sockets should be preferred instead; this
+//     mode is kept for backward compatibility.
 func (r *Reconciler) adminListenAddress() string {
+	if isAdminUDS(r.configuredAdminURL) {
+		path := adminSocketPath(r.configuredAdminURL)
+		if path != "" {
+			return "unix/" + path
+		}
+	}
 	address := "localhost:2019"
 	if !isLoopbackAdminURL(r.configuredAdminURL) {
 		address = "0.0.0.0:2019"
@@ -529,7 +628,11 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 	}
 
 	ctrlUpstream := fmt.Sprintf("127.0.0.1:%s", r.controlPort)
-	if strings.Contains(r.adminURL, "caddy:") || os.Getenv("CADDY_ADMIN_URL") != "" {
+	if envUpstream := os.Getenv("CADDY_UPSTREAM"); envUpstream != "" {
+		ctrlUpstream = envUpstream
+	} else if bindHost := os.Getenv("GOPOD_BIND_HOST"); bindHost == "127.0.0.1" || bindHost == "localhost" {
+		ctrlUpstream = fmt.Sprintf("127.0.0.1:%s", r.controlPort)
+	} else if strings.Contains(r.adminURL, "caddy:") || os.Getenv("CADDY_ADMIN_URL") != "" {
 		ctrlUpstream = fmt.Sprintf("gopod:%s", r.controlPort)
 	}
 

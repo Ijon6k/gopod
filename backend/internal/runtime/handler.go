@@ -17,6 +17,10 @@ type Handler struct {
 	service       *Service
 	middleware    *auth.Middleware
 	ticketManager *TerminalTicketManager
+	// ticketLimiter caps terminal ticket issuance per client IP. Tickets are
+	// single-use and short-lived, so a flood of requests would otherwise just
+	// churn ticket state (memory + CPU) and bloat audit logs.
+	ticketLimiter *ipWindowLimiter
 }
 
 // NewHandler creates a new runtime domain handler.
@@ -25,6 +29,9 @@ func NewHandler(service *Service, mw *auth.Middleware) *Handler {
 		service:       service,
 		middleware:    mw,
 		ticketManager: NewTerminalTicketManager(30 * time.Second),
+		// 20 ticket issuances per minute per IP: far above normal interactive
+		// use (one per terminal open), low enough to make bulk abuse futile.
+		ticketLimiter: newIPWindowLimiter(20, time.Minute),
 	}
 }
 

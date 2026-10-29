@@ -85,6 +85,10 @@ func (h *Handler) handleContainerTerminalTicket(w http.ResponseWriter, r *http.R
 		httputil.WriteError(w, http.StatusBadRequest, "Invalid container identifier")
 		return
 	}
+	if h.ticketLimiter != nil && !h.ticketLimiter.allow(r) {
+		httputil.WriteError(w, http.StatusTooManyRequests, "Too many terminal ticket requests — slow down and try again shortly")
+		return
+	}
 	if h.ticketManager == nil {
 		httputil.WriteError(w, http.StatusInternalServerError, "Ticket manager unavailable")
 		return

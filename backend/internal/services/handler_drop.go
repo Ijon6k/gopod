@@ -97,29 +97,74 @@ func (h *Handler) handleDropUpload(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Check if all files are wrapped in a single root folder (e.g. "dist/" or "build/")
-	singleRoot := ""
+	if len(validEntries) == 0 {
+		_ = os.RemoveAll(distDir)
+		httputil.WriteError(w, http.StatusBadRequest, "Zip archive contains no valid files")
+		return
+	}
+
+	cleanDist := filepath.Clean(distDir)
+
+	// Pre-scan: reject zip-slip path traversal early before any extraction or root analysis
 	for _, f := range validEntries {
-		parts := strings.Split(strings.Trim(f.Name, "/"), "/")
-		if len(parts) > 0 && parts[0] != "" {
-			if singleRoot == "" {
-				singleRoot = parts[0]
-			} else if singleRoot != parts[0] {
-				singleRoot = ""
-				break
-			}
+		rawTarget := filepath.Clean(filepath.Join(distDir, f.Name))
+		if !strings.HasPrefix(rawTarget, cleanDist+string(os.PathSeparator)) && rawTarget != cleanDist {
+			_ = os.RemoveAll(distDir)
+			httputil.WriteError(w, http.StatusBadRequest, fmt.Sprintf("Illegal zip path detected: %s", f.Name))
+			return
 		}
 	}
 
+	// Check if all files are wrapped in a single root folder (e.g. "dist/" or "build/")
+	singleRoot := ""
+	allInRoot := len(validEntries) > 0
+	for _, f := range validEntries {
+		name := strings.Trim(f.Name, "/")
+		parts := strings.Split(name, "/")
+		if len(parts) == 0 || parts[0] == "" || parts[0] == "." || parts[0] == ".." {
+			allInRoot = false
+			break
+		}
+		// If an entry is at root level and is not a directory, the archive has root-level files
+		if len(parts) == 1 && !strings.HasSuffix(f.Name, "/") && !f.FileInfo().IsDir() {
+			allInRoot = false
+			break
+		}
+		if singleRoot == "" {
+			singleRoot = parts[0]
+		} else if singleRoot != parts[0] {
+			allInRoot = false
+			break
+		}
+	}
+	if !allInRoot {
+		singleRoot = ""
+	}
+
+	// Zip bomb guard: compressed uploads are cheap to make enormous when
+	// decompressed (a 10 MB zip can expand to tens of GB). Cap the total
+	// uncompressed payload at 10× the upload cap and the entry count, then
+	// refuse — and leave no partially extracted tree on disk — if either
+	// bound is crossed.
+	maxTotalUncompressed := (int64(maxUploadMB) * 10) << 20 // 10× the upload cap, e.g. 100 MB → 1 GB uncompressed
+	const maxZipEntries = 50000
+	if len(validEntries) > maxZipEntries {
+		_ = os.RemoveAll(distDir)
+		httputil.WriteError(w, http.StatusBadRequest, fmt.Sprintf("Zip archive contains too many entries (%d files, limit is %d)", len(validEntries), maxZipEntries))
+		return
+	}
+
+	var totalUncompressed int64
+	exceeded := false
+
 	extractedCount := 0
-	cleanDist := filepath.Clean(distDir)
 
 	for _, f := range validEntries {
 		relPath := f.Name
 		if singleRoot != "" && strings.HasPrefix(relPath, singleRoot+"/") {
 			relPath = strings.TrimPrefix(relPath, singleRoot+"/")
 		}
-		if relPath == "" || relPath == singleRoot {
+		if relPath == "" || relPath == singleRoot || relPath == singleRoot+"/" {
 			continue
 		}
 
@@ -128,6 +173,7 @@ func (h *Handler) handleDropUpload(w http.ResponseWriter, r *http.Request) {
 
 		// Zip Slip security guard: ensure target is inside distDir
 		if !strings.HasPrefix(cleanTarget, cleanDist+string(os.PathSeparator)) && cleanTarget != cleanDist {
+			_ = os.RemoveAll(distDir)
 			httputil.WriteError(w, http.StatusBadRequest, fmt.Sprintf("Illegal zip path detected: %s", f.Name))
 			return
 		}
@@ -155,11 +201,33 @@ func (h *Handler) handleDropUpload(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		_, _ = io.Copy(outFile, rc)
+		// Bounded copy: read at most one byte beyond the remaining budget so
+		// a breach is detected without extracting it.
+		remaining := maxTotalUncompressed - totalUncompressed
+		if remaining <= 0 {
+			rc.Close()
+			exceeded = true
+			break
+		}
+		written, _ := io.Copy(outFile, io.LimitReader(rc, remaining+1))
 		outFile.Close()
 		rc.Close()
 		_ = os.Chmod(cleanTarget, 0644)
 		extractedCount++
+
+		totalUncompressed += written
+		if totalUncompressed > maxTotalUncompressed {
+			exceeded = true
+			break
+		}
+	}
+
+	if exceeded {
+		// A zip bomb was streaming through: drop the half-extracted tree so
+		// nothing partial is served, then report the real cause.
+		_ = os.RemoveAll(distDir)
+		httputil.WriteError(w, http.StatusRequestEntityTooLarge, fmt.Sprintf("Decompressed upload exceeds the %d MB budget (zip bomb protection)", maxTotalUncompressed>>20))
+		return
 	}
 
 	// Update service state to static drop

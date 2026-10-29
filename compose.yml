@@ -6,20 +6,32 @@ services:
     image: ${GOPOD_IMAGE:-ghcr.io/ijon6k/gopod:latest}
     container_name: gopod
     restart: unless-stopped
-    ports:
-      - "${PORT:-8085}:8085"
+    # The dashboard is reachable only from inside gopod-internal (Caddy
+    # proxies it). Direct tenant traffic on :8085 is intentionally not
+    # published: containers on gopod-net cannot reach gopod.
+    #expose:
+    #  - "8085"
     environment:
       - PORT=8085
       - PODMAN_SOCKET=/run/podman/podman.sock
       - CONTAINER_HOST=unix:///run/podman/podman.sock
       - DOCKER_HOST=unix:///run/podman/podman.sock
       - GOPOD_DB_PATH=/app/data/gopod.db
-      - CADDY_ADMIN_URL=http://caddy:2019
+      # Config-plane transport via filesystem socket: no TCP admin port is
+      # exposed anywhere. The socket directory is shared via
+      # gopod-caddy-admin volume with the Caddy container.
+      - CADDY_ADMIN_URL=unix:///run/gopod-caddy/admin.sock
     volumes:
       - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:z"
       - "./data:/app/data:Z"
+      - "./caddy/logs:/var/log/caddy:z"
+      # Socket dir must carry the container label so Caddy (enforcing
+      # SELinux) can open it.
+      - "gopod-caddy-admin:/run/gopod-caddy:z"
     networks:
-      - gopod-net
+      # Only the control plane and Caddy are attached here. No tenant
+      # container publishes to this network.
+      - gopod-internal
     security_opt:
       - label=disable
 
@@ -36,11 +48,26 @@ services:
       - "./caddy/Caddyfile:/etc/caddy/Caddyfile:Z"
       - "./caddy/data:/data:Z"
       - "./caddy/config:/config:Z"
-      - "./caddy/logs:/var/log/caddy:Z"
+      - "./caddy/logs:/var/log/caddy:z"
+      # Must be writable by Caddy: it creates the admin socket file. The
+      # :z marker keeps SELinux enforcing satisfied on both consumers.
+      - "gopod-caddy-admin:/run/gopod-caddy:z"
     networks:
+      # Control-plane network: the admin socket lives on a shared filesystem
+      # mount, so both containers can reach it regardless of netns.
+      - gopod-internal
+      # Tenant/ingress network: deployed app containers land here and can be
+      # reverse-proxied by hostname.
       - gopod-net
 
 networks:
+  gopod-internal:
+    name: gopod-internal
+    driver: bridge
+    internal: false
   gopod-net:
     name: gopod-net
     driver: bridge
+
+volumes:
+  gopod-caddy-admin:

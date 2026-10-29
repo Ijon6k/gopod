@@ -13,7 +13,9 @@ services:
       - CONTAINER_HOST=unix:///run/podman/podman.sock
       - DOCKER_HOST=unix:///run/podman/podman.sock
       - GOPOD_DB_PATH=/app/data/gopod.db
-      - CADDY_ADMIN_URL=http://caddy:2019
+      # Unix-socket admin transport (dev and prod share the same semantics);
+      # Gopod and Caddy both consume gopod-caddy-admin.
+      - CADDY_ADMIN_URL=unix:///run/gopod-caddy/admin.sock
       - HOST_DATA_DIR=${HOST_DATA_DIR:-${PWD}/data}
       # Vite dev server (bun run dev on the host) proxies /api here; the browser
       # sends Origin http://localhost:5173, so that origin is explicitly
@@ -25,11 +27,12 @@ services:
     volumes:
       - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:z"
       - "./data:/app/data:Z"
-      - "./caddy/logs:/var/log/caddy:Z"
+      - "./caddy/logs:/var/log/caddy:z"
       - "${HOME}/.config/containers/systemd:/root/.config/containers/systemd:z"
       - "${XDG_RUNTIME_DIR:-/run/user/1000}/bus:/run/host-run/bus"
+      - "gopod-caddy-admin-dev:/run/gopod-caddy:z"
     networks:
-      - gopod-net
+      - gopod-internal
     security_opt:
       - label=disable
 
@@ -40,18 +43,25 @@ services:
     ports:
       - "${HTTP_PORT:-8080}:80"
       - "${HTTPS_PORT:-8443}:443"
-      - "127.0.0.1:2019:2019"
     environment:
       - CADDY_INGRESS_NETWORK=gopod-net
     volumes:
       - "./caddy/Caddyfile:/etc/caddy/Caddyfile:Z"
       - "./caddy/data:/data:Z"
       - "./caddy/config:/config:Z"
-      - "./caddy/logs:/var/log/caddy:Z"
+      - "./caddy/logs:/var/log/caddy:z"
+      - "gopod-caddy-admin-dev:/run/gopod-caddy:z"
     networks:
+      - gopod-internal
       - gopod-net
 
 networks:
-  gopod-net:
-    name: gopod-net
+  gopod-internal:
+    name: gopod-internal-dev
     driver: bridge
+  gopod-net:
+    name: gopod-net-dev
+    driver: bridge
+
+volumes:
+  gopod-caddy-admin-dev:

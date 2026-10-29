@@ -294,6 +294,13 @@ func (d *Deployer) runContainer(ctx context.Context, s Service, containerName, i
 		}
 		for _, v := range s.Advanced.Storage.Volumes {
 			if strings.TrimSpace(v.Source) != "" && strings.TrimSpace(v.Target) != "" {
+				// Reject reserved host paths before they can reach the engine:
+				// a tenant volume on /proc, /sys, /dev or a runtime socket
+				// would hand the container everything the engine can do.
+				if err := ValidateVolumeMount(v.Source, v.Target); err != nil {
+					logLine(fmt.Sprintf("🛑 Volume '%s:%s' rejected: %v", v.Source, v.Target, err))
+					return err
+				}
 				if v.Options != "" {
 					vols = append(vols, fmt.Sprintf("%s:%s:%s", v.Source, v.Target, v.Options))
 				} else {

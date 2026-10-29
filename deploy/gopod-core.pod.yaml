@@ -29,6 +29,8 @@ spec:
           mountPath: /data
         - name: caddy-logs
           mountPath: /var/log/caddy
+        - name: caddy-admin-sock
+          mountPath: /run/gopod-caddy
 
     # ── GOPOD Control Plane (Go Single Binary + Embedded Svelte SPA + SQLite) ──
     - name: gopod-server
@@ -40,13 +42,22 @@ spec:
           value: "/run/podman/podman.sock"
         - name: GOPOD_DB_PATH
           value: "/app/data/gopod.db"
+        - name: GOPOD_BIND_HOST
+          value: "127.0.0.1"
+        # Unix-scope Admin API; the socket lives on a shared hostPath volume,
+        # so pod-managed containers (podman play kube) share it without a
+        # network bridge or published TCP admin port.
         - name: CADDY_ADMIN_URL
-          value: "http://127.0.0.1:2019"
+          value: "unix:///run/gopod-caddy/admin.sock"
       volumeMounts:
         - name: gopod-data
           mountPath: /app/data
         - name: podman-sock
           mountPath: /run/podman/podman.sock
+        - name: caddy-logs
+          mountPath: /var/log/caddy
+        - name: caddy-admin-sock
+          mountPath: /run/gopod-caddy
 
   volumes:
     - name: gopod-data
@@ -64,6 +75,10 @@ spec:
     - name: caddy-logs
       hostPath:
         path: ~/.local/share/gopod/logs
+        type: DirectoryOrCreate
+    - name: caddy-admin-sock
+      hostPath:
+        path: ~/.local/share/gopod/caddy-admin
         type: DirectoryOrCreate
     - name: podman-sock
       hostPath:

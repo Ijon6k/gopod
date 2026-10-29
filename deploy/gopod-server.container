@@ -4,16 +4,26 @@ PartOf=gopod-pod.service
 After=gopod-pod.service
 
 [Container]
-ContainerName=gopod-server
+ContainerName=gopod
+# Pod=gopod.pod  — for standalone deployment without a pod:
+# remove Pod= and PartOf=; add Network=gopod-net.network and PublishPort=8085:8085.
 Pod=gopod.pod
 Image=ghcr.io/ijon6k/gopod:dev
 AutoUpdate=registry
 Environment=PORT=8085
 Environment=PODMAN_SOCKET=/run/podman/podman.sock
 Environment=GOPOD_DB_PATH=/app/data/gopod.db
-Environment=CADDY_ADMIN_URL=http://127.0.0.1:2019
-Volume=%t/podman/podman.sock:/run/podman/podman.sock:Z
+# Pod hardening: bind the dashboard to pod-internal loopback only. The
+# ingress Caddy shares this netns (127.0.0.1:8085 upstream), while tenant
+# containers on gopod-net reach it only through Caddy.
+Environment=GOPOD_BIND_HOST=127.0.0.1
+# Recommended transport: filesystem-socket managed by Caddy. Works with the
+# pod layout (shared netns) and with standalone containers sharing a volume.
+Environment=CADDY_ADMIN_URL=unix:///run/gopod-caddy/admin.sock
+Volume=%t/podman/podman.sock:/run/podman/podman.sock:z
 Volume=%h/.local/share/gopod/data:/app/data:Z
+Volume=%h/.local/share/gopod/logs:/var/log/caddy:z
+Volume=%h/.local/share/gopod/caddy-admin:/run/gopod-caddy:z
 
 [Service]
 Restart=always

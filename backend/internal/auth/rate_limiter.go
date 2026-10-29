@@ -59,13 +59,9 @@ func NewLoginRateLimiter(maxFails int, window time.Duration) *LoginRateLimiter {
 	}
 }
 
-// getIP returns the client address used as the limiter key.
-//
-// Forwarded headers are attacker-controlled, so X-Forwarded-For is only
-// honored when the direct peer is a trusted proxy (loopback or an entry in
-// TRUSTED_PROXIES). In that case the rightmost address that is not itself a
-// trusted proxy is used — the first entry is trivially spoofable.
-func (l *LoginRateLimiter) getIP(r *http.Request) string {
+// ClientIP returns the address to use as the rate-limit key for a request
+// (exported for non-auth surfaces such as terminal ticket issuance).
+func ClientIP(r *http.Request) string {
 	peer := remoteHost(r.RemoteAddr)
 	if !isTrustedProxy(peer) {
 		return peer
@@ -86,6 +82,16 @@ func (l *LoginRateLimiter) getIP(r *http.Request) string {
 		}
 	}
 	return peer
+}
+
+// getIP returns the client address used as the limiter key.
+//
+// Forwarded headers are attacker-controlled, so X-Forwarded-For is only
+// honored when the direct peer is a trusted proxy (loopback or an entry in
+// TRUSTED_PROXIES). In that case the rightmost address that is not itself a
+// trusted proxy is used — the first entry is trivially spoofable.
+func (l *LoginRateLimiter) getIP(r *http.Request) string {
+	return ClientIP(r)
 }
 
 // remoteHost extracts the host part of a RemoteAddr ("ip:port").

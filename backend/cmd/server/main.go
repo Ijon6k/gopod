@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	_ "net/http/pprof" // developer pprof endpoints; only served when GOPOD_DEBUG=1
 	"os"
@@ -108,8 +109,13 @@ func main() {
 		}()
 	}
 
+	// Control-plane bind address. Default binds every local interface; pod
+	// layouts can narrow it to loopback so tenant containers on the shared
+	// pod network cannot reach the control plane directly (only through
+	// Caddy or from inside the same pod netns).
+	bindHost := strings.TrimSpace(os.Getenv("GOPOD_BIND_HOST"))
 	srv := &http.Server{
-		Addr:         ":" + *port,
+		Addr:         net.JoinHostPort(bindHost, *port),
 		Handler:      srvHandler,
 		ReadTimeout:  15 * time.Second,
 		WriteTimeout: 60 * time.Second,

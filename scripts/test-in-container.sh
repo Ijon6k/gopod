@@ -182,10 +182,10 @@ else
     podman run --rm ${TTY_FLAGS} --privileged \
         -v "${PROJECT_ROOT}/scripts:/scripts:ro" \
         "${SANDBOX_IMAGE}" bash -c "
-            echo -e '\033[1;36m==> [1/2] Running GOPOD installer (${TEST_LABEL})...\033[0m'
+            echo -e '\033[1;36m==> [1/3] Running GOPOD installer (${TEST_LABEL})...\033[0m'
             /scripts/install.sh ${INSTALL_ARGS}
 
-            echo -e '\n\033[1;32m==> [2/2] Verifying Application Health via CLI Curl (Headless):\033[0m\n'
+            echo -e '\n\033[1;32m==> [2/3] Verifying Application Health via CLI Curl (Headless):\033[0m\n'
             echo '┌─────────────────────────────────────────────────────────────┐'
             echo '│ 1. Direct Control Plane Endpoint (:8085)                    │'
             echo '└─────────────────────────────────────────────────────────────┘'
@@ -195,6 +195,11 @@ else
             echo '│ 2. Caddy Ingress Reverse Proxy Endpoint (:80)               │'
             echo '└─────────────────────────────────────────────────────────────┘'
             curl -sI http://localhost:80 | head -n 8
+
+            echo -e '\n\033[1;36m==> [3/3] Verifying Clean Uninstallation Teardown...\033[0m'
+            /scripts/uninstall.sh --purge -y
+            echo 'Active containers post-uninstall (should be empty):'
+            podman ps -a
         "
 
     echo -e "\n${GREEN}${BOLD}✓ Test completed successfully! Sandbox container has been destroyed (--rm).${NC}"

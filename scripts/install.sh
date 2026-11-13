@@ -211,6 +211,9 @@ if [ "${GOPOD_UID:-1}" -eq 0 ]; then
     PODMAN_SOCK="/run/podman/podman.sock"
 fi
 QUADLET_DIR="$(dirname "${GOPOD_CONFIG}")/containers/systemd"
+if [ "${GOPOD_UID:-1}" -eq 0 ]; then
+    QUADLET_DIR="/etc/containers/systemd"
+fi
 ADMIN_SOCK="${GOPOD_DATA}/caddy-admin/admin.sock"
 
 # Determine active ports (dynamically from compose.yml if present, otherwise defaults)
@@ -268,6 +271,14 @@ run_rootless() {
     fi
 }
 
+systemctl_cmd() {
+    if [ "${GOPOD_UID:-1}" -eq 0 ]; then
+        systemctl "$@"
+    else
+        run_rootless systemctl --user "$@"
+    fi
+}
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Runtime mode detection — the CLI adapts to whatever shape is actually
 # installed instead of assuming the mode used during installation.
@@ -275,9 +286,9 @@ run_rootless() {
 DETECTED_MODE="unknown"
 
 detect_mode() {
-    if run_rootless systemctl --user list-unit-files 2>/dev/null | grep -q '^gopod-pod\.service'; then
+    if systemctl_cmd list-unit-files 2>/dev/null | grep -q '^gopod-pod\.service'; then
         DETECTED_MODE="quadlet-pod"
-    elif run_rootless systemctl --user list-unit-files 2>/dev/null | grep -qE '^gopod(-server|-caddy)\.service'; then
+    elif systemctl_cmd list-unit-files 2>/dev/null | grep -qE '^gopod(-server|-caddy)\.service'; then
         DETECTED_MODE="quadlet-standalone"
     elif run_rootless podman pod ls --format '{{.Name}}' 2>/dev/null | grep -qE '^gopod(-system)?$'; then
         DETECTED_MODE="pod"
@@ -292,8 +303,8 @@ detect_mode() {
 
 mode_label() {
     case "$1" in
-        quadlet-pod)       echo "Quadlet pod (systemd user units)" ;;
-        quadlet-standalone) echo "Quadlet standalone (systemd user units)" ;;
+        quadlet-pod)       echo "Quadlet pod (systemd units)" ;;
+        quadlet-standalone) echo "Quadlet standalone (systemd units)" ;;
         pod)               echo "Bare podman pod (no systemd)" ;;
         compose)           echo "Podman compose stack" ;;
         container)         echo "Bare podman containers (no systemd)" ;;
@@ -303,14 +314,14 @@ mode_label() {
 
 # Quadlet unit list actually present (pod wrapper may be absent). Excludes network units.
 quadlet_units() {
-    run_rootless systemctl --user list-unit-files 2>/dev/null | grep -oE '^gopod[a-z-]*\.service' | grep -v -- '-network\.service$' | sort -u
+    systemctl_cmd list-unit-files 2>/dev/null | grep -oE '^gopod[a-z-]*\.service' | grep -v -- '-network\.service$' | sort -u
 }
 
 # Start / stop / restart one or many units depending on the detected shape.
 start_stack() {
     case "$DETECTED_MODE" in
-        quadlet-pod)        run_rootless systemctl --user start gopod-pod.service ;;
-        quadlet-standalone) run_rootless systemctl --user start gopod-caddy.service gopod-server.service ;;
+        quadlet-pod)        systemctl_cmd start gopod-pod.service ;;
+        quadlet-standalone) systemctl_cmd start gopod-caddy.service gopod-server.service ;;
         pod)                run_rootless podman pod start gopod ;;
         compose)            run_compose up -d ;;
         container)          run_rootless podman start gopod gopod-caddy ;;
@@ -320,8 +331,8 @@ start_stack() {
 
 stop_stack() {
     case "$DETECTED_MODE" in
-        quadlet-pod)        run_rootless systemctl --user stop gopod-pod.service ;;
-        quadlet-standalone) run_rootless systemctl --user stop gopod-server.service gopod-caddy.service ;;
+        quadlet-pod)        systemctl_cmd stop gopod-pod.service ;;
+        quadlet-standalone) systemctl_cmd stop gopod-server.service gopod-caddy.service ;;
         pod)                run_rootless podman pod stop gopod ;;
         compose)            run_compose stop ;;
         container)          run_rootless podman stop gopod gopod-caddy ;;
@@ -331,8 +342,8 @@ stop_stack() {
 
 restart_stack() {
     case "$DETECTED_MODE" in
-        quadlet-pod)        run_rootless systemctl --user restart gopod-pod.service ;;
-        quadlet-standalone) run_rootless systemctl --user restart gopod-caddy.service gopod-server.service ;;
+        quadlet-pod)        systemctl_cmd restart gopod-pod.service ;;
+        quadlet-standalone) systemctl_cmd restart gopod-caddy.service gopod-server.service ;;
         pod)                run_rootless podman pod restart gopod ;;
         compose)            run_compose restart ;;
         container)          run_rootless podman restart gopod gopod-caddy ;;
@@ -410,6 +421,7 @@ ${BOLD}Core Commands (work in every deployment mode):${NC}
   ${CYAN}shell${NC} [caddy]         Open interactive shell in a container
   ${CYAN}exec${NC} <ctr> <cmd...>   Run a command inside a container
   ${CYAN}update${NC}                Pull latest images and restart the stack
+  ${CYAN}uninstall${NC} [--purge]     Cleanly stop and remove GOPOD services
   ${CYAN}info${NC}                  Show paths, ports, sockets and mode
   ${CYAN}podman${NC} <args...>      Run any Podman command in rootless context
 
@@ -606,44 +618,44 @@ case "$CMD" in
         shift || true
         case "$SUBCMD" in
             list)
-                run_rootless systemctl --user list-unit-files 'gopod*' --no-pager
+                systemctl_cmd list-unit-files 'gopod*' --no-pager
                 ;;
             start)
                 if [ "$DETECTED_MODE" = "quadlet-pod" ]; then
                     echo -e "  ${CYAN}==>${NC} start gopod-pod.service"
-                    run_rootless systemctl --user start gopod-pod.service
+                    systemctl_cmd start gopod-pod.service
                 else
                     quadlet_units | while read -r u; do
                         echo -e "  ${CYAN}==>${NC} start ${u}"
-                        run_rootless systemctl --user start "$u"
+                        systemctl_cmd start "$u"
                     done
                 fi
                 ;;
             stop)
                 if [ "$DETECTED_MODE" = "quadlet-pod" ]; then
                     echo -e "  ${CYAN}==>${NC} stop gopod-pod.service"
-                    run_rootless systemctl --user stop gopod-pod.service
+                    systemctl_cmd stop gopod-pod.service
                 else
                     quadlet_units | while read -r u; do
                         echo -e "  ${CYAN}==>${NC} stop ${u}"
-                        run_rootless systemctl --user stop "$u" 2>/dev/null || true
+                        systemctl_cmd stop "$u" 2>/dev/null || true
                     done
                 fi
                 ;;
             restart)
                 if [ "$DETECTED_MODE" = "quadlet-pod" ]; then
                     echo -e "  ${CYAN}==>${NC} restart gopod-pod.service"
-                    run_rootless systemctl --user restart gopod-pod.service
+                    systemctl_cmd restart gopod-pod.service
                 else
                     quadlet_units | while read -r u; do
                         echo -e "  ${CYAN}==>${NC} restart ${u}"
-                        run_rootless systemctl --user restart "$u" 2>/dev/null || true
+                        systemctl_cmd restart "$u" 2>/dev/null || true
                     done
                 fi
                 ;;
             status)
-                run_rootless systemctl --user status gopod-pod.service gopod-server.service gopod-caddy.service --no-pager 2>/dev/null || \
-                run_rootless systemctl --user status --no-pager "$(quadlet_units | tr '\n' ' ')" 2>/dev/null
+                systemctl_cmd status gopod-pod.service gopod-server.service gopod-caddy.service --no-pager 2>/dev/null || \
+                systemctl_cmd status --no-pager "$(quadlet_units | tr '\n' ' ')" 2>/dev/null
                 ;;
             *)
                 echo -e "${RED}Unknown units command '${SUBCMD}'. Available: list|start|stop|restart|status${NC}" >&2
@@ -654,7 +666,38 @@ case "$CMD" in
 
     daemon-reload)
         echo -e "${CYAN}==>${NC} Reloading systemd user units..."
-        run_rootless systemctl --user daemon-reload && echo -e "  ${GREEN}✓${NC} User manager reloaded"
+        systemctl_cmd daemon-reload && echo -e "  ${GREEN}✓${NC} Manager reloaded"
+        ;;
+
+    uninstall)
+        echo -e "${RED}${BOLD}==> Initiating GOPOD uninstallation...${NC}"
+        uninstall_script="${GOPOD_CONFIG}/uninstall.sh"
+        if [ ! -f "$uninstall_script" ] && [ -f "/scripts/uninstall.sh" ]; then
+            uninstall_script="/scripts/uninstall.sh"
+        fi
+        if [ -f "$uninstall_script" ] && [ -x "$uninstall_script" ]; then
+            exec "$uninstall_script" "$@"
+        else
+            echo -e "  ${YELLOW}Notice: Running built-in uninstaller...${NC}"
+            stop_stack 2>/dev/null || true
+            run_rootless podman rm -f gopod gopod-caddy 2>/dev/null || true
+            run_rootless podman pod rm -f gopod 2>/dev/null || true
+            run_rootless podman network rm -f gopod-internal gopod-net 2>/dev/null || true
+            rm -f "${QUADLET_DIR}/gopod"* 2>/dev/null || true
+            if [ "${GOPOD_UID:-1}" -eq 0 ]; then
+                rm -f /etc/containers/systemd/gopod* 2>/dev/null || true
+                systemctl daemon-reload 2>/dev/null || true
+            else
+                systemctl_cmd daemon-reload 2>/dev/null || true
+            fi
+            rm -rf "${GOPOD_CONFIG}" 2>/dev/null || true
+            if [[ " $* " =~ " --purge " ]]; then
+                rm -rf "${GOPOD_DATA}" 2>/dev/null || true
+            fi
+            rm -f /usr/local/bin/gopod /usr/bin/gopod "${GOPOD_HOME}/.local/bin/gopod" 2>/dev/null || true
+            echo -e "  ${GREEN}✓${NC} GOPOD uninstalled."
+            exit 0
+        fi
         ;;
 
     caddy)
@@ -779,6 +822,7 @@ NON_INTERACTIVE=false
 DRY_RUN=false
 VERBOSE=false
 ALLOW_ROOT=false
+ROOTLESS_EXPLICIT=false
 AS_USER=false
 SERVICE_USER="gopod"
 
@@ -829,6 +873,7 @@ Storage Directories:
   --config-dir=<PATH>   Configuration path (Default: ~/.config/gopod)
 
 Execution Control:
+  --uninstall           Cleanly stop and remove GOPOD services and containers
   -i, --interactive     Launch interactive setup menu
   -y, --non-interactive Run non-interactively without prompting
   --verbose             Display raw real-time command output
@@ -918,6 +963,16 @@ while [[ $# -gt 0 ]]; do
             ;;
         --rootless)
             ALLOW_ROOT=false
+            ROOTLESS_EXPLICIT=true
+            ;;
+        --uninstall)
+            SCRIPT_DIR_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+            shift
+            if [ -n "$SCRIPT_DIR_SELF" ] && [ -f "${SCRIPT_DIR_SELF}/uninstall.sh" ]; then
+                exec "${SCRIPT_DIR_SELF}/uninstall.sh" "$@"
+            else
+                exec curl -fsSL "https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/uninstall.sh" | bash -s -- "$@"
+            fi
             ;;
         --user=*)
             SERVICE_USER="${1#*=}"
@@ -984,6 +1039,13 @@ install_packages_as_root() {
 }
 
 if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
+    # Auto-enable container-native root mode inside container environments (Docker/Podman/CI)
+    # unless rootless was explicitly forced via --rootless
+    if [ "$IS_IN_CONTAINER" = true ] && [ "$ROOTLESS_EXPLICIT" = false ] && [ "$ALLOW_ROOT" = false ]; then
+        ALLOW_ROOT=true
+        echo -e "\n${CYAN}${BOLD}==> Container environment detected (Docker/Podman). Running in container-native mode (UID 0).${NC}"
+    fi
+
     if [ "$ALLOW_ROOT" = false ]; then
         if [ "$INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
             TTY_DEV="/dev/tty"
@@ -1416,6 +1478,9 @@ render_progress_bar 5 "Initializing storage layout and permissions"
 GOPOD_CONFIG="${CONFIG_DIR}"
 GOPOD_DATA="${DATA_DIR}"
 QUADLET_DIR="${USER_HOME}/.config/containers/systemd"
+if [ "$USER_UID" -eq 0 ]; then
+    QUADLET_DIR="/etc/containers/systemd"
+fi
 
 task_init_storage() {
     mkdir -p "${GOPOD_CONFIG}/caddy"
@@ -1457,6 +1522,21 @@ task_init_storage() {
     reverse_proxy ${caddy_upstream}
 }
 EOF
+    else
+        # Ensure Caddyfile upstream reflects current deployment mode
+        if [ "$RUN_MODE" = "quadlet-pod" ]; then
+            sed -i 's/reverse_proxy gopod:8085/reverse_proxy 127.0.0.1:8085/g' "${GOPOD_CONFIG}/caddy/Caddyfile" 2>/dev/null || true
+        else
+            sed -i 's/reverse_proxy 127\.0\.0\.1:8085/reverse_proxy gopod:8085/g' "${GOPOD_CONFIG}/caddy/Caddyfile" 2>/dev/null || true
+        fi
+    fi
+
+    # Copy uninstaller to config directory for easy access
+    local script_dir_self
+    script_dir_self="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
+    if [ -n "$script_dir_self" ] && [ -f "${script_dir_self}/uninstall.sh" ]; then
+        cp "${script_dir_self}/uninstall.sh" "${GOPOD_CONFIG}/uninstall.sh" 2>/dev/null || true
+        chmod 755 "${GOPOD_CONFIG}/uninstall.sh" 2>/dev/null || true
     fi
     mkdir -p "${GOPOD_DATA}/caddy-admin"
 
@@ -1511,6 +1591,8 @@ services:
     image: ${GOPOD_IMAGE}
     container_name: gopod
     restart: always
+    ports:
+      - "${GOPOD_PORT}:8085"
     environment:
       - PORT=8085
       - PODMAN_SOCKET=/run/podman/podman.sock
@@ -1680,17 +1762,35 @@ start_quadlet() {
     if [ "$RUN_MODE" = "quadlet-standalone" ]; then
         podman pod stop gopod 2>/dev/null || true
         podman pod rm gopod 2>/dev/null || true
-        systemctl --user stop gopod-pod.service 2>/dev/null || true
+        if [ "$USER_UID" -eq 0 ]; then
+            systemctl stop gopod-pod.service 2>/dev/null || true
+        else
+            systemctl --user stop gopod-pod.service 2>/dev/null || true
+        fi
     fi
-    systemctl --user daemon-reload 2>/dev/null || return 1
-    if [ "$RUN_MODE" = "quadlet-pod" ]; then
-        systemctl --user enable --now gopod-pod.service 2>/dev/null || return 1
-        sleep 2
-        systemctl --user is-active --quiet gopod-pod.service 2>/dev/null
+
+    if [ "$USER_UID" -eq 0 ]; then
+        systemctl daemon-reload 2>/dev/null || return 1
+        if [ "$RUN_MODE" = "quadlet-pod" ]; then
+            systemctl enable --now gopod-pod.service 2>/dev/null || return 1
+            sleep 2
+            systemctl is-active --quiet gopod-pod.service 2>/dev/null
+        else
+            systemctl enable --now gopod-caddy.service gopod-server.service 2>/dev/null || return 1
+            sleep 2
+            systemctl is-active --quiet gopod-server.service 2>/dev/null
+        fi
     else
-        systemctl --user enable --now gopod-caddy.service gopod-server.service 2>/dev/null || return 1
-        sleep 2
-        systemctl --user is-active --quiet gopod-server.service 2>/dev/null
+        systemctl --user daemon-reload 2>/dev/null || return 1
+        if [ "$RUN_MODE" = "quadlet-pod" ]; then
+            systemctl --user enable --now gopod-pod.service 2>/dev/null || return 1
+            sleep 2
+            systemctl --user is-active --quiet gopod-pod.service 2>/dev/null
+        else
+            systemctl --user enable --now gopod-caddy.service gopod-server.service 2>/dev/null || return 1
+            sleep 2
+            systemctl --user is-active --quiet gopod-server.service 2>/dev/null
+        fi
     fi
 }
 
@@ -1708,11 +1808,11 @@ start_compose() {
         podman network create gopod-internal 2>/dev/null || true
         podman network create gopod-net 2>/dev/null || true
         # Bare-metal fallback: two independent containers sharing the admin
-        # socket bind-mount. gopod is not published on :8085 — only Caddy
-        # proxies it on gopod-internal.
+        # socket bind-mount.
         podman run -d --name gopod \
             --restart=always \
             --network=gopod-internal \
+            -p "${GOPOD_PORT}:8085" \
             -e PORT=8085 \
             -e PODMAN_SOCKET=/run/podman/podman.sock \
             -e GOPOD_DB_PATH=/app/data/gopod.db \
@@ -1744,6 +1844,8 @@ task_orchestrate_services() {
         quadlet-pod|quadlet-standalone)
             if ! start_quadlet; then
                 RUN_MODE="container"
+                # Ensure Caddyfile points to gopod:8085 when falling back to container mode
+                sed -i 's/127\.0\.0\.1:8085/gopod:8085/g' "${GOPOD_CONFIG}/caddy/Caddyfile" 2>/dev/null || true
                 start_compose
             fi
             ;;
@@ -1758,13 +1860,13 @@ task_verify_readiness() {
     if [ "$DRY_RUN" = true ]; then return 0; fi
     local retries=15
     while [ $retries -gt 0 ]; do
-        if curl -fsSL -o /dev/null "http://127.0.0.1:${GOPOD_PORT}" 2>/dev/null; then
+        if curl -fsSL -o /dev/null "http://127.0.0.1:${GOPOD_PORT}" 2>/dev/null || curl -fsSL -o /dev/null "http://127.0.0.1:${CADDY_HTTP_PORT}" 2>/dev/null; then
             return 0
         fi
         sleep 1
         retries=$((retries - 1))
     done
-    return 0
+    return 1
 }
 run_task "Verifying service readiness & health check" task_verify_readiness
 

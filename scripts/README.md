@@ -42,10 +42,30 @@ Runs a full installation trial inside an isolated virtual device container (`qua
 
 | Script | Purpose | Default Image Tag | Default Mode |
 | :--- | :--- | :--- | :--- |
-| [`install.sh`](file:///home/pixy/Projects/gopod/scripts/install.sh) | Universal core installer. Supports non-interactive flags, piped curl execution, and dry-run modes. | `:latest` (Stable) | `container` (Podman Compose) |
-| [`install-beta.sh`](file:///home/pixy/Projects/gopod/scripts/install-beta.sh) | Convenience shortcut for installing the latest beta development build. | `:dev` (Beta) | `container` (Podman Compose) |
+| [`install.sh`](file:///home/pixy/Projects/gopod/scripts/install.sh) | Universal core installer. Supports non-interactive flags, piped curl execution, and dry-run modes. | `:latest` (Stable) | `quadlet-pod` (Systemd Quadlet) |
+| [`uninstall.sh`](file:///home/pixy/Projects/gopod/scripts/uninstall.sh) | Clean uninstaller. Stops services, removes containers, networks, Quadlets, and data. | N/A | Full Teardown |
+| [`install-beta.sh`](file:///home/pixy/Projects/gopod/scripts/install-beta.sh) | Convenience shortcut for installing the latest beta development build. | `:dev` (Beta) | `quadlet-pod` (Systemd Quadlet) |
 | [`custom-install.sh`](file:///home/pixy/Projects/gopod/scripts/custom-install.sh) | Interactive configuration wizard with full terminal prompts for custom setup. | User Choice | User Choice |
 | [`test-in-container.sh`](file:///home/pixy/Projects/gopod/scripts/test-in-container.sh) | Isolated Linux device sandbox. Uses internal ports `:80` & `:8085`, verifies via CLI `curl`, auto-cleans on exit. | `:dev` (Beta) | `container` (Podman Compose) |
+
+---
+
+## Uninstallation & Teardown
+
+To cleanly remove GOPOD without leaving hanging containers, networks, or systemd services:
+
+```bash
+# Option 1: Using the GOPOD CLI (if installed)
+gopod uninstall
+gopod uninstall --purge -y   # Permanently delete databases and certs
+
+# Option 2: Using the standalone uninstaller script
+./scripts/uninstall.sh
+./scripts/uninstall.sh --purge -y
+
+# Option 3: Via curl one-liner
+curl -fsSL https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/uninstall.sh | bash -s -- --purge -y
+```
 
 ---
 

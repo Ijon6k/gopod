@@ -30,7 +30,6 @@
 	let autoHttps = $state(true);
 	let pathPrefix = $state('/');
 	let stripPath = $state(false);
-	let websocket = $state(false);
 	let cors = $state(false);
 	let hsts = $state(true);
 
@@ -255,7 +254,6 @@
 				autoHttps = editingDomain.tls;
 				pathPrefix = editingDomain.pathPrefix || '/';
 				stripPath = !!editingDomain.stripPathPrefix;
-				websocket = !!editingDomain.websocket;
 				cors = !!editingDomain.cors;
 				hsts = editingDomain.hsts !== false;
 				basicAuthEnabled = !!editingDomain.basicAuth;
@@ -311,7 +309,6 @@
 			publishedPort: portNum,
 			pathPrefix: pathPrefix.trim() || '/',
 			stripPathPrefix: stripPath,
-			websocket,
 			cors,
 			hsts,
 			basicAuth: basicAuthEnabled,
@@ -502,8 +499,7 @@
 				/>
 
 				<div class="flex flex-col gap-2 sm:col-span-2">
-					<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-						<Switch bind:checked={websocket} size="sm" label="WebSocket Upgrade" />
+					<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
 						<Switch bind:checked={cors} size="sm" label="Allow CORS (*)" />
 						<Switch bind:checked={hsts} size="sm" label="HSTS Security Preload" />
 					</div>

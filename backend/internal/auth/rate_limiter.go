@@ -217,6 +217,62 @@ func (l *LoginRateLimiter) Reset(r *http.Request) {
 	delete(l.attempts, ip)
 }
 
+// IsAccountAllowed checks if a specific account is currently locked out.
+func (l *LoginRateLimiter) IsAccountAllowed(account string) bool {
+	acc := strings.ToLower(strings.TrimSpace(account))
+	if acc == "" {
+		return true
+	}
+	key := "acc:" + acc
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.maybePruneLocked(now)
+	att, ok := l.attempts[key]
+	if !ok {
+		return true
+	}
+	if now.Sub(att.firstSeen) > l.window {
+		delete(l.attempts, key)
+		return true
+	}
+	return att.count < l.maxFails
+}
+
+// RecordFailureWithAccount registers a failed attempt for both client IP and target account.
+func (l *LoginRateLimiter) RecordFailureWithAccount(r *http.Request, account string) {
+	l.RecordFailure(r)
+	acc := strings.ToLower(strings.TrimSpace(account))
+	if acc == "" {
+		return
+	}
+	key := "acc:" + acc
+	now := time.Now()
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.maybePruneLocked(now)
+	att, ok := l.attempts[key]
+	if !ok || now.Sub(att.firstSeen) > l.window {
+		l.attempts[key] = &failedAttempt{count: 1, firstSeen: now, lastSeen: now}
+		return
+	}
+	att.count++
+	att.lastSeen = now
+}
+
+// ResetWithAccount clears failures for both client IP and target account.
+func (l *LoginRateLimiter) ResetWithAccount(r *http.Request, account string) {
+	l.Reset(r)
+	acc := strings.ToLower(strings.TrimSpace(account))
+	if acc == "" {
+		return
+	}
+	key := "acc:" + acc
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	delete(l.attempts, key)
+}
+
 // prune drops all entries whose window elapsed. The limiter prunes lazily
 // (amortized) on calls; the manual entry point exists for tests.
 func (l *LoginRateLimiter) prune() {

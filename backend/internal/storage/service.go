@@ -260,7 +260,7 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 	}
 
 	cleanFilename := filepath.Base(snap.Filename)
-	filePath := filepath.Join(s.getDataDir(), "backups", cleanFilename)
+	filePath := filepath.Join(s.backupDir(), cleanFilename)
 	inFile, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("snapshot file missing: %w", err)
@@ -275,6 +275,24 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 		}
 		defer gr.Close()
 		reader = gr
+	}
+
+	// Quiesce: stop any running containers mounting this volume to prevent
+	// concurrent writes/corruption during restore. Re-start them when done.
+	runningContainers := s.findRunningContainersForVolume(ctx, snap.VolumeName)
+	if len(runningContainers) > 0 {
+		for _, cID := range runningContainers {
+			stopCmd := exec.CommandContext(ctx, "podman", "stop", "-t", "10", "--", cID)
+			setupCmdEnv(stopCmd)
+			_ = stopCmd.Run()
+		}
+		defer func() {
+			for _, cID := range runningContainers {
+				startCmd := exec.CommandContext(context.Background(), "podman", "start", "--", cID)
+				setupCmdEnv(startCmd)
+				_ = startCmd.Run()
+			}
+		}()
 	}
 
 	cmd := exec.CommandContext(ctx, "podman", "volume", "import", snap.VolumeName, "-")
@@ -292,6 +310,22 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 		return nil
 	}
 	return nil
+}
+
+func (s *Service) findRunningContainersForVolume(ctx context.Context, volName string) []string {
+	cmd := exec.CommandContext(ctx, "podman", "ps", "--filter", "volume="+volName, "--format", "{{.ID}}")
+	setupCmdEnv(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil
+	}
+	var res []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		if id := strings.TrimSpace(line); id != "" {
+			res = append(res, id)
+		}
+	}
+	return res
 }
 
 // GetSnapshotFilePath returns physical path and target download filename.

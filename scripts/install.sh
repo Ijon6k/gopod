@@ -802,6 +802,7 @@ WRAPPER_BODY
 # ─────────────────────────────────────────────────────────────────────────────
 
 ORIGINAL_ARGS=("$@")
+SCRIPT_DIR_SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || echo "")"
 
 CURRENT_USER=$(id -un)
 USER_UID=$(id -u)
@@ -924,39 +925,69 @@ while [[ $# -gt 0 ]]; do
             ;;
         --port=*)
             GOPOD_PORT="${1#*=}"
+            if ! [[ "$GOPOD_PORT" =~ ^[0-9]+$ ]] || [ "$GOPOD_PORT" -lt 1 ] || [ "$GOPOD_PORT" -gt 65535 ]; then
+                echo "Error: Invalid port: $GOPOD_PORT (must be 1-65535)" >&2; exit 2
+            fi
             EXPLICIT_PORT_OVERRIDE=true
             ;;
         --port)
             GOPOD_PORT="$2"; shift
+            if ! [[ "$GOPOD_PORT" =~ ^[0-9]+$ ]] || [ "$GOPOD_PORT" -lt 1 ] || [ "$GOPOD_PORT" -gt 65535 ]; then
+                echo "Error: Invalid port: $GOPOD_PORT (must be 1-65535)" >&2; exit 2
+            fi
             EXPLICIT_PORT_OVERRIDE=true
             ;;
         --http-port=*)
             CADDY_HTTP_PORT="${1#*=}"
+            if ! [[ "$CADDY_HTTP_PORT" =~ ^[0-9]+$ ]] || [ "$CADDY_HTTP_PORT" -lt 1 ] || [ "$CADDY_HTTP_PORT" -gt 65535 ]; then
+                echo "Error: Invalid http-port: $CADDY_HTTP_PORT (must be 1-65535)" >&2; exit 2
+            fi
             EXPLICIT_PORT_OVERRIDE=true
             ;;
         --http-port)
             CADDY_HTTP_PORT="$2"; shift
+            if ! [[ "$CADDY_HTTP_PORT" =~ ^[0-9]+$ ]] || [ "$CADDY_HTTP_PORT" -lt 1 ] || [ "$CADDY_HTTP_PORT" -gt 65535 ]; then
+                echo "Error: Invalid http-port: $CADDY_HTTP_PORT (must be 1-65535)" >&2; exit 2
+            fi
             EXPLICIT_PORT_OVERRIDE=true
             ;;
         --https-port=*)
             CADDY_HTTPS_PORT="${1#*=}"
+            if ! [[ "$CADDY_HTTPS_PORT" =~ ^[0-9]+$ ]] || [ "$CADDY_HTTPS_PORT" -lt 1 ] || [ "$CADDY_HTTPS_PORT" -gt 65535 ]; then
+                echo "Error: Invalid https-port: $CADDY_HTTPS_PORT (must be 1-65535)" >&2; exit 2
+            fi
             EXPLICIT_PORT_OVERRIDE=true
             ;;
         --https-port)
             CADDY_HTTPS_PORT="$2"; shift
+            if ! [[ "$CADDY_HTTPS_PORT" =~ ^[0-9]+$ ]] || [ "$CADDY_HTTPS_PORT" -lt 1 ] || [ "$CADDY_HTTPS_PORT" -gt 65535 ]; then
+                echo "Error: Invalid https-port: $CADDY_HTTPS_PORT (must be 1-65535)" >&2; exit 2
+            fi
             EXPLICIT_PORT_OVERRIDE=true
             ;;
         --data-dir=*)
             DATA_DIR="${1#*=}"
+            if [[ "$DATA_DIR" != /* ]]; then
+                echo "Error: --data-dir must be an absolute path" >&2; exit 2
+            fi
             ;;
         --data-dir)
             DATA_DIR="$2"; shift
+            if [[ "$DATA_DIR" != /* ]]; then
+                echo "Error: --data-dir must be an absolute path" >&2; exit 2
+            fi
             ;;
         --config-dir=*)
             CONFIG_DIR="${1#*=}"
+            if [[ "$CONFIG_DIR" != /* ]]; then
+                echo "Error: --config-dir must be an absolute path" >&2; exit 2
+            fi
             ;;
         --config-dir)
             CONFIG_DIR="$2"; shift
+            if [[ "$CONFIG_DIR" != /* ]]; then
+                echo "Error: --config-dir must be an absolute path" >&2; exit 2
+            fi
             ;;
         --allow-root|--root|--rootful)
             ALLOW_ROOT=true
@@ -1139,8 +1170,10 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
             create_cli_wrapper "$SERVICE_USER" "$GOPOD_SERVICE_UID" "$SERVICE_HOME" "${SERVICE_HOME}/.config/gopod" "${SERVICE_HOME}/.local/share/gopod" "$GOPOD_PORT" "$CADDY_HTTP_PORT"
 
             # 7. Re-execute script under service user
-            SCRIPT_TEMP="/tmp/gopod-installer-$$.sh"
-            if [ -f "$0" ] && [ -r "$0" ]; then
+            SCRIPT_TEMP=$(mktemp /tmp/gopod-installer-XXXXXX.sh)
+            if [ -n "$SCRIPT_DIR_SELF" ] && [ -f "${SCRIPT_DIR_SELF}/install.sh" ] && [ -r "${SCRIPT_DIR_SELF}/install.sh" ]; then
+                cp "${SCRIPT_DIR_SELF}/install.sh" "$SCRIPT_TEMP"
+            elif [ -f "$0" ] && [ -r "$0" ]; then
                 cp "$0" "$SCRIPT_TEMP"
             else
                 curl -fsSL "https://raw.githubusercontent.com/ijon6k/gopod/main/scripts/install.sh" -o "$SCRIPT_TEMP"
@@ -1256,15 +1289,24 @@ if [ "$INTERACTIVE" = true ] && [ "$NON_INTERACTIVE" = false ]; then
 fi
 
 # Determine resolved image tag
-if [ -n "$CUSTOM_TAG" ]; then
-    GOPOD_IMAGE="ghcr.io/ijon6k/gopod:${CUSTOM_TAG}"
+if [ -n "${GOPOD_IMAGE_OVERRIDE:-}" ]; then
+    GOPOD_IMAGE="$GOPOD_IMAGE_OVERRIDE"
+    DISPLAY_TAG="$GOPOD_IMAGE"
+elif [ -n "$CUSTOM_TAG" ]; then
+    if [[ "$CUSTOM_TAG" == *"/"* ]] || [[ "$CUSTOM_TAG" == *":"* ]]; then
+        GOPOD_IMAGE="$CUSTOM_TAG"
+    else
+        GOPOD_IMAGE="ghcr.io/ijon6k/gopod:${CUSTOM_TAG}"
+    fi
     DISPLAY_TAG="${CUSTOM_TAG}"
 elif [ "$RELEASE_CHANNEL" = "dev" ] || [ "$RELEASE_CHANNEL" = "beta" ]; then
     GOPOD_IMAGE="ghcr.io/ijon6k/gopod:dev"
     DISPLAY_TAG="dev (Beta)"
+    echo -e "  ${YELLOW}Notice: Using mutable channel tag 'dev'. Pin to a release version or SHA for production.${NC}"
 else
     GOPOD_IMAGE="ghcr.io/ijon6k/gopod:latest"
     DISPLAY_TAG="latest (Stable)"
+    echo -e "  ${YELLOW}Notice: Using mutable tag 'latest'. Pin to a release version (e.g. --tag=v0.x.x) or SHA for production.${NC}"
 fi
 
 CADDY_IMAGE="docker.io/library/caddy:alpine"
@@ -1280,7 +1322,7 @@ echo "=============================================================="
 echo -e "${NC}"
 echo -e " Target Image : ${CYAN}${GOPOD_IMAGE}${NC} (${DISPLAY_TAG})"
 echo -e " Deploy Mode  : ${BOLD}${RUN_MODE}${NC} $([ "$RUN_MODE" = "quadlet-pod" ] && echo "(Default - Recommended)" || ([ "$RUN_MODE" = "quadlet-standalone" ] && echo "(Independent systemd units)" || echo "(Container/Compose stack)"))"
-echo -e " Dashboard UI : ${BOLD}http://localhost:${GOPOD_PORT}${NC}"
+echo -e " Dashboard UI : ${BOLD}http://localhost:${CADDY_HTTP_PORT}${NC}"
 echo -e " Ingress Ports: HTTP :${CADDY_HTTP_PORT} | HTTPS :${CADDY_HTTPS_PORT}"
 echo -e " Storage Path : ${DIM}${DATA_DIR}${NC}"
 echo -e " Config Path  : ${DIM}${CONFIG_DIR}${NC}"
@@ -1452,7 +1494,8 @@ task_activate_socket() {
     if [ -n "$query" ] && [ -S "$query" ]; then
         target_socket="$query"
     fi
-    echo "$target_socket" > "/tmp/gopod-socket-$$.txt"
+    SOCKET_TMP_FILE=$(mktemp /tmp/gopod-socket-XXXXXX.txt)
+    echo "$target_socket" > "$SOCKET_TMP_FILE"
 
     # If socket is still not running, activate standalone service
     if [ ! -S "$target_socket" ]; then
@@ -1463,9 +1506,9 @@ task_activate_socket() {
 }
 run_task "Activating Podman API socket service" task_activate_socket
 
-if [ -f "/tmp/gopod-socket-$$.txt" ]; then
-    DETECTED_SOCKET=$(cat "/tmp/gopod-socket-$$.txt")
-    rm -f "/tmp/gopod-socket-$$.txt" 2>/dev/null || true
+if [ -n "${SOCKET_TMP_FILE:-}" ] && [ -f "$SOCKET_TMP_FILE" ]; then
+    DETECTED_SOCKET=$(cat "$SOCKET_TMP_FILE")
+    rm -f "$SOCKET_TMP_FILE" 2>/dev/null || true
 else
     DETECTED_SOCKET="$DEFAULT_SOCKET"
 fi
@@ -1561,6 +1604,9 @@ run_task "Creating configuration and persistent data directories" task_init_stor
 render_progress_bar 6 "Pulling container images (${DISPLAY_TAG})"
 
 task_pull_gopod() {
+    if podman image exists "$GOPOD_IMAGE" 2>/dev/null; then
+        return 0
+    fi
     podman pull "$GOPOD_IMAGE"
 }
 run_live_task "Downloading GOPOD control plane (${GOPOD_IMAGE})" task_pull_gopod
@@ -1591,8 +1637,6 @@ services:
     image: ${GOPOD_IMAGE}
     container_name: gopod
     restart: always
-    ports:
-      - "${GOPOD_PORT}:8085"
     environment:
       - PORT=8085
       - PODMAN_SOCKET=/run/podman/podman.sock
@@ -1605,6 +1649,7 @@ services:
       - "${GOPOD_DATA}/data:/app/data:Z"
       - "${GOPOD_DATA}/logs:/var/log/caddy:z"
       - "${GOPOD_DATA}/caddy-admin:/run/gopod-caddy:z"
+      - "${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:Z"
     networks:
       - gopod-internal
     security_opt:
@@ -1664,7 +1709,6 @@ PodName=gopod
 Network=gopod-net.network
 PublishPort=${CADDY_HTTP_PORT}:80
 PublishPort=${CADDY_HTTPS_PORT}:443
-PublishPort=${GOPOD_PORT}:8085
 
 [Install]
 WantedBy=default.target
@@ -1685,8 +1729,7 @@ EOF
         CADDY_STANDALONE_NET="Network=gopod-net.network
 PublishPort=${CADDY_HTTP_PORT}:80
 PublishPort=${CADDY_HTTPS_PORT}:443"
-        SERVER_STANDALONE_NET="Network=gopod-net.network
-PublishPort=${GOPOD_PORT}:8085"
+        SERVER_STANDALONE_NET="Network=gopod-net.network"
     fi
 
     cat <<EOF > "${QUADLET_DIR}/gopod-caddy.container"
@@ -1744,6 +1787,7 @@ Volume=${DETECTED_SOCKET}:/run/podman/podman.sock:z
 Volume=${GOPOD_DATA}/data:/app/data:Z
 Volume=${GOPOD_DATA}/logs:/var/log/caddy:z
 Volume=${GOPOD_DATA}/caddy-admin:/run/gopod-caddy:z
+Volume=${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:Z
 
 [Service]
 Restart=always
@@ -1807,12 +1851,11 @@ start_compose() {
     else
         podman network create gopod-internal 2>/dev/null || true
         podman network create gopod-net 2>/dev/null || true
-        # Bare-metal fallback: two independent containers sharing the admin
-        # socket bind-mount.
+        # Bare-metal fallback: two independent containers sharing internal bridge network
+        # and socket bind-mount. Port 8085 is NOT published to host (Caddy ingress only).
         podman run -d --name gopod \
             --restart=always \
             --network=gopod-internal \
-            -p "${GOPOD_PORT}:8085" \
             -e PORT=8085 \
             -e PODMAN_SOCKET=/run/podman/podman.sock \
             -e GOPOD_DB_PATH=/app/data/gopod.db \
@@ -1820,6 +1863,7 @@ start_compose() {
             -v "${DETECTED_SOCKET}:/run/podman/podman.sock:ro,z" \
             -v "${GOPOD_DATA}/data:/app/data:Z" \
             -v "${GOPOD_DATA}/caddy-admin:/run/gopod-caddy:z" \
+            -v "${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:Z" \
             --security-opt label=disable \
             "${GOPOD_IMAGE}"
 
@@ -1860,7 +1904,7 @@ task_verify_readiness() {
     if [ "$DRY_RUN" = true ]; then return 0; fi
     local retries=15
     while [ $retries -gt 0 ]; do
-        if curl -fsSL -o /dev/null "http://127.0.0.1:${GOPOD_PORT}" 2>/dev/null || curl -fsSL -o /dev/null "http://127.0.0.1:${CADDY_HTTP_PORT}" 2>/dev/null; then
+        if curl -fsSL -o /dev/null "http://127.0.0.1:${CADDY_HTTP_PORT}" 2>/dev/null; then
             return 0
         fi
         sleep 1
@@ -1886,8 +1930,8 @@ fi
 echo -e "\n${GREEN}${BOLD}=============================================================="
 echo -e "          GOPOD Installation Completed Successfully!          "
 echo -e "==============================================================${NC}"
-echo -e " Web Dashboard : ${BOLD}http://${SERVER_IP}:${GOPOD_PORT}${NC}$([ "$SERVER_IP" != "127.0.0.1" ] && echo -e " ${DIM}(or http://localhost:${GOPOD_PORT})${NC}" || true)"
-echo -e " Ingress URL   : ${BOLD}http://${SERVER_IP}:${CADDY_HTTP_PORT}${NC}"
+echo -e " Web Dashboard : ${BOLD}http://${SERVER_IP}:${CADDY_HTTP_PORT}${NC}$([ "$SERVER_IP" != "127.0.0.1" ] && echo -e " ${DIM}(or http://localhost:${CADDY_HTTP_PORT})${NC}" || true)"
+echo -e " HTTPS Ingress : ${BOLD}https://${SERVER_IP}:${CADDY_HTTPS_PORT}${NC} ${DIM}(with custom domain)${NC}"
 echo -e " Release Tag   : ${CYAN}${DISPLAY_TAG}${NC} (${GOPOD_IMAGE})"
 echo -e " Running Mode  : ${BOLD}${RUN_MODE}${NC} (Auto-restart enabled)"
 echo -e " Service User  : ${BOLD}${CURRENT_USER}${NC} $([ "$CURRENT_USER" = "root" ] && echo "${YELLOW}(Rootful)${NC}" || echo "${GREEN}(Rootless, UID: ${USER_UID})${NC}")"
@@ -1907,4 +1951,4 @@ echo -e "  ${CYAN}gopod shell [caddy]${NC}    Open interactive shell inside cont
 echo -e "  ${CYAN}gopod update${NC}           Pull latest container images & restart stack"
 echo -e "  ${CYAN}gopod info${NC}             Show runtime environment & config paths"
 echo -e "  ${CYAN}gopod podman <args>${NC}   Run any podman command in rootless context"
-echo -e "\n${BLUE}Open your browser at ${BOLD}http://${SERVER_IP}:${GOPOD_PORT}${NC}${BLUE} to begin the setup wizard.${NC}\n"
+echo -e "\n${BLUE}Open your browser at ${BOLD}http://${SERVER_IP}:${CADDY_HTTP_PORT}${NC}${BLUE} to begin the setup wizard.${NC}\n"

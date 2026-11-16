@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -254,8 +255,8 @@ func (c *Client) PruneVolumes(ctx context.Context) error {
 // DeleteVolume removes a volume, optionally forcing removal.
 func (c *Client) DeleteVolume(ctx context.Context, name string, force bool) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/volumes/%s?force=%t", c.libpodVersion(), name, force)
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		reqURL := fmt.Sprintf("http://d/%s/libpod/volumes/%s?force=%t", c.libpodVersion(), url.PathEscape(name), force)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
 		if err != nil {
 			return err
 		}

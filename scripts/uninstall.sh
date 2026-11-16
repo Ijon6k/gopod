@@ -124,7 +124,6 @@ if command -v systemctl &>/dev/null; then
 
     # Also check if dedicated service user has active units
     if [ "$USER_UID" -eq 0 ] && id -u "$SERVICE_USER" &>/dev/null; then
-        local svc_uid
         svc_uid=$(id -u "$SERVICE_USER")
         run_podman systemctl --user stop gopod-pod.service gopod-server.service gopod-caddy.service 2>/dev/null || true
         run_podman systemctl --user disable gopod-pod.service gopod-server.service gopod-caddy.service 2>/dev/null || true
@@ -158,7 +157,6 @@ fi
 
 # Remove quadlets for service user if exists
 if id -u "$SERVICE_USER" &>/dev/null; then
-    local target_home
     target_home=$(eval echo "~${SERVICE_USER}")
     rm -f "${target_home}/.config/containers/systemd/gopod"* 2>/dev/null || true
 fi
@@ -187,7 +185,6 @@ if [ "$PURGE_DATA" = true ]; then
     echo -e "  ${YELLOW}Purging persistent data directories...${NC}"
     rm -rf "${USER_HOME}/.local/share/gopod" 2>/dev/null || true
     if id -u "$SERVICE_USER" &>/dev/null; then
-        local target_home
         target_home=$(eval echo "~${SERVICE_USER}")
         rm -rf "${target_home}/.local/share/gopod" "${target_home}/.config/gopod" 2>/dev/null || true
     fi

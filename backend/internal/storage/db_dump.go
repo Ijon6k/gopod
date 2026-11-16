@@ -132,11 +132,11 @@ func (s *Service) CreateDatabaseDump(ctx context.Context, req DatabaseDumpReques
 	_, _ = rand.Read(b)
 	snapID := fmt.Sprintf("dump-%s", hex.EncodeToString(b))
 	filename := fmt.Sprintf("db-%s-%s-%d.%s", engine, req.ServiceID, time.Now().Unix(), ext)
-	backupDir := "./data/backups"
-	_ = os.MkdirAll(backupDir, 0755)
+	backupDir := s.backupDir()
+	_ = os.MkdirAll(backupDir, 0700)
 	filePath := filepath.Join(backupDir, filename)
 
-	outFile, err := os.Create(filePath)
+	outFile, err := os.OpenFile(filePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
 	if err != nil {
 		return nil, fmt.Errorf("create backup file: %w", err)
 	}

@@ -2,6 +2,7 @@ package auth
 
 import (
 	"net/http"
+	"strings"
 	"sync/atomic"
 
 	"gopod/pkg/httputil"
@@ -50,11 +51,30 @@ func (m *Middleware) guard(allowQueryToken bool, next http.HandlerFunc) http.Han
 		var session *Session
 		var user *User
 		var err error
+
 		if allowQueryToken {
-			session, user, err = m.authService.GetSessionUserAllowQuery(r)
-		} else {
-			session, user, err = m.authService.GetSessionUser(r)
+			grant := r.URL.Query().Get("grant")
+			if grant == "" {
+				if q := r.URL.Query().Get("token"); strings.HasPrefix(q, "grant_") {
+					grant = q
+				}
+			}
+			if grant != "" && m.authService != nil {
+				if u, ok := m.authService.ValidateStreamGrant(r.Context(), grant); ok {
+					user = u
+					session = &Session{UserID: user.ID}
+				}
+			}
 		}
+
+		if user == nil {
+			if allowQueryToken {
+				session, user, err = m.authService.GetSessionUserAllowQuery(r)
+			} else {
+				session, user, err = m.authService.GetSessionUser(r)
+			}
+		}
+
 		if err != nil || session == nil || user == nil {
 			httputil.WriteError(w, http.StatusUnauthorized, "Authentication required. Please sign in.")
 			return

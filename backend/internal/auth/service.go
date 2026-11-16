@@ -26,14 +26,18 @@ type ActivityRecorder interface {
 
 // Service encapsulates authentication and user session business logic.
 type Service struct {
-	repo     Repository
-	audit    AuditRecorder
-	activity ActivityRecorder
+	repo         Repository
+	audit        AuditRecorder
+	activity     ActivityRecorder
+	grantManager *StreamGrantManager
 }
 
 // NewService creates a new auth domain service.
 func NewService(repo Repository) *Service {
-	return &Service{repo: repo}
+	return &Service{
+		repo:         repo,
+		grantManager: NewStreamGrantManager(60 * time.Second),
+	}
 }
 
 // SetAuditRecorder configures audit recording.
@@ -317,4 +321,28 @@ func (s *Service) ChangePassword(ctx context.Context, userID, currentPassword, n
 		_ = s.audit.Record(ctx, "auth.password_change", user.Email, user.ID, "security", "", "success")
 	}
 	return nil
+}
+
+// IssueStreamGrant creates a single-use 60s grant for streaming endpoints.
+func (s *Service) IssueStreamGrant(userID string) (string, error) {
+	if s.grantManager == nil {
+		return "", errors.New("grant manager not initialized")
+	}
+	return s.grantManager.IssueGrant(userID)
+}
+
+// ValidateStreamGrant validates and consumes a stream grant, returning the user.
+func (s *Service) ValidateStreamGrant(ctx context.Context, grant string) (*User, bool) {
+	if s.grantManager == nil {
+		return nil, false
+	}
+	userID, ok := s.grantManager.ValidateAndConsume(grant)
+	if !ok || userID == "" {
+		return nil, false
+	}
+	user, err := s.repo.GetUserByID(ctx, userID)
+	if err != nil || user == nil {
+		return nil, false
+	}
+	return user, true
 }

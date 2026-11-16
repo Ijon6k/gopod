@@ -1,17 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/auth.svelte';
-	import { LayerCard, Input, Button, Badge } from 'kumo-svelte';
-	import {
-		ShieldCheck,
-		Lock,
-		Envelope,
-		User as UserIcon,
-		ArrowRight,
-		CircleNotch,
-		WarningCircle,
-		Cpu
-	} from 'phosphor-svelte';
+	import { LayerCard, Input, Button, Banner } from 'kumo-svelte';
+	import { CircleNotch, WarningCircle } from 'phosphor-svelte';
 
 	import { setupSchema } from '$lib/schemas';
 
@@ -45,11 +36,9 @@
 				email: result.data.email,
 				password: result.data.password
 			});
-			// Successfully configured initial root admin
 			await goto('/', { replaceState: true });
 		} catch (err: any) {
-			validationError =
-				err.message || 'Failed to complete cluster setup. Please verify your details.';
+			validationError = err.message || 'Setup failed. Please check your details and try again.';
 		} finally {
 			isSubmitting = false;
 		}
@@ -57,207 +46,92 @@
 </script>
 
 <svelte:head>
-	<title>Initial Administrator Setup — GOPOD</title>
+	<title>Administrator Setup — GOPOD</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-[460px] py-8">
-	<!-- Branding / Header -->
-	<div class="mb-6 text-center">
-		<div class="mb-3 inline-flex items-center justify-center gap-2">
-			<img
-				src="/logo.png"
-				alt="GOPOD logo"
-				draggable="false"
-				class="h-10 w-10 rounded-xl shadow-xs select-none"
-			/>
-			<div class="text-left">
-				<div class="flex items-center gap-1.5">
-					<span class="font-mono text-lg font-semibold text-[var(--text-primary)]">GOPOD</span>
-					<Badge variant="secondary" class="!px-1.5 !py-0 font-mono !text-[10px] uppercase">
-						Init
-					</Badge>
-				</div>
-				<span class="text-xs text-[var(--text-tertiary)]">Podman Infrastructure Manager</span>
-			</div>
-		</div>
-
-		<h1 class="text-xl font-semibold text-[var(--text-primary)]">Create administrator account</h1>
-		<p class="mx-auto mt-1.5 max-w-[380px] text-xs leading-relaxed text-[var(--text-secondary)]">
-			Welcome to GOPOD. Configure your master administrative credentials to take ownership of this
-			node and manage your containers.
-		</p>
+<div class="mx-auto flex w-full max-w-[400px] flex-col items-center py-20">
+	<!-- Brand -->
+	<div class="mb-8 flex items-center gap-3">
+		<img
+			src="/logo.png"
+			alt="GOPOD logo"
+			draggable="false"
+			class="h-9 w-9 rounded-lg select-none"
+		/>
+		<span class="font-mono text-lg font-semibold text-[var(--text-primary)]">GOPOD</span>
 	</div>
 
-	<!-- Setup Card with Pure Kumo LayerCard -->
-	<LayerCard class="relative p-6 shadow-lg">
-		<!-- Top accent indicator -->
-		<div
-			class="absolute top-0 right-0 left-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"
-		></div>
-
+	<LayerCard class="w-full p-6">
 		{#if validationError}
-			<div
-				class="mb-5 flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-[var(--status-red)]/30 bg-[var(--status-red-muted)] p-3 text-xs text-[var(--status-red)]"
-			>
-				<WarningCircle size={16} class="mt-0.5 shrink-0" />
-				<span class="leading-normal">{validationError}</span>
-			</div>
+			<Banner variant="error" size="sm" class="mb-4">
+				{#snippet icon()}
+					<WarningCircle size={16} weight="fill" class="shrink-0" />
+				{/snippet}
+				{validationError}
+			</Banner>
 		{/if}
 
-		<form onsubmit={handleSubmit} class="space-y-4">
-			<!-- Name Field -->
-			<div>
-				<label
-					for="setup-name"
-					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
-				>
-					Administrator Name
-				</label>
-				<div class="relative">
-					<div
-						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
-					>
-						<UserIcon size={15} />
-					</div>
-					<Input
-						id="setup-name"
-						type="text"
-						bind:value={name}
-						placeholder="e.g. Administrator"
-						required
-						autocomplete="name"
-						class="!h-10 w-full !pl-9 text-sm"
-					/>
-				</div>
-			</div>
+		<form onsubmit={handleSubmit} class="flex flex-col gap-4">
+			<Input
+				id="setup-name"
+				type="text"
+				label="Name"
+				bind:value={name}
+				placeholder="Administrator"
+				required
+				autocomplete="name"
+				class="w-full text-sm"
+			/>
 
-			<!-- Email Field -->
-			<div>
-				<label
-					for="setup-email"
-					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
-				>
-					Administrator Email
-				</label>
-				<div class="relative">
-					<div
-						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
-					>
-						<Envelope size={15} />
-					</div>
-					<Input
-						id="setup-email"
-						type="email"
-						bind:value={email}
-						placeholder="admin@yourdomain.com"
-						required
-						autocomplete="email"
-						class="!h-10 w-full !pl-9 text-sm"
-					/>
-				</div>
-			</div>
+			<Input
+				id="setup-email"
+				type="email"
+				label="Email"
+				bind:value={email}
+				placeholder="you@example.com"
+				required
+				autocomplete="email"
+				class="w-full text-sm"
+			/>
 
-			<!-- Password Field -->
-			<div>
-				<label
-					for="setup-password"
-					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
-				>
-					Password <span class="font-normal text-[var(--text-muted)]">(min 8 characters)</span>
-				</label>
-				<div class="relative">
-					<div
-						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
-					>
-						<Lock size={15} />
-					</div>
-					<Input
-						id="setup-password"
-						type="password"
-						bind:value={password}
-						placeholder="••••••••••••"
-						required
-						autocomplete="new-password"
-						class="!h-10 w-full !pl-9 text-sm"
-					/>
-				</div>
-			</div>
+			<Input
+				id="setup-password"
+				type="password"
+				label="Password"
+				description="At least 8 characters."
+				bind:value={password}
+				required
+				autocomplete="new-password"
+				class="w-full text-sm"
+			/>
 
-			<!-- Confirm Password Field -->
-			<div>
-				<label
-					for="setup-confirm-password"
-					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
-				>
-					Confirm Password
-				</label>
-				<div class="relative">
-					<div
-						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
-					>
-						<Lock size={15} />
-					</div>
-					<Input
-						id="setup-confirm-password"
-						type="password"
-						bind:value={confirmPassword}
-						placeholder="••••••••••••"
-						required
-						autocomplete="new-password"
-						class="!h-10 w-full !pl-9 text-sm"
-					/>
-				</div>
-			</div>
+			<Input
+				id="setup-confirm-password"
+				type="password"
+				label="Confirm password"
+				bind:value={confirmPassword}
+				required
+				autocomplete="new-password"
+				class="w-full text-sm"
+			/>
 
-			<!-- Security Callout -->
-			<div
-				class="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--border-subtle)] bg-[var(--bg-surface)] p-2.5 text-[11px] text-[var(--text-tertiary)]"
-			>
-				<ShieldCheck size={14} class="mt-0.5 shrink-0 text-[var(--accent)]" />
-				<span
-					>Account setup locks permanently once initialized. Further accounts can only be added via
-					administrator invites.</span
-				>
-			</div>
-
-			<!-- Submit Button with Kumo Button -->
 			<Button
 				variant="primary"
 				type="submit"
 				disabled={isSubmitting}
-				class="mt-2 !h-10 w-full justify-center gap-2 text-sm font-medium shadow-xs"
+				class="mt-1 w-full justify-center text-sm"
 			>
 				{#if isSubmitting}
 					<CircleNotch size={16} class="animate-spin" />
-					<span>Configuring GoPod Node…</span>
+					<span>Creating account…</span>
 				{:else}
-					<span>Complete Setup & Launch Dashboard</span>
-					<ArrowRight size={16} />
+					<span>Create administrator account</span>
 				{/if}
 			</Button>
 		</form>
-
-		<!-- Link to Login -->
-		<div class="mt-5 border-t border-[var(--border-subtle)] pt-4 text-center">
-			<p class="text-xs text-[var(--text-tertiary)]">
-				Already have an account?
-				<a href="/login" class="ml-1 font-medium text-[var(--accent)] hover:underline">
-					Sign in to GOPOD
-				</a>
-			</p>
-		</div>
 	</LayerCard>
 
-	<!-- Node Info Footer -->
-	<div
-		class="mt-6 flex items-center justify-center gap-4 font-mono text-[11px] text-[var(--text-muted)]"
-	>
-		<span class="flex items-center gap-1.5">
-			<Cpu size={12} /> Rootless Podman 5.x
-		</span>
-		<span>•</span>
-		<span>Modern SQLite (WAL)</span>
-		<span>•</span>
-		<span>Caddy Ingress</span>
-	</div>
+	<p class="mt-6 text-center text-xs leading-relaxed text-[var(--text-tertiary)]">
+		Setup runs once. This instance supports a single administrator account.
+	</p>
 </div>

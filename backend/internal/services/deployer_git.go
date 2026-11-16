@@ -29,6 +29,9 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, trigg
 	if repoUrl == "" {
 		repoUrl = s.Source
 	}
+	if err := ValidateGitURL(repoUrl); err != nil {
+		return nil, fmt.Errorf("refusing git deploy: %w", err)
+	}
 	branch := strings.TrimSpace(s.GitBranch)
 	if branch == "" {
 		branch = strings.TrimSpace(s.Branch)

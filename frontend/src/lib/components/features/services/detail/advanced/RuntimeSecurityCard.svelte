@@ -1,10 +1,9 @@
 <script lang="ts">
-	import { SectionCard, Input, Switch } from '$lib/components/ui';
+	import { SectionCard, Input, Switch, Banner } from '$lib/components/ui';
 	import { WarningCircle } from 'phosphor-svelte';
 
 	interface Props {
-		openRuntime?: boolean;
-		openSecurity?: boolean;
+		open?: boolean;
 		userNamespace: string;
 		userNsError?: string;
 		devices: string;
@@ -22,8 +21,7 @@
 	}
 
 	let {
-		openRuntime = $bindable(true),
-		openSecurity = $bindable(true),
+		open = $bindable(false),
 		userNamespace = $bindable(),
 		userNsError = '',
 		devices = $bindable(),
@@ -39,194 +37,145 @@
 		privilegedCapDropWarning = '',
 		privilegedUserNsWarning = ''
 	}: Props = $props();
+
+	// Compact header summary of non-default settings.
+	let summary = $derived.by(() => {
+		const parts: string[] = [];
+		const ns = userNamespace.trim();
+		if (ns) parts.push(`userns ${ns}`);
+		const devCount = devices
+			.split(',')
+			.map((d) => d.trim())
+			.filter(Boolean).length;
+		if (devCount) parts.push(`${devCount} device${devCount === 1 ? '' : 's'}`);
+		if (isPrivileged) parts.push('privileged');
+		if (capAddError === '') {
+			const addCount = capAdd
+				.split(',')
+				.map((c) => c.trim())
+				.filter(Boolean).length;
+			if (addCount) parts.push(`+${addCount} caps`);
+		}
+		if (capDropError === '') {
+			const dropCount = capDrop
+				.split(',')
+				.map((c) => c.trim())
+				.filter(Boolean).length;
+			if (dropCount) parts.push(`-${dropCount} caps`);
+		}
+		if (selinuxLabel.trim()) parts.push('selinux');
+		if (apparmorProfile.trim()) parts.push('apparmor');
+		if (!noNewPrivileges) parts.push('nnp off');
+		return parts.length ? parts.join(' · ') : 'All defaults';
+	});
 </script>
 
-<!-- 1. RUNTIME CONFIGURATION -->
 <SectionCard
-	title="Runtime Execution"
-	description="User namespace isolation and host device access — applied as real podman run flags."
+	title="Runtime & Security"
+	description="Namespace isolation, host devices, privilege boundaries, and capabilities."
 	collapsible={true}
-	bind:open={openRuntime}
+	bind:open
 >
-	<div class="grid grid-cols-1 gap-4 pt-2 sm:grid-cols-2">
-		<div class="flex flex-col gap-1.5">
-			<label for="rt-userns" class="text-xs font-medium text-[var(--text-secondary)]"
-				>User Namespace</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-			>
-				<Input
-					id="rt-userns"
-					bind:value={userNamespace}
-					placeholder="keep-id (leave blank for podman default)"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
-			{#if userNsError}
-				<span class="text-[11px] text-[var(--status-red)]">{userNsError}</span>
-			{:else}
-				<span class="text-[10px] text-[var(--text-tertiary)]">
-					Emits <code>--userns</code>; blank, <code>default</code> and <code>none</code> leave the podman
-					default untouched.
-				</span>
-			{/if}
-		</div>
+	{#snippet headerActions()}
+		<span class="max-w-[240px] truncate font-mono text-[11px] text-[var(--text-tertiary)]"
+			>{summary}</span
+		>
+	{/snippet}
 
-		<div class="flex flex-col gap-1.5">
-			<label for="rt-devices" class="text-xs font-medium text-[var(--text-secondary)]"
-				>Host Devices</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-			>
-				<Input
-					id="rt-devices"
-					bind:value={devices}
-					placeholder="/dev/fuse, /dev/net/tun"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
-			{#if devicesError}
-				<span class="text-[11px] text-[var(--status-red)]">{devicesError}</span>
-			{:else}
-				<span class="text-[10px] text-[var(--text-tertiary)]">
-					Emits <code>--device</code> for each host path.
-				</span>
-			{/if}
-		</div>
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+		<Input
+			id="rt-userns"
+			label="User namespace"
+			description="Blank uses the podman default."
+			bind:value={userNamespace}
+			placeholder="keep-id"
+			error={userNsError || undefined}
+			class="font-mono text-xs"
+		/>
+
+		<Input
+			id="rt-devices"
+			label="Host devices"
+			bind:value={devices}
+			placeholder="/dev/fuse, /dev/net/tun"
+			error={devicesError || undefined}
+			class="font-mono text-xs"
+		/>
 	</div>
-</SectionCard>
 
-<!-- 3. SECURITY & CAPABILITIES -->
-<SectionCard
-	title="Security & Capabilities"
-	description="SELinux confinement, Linux kernel capabilities, and privilege boundaries."
-	collapsible={true}
-	bind:open={openSecurity}
->
-	<div
-		class="mt-2 flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
-	>
-		<div class="flex flex-col gap-0.5">
-			<span class="text-xs font-medium text-[var(--text-primary)]">Privileged Container Mode</span>
-			<span class="text-[11px] text-[var(--text-tertiary)]">
-				Disables SELinux isolation and grants access to all host kernel devices. Keep disabled for
-				standard PaaS apps.
-			</span>
+	<div class="flex flex-col gap-4">
+		<div class="flex items-center justify-between gap-4">
+			<div class="flex flex-col gap-0.5">
+				<span class="text-xs font-medium text-[var(--text-primary)]">Privileged</span>
+				<span class="text-[11px] text-[var(--text-tertiary)]">
+					Access to all host devices; disables isolation. Keep off unless required.
+				</span>
+			</div>
+			<Switch bind:checked={isPrivileged} size="sm" />
 		</div>
-		<Switch bind:checked={isPrivileged} size="sm" />
+
+		<div class="flex items-center justify-between gap-4">
+			<div class="flex flex-col gap-0.5">
+				<span class="text-xs font-medium text-[var(--text-primary)]">No new privileges</span>
+				<span class="text-[11px] text-[var(--text-tertiary)]">
+					Blocks setuid escalation inside the container. Enabled by default.
+				</span>
+			</div>
+			<Switch bind:checked={noNewPrivileges} size="sm" />
+		</div>
 	</div>
 
 	{#if privilegedCapDropWarning || privilegedUserNsWarning}
-		<div
-			class="flex items-start gap-2 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
-		>
-			<WarningCircle size={14} weight="fill" class="mt-0.5 shrink-0 text-kumo-warning" />
-			<div class="flex flex-col gap-0.5">
+		<Banner variant="alert" size="sm">
+			{#snippet icon()}
+				<WarningCircle size={14} weight="fill" class="shrink-0" />
+			{/snippet}
+			<div class="flex flex-col gap-0.5 text-xs leading-relaxed">
 				{#if privilegedCapDropWarning}
-					<span class="text-[11px] leading-relaxed text-[var(--text-secondary)]"
-						>{privilegedCapDropWarning}</span
-					>
+					<span>{privilegedCapDropWarning}</span>
 				{/if}
 				{#if privilegedUserNsWarning}
-					<span class="text-[11px] leading-relaxed text-[var(--text-secondary)]"
-						>{privilegedUserNsWarning}</span
-					>
+					<span>{privilegedUserNsWarning}</span>
 				{/if}
 			</div>
-		</div>
+		</Banner>
 	{/if}
 
-	<div
-		class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3"
-	>
-		<div class="flex flex-col gap-0.5">
-			<span class="text-xs font-medium text-[var(--text-primary)]">No New Privileges</span>
-			<span class="text-[11px] text-[var(--text-tertiary)]">
-				Emits <code>--security-opt no-new-privileges</code> so setuid escalation cannot grant additional
-				rights. Enabled by default for hardening.
-			</span>
-		</div>
-		<Switch bind:checked={noNewPrivileges} size="sm" />
-	</div>
+	<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+		<Input
+			id="sec-selinux"
+			label="SELinux process label"
+			description="Process type, e.g. spc_t or disable. Volumes use the Z / z flags."
+			bind:value={selinuxLabel}
+			placeholder="container_t"
+			class="font-mono text-xs"
+		/>
 
-	<div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
-		<div class="flex flex-col gap-1.5">
-			<label for="sec-selinux" class="text-xs font-medium text-[var(--text-secondary)]"
-				>SELinux Process Label</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-			>
-				<Input
-					id="sec-selinux"
-					bind:value={selinuxLabel}
-					placeholder="container_t, spc_t, or disable"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
-			<span class="text-[10px] text-[var(--text-tertiary)]">
-				Process type (e.g. <code>spc_t</code> for unconfined, or <code>disable</code>). For volumes,
-				use <code>:z</code>/<code>:Z</code> below.
-			</span>
-		</div>
+		<Input
+			id="sec-apparmor"
+			label="AppArmor profile"
+			description="Set unconfined to disable."
+			bind:value={apparmorProfile}
+			placeholder="default"
+			class="font-mono text-xs"
+		/>
 
-		<div class="flex flex-col gap-1.5">
-			<label for="sec-apparmor" class="text-xs font-medium text-[var(--text-secondary)]"
-				>AppArmor Profile (Ubuntu/Debian)</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-			>
-				<Input
-					id="sec-apparmor"
-					bind:value={apparmorProfile}
-					placeholder="default or unconfined"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
-			<span class="text-[10px] text-[var(--text-tertiary)]">
-				Standard MAC on Ubuntu/Debian. Set to <code>unconfined</code> to disable AppArmor.
-			</span>
-		</div>
+		<Input
+			id="sec-cap-add"
+			label="Add capabilities"
+			bind:value={capAdd}
+			placeholder="NET_BIND_SERVICE"
+			error={capAddError || undefined}
+			class="font-mono text-xs"
+		/>
 
-		<div class="flex flex-col gap-1.5">
-			<label for="sec-cap-add" class="text-xs font-medium text-[var(--text-secondary)]"
-				>Add Capabilities</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-			>
-				<Input
-					id="sec-cap-add"
-					bind:value={capAdd}
-					placeholder="NET_BIND_SERVICE"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
-			{#if capAddError}
-				<span class="text-[11px] text-[var(--status-red)]">{capAddError}</span>
-			{/if}
-		</div>
-
-		<div class="flex flex-col gap-1.5">
-			<label for="sec-cap-drop" class="text-xs font-medium text-[var(--text-secondary)]"
-				>Drop Capabilities</label
-			>
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] px-3 py-2"
-			>
-				<Input
-					id="sec-cap-drop"
-					bind:value={capDrop}
-					placeholder="ALL"
-					class="text-xs font-[var(--font-mono)]"
-				/>
-			</div>
-			{#if capDropError}
-				<span class="text-[11px] text-[var(--status-red)]">{capDropError}</span>
-			{/if}
-		</div>
+		<Input
+			id="sec-cap-drop"
+			label="Drop capabilities"
+			bind:value={capDrop}
+			placeholder="ALL"
+			error={capDropError || undefined}
+			class="font-mono text-xs"
+		/>
 	</div>
 </SectionCard>

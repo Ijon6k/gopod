@@ -3,6 +3,7 @@ package auth
 import (
 	"net/http"
 	"net/mail"
+	"os"
 	"strings"
 	"time"
 
@@ -38,6 +39,7 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/auth/logout", h.handleLogout)
 	mux.HandleFunc("GET /api/auth/me", h.handleMe)
 	mux.HandleFunc("POST /api/auth/password", h.handlePasswordChange)
+	mux.HandleFunc("POST /api/auth/stream-grant", h.handleStreamGrant)
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -137,17 +139,22 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if h.limiter != nil && !h.limiter.IsAccountAllowed(email) {
+		httputil.WriteError(w, http.StatusTooManyRequests, "Too many failed login attempts for this account. Please wait a minute before retrying.")
+		return
+	}
+
 	user, token, err := h.service.Login(r.Context(), email, password)
 	if err != nil {
 		if h.limiter != nil {
-			h.limiter.RecordFailure(r)
+			h.limiter.RecordFailureWithAccount(r, email)
 		}
 		httputil.WriteError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
 	if h.limiter != nil {
-		h.limiter.Reset(r)
+		h.limiter.ResetWithAccount(r, email)
 	}
 
 	setSessionCookie(w, r, token, 30*86400)
@@ -206,8 +213,26 @@ func (h *Handler) handlePasswordChange(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, map[string]string{"message": "Password changed successfully"})
 }
 
+func (h *Handler) handleStreamGrant(w http.ResponseWriter, r *http.Request) {
+	_, user, err := h.service.GetSessionUser(r)
+	if err != nil || user == nil {
+		httputil.WriteError(w, http.StatusUnauthorized, "Authentication required")
+		return
+	}
+	grant, err := h.service.IssueStreamGrant(user.ID)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to issue stream grant")
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, map[string]string{"grant": grant})
+}
+
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
-	isSecure := r != nil && (r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https")
+	isSecure := r != nil && (r.TLS != nil ||
+		strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") ||
+		strings.EqualFold(r.Header.Get("X-Forwarded-Scheme"), "https") ||
+		strings.EqualFold(r.Header.Get("X-Forwarded-Ssl"), "on") ||
+		os.Getenv("COOKIE_SECURE") == "true")
 	http.SetCookie(w, &http.Cookie{
 		Name:     "gopod_session",
 		Value:    token,

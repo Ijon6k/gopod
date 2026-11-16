@@ -32,10 +32,8 @@
 	let targetContainer = $state('');
 	let containerPort = $state(3000);
 	let tls = $state(true);
-	let httpsRedirect = $state(true);
 	let pathPrefix = $state('/');
 	let stripPathPrefix = $state(false);
-	let websocket = $state(false);
 	let cors = $state(false);
 	let hsts = $state(true);
 	let basicAuth = $state(false);
@@ -109,10 +107,8 @@
 			targetContainer = domain.targetContainer || '';
 			containerPort = domain.containerPort || 3000;
 			tls = domain.tls !== false;
-			httpsRedirect = domain.httpsRedirect !== false;
 			pathPrefix = domain.pathPrefix || '/';
 			stripPathPrefix = !!domain.stripPathPrefix;
-			websocket = !!domain.websocket;
 			cors = !!domain.cors;
 			hsts = domain.hsts !== false;
 			basicAuth = !!domain.basicAuth;
@@ -130,10 +126,8 @@
 			targetContainer = '';
 			containerPort = services[0]?.port || 3000;
 			tls = true;
-			httpsRedirect = true;
 			pathPrefix = '/';
 			stripPathPrefix = false;
-			websocket = false;
 			cors = false;
 			hsts = true;
 			basicAuth = false;
@@ -225,10 +219,8 @@
 			publishedPort: portNum,
 			dnsStatus,
 			resolvedIp: server.ip,
-			httpsRedirect,
 			pathPrefix: pathPrefix.trim() || '/',
 			stripPathPrefix,
-			websocket,
 			cors,
 			hsts,
 			basicAuth,
@@ -435,36 +427,6 @@
 								>
 							</div>
 							<Switch bind:checked={tls} size="sm" />
-						</div>
-
-						<!-- Toggle: HTTP to HTTPS Redirect -->
-						<div
-							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
-						>
-							<div class="flex flex-col">
-								<span class="text-xs font-medium text-[var(--text-primary)]"
-									>HTTP ➔ HTTPS Redirect</span
-								>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]"
-									>Forces secure 308 redirect</span
-								>
-							</div>
-							<Switch bind:checked={httpsRedirect} size="sm" />
-						</div>
-
-						<!-- Toggle: WebSocket Upgrades -->
-						<div
-							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
-						>
-							<div class="flex flex-col">
-								<span class="text-xs font-medium text-[var(--text-primary)]"
-									>WebSocket Upgrades</span
-								>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]"
-									>Pass 101 Switching Protocols</span
-								>
-							</div>
-							<Switch bind:checked={websocket} size="sm" />
 						</div>
 
 						<!-- Toggle: CORS Headers -->

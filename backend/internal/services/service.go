@@ -170,6 +170,17 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 		svc.WebhookToken = "wh_" + hex.EncodeToString(b)
 	}
 
+	if strings.TrimSpace(svc.GitRepo) != "" {
+		if err := ValidateGitURL(svc.GitRepo); err != nil {
+			return nil, err
+		}
+	}
+	if strings.TrimSpace(svc.GitBranch) != "" {
+		if err := ValidateGitBranch(svc.GitBranch); err != nil {
+			return nil, err
+		}
+	}
+
 	if strings.TrimSpace(svc.ComposeYaml) != "" {
 		var raw map[string]interface{}
 		if err := yaml.Unmarshal([]byte(svc.ComposeYaml), &raw); err != nil {
@@ -434,6 +445,17 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 		}
 		if parsed.HostPort > 0 {
 			svc.HostPort = parsed.HostPort
+		}
+	}
+
+	if strings.TrimSpace(svc.GitRepo) != "" {
+		if err := ValidateGitURL(svc.GitRepo); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(svc.GitBranch) != "" {
+		if err := ValidateGitBranch(svc.GitBranch); err != nil {
+			return err
 		}
 	}
 

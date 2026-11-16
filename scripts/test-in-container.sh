@@ -157,16 +157,25 @@ if [ "$SHELL_MODE" = true ]; then
     # Interactive shell mode: Run install, curl test, then leave user in bash
     podman run --rm -it --privileged \
         -v "${PROJECT_ROOT}/scripts:/scripts:ro" \
+        -v /tmp/antigravity:/tmp/antigravity:ro \
         "${SANDBOX_IMAGE}" bash -c "
+            if [ -f /tmp/antigravity/gopod-local-test.tar ]; then
+                echo 'Loading local test container image...'
+                podman load -i /tmp/antigravity/gopod-local-test.tar
+            fi
             echo -e '\033[1;36m==> [1/3] Running GOPOD installer (${TEST_LABEL})...\033[0m'
             /scripts/install.sh ${INSTALL_ARGS}
 
             echo -e '\n\033[1;32m==> [2/3] Verifying HTTP Endpoints via CLI Curl (Headless):\033[0m'
-            echo '--- Direct GOPOD Dashboard (:8085) ---'
-            curl -sI http://localhost:8085 | head -n 8
-
-            echo -e '\n--- Caddy Ingress Reverse Proxy (:80) ---'
+            echo '--- Caddy Ingress Reverse Proxy (:80) ---'
             curl -sI http://localhost:80 | head -n 8
+
+            echo -e '\n--- Direct Dashboard Port (:8085) should NOT be exposed publicly ---'
+            if curl -sI --connect-timeout 2 http://localhost:8085 2>/dev/null; then
+                echo 'Warning: Port 8085 reachable directly'
+            else
+                echo 'Confirmed: Port 8085 unexposed, traffic safely routed via Caddy only'
+            fi
 
             echo -e '\n\033[1;33m==> [3/3] You are now inside the sandbox container shell!\033[0m'
             echo 'Try running: podman ps, curl http://localhost:80, etc.'
@@ -181,20 +190,29 @@ else
 
     podman run --rm ${TTY_FLAGS} --privileged \
         -v "${PROJECT_ROOT}/scripts:/scripts:ro" \
+        -v /tmp/antigravity:/tmp/antigravity:ro \
         "${SANDBOX_IMAGE}" bash -c "
+            if [ -f /tmp/antigravity/gopod-local-test.tar ]; then
+                echo 'Loading local test container image...'
+                podman load -i /tmp/antigravity/gopod-local-test.tar
+            fi
             echo -e '\033[1;36m==> [1/3] Running GOPOD installer (${TEST_LABEL})...\033[0m'
             /scripts/install.sh ${INSTALL_ARGS}
 
             echo -e '\n\033[1;32m==> [2/3] Verifying Application Health via CLI Curl (Headless):\033[0m\n'
             echo '┌─────────────────────────────────────────────────────────────┐'
-            echo '│ 1. Direct Control Plane Endpoint (:8085)                    │'
-            echo '└─────────────────────────────────────────────────────────────┘'
-            curl -sI http://localhost:8085 | head -n 8
-
-            echo -e '\n┌─────────────────────────────────────────────────────────────┐'
-            echo '│ 2. Caddy Ingress Reverse Proxy Endpoint (:80)               │'
+            echo '│ 1. Caddy Ingress Reverse Proxy Endpoint (:80)               │'
             echo '└─────────────────────────────────────────────────────────────┘'
             curl -sI http://localhost:80 | head -n 8
+
+            echo -e '\n┌─────────────────────────────────────────────────────────────┐'
+            echo '│ 2. Direct Control Plane Port (:8085) Isolation Check        │'
+            echo '└─────────────────────────────────────────────────────────────┘'
+            if curl -sI --connect-timeout 2 http://localhost:8085 2>/dev/null; then
+                echo 'Warning: Port 8085 reachable directly'
+            else
+                echo 'Confirmed: Port 8085 unexposed, traffic safely routed via Caddy only'
+            fi
 
             echo -e '\n\033[1;36m==> [3/3] Verifying Clean Uninstallation Teardown...\033[0m'
             /scripts/uninstall.sh --purge -y

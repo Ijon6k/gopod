@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -426,8 +427,8 @@ func (c *Client) RestartContainer(ctx context.Context, id string) error {
 // DeleteContainer removes a container, optionally forcing removal.
 func (c *Client) DeleteContainer(ctx context.Context, id string, force bool) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/containers/%s?force=%t", c.libpodVersion(), id, force)
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		reqURL := fmt.Sprintf("http://d/%s/libpod/containers/%s?force=%t", c.libpodVersion(), url.PathEscape(id), force)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
 		if err != nil {
 			return err
 		}
@@ -466,8 +467,8 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (str
 	}
 
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/containers/%s/logs?stdout=true&stderr=true&tail=%d", c.libpodVersion(), id, tail)
-		req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		reqURL := fmt.Sprintf("http://d/%s/libpod/containers/%s/logs?stdout=true&stderr=true&tail=%d", c.libpodVersion(), url.PathEscape(id), tail)
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 		if err != nil {
 			return "", err
 		}
@@ -491,7 +492,7 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (str
 		return string(logs), nil
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "logs", "--tail", fmt.Sprintf("%d", tail), id)
+	cmd := exec.CommandContext(ctx, "podman", "logs", "--tail", fmt.Sprintf("%d", tail), "--", id)
 	c.SetupCmdEnv(cmd)
 	out, err := cmd.CombinedOutput()
 	return string(out), err
@@ -499,8 +500,8 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (str
 
 func (c *Client) postContainerAction(ctx context.Context, id, action string) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/containers/%s/%s", c.libpodVersion(), id, action)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+		reqURL := fmt.Sprintf("http://d/%s/libpod/containers/%s/%s", c.libpodVersion(), url.PathEscape(id), action)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
 		if err != nil {
 			return err
 		}

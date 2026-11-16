@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 )
@@ -125,8 +126,8 @@ func (c *Client) GetPods(ctx context.Context) ([]PodItem, error) {
 // DeletePod removes a pod, optionally forcing removal.
 func (c *Client) DeletePod(ctx context.Context, idOrName string, force bool) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/pods/%s?force=%t", c.libpodVersion(), idOrName, force)
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		reqURL := fmt.Sprintf("http://d/%s/libpod/pods/%s?force=%t", c.libpodVersion(), url.PathEscape(idOrName), force)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, reqURL, nil)
 		if err != nil {
 			return err
 		}
@@ -285,8 +286,8 @@ func (c *Client) RestartPod(ctx context.Context, idOrName string) error {
 
 func (c *Client) postPodAction(ctx context.Context, idOrName, action string) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/pods/%s/%s", c.libpodVersion(), idOrName, action)
-		req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, nil)
+		reqURL := fmt.Sprintf("http://d/%s/libpod/pods/%s/%s", c.libpodVersion(), url.PathEscape(idOrName), action)
+		req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
 		if err != nil {
 			return err
 		}
@@ -303,7 +304,7 @@ func (c *Client) postPodAction(ctx context.Context, idOrName, action string) err
 		return fmt.Errorf("podman pod %s returned %d: %s", action, resp.StatusCode, strings.TrimSpace(string(body)))
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "pod", action, idOrName)
+	cmd := exec.CommandContext(ctx, "podman", "pod", action, "--", idOrName)
 	c.SetupCmdEnv(cmd)
 	out, err := cmd.CombinedOutput()
 	if err != nil {

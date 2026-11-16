@@ -24,6 +24,7 @@ Volume=%t/podman/podman.sock:/run/podman/podman.sock:z
 Volume=%h/.local/share/gopod/data:/app/data:Z
 Volume=%h/.local/share/gopod/logs:/var/log/caddy:z
 Volume=%h/.local/share/gopod/caddy-admin:/run/gopod-caddy:z
+Volume=%h/.config/gopod/caddy:/root/.config/gopod/caddy:Z
 
 [Service]
 Restart=always

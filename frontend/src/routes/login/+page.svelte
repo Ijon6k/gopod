@@ -1,16 +1,8 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { authStore } from '$lib/stores/auth.svelte';
-	import { LayerCard, Input, Button, Badge } from 'kumo-svelte';
-	import {
-		Lock,
-		Envelope,
-		ArrowRight,
-		CircleNotch,
-		WarningCircle,
-		ShieldCheck,
-		Cpu
-	} from 'phosphor-svelte';
+	import { LayerCard, Input, Button, Banner } from 'kumo-svelte';
+	import { CircleNotch, WarningCircle } from 'phosphor-svelte';
 
 	import { loginSchema } from '$lib/schemas';
 
@@ -45,145 +37,73 @@
 	<title>Sign In — GOPOD</title>
 </svelte:head>
 
-<div class="mx-auto w-full max-w-[420px] py-8">
-	<!-- Branding / Header -->
-	<div class="mb-6 text-center">
-		<div class="mb-3 inline-flex items-center justify-center gap-2">
-			<img
-				src="/logo.png"
-				alt="GOPOD logo"
-				draggable="false"
-				class="h-10 w-10 rounded-xl shadow-xs select-none"
-			/>
-			<div class="text-left">
-				<div class="flex items-center gap-1.5">
-					<span class="font-mono text-lg font-semibold text-[var(--text-primary)]">GOPOD</span>
-					<Badge variant="secondary" class="!px-1.5 !py-0 font-mono !text-[10px] uppercase">
-						v0.1.0
-					</Badge>
-				</div>
-				<span class="text-xs text-[var(--text-tertiary)]">Infrastructure Control Plane</span>
-			</div>
-		</div>
-
-		<h1 class="text-xl font-semibold text-[var(--text-primary)]">Sign in to GOPOD</h1>
-		<p class="mx-auto mt-1.5 max-w-[340px] text-xs leading-relaxed text-[var(--text-secondary)]">
-			Enter your credentials to access your container workloads, services, and proxy domains.
-		</p>
+<div class="mx-auto flex w-full max-w-[400px] flex-col items-center py-20">
+	<!-- Brand -->
+	<div class="mb-8 flex items-center gap-3">
+		<img
+			src="/logo.png"
+			alt="GOPOD logo"
+			draggable="false"
+			class="h-9 w-9 rounded-lg select-none"
+		/>
+		<span class="font-mono text-lg font-semibold text-[var(--text-primary)]">GOPOD</span>
 	</div>
 
-	<!-- Login Card with Pure Kumo LayerCard -->
-	<LayerCard class="relative p-6 shadow-lg">
-		<!-- Top accent indicator -->
-		<div
-			class="absolute top-0 right-0 left-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--accent)] to-transparent opacity-80"
-		></div>
-
+	<LayerCard class="w-full p-6">
 		{#if validationError}
-			<div
-				class="mb-5 flex items-start gap-2.5 rounded-[var(--radius-sm)] border border-[var(--status-red)]/30 bg-[var(--status-red-muted)] p-3 text-xs text-[var(--status-red)]"
-			>
-				<WarningCircle size={16} class="mt-0.5 shrink-0" />
-				<span class="leading-normal">{validationError}</span>
-			</div>
+			<Banner variant="error" size="sm" class="mb-4">
+				{#snippet icon()}
+					<WarningCircle size={16} weight="fill" class="shrink-0" />
+				{/snippet}
+				{validationError}
+			</Banner>
 		{/if}
 
-		<form onsubmit={handleSubmit} class="space-y-4">
-			<!-- Email Field -->
-			<div>
-				<label
-					for="login-email"
-					class="mb-1.5 block text-xs font-medium text-[var(--text-secondary)]"
-				>
-					Email address
-				</label>
-				<div class="relative">
-					<div
-						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
-					>
-						<Envelope size={15} />
-					</div>
-					<Input
-						id="login-email"
-						type="email"
-						bind:value={email}
-						placeholder="admin@yourdomain.com"
-						required
-						autocomplete="username"
-						class="!h-10 w-full !pl-9 text-sm"
-					/>
-				</div>
-			</div>
+		<form onsubmit={handleSubmit} class="flex flex-col gap-4">
+			<Input
+				id="login-email"
+				type="email"
+				label="Email"
+				bind:value={email}
+				placeholder="you@example.com"
+				required
+				autocomplete="username"
+				class="w-full text-sm"
+			/>
 
-			<!-- Password Field -->
-			<div>
-				<div class="mb-1.5 flex items-center justify-between">
-					<label
-						for="login-password"
-						class="block text-xs font-medium text-[var(--text-secondary)]"
-					>
-						Password
-					</label>
-				</div>
-				<div class="relative">
-					<div
-						class="pointer-events-none absolute inset-y-0 left-0 z-10 flex items-center pl-3 text-[var(--text-tertiary)]"
-					>
-						<Lock size={15} />
-					</div>
-					<Input
-						id="login-password"
-						type="password"
-						bind:value={password}
-						placeholder="••••••••••••"
-						required
-						autocomplete="current-password"
-						class="!h-10 w-full !pl-9 text-sm"
-					/>
-				</div>
-			</div>
+			<Input
+				id="login-password"
+				type="password"
+				label="Password"
+				bind:value={password}
+				required
+				autocomplete="current-password"
+				class="w-full text-sm"
+			/>
 
-			<!-- Submit Button using Kumo Button -->
 			<Button
 				variant="primary"
 				type="submit"
 				disabled={isSubmitting}
-				class="mt-2 !h-10 w-full justify-center gap-2 text-sm font-medium shadow-xs"
+				class="mt-1 w-full justify-center text-sm"
 			>
 				{#if isSubmitting}
 					<CircleNotch size={16} class="animate-spin" />
-					<span>Authenticating…</span>
+					<span>Signing in…</span>
 				{:else}
-					<span>Sign In</span>
-					<ArrowRight size={16} />
+					<span>Sign in</span>
 				{/if}
 			</Button>
 		</form>
-
-		<!-- Setup / Register Link -->
-		<div class="mt-5 border-t border-[var(--border-subtle)] pt-4 text-center">
-			<p class="text-xs text-[var(--text-tertiary)]">
-				First time running GoPod?
-				<a href="/setup" class="ml-1 font-medium text-[var(--accent)] hover:underline">
-					Create admin account
-				</a>
-			</p>
-			<p class="mt-1 text-[11px] leading-relaxed text-[var(--text-muted)]">
-				Registration is invite-only. New accounts must be created or invited by an administrator.
-			</p>
-		</div>
 	</LayerCard>
 
-	<!-- Secure Node Footer -->
-	<div
-		class="mt-6 flex items-center justify-center gap-4 font-mono text-[11px] text-[var(--text-muted)]"
-	>
-		<span class="flex items-center gap-1.5">
-			<ShieldCheck size={12} /> Rootless Security
-		</span>
-		<span>•</span>
-		<span class="flex items-center gap-1.5">
-			<Cpu size={12} /> Podman Socket
-		</span>
-	</div>
+	<!-- Initial setup link: only shown before the administrator account exists -->
+	{#if authStore.isInitialized === false}
+		<p class="mt-6 text-xs text-[var(--text-tertiary)]">
+			No administrator account yet.
+			<a href="/setup" class="ml-1 font-medium text-[var(--accent)] hover:underline">
+				Run first-time setup
+			</a>
+		</p>
+	{/if}
 </div>

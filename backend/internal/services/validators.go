@@ -3,6 +3,7 @@ package services
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -101,6 +102,50 @@ func ValidateVolumeMount(source, target string) error {
 	}
 	if err := podman.ValidateVolumeSource(src); err != nil {
 		return err
+	}
+	return nil
+}
+
+// ValidateGitURL checks that repoURL uses an allowed scheme (https, http, ssh, git)
+// or standard SCP-like SSH syntax (git@host:user/repo.git), and prevents CLI option injection.
+func ValidateGitURL(repoURL string) error {
+	raw := strings.TrimSpace(repoURL)
+	if raw == "" {
+		return errors.New("git repository URL is required")
+	}
+	if strings.HasPrefix(raw, "-") {
+		return fmt.Errorf("git repository URL %q must not start with '-'", raw)
+	}
+	if strings.Contains(raw, "::") {
+		return fmt.Errorf("git repository URL %q contains disallowed remote helper syntax", raw)
+	}
+	for _, r := range raw {
+		if r < 0x20 || r == 0x7f || r == ' ' {
+			return fmt.Errorf("git repository URL %q contains whitespace or control characters", raw)
+		}
+	}
+	if strings.Contains(raw, "://") {
+		u, err := url.Parse(raw)
+		if err != nil {
+			return fmt.Errorf("invalid git repository URL: %w", err)
+		}
+		scheme := strings.ToLower(u.Scheme)
+		if scheme != "https" && scheme != "http" && scheme != "ssh" && scheme != "git" {
+			return fmt.Errorf("git repository URL scheme %q is not allowed (must be https, http, ssh, or git)", scheme)
+		}
+		if u.Host == "" {
+			return errors.New("git repository URL missing host")
+		}
+		return nil
+	}
+	// SCP-style syntax: [user@]host:path
+	colonIdx := strings.Index(raw, ":")
+	if colonIdx <= 0 || colonIdx == len(raw)-1 {
+		return fmt.Errorf("invalid git repository URL %q", raw)
+	}
+	hostPart := raw[:colonIdx]
+	if strings.Contains(hostPart, "/") || strings.Contains(hostPart, "\\") {
+		return fmt.Errorf("invalid git repository URL host %q", hostPart)
 	}
 	return nil
 }

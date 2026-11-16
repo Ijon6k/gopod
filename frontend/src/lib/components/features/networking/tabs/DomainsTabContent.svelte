@@ -279,9 +279,6 @@
 								<!-- Ingress Features Pills -->
 								<TableCell class="px-3 py-3">
 									<div class="flex flex-wrap items-center gap-1">
-										{#if domain.websocket}
-											<Badge variant="neutral" class="font-mono text-[10.5px]">WS 101</Badge>
-										{/if}
 										{#if domain.cors}
 											<Badge variant="neutral" class="font-mono text-[10.5px]">CORS</Badge>
 										{/if}
@@ -291,7 +288,7 @@
 										{#if domain.basicAuth && domain.hasBasicAuth}
 											<Badge variant="warning" class="font-mono text-[10.5px]">Basic auth</Badge>
 										{/if}
-										{#if !domain.websocket && !domain.cors && !(domain.basicAuth && domain.hasBasicAuth) && !domain.hsts}
+										{#if !domain.cors && !(domain.basicAuth && domain.hasBasicAuth) && !domain.hsts}
 											<span class="text-[11px] text-[var(--text-tertiary)]">Standard</span>
 										{/if}
 									</div>

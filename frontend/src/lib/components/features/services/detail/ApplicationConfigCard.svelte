@@ -9,6 +9,7 @@
 	import ServicePortConfig from './config/ServicePortConfig.svelte';
 	import ServiceAdvancedConfig from './config/ServiceAdvancedConfig.svelte';
 	import GitWebhookSection from './config/GitWebhookSection.svelte';
+	import { parseCpuLimit, parseMemoryMb } from '$lib/parsers/advanced-validation';
 
 	interface Props {
 		service: Service;
@@ -245,11 +246,31 @@
 			}
 
 			// 3. Runtime & Resources
+			if (cpuLimit.trim()) {
+				const parsedCpu = parseCpuLimit(cpuLimit);
+				if (Number.isNaN(parsedCpu)) {
+					toast.add(errorToastOptions('Invalid CPU limit', 'Must be between 0.01 and 64 cores'));
+					return;
+				}
+				service.cpuLimit = parsedCpu > 0 ? parsedCpu : undefined;
+			} else {
+				service.cpuLimit = undefined;
+			}
+
+			if (memLimit.trim()) {
+				const parsedMem = parseMemoryMb(memLimit);
+				if (Number.isNaN(parsedMem)) {
+					toast.add(errorToastOptions('Invalid memory limit', 'Enter a valid size (e.g. 512MB, 1G)'));
+					return;
+				}
+				service.memoryLimit = parsedMem > 0 ? parsedMem : undefined;
+			} else {
+				service.memoryLimit = undefined;
+			}
+
 			service.runtimeTarget = runtimeTarget;
 			service.inPod = runtimeTarget === 'pod';
 			service.podId = runtimeTarget === 'pod' ? podName : undefined;
-			service.cpuLimit = cpuLimit.trim() ? parseFloat(cpuLimit.trim()) : undefined;
-			service.memoryLimit = memLimit.trim() ? parseFloat(memLimit.trim()) : undefined;
 
 			// 4. Triggers
 			service.autoDeploy = autoDeploy;

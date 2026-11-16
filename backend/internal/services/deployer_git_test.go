@@ -21,7 +21,7 @@ func TestDeployGitFailsWhenSSHKeyUnavailable(t *testing.T) {
 	d := NewDeployer(nil, failingSSHKeyProvider{}, nil, t.TempDir())
 	_, err := d.deployGit(context.Background(), Service{
 		ID:       "svc-ssh",
-		GitRepo:  "file:///tmp/does-not-matter.git",
+		GitRepo:  "git@github.com:example/does-not-matter.git",
 		SSHKeyID: "key-1",
 	}, "dep-1", "manual", func(string) {})
 	if err == nil || !strings.Contains(err.Error(), "load ssh key") {

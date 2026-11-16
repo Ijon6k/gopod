@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
-	import { Button, Badge } from '$lib/components/ui';
+	import { Button, Badge, ConfirmDialog, Banner } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { onMount, untrack } from 'svelte';
@@ -45,14 +45,15 @@
 		}
 	});
 
-	// Section collapse states
+	// Section collapse states. Frequently-touched sections (lifecycle, storage,
+	// resources) start open; deeper tuning sections start collapsed with a
+	// summary in their header.
 	let openSections = $state<Record<string, boolean>>({
-		runtime: true,
+		runtime: false,
 		lifecycle: true,
-		security: true,
 		storage: true,
 		resources: true,
-		effective: true
+		effective: false
 	});
 
 	// ── Workload-type awareness ─────────────────────────────────────────────
@@ -183,6 +184,19 @@
 			volumeErrors.some((e) => e !== '')
 	);
 
+	let invalidCount = $derived(
+		[
+			cpuError,
+			memError,
+			pidsError,
+			swapError,
+			capAddError,
+			capDropError,
+			userNsError,
+			devicesError
+		].filter((e) => e !== '').length + volumeErrors.filter((e) => e !== '').length
+	);
+
 	// ── Per-panel dirty tracking ────────────────────────────────────────────
 	interface AdvancedSnapshot {
 		runtimeSecurity: string;
@@ -245,15 +259,14 @@
 	);
 
 	let isDemoting = $state(false);
+	let showDemoteConfirm = $state(false);
 
-	async function handleDemoteQuadlet() {
-		if (
-			!confirm(
-				`Demote '${service.name}' from systemd Quadlet supervision? This will stop the systemd user service and run the workload directly via Podman.`
-			)
-		) {
-			return;
-		}
+	function requestDemote() {
+		showDemoteConfirm = true;
+	}
+
+	async function performDemote() {
+		showDemoteConfirm = false;
 		isDemoting = true;
 		try {
 			const updated = await dataStore.demoteQuadlet(service.id);
@@ -261,13 +274,13 @@
 				service = updated;
 			}
 			toast.add({
-				title: 'Demoted to Standalone',
-				description: `Workload ${service.name} is now managed directly by Podman.`,
+				title: 'Demoted to Podman',
+				description: `${service.name} is now managed directly by Podman.`,
 				variant: 'success'
 			});
 		} catch (err: any) {
 			toast.add(
-				errorToastOptions('Demote Failed', err?.message || 'Failed to demote quadlet workload')
+				errorToastOptions('Demote failed', err?.message || 'Failed to demote quadlet workload')
 			);
 		} finally {
 			isDemoting = false;
@@ -276,6 +289,7 @@
 
 	let isSaving = $state(false);
 	let saveStatus = $state<'idle' | 'saved' | 'error'>('idle');
+	let showSaveConfirm = $state(false);
 
 	async function handleSave() {
 		if (hasValidationErrors) {
@@ -301,12 +315,14 @@
 		// these settings on the next deploy.
 		const isRunning = service.status === 'running' || service.status === 'deploying';
 		if (isRunning) {
-			const proceed = confirm(
-				'Save advanced settings? They take effect on the next deploy, not on the running container.'
-			);
-			if (!proceed) return;
+			showSaveConfirm = true;
+			return;
 		}
+		await performSave();
+	}
 
+	async function performSave() {
+		showSaveConfirm = false;
 		isSaving = true;
 		try {
 			const parsedCpu = parseCpuLimit(cpuText);
@@ -346,25 +362,29 @@
 				},
 				resources: {
 					pidsLimit: parsedPids,
-					swapLimit: swap.value
+					swapLimit: normalizeSwapLimit(swapText).value
 				}
 			};
 
 			await dataStore.updateService(service);
-			snap = snapshot(normalizeSwapLimit(swapText).value);
+			snap = currentSnapshot();
 			saveStatus = 'saved';
 			setTimeout(() => (saveStatus = 'idle'), 2500);
 			toast.add({
 				title: 'Advanced settings saved',
-				description: isRunning
-					? 'Stored — the next deploy picks them up.'
-					: 'Stored — the next deploy picks them up.',
+				description: 'Stored — the next deploy picks them up.',
 				variant: 'success'
 			});
 		} catch (err) {
 			console.error('Failed to save advanced service configuration:', err);
 			saveStatus = 'error';
 			setTimeout(() => (saveStatus = 'idle'), 3000);
+			toast.add(
+				errorToastOptions(
+					'Save failed',
+					'The settings were not stored. Check the connection and try again.'
+				)
+			);
 		} finally {
 			isSaving = false;
 		}
@@ -381,24 +401,29 @@
 				>Advanced Service Configuration</span
 			>
 			<span class="text-xs text-[var(--text-tertiary)]">
-				Every field here maps to a real podman flag or unit directive; saved settings apply on the
-				next deploy.
+				Every field maps to a real podman flag or unit directive; saved settings apply on the next
+				deploy.
 			</span>
 		</div>
 		<div class="flex flex-wrap items-center gap-2">
+			{#if hasValidationErrors}
+				<Badge variant="error" class="shrink-0 px-2 py-0.5 text-[11px]">
+					Fix {invalidCount} invalid field{invalidCount === 1 ? '' : 's'}
+				</Badge>
+			{/if}
 			{#each dirtyPanels as panel (panel)}
 				<Badge variant="warning" class="shrink-0 px-2 py-0.5 text-[11px]">{panel} changed</Badge>
 			{/each}
 			<Button
 				variant="primary"
 				size="sm"
-				disabled={isSaving}
+				disabled={isSaving || hasValidationErrors}
 				onclick={handleSave}
 			>
 				{#if isSaving}
 					<SpinnerGap size={13} class="animate-spin" /> Saving…
 				{:else if saveStatus === 'saved'}
-					<Check size={13} class="text-white" /> Saved
+					<Check size={13} /> Saved
 				{:else}
 					<FloppyDisk size={13} /> Save Configuration
 				{/if}
@@ -408,38 +433,31 @@
 
 	{#if !advancedApplies}
 		<!-- Honest workload-type state: these fields genuinely do not apply -->
-		<div
-			class="flex items-start gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-4"
-		>
-			<WarningCircle size={18} weight="fill" class="mt-0.5 shrink-0 text-kumo-warning" />
-			<div class="flex flex-col gap-1">
-				<span class="text-sm font-semibold text-[var(--text-primary)]">
-					Advanced settings do not apply to this workload type
-				</span>
-				<span class="text-xs leading-relaxed text-[var(--text-secondary)]">
-					{applicabilityReason}
-				</span>
+		<Banner variant="alert">
+			{#snippet icon()}
+				<WarningCircle size={18} weight="fill" class="shrink-0" />
+			{/snippet}
+			<div class="flex flex-col gap-1 text-xs leading-relaxed">
+				<span class="font-semibold">Advanced settings do not apply to this workload type</span>
+				<span>{applicabilityReason}</span>
 			</div>
-		</div>
+		</Banner>
 	{:else}
 		{#if quadletGenerationNote}
-			<div
-				class="flex items-start gap-3 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-panel)] p-4"
-			>
-				<WarningCircle size={18} weight="fill" class="mt-0.5 shrink-0 text-kumo-warning" />
-				<div class="flex flex-col gap-1">
-					<span class="text-sm font-semibold text-[var(--text-primary)]"> Quadlet workload </span>
-					<span class="text-xs leading-relaxed text-[var(--text-secondary)]">
-						{quadletGenerationNote}
-					</span>
+			<Banner variant="alert">
+				{#snippet icon()}
+					<WarningCircle size={18} weight="fill" class="shrink-0" />
+				{/snippet}
+				<div class="flex flex-col gap-1 text-xs leading-relaxed">
+					<span class="font-semibold">Quadlet workload</span>
+					<span>{quadletGenerationNote}</span>
 				</div>
-			</div>
+			</Banner>
 		{/if}
 
-		<!-- 1. Runtime & Security Panels -->
+		<!-- 1. Runtime & Security (merged: execution + security capabilities) -->
 		<RuntimeSecurityCard
-			bind:openRuntime={openSections.runtime}
-			bind:openSecurity={openSections.security}
+			bind:open={openSections.runtime}
 			bind:userNamespace
 			{userNsError}
 			bind:devices
@@ -456,28 +474,28 @@
 			{privilegedUserNsWarning}
 		/>
 
-		<!-- 2. Lifecycle & Systemd Supervision Panel -->
+		<!-- 2. Lifecycle & Systemd Supervision -->
 		<LifecycleConfigCard
-			bind:openLifecycle={openSections.lifecycle}
+			bind:open={openSections.lifecycle}
 			{service}
 			{lingerInfo}
 			bind:restartPolicy
 			{isDemoting}
-			onDemoteQuadlet={handleDemoteQuadlet}
+			onDemoteQuadlet={requestDemote}
 			onOpenQuadlet={() => onNavigateTab?.('quadlet')}
 		/>
 
-		<!-- 3. Storage & Volume Mounts Panel -->
+		<!-- 3. Storage & Volume Mounts -->
 		<StorageVolumesCard
-			bind:openStorage={openSections.storage}
+			bind:open={openSections.storage}
 			serviceName={service.name}
 			bind:volumes
 			{volumeErrors}
 		/>
 
-		<!-- 4. Resource Limits Panel -->
+		<!-- 4. Resource Limits -->
 		<ResourceTuningCard
-			bind:openResources={openSections.resources}
+			bind:open={openSections.resources}
 			bind:cpuText
 			{cpuError}
 			bind:memText
@@ -489,6 +507,30 @@
 		/>
 
 		<!-- 5. Effective Configuration (backend generator output) -->
-		<EffectiveConfigPanel bind:openEffective={openSections.effective} {service} />
+		<EffectiveConfigPanel bind:open={openSections.effective} {service} />
 	{/if}
 </div>
+
+<!-- Destructive demote confirmation (replaces the native confirm()) -->
+<ConfirmDialog
+	open={showDemoteConfirm}
+	title={`Demote '${service.name}'?`}
+	description="The systemd user service will be stopped and the workload will run directly under Podman. Restart supervision is lost."
+	variant="danger"
+	confirmText="Demote"
+	isConfirming={isDemoting}
+	onconfirm={performDemote}
+	oncancel={() => (showDemoteConfirm = false)}
+/>
+
+<!-- Save-while-running confirmation (replaces the native confirm()) -->
+<ConfirmDialog
+	open={showSaveConfirm}
+	title="Save advanced settings?"
+	description="This service is running — saved settings take effect on the next deploy, not on the running container."
+	variant="default"
+	confirmText="Save settings"
+	isConfirming={isSaving}
+	onconfirm={performSave}
+	oncancel={() => (showSaveConfirm = false)}
+/>

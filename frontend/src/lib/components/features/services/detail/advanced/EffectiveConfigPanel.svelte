@@ -8,11 +8,11 @@
 	import { ArrowsClockwise, CheckCircle, FileCode, WarningCircle } from 'phosphor-svelte';
 
 	interface Props {
-		openEffective?: boolean;
+		open?: boolean;
 		service: Service;
 	}
 
-	let { openEffective = $bindable(true), service }: Props = $props();
+	let { open = $bindable(true), service }: Props = $props();
 
 	const toast = useKumoToastManager();
 
@@ -36,11 +36,11 @@
 
 <SectionCard
 	title="Effective Configuration"
-	description="Generated unit files from saved settings, checked by quadlet -dryrun — what the next promotion deploys."
+	description="Generated unit files from saved settings, verified with quadlet -dryrun."
 	collapsible={true}
-	bind:open={openEffective}
+	bind:open
 >
-	<div class="flex flex-col gap-3 pt-1">
+	<div class="flex flex-col gap-3">
 		<div class="flex flex-wrap items-center gap-2">
 			<Button variant="secondary" size="sm" disabled={loading} onclick={handlePreview}>
 				{#if loading}
@@ -61,7 +61,7 @@
 			{#if preview.error}
 				<Banner variant="alert">
 					{#snippet icon()}
-						<WarningCircle size={18} weight="fill" class="shrink-0 text-kumo-warning" />
+						<WarningCircle size={18} weight="fill" class="text-kumo-warning shrink-0" />
 					{/snippet}
 					<pre
 						class="m-0 font-mono text-[11px] leading-relaxed whitespace-pre-wrap">{preview.error}</pre>
@@ -85,8 +85,7 @@
 
 			{#if preview.dryrun}
 				<div class="flex flex-col gap-1">
-					<span class="text-[10px] font-medium text-[var(--text-tertiary)] uppercase"
-						>quadlet -dryrun output</span
+					<span class="text-xs font-medium text-[var(--text-tertiary)]">quadlet -dryrun output</span
 					>
 					<pre
 						class="max-h-32 overflow-auto rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-surface)] p-3 font-mono text-[11px] leading-relaxed text-[var(--text-tertiary)]">{preview.dryrun}</pre>

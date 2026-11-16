@@ -82,6 +82,40 @@ func TestValidDeploymentLogID(t *testing.T) {
 	}
 }
 
+func TestValidateGitURL(t *testing.T) {
+	valid := []string{
+		"https://github.com/user/repo.git",
+		"http://gitlab.local/user/repo",
+		"ssh://git@github.com:22/user/repo.git",
+		"git://github.com/user/repo.git",
+		"git@github.com:user/repo.git",
+		"git@gitlab.com:org/subgroup/repo.git",
+	}
+	for _, u := range valid {
+		if err := ValidateGitURL(u); err != nil {
+			t.Errorf("git URL %q must be accepted, got %v", u, err)
+		}
+	}
+
+	invalid := []string{
+		"",
+		"   ",
+		"-oProxyCommand=calc.exe",
+		"--upload-pack=evil",
+		"file:///etc/passwd",
+		"ext::sh -c evil",
+		"fd::1",
+		"git-lfs::https://evil.com",
+		"https://",
+		"repo with space",
+	}
+	for _, u := range invalid {
+		if err := ValidateGitURL(u); err == nil {
+			t.Errorf("git URL %q must be rejected", u)
+		}
+	}
+}
+
 // Regression tests for the SEC-7 identifier charset (SEC-7: client-supplied
 // Service.ID / ProjectID used directly in filesystem paths incl.
 // os.RemoveAll). Every valid generated id shape must pass; every traversal,

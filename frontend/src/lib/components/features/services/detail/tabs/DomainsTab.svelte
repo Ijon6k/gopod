@@ -306,12 +306,6 @@
 								<!-- Features -->
 								<TableCell class="px-3 py-3">
 									<div class="flex flex-wrap items-center gap-1">
-										{#if d.websocket}
-											<span
-												class="rounded border border-[var(--border-subtle)] bg-[var(--bg-table-header)] px-1.5 py-0.5 text-[10px] font-[var(--font-mono)] text-[var(--text-secondary)]"
-												>WS</span
-											>
-										{/if}
 										{#if d.cors}
 											<span
 												class="rounded border border-[var(--border-subtle)] bg-[var(--bg-table-header)] px-1.5 py-0.5 text-[10px] font-[var(--font-mono)] text-[var(--text-secondary)]"
@@ -330,7 +324,7 @@
 												>HSTS</span
 											>
 										{/if}
-										{#if !d.websocket && !d.cors && !(d.basicAuth && d.hasBasicAuth) && !d.hsts}
+										{#if !d.cors && !(d.basicAuth && d.hasBasicAuth) && !d.hsts}
 											<span class="text-[11px] text-[var(--text-muted)]">—</span>
 										{/if}
 									</div>

@@ -417,7 +417,7 @@
 			<Button
 				variant="primary"
 				size="sm"
-				disabled={isSaving || hasValidationErrors}
+				disabled={isSaving || hasValidationErrors || dirtyPanels.length === 0}
 				onclick={handleSave}
 			>
 				{#if isSaving}

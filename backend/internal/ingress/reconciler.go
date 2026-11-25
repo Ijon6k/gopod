@@ -338,11 +338,14 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 	// adminRequestURL (definition below) maps a configured admin endpoint to
 	// its request-usable URL: unix:// endpoints become the pseudo host
 	// "http://unix" because the custom transport dials the socket path itself.
-	endpoints := []string{adminRequestURL(r.adminURL)}
-	if !isAdminUDS(r.adminURL) {
-		if r.adminURL == "http://caddy:2019" {
+	r.mu.RLock()
+	currentAdminURL := r.adminURL
+	r.mu.RUnlock()
+	endpoints := []string{adminRequestURL(currentAdminURL)}
+	if !isAdminUDS(currentAdminURL) {
+		if currentAdminURL == "http://caddy:2019" {
 			endpoints = append(endpoints, "http://127.0.0.1:2019", "http://localhost:2019")
-		} else if strings.Contains(r.adminURL, "127.0.0.1") || strings.Contains(r.adminURL, "localhost") {
+		} else if strings.Contains(currentAdminURL, "127.0.0.1") || strings.Contains(currentAdminURL, "localhost") {
 			endpoints = append(endpoints, "http://caddy:2019")
 		}
 	}
@@ -385,12 +388,15 @@ func (r *Reconciler) Reconcile(ctx context.Context, domains []Domain) error {
 		// Track the endpoint: for unix sockets, preserve the configured
 		// URL instead of the synthetic "http://unix" request URL. For TCP,
 		// keep the working fallback endpoint to avoid future retry timeouts.
+		r.mu.Lock()
 		if isAdminUDS(r.configuredAdminURL) {
 			r.adminURL = r.configuredAdminURL
 		} else {
 			r.adminURL = endpoint
 		}
-		log.Printf("✅ Caddy ingress updated with %d domain rules via %s", validDomains, r.adminURL)
+		newAdminURL := r.adminURL
+		r.mu.Unlock()
+		log.Printf("✅ Caddy ingress updated with %d domain rules via %s", validDomains, newAdminURL)
 		reloaded = true
 		rejected = false
 		break
@@ -627,12 +633,16 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 		caddyLogFile = envLog
 	}
 
+	r.mu.RLock()
+	currentAdminURL := r.adminURL
+	r.mu.RUnlock()
+
 	ctrlUpstream := fmt.Sprintf("127.0.0.1:%s", r.controlPort)
 	if envUpstream := os.Getenv("CADDY_UPSTREAM"); envUpstream != "" {
 		ctrlUpstream = envUpstream
 	} else if bindHost := os.Getenv("GOPOD_BIND_HOST"); bindHost == "127.0.0.1" || bindHost == "localhost" {
 		ctrlUpstream = fmt.Sprintf("127.0.0.1:%s", r.controlPort)
-	} else if strings.Contains(r.adminURL, "caddy:") || os.Getenv("CADDY_ADMIN_URL") != "" {
+	} else if strings.Contains(currentAdminURL, "caddy:") || os.Getenv("CADDY_ADMIN_URL") != "" {
 		ctrlUpstream = fmt.Sprintf("gopod:%s", r.controlPort)
 	}
 
@@ -930,5 +940,7 @@ func (r *Reconciler) ReadCurrentCaddyfile() string {
 
 // GetAdminURL returns the configured Caddy Admin API endpoint.
 func (r *Reconciler) GetAdminURL() string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
 	return r.adminURL
 }

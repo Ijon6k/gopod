@@ -106,7 +106,7 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setSessionCookie(w, r, token, 30*86400)
-	httputil.WriteJSON(w, http.StatusCreated, AuthResponse{User: *user, Token: token})
+	httputil.WriteJSON(w, http.StatusCreated, AuthResponse{User: *user})
 }
 
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
@@ -158,7 +158,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setSessionCookie(w, r, token, 30*86400)
-	httputil.WriteJSON(w, http.StatusOK, AuthResponse{User: *user, Token: token})
+	httputil.WriteJSON(w, http.StatusOK, AuthResponse{User: *user})
 }
 
 func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
@@ -228,11 +228,12 @@ func (h *Handler) handleStreamGrant(w http.ResponseWriter, r *http.Request) {
 }
 
 func setSessionCookie(w http.ResponseWriter, r *http.Request, token string, maxAge int) {
+	isTrusted := r != nil && IsTrustedProxy(r.RemoteAddr)
 	isSecure := r != nil && (r.TLS != nil ||
-		strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") ||
-		strings.EqualFold(r.Header.Get("X-Forwarded-Scheme"), "https") ||
-		strings.EqualFold(r.Header.Get("X-Forwarded-Ssl"), "on") ||
-		os.Getenv("COOKIE_SECURE") == "true")
+		os.Getenv("COOKIE_SECURE") == "true" ||
+		(isTrusted && (strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") ||
+			strings.EqualFold(r.Header.Get("X-Forwarded-Scheme"), "https") ||
+			strings.EqualFold(r.Header.Get("X-Forwarded-Ssl"), "on"))))
 	http.SetCookie(w, &http.Cookie{
 		Name:     "gopod_session",
 		Value:    token,

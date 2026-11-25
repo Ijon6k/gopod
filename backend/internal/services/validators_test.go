@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"strings"
 	"testing"
 )
@@ -153,5 +154,49 @@ func TestValidateIdentifierRejectsPathFlagAndWhitespace(t *testing.T) {
 		if err := ValidateIdentifier("service id", id); err == nil {
 			t.Errorf("id %q must be rejected", id)
 		}
+	}
+}
+
+func TestValidateContainerImageRejectsLeadingDash(t *testing.T) {
+	if err := ValidateContainerImage("--privileged"); err == nil {
+		t.Fatal("expected leading-dash image reference to be rejected")
+	}
+}
+
+func TestGenerateQuadletPreservesHostBindMountsAndNoNewPrivileges(t *testing.T) {
+	svc := Service{
+		ID:        "svc-1",
+		ProjectID: "proj-1",
+		Name:      "pg",
+		Image:     "postgres:16-alpine",
+		Advanced:  &ServiceAdvancedConfig{},
+	}
+	svc.Advanced.Security.NoNewPrivileges = true
+	svc.Advanced.Security.AppArmorProfile = "docker-default\nExecStart=/bin/sh"
+	svc.Advanced.Storage.Volumes = []VolumeMountConfig{
+		{Source: "/mnt/ssd/pgdata", Target: "/var/lib/postgresql/data", Options: "Z"},
+		{Source: "pg_named", Target: "/var/lib/other", Options: ""},
+	}
+	d := &Deployer{}
+	unit := d.generateDefaultQuadletContent(context.Background(), svc, "pg")
+	if !strings.Contains(unit, "Volume=/mnt/ssd/pgdata:/var/lib/postgresql/data:Z") {
+		t.Fatalf("expected absolute host bind mount preserved, got:\n%s", unit)
+	}
+	if !strings.Contains(unit, "Volume=pg_named:/var/lib/other:Z") {
+		t.Fatalf("expected named volume preserved, got:\n%s", unit)
+	}
+	if !strings.Contains(unit, "NoNewPrivileges=true") {
+		t.Fatalf("expected NoNewPrivileges=true emitted, got:\n%s", unit)
+	}
+	if strings.Contains(unit, "\nExecStart=") {
+		t.Fatalf("expected newline injection stripped, got:\n%s", unit)
+	}
+}
+
+func TestRedactDeploymentSnapshotMasksSecrets(t *testing.T) {
+	raw := `{"id":"s1","projectId":"p1","name":"web","webhookSecret":"whsec_123","envVars":[{"key":"API_KEY","value":"topsecret","secret":true}]}`
+	dep := redactDeploymentSnapshot(Deployment{ID: "d1", ConfigSnapshot: raw})
+	if strings.Contains(dep.ConfigSnapshot, "topsecret") || strings.Contains(dep.ConfigSnapshot, "whsec_123") {
+		t.Fatalf("expected deployment snapshot secrets redacted, got: %s", dep.ConfigSnapshot)
 	}
 }

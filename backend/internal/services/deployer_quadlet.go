@@ -342,7 +342,7 @@ func (d *Deployer) runQuadletUnitsDirectly(ctx context.Context, s Service, files
 		d.setupCmdEnv(chkCmd)
 		if err := chkCmd.Run(); err != nil {
 			logLine(fmt.Sprintf("📦 Pulling container image '%s'...", image))
-			_ = d.pullImage(ctx, image, nil, logLine)
+			_ = d.pullImage(ctx, image, d.resolveRegistry(ctx, s), logLine)
 		}
 	}
 
@@ -392,6 +392,59 @@ func (d *Deployer) runQuadletUnitsDirectly(ctx context.Context, s Service, files
 		if r := strings.ToLower(strings.TrimSpace(parsed.RestartPolicy)); r == "always" || r == "no" || r == "unless-stopped" || strings.HasPrefix(r, "on-failure") {
 			restart = r
 		}
+		var secOpts []string
+		userNS := parsed.UserNS
+		privileged := parsed.Privileged
+		capAdd := parsed.CapAdd
+		capDrop := parsed.CapDrop
+		devices := parsed.Devices
+		pidsLimit := 0
+		memSwap := ""
+		if parsed.NoNewPrivileges {
+			secOpts = append(secOpts, "no-new-privileges")
+		}
+		if s.Advanced != nil {
+			if userNS == "" && s.Advanced.Runtime.UserNamespace != "" && s.Advanced.Runtime.UserNamespace != "default" && s.Advanced.Runtime.UserNamespace != "none" {
+				userNS = s.Advanced.Runtime.UserNamespace
+			}
+			if !privileged {
+				privileged = s.Advanced.Security.Privileged
+			}
+			if len(capAdd) == 0 {
+				capAdd = s.Advanced.Security.CapAdd
+			}
+			if len(capDrop) == 0 {
+				capDrop = s.Advanced.Security.CapDrop
+			}
+			if len(devices) == 0 {
+				devices = s.Advanced.Runtime.Devices
+			}
+			pidsLimit = s.Advanced.Resources.PIDsLimit
+			if swap, swapErr := podman.NormalizeMemorySwap(s.Advanced.Resources.SwapLimit); swapErr == nil {
+				memSwap = swap
+			}
+			if s.Advanced.Security.NoNewPrivileges && !parsed.NoNewPrivileges {
+				secOpts = append(secOpts, "no-new-privileges")
+			}
+			rawLabel := strings.TrimSpace(s.Advanced.Security.SELinuxLabel)
+			if rawLabel != "" && rawLabel != "container_file_t" {
+				if rawLabel == "disable" || rawLabel == "disabled" || rawLabel == "label=disable" {
+					secOpts = append(secOpts, "label=disable")
+				} else if strings.HasPrefix(rawLabel, "label=") {
+					secOpts = append(secOpts, rawLabel)
+				} else {
+					secOpts = append(secOpts, fmt.Sprintf("label=type:%s", rawLabel))
+				}
+			}
+			if prof := strings.TrimSpace(s.Advanced.Security.AppArmorProfile); prof != "" {
+				if prof == "unconfined" || prof == "disable" || prof == "disabled" {
+					secOpts = append(secOpts, "apparmor=unconfined")
+				} else {
+					secOpts = append(secOpts, fmt.Sprintf("apparmor=%s", prof))
+				}
+			}
+		}
+
 		logLine(fmt.Sprintf("🚀 Starting fallback container '%s' (image: %s)...", cName, parsed.Image))
 		fallbackOpts := podman.RunContainerOptions{
 			Name:    cName,
@@ -406,6 +459,16 @@ func (d *Deployer) runQuadletUnitsDirectly(ctx context.Context, s Service, files
 				"io.gopod.project": s.ProjectID,
 				"io.gopod.name":    s.Name,
 			},
+			CPULimit:      s.CPULimit,
+			MemoryLimit:   s.MemoryLimit,
+			PidsLimit:     pidsLimit,
+			MemorySwap:    memSwap,
+			UserNS:        userNS,
+			Privileged:    privileged,
+			CapAdd:        capAdd,
+			CapDrop:       capDrop,
+			Devices:       devices,
+			SecurityOpt:   secOpts,
 			RestartPolicy: restart,
 			Volumes:       parsed.Volumes,
 		}

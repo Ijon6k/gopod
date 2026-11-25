@@ -42,6 +42,23 @@ func validateVolumeName(raw string) error {
 	return nil
 }
 
+// validateScheduleTarget allows named volumes, system:gopod, or db:<engine>.
+func validateScheduleTarget(raw string) error {
+	if raw == "system:gopod" {
+		return nil
+	}
+	if strings.HasPrefix(raw, "db:") {
+		engine := strings.ToLower(strings.TrimPrefix(raw, "db:"))
+		switch engine {
+		case "postgres", "mysql", "mariadb", "mongodb", "redis":
+			return nil
+		default:
+			return fmt.Errorf("unsupported database schedule target %q", raw)
+		}
+	}
+	return validateVolumeName(raw)
+}
+
 // Sentinel errors for precise HTTP status mapping.
 var (
 	// ErrBackupInProgress reports an overlapping backup creation attempt.
@@ -64,15 +81,20 @@ type AuditRecorder interface {
 	Record(ctx context.Context, action, actor, target, category, ip, status string) error
 }
 
+// ServiceEnvResolver returns decrypted env vars for a service so scheduled
+// database dumps can authenticate without embedding static credentials.
+type ServiceEnvResolver func(ctx context.Context, serviceID string) (map[string]string, error)
+
 // Service encapsulates storage backups and snapshot lifecycle business logic.
 type Service struct {
-	repo     Repository
-	cron     *cron.Cron
-	sqlDB    *sql.DB
-	dataDir  string
-	audit    AuditRecorder
-	mu       sync.Mutex
-	backupMu sync.Mutex
+	repo        Repository
+	cron        *cron.Cron
+	sqlDB       *sql.DB
+	dataDir     string
+	audit       AuditRecorder
+	envResolver ServiceEnvResolver
+	mu          sync.Mutex
+	backupMu    sync.Mutex
 }
 
 func (s *Service) getDataDir() string {
@@ -93,6 +115,11 @@ func (s *Service) backupDir() string {
 // SetAuditRecorder configures audit recording for storage lifecycle operations.
 func (s *Service) SetAuditRecorder(ar AuditRecorder) {
 	s.audit = ar
+}
+
+// SetServiceEnvResolver configures service env lookup for scheduled DB backups.
+func (s *Service) SetServiceEnvResolver(fn ServiceEnvResolver) {
+	s.envResolver = fn
 }
 
 // NewService creates a new storage domain service.
@@ -207,6 +234,7 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 			state := s.mirrorSnapshotToDestination(ctx, &snap, filePath)
 			snap.RemoteStatus = state.Status
 			snap.RemoteProvider = state.Provider
+			snap.RemoteDestinationID = state.DestinationID
 			snap.RemoteKey = state.RemoteKey
 			snap.Checksum = state.Checksum
 			snap.RemoteError = state.ErrText
@@ -224,11 +252,12 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 	}
 	if snap.RemoteStatus != "" {
 		if err := s.repo.UpdateSnapshotRemote(ctx, snap.ID, SnapshotRemoteState{
-			Status:    snap.RemoteStatus,
-			Provider:  snap.RemoteProvider,
-			RemoteKey: snap.RemoteKey,
-			Checksum:  snap.Checksum,
-			ErrText:   snap.RemoteError,
+			Status:        snap.RemoteStatus,
+			Provider:      snap.RemoteProvider,
+			DestinationID: snap.RemoteDestinationID,
+			RemoteKey:     snap.RemoteKey,
+			Checksum:      snap.Checksum,
+			ErrText:       snap.RemoteError,
 		}); err != nil {
 			// The local archive and its row are intact; only metadata about the
 			// mirror is missing. Operators delete by snapshot id, so silently
@@ -417,7 +446,7 @@ func (s *Service) CreateSchedule(ctx context.Context, sched VolumeSchedule) (*Vo
 	if sched.VolumeName == "" {
 		return nil, errors.New("volumeName is required")
 	}
-	if err := validateVolumeName(sched.VolumeName); err != nil {
+	if err := validateScheduleTarget(sched.VolumeName); err != nil {
 		return nil, err
 	}
 
@@ -539,12 +568,35 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 	}
 	_, _ = s.cron.AddFunc(sched.Cron, func() {
 		ctx := context.Background()
-		snap := VolumeSnapshot{
-			ProjectID:     sched.ProjectID,
-			VolumeName:    sched.VolumeName,
-			DestinationID: sched.DestinationID,
+		var err error
+		if strings.HasPrefix(sched.VolumeName, "db:") && sched.ServiceID != "" {
+			engine := strings.TrimPrefix(sched.VolumeName, "db:")
+			req := DatabaseDumpRequest{
+				ProjectID:     sched.ProjectID,
+				ServiceID:     sched.ServiceID,
+				Engine:        engine,
+				DestinationID: sched.DestinationID,
+			}
+			if s.envResolver != nil {
+				if envMap, envErr := s.envResolver(ctx, sched.ServiceID); envErr == nil && len(envMap) > 0 {
+					req.Username, req.Password, req.Database = extractDBCredsFromEnv(engine, envMap)
+				}
+			}
+			_, err = s.CreateDatabaseDump(ctx, req)
+		} else {
+			snap := VolumeSnapshot{
+				ProjectID:     sched.ProjectID,
+				ServiceID:     sched.ServiceID,
+				VolumeName:    sched.VolumeName,
+				DestinationID: sched.DestinationID,
+			}
+			_, err = s.CreateSnapshot(ctx, snap)
 		}
-		_, err := s.CreateSnapshot(ctx, snap)
+		if updater, ok := s.repo.(interface {
+			UpdateScheduleLastRun(context.Context, string, time.Time) error
+		}); ok {
+			_ = updater.UpdateScheduleLastRun(ctx, sched.ID, time.Now())
+		}
 		if err != nil {
 			// Scheduled backups run in the background where no one looks at a
 			// return value: emit the failure into the engine feed and system
@@ -672,6 +724,49 @@ func (s *Service) DeleteDestination(ctx context.Context, id string) error {
 		return errors.New("repository not initialized")
 	}
 	return s.repo.DeleteDestination(ctx, id)
+}
+
+func extractDBCredsFromEnv(engine string, env map[string]string) (user, pass, dbName string) {
+	switch strings.ToLower(engine) {
+	case "postgres":
+		user = env["POSTGRES_USER"]
+		pass = env["POSTGRES_PASSWORD"]
+		dbName = env["POSTGRES_DB"]
+	case "mysql":
+		user = env["MYSQL_USER"]
+		pass = env["MYSQL_PASSWORD"]
+		if pass == "" {
+			user = "root"
+			pass = env["MYSQL_ROOT_PASSWORD"]
+		}
+		dbName = env["MYSQL_DATABASE"]
+	case "mariadb":
+		user = env["MARIADB_USER"]
+		pass = env["MARIADB_PASSWORD"]
+		if pass == "" {
+			user = "root"
+			pass = env["MARIADB_ROOT_PASSWORD"]
+		}
+		if pass == "" {
+			user = env["MYSQL_USER"]
+			pass = env["MYSQL_PASSWORD"]
+		}
+		if pass == "" {
+			user = "root"
+			pass = env["MYSQL_ROOT_PASSWORD"]
+		}
+		dbName = env["MARIADB_DATABASE"]
+		if dbName == "" {
+			dbName = env["MYSQL_DATABASE"]
+		}
+	case "mongodb":
+		user = env["MONGO_INITDB_ROOT_USERNAME"]
+		pass = env["MONGO_INITDB_ROOT_PASSWORD"]
+		dbName = env["MONGO_INITDB_DATABASE"]
+	case "redis":
+		pass = env["REDIS_PASSWORD"]
+	}
+	return user, pass, dbName
 }
 
 // TestDestination performs a read probe against the configured bucket. It

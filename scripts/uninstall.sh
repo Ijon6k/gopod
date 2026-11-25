@@ -125,8 +125,8 @@ if command -v systemctl &>/dev/null; then
     # Also check if dedicated service user has active units
     if [ "$USER_UID" -eq 0 ] && id -u "$SERVICE_USER" &>/dev/null; then
         svc_uid=$(id -u "$SERVICE_USER")
-        run_podman systemctl --user stop gopod-pod.service gopod-server.service gopod-caddy.service 2>/dev/null || true
-        run_podman systemctl --user disable gopod-pod.service gopod-server.service gopod-caddy.service 2>/dev/null || true
+        svc_run_dir="/run/user/${svc_uid}"
+        su - "$SERVICE_USER" -c "export XDG_RUNTIME_DIR='${svc_run_dir}' DBUS_SESSION_BUS_ADDRESS='unix:path=${svc_run_dir}/bus'; systemctl --user stop gopod-pod.service gopod-server.service gopod-caddy.service; systemctl --user disable gopod-pod.service gopod-server.service gopod-caddy.service" 2>/dev/null || true
     fi
 fi
 echo -e "  ${GREEN}✓${NC} Systemd services stopped."
@@ -144,6 +144,9 @@ echo -e "  ${GREEN}✓${NC} Containers and pods removed."
 echo -e "\n${CYAN}==> [3/6] Cleaning up isolated bridge networks...${NC}"
 run_podman network rm -f gopod-internal 2>/dev/null || true
 run_podman network rm -f gopod-net 2>/dev/null || true
+if [ "$PURGE_DATA" = true ]; then
+    run_podman volume rm -f gopod-caddy-admin 2>/dev/null || true
+fi
 echo -e "  ${GREEN}✓${NC} Networks cleaned up."
 
 echo -e "\n${CYAN}==> [4/6] Removing Quadlet manifests and reloading systemd...${NC}"
@@ -172,6 +175,10 @@ echo -e "  ${GREEN}✓${NC} Quadlet manifests purged."
 
 echo -e "\n${CYAN}==> [5/6] Removing CLI wrappers and system sysctl configurations...${NC}"
 rm -f /usr/local/bin/gopod /usr/bin/gopod "${USER_HOME}/.local/bin/gopod" 2>/dev/null || true
+if id -u "$SERVICE_USER" &>/dev/null; then
+    target_home=$(eval echo "~${SERVICE_USER}")
+    rm -f "${target_home}/.local/bin/gopod" 2>/dev/null || true
+fi
 if [ "$USER_UID" -eq 0 ]; then
     rm -f /etc/sysctl.d/99-gopod.conf 2>/dev/null || true
 fi

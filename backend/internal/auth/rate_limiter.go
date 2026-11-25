@@ -102,6 +102,13 @@ func remoteHost(remoteAddr string) string {
 	return remoteAddr
 }
 
+// IsTrustedProxy reports whether addr (an IP literal or host:port) may supply
+// forwarded headers: loopback peers and entries from TRUSTED_PROXIES (comma
+// separated IPs or CIDR ranges).
+func IsTrustedProxy(addr string) bool {
+	return isTrustedProxy(remoteHost(addr))
+}
+
 // isTrustedProxy reports whether addr (an IP literal) may supply forwarded
 // headers: loopback peers and entries from TRUSTED_PROXIES (comma separated
 // IPs or CIDR ranges).

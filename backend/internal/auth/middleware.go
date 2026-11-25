@@ -68,11 +68,7 @@ func (m *Middleware) guard(allowQueryToken bool, next http.HandlerFunc) http.Han
 		}
 
 		if user == nil {
-			if allowQueryToken {
-				session, user, err = m.authService.GetSessionUserAllowQuery(r)
-			} else {
-				session, user, err = m.authService.GetSessionUser(r)
-			}
+			session, user, err = m.authService.GetSessionUser(r)
 		}
 
 		if err != nil || session == nil || user == nil {

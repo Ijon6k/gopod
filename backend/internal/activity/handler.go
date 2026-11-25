@@ -30,6 +30,9 @@ func (h *Handler) handleActivity(w http.ResponseWriter, r *http.Request) {
 	limit := 100
 	if v := q.Get("limit"); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			if parsed > 500 {
+				parsed = 500
+			}
 			limit = parsed
 		}
 	}
@@ -47,7 +50,7 @@ func (h *Handler) handleActivity(w http.ResponseWriter, r *http.Request) {
 		limit, offset,
 	)
 	if err != nil {
-		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to retrieve activity log")
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})
@@ -58,6 +61,9 @@ func (h *Handler) handleEngineEvents(w http.ResponseWriter, r *http.Request) {
 	limit := 100
 	if v := q.Get("limit"); v != "" {
 		if parsed, err := strconv.Atoi(v); err == nil && parsed > 0 {
+			if parsed > 500 {
+				parsed = 500
+			}
 			limit = parsed
 		}
 	}
@@ -69,7 +75,7 @@ func (h *Handler) handleEngineEvents(w http.ResponseWriter, r *http.Request) {
 		limit,
 	)
 	if err != nil {
-		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to retrieve engine events")
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, map[string]any{"items": items, "total": total})

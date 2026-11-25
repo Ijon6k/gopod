@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -231,8 +232,8 @@ func (c *Client) PruneImages(ctx context.Context, all bool) error {
 // gets the engine's own in-use refusal with its real reason.
 func (c *Client) RemoveImage(ctx context.Context, id string, force bool) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/images/%s?force=%t", c.libpodVersion(), id, force)
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		u := fmt.Sprintf("http://d/%s/libpod/images/%s?force=%t", c.libpodVersion(), url.PathEscape(id), force)
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
 		if err != nil {
 			return err
 		}

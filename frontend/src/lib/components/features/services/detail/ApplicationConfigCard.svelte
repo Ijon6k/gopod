@@ -365,8 +365,6 @@
 			bind:showAdvanced
 			bind:runtimeTarget
 			bind:podName
-			bind:cpuLimit
-			bind:memLimit
 			bind:autoDeploy
 			bind:watchPaths
 		/>

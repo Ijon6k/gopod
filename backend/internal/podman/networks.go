@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strings"
 )
@@ -102,7 +103,8 @@ func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
 		}
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "network", "create", name)
+	cmd := exec.CommandContext(ctx, "podman", "network", "create", "--", name)
+	c.SetupCmdEnv(cmd)
 	if out, err := cmd.CombinedOutput(); err != nil {
 		if strings.Contains(string(out), "already exists") {
 			return nil
@@ -117,8 +119,8 @@ func (c *Client) EnsureNetwork(ctx context.Context, name string) error {
 // in-use refusal with its real reason.
 func (c *Client) RemoveNetwork(ctx context.Context, name string) error {
 	if c.httpClient != nil {
-		url := fmt.Sprintf("http://d/%s/libpod/networks/%s", c.libpodVersion(), name)
-		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, url, nil)
+		u := fmt.Sprintf("http://d/%s/libpod/networks/%s", c.libpodVersion(), url.PathEscape(name))
+		req, err := http.NewRequestWithContext(ctx, http.MethodDelete, u, nil)
 		if err != nil {
 			return err
 		}

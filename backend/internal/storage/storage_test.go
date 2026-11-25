@@ -246,3 +246,38 @@ func TestUpdateSnapshotRemoteRoundtrip(t *testing.T) {
 		t.Fatalf("local-only state not recorded cleanly: %+v", snap)
 	}
 }
+
+func TestValidateS3EndpointAndDBScheduleTargets(t *testing.T) {
+	if err := validateS3Endpoint("http://169.254.169.254/latest/meta-data"); err == nil {
+		t.Fatal("expected metadata IP endpoint to be blocked")
+	}
+	if err := validateS3Endpoint("https://s3.example.com"); err != nil {
+		t.Fatalf("expected valid https S3 endpoint, got: %v", err)
+	}
+	if err := validateS3Endpoint("http://127.0.0.1:9000"); err != nil {
+		t.Fatalf("expected local MinIO endpoint to be allowed, got: %v", err)
+	}
+
+	db, cleanup := setupTestStorageDB(t)
+	defer cleanup()
+	repo := NewSQLiteRepository(db)
+	svc := NewService(repo)
+	ctx := context.Background()
+
+	if _, err := svc.CreateSchedule(ctx, VolumeSchedule{
+		ProjectID:  "proj-1",
+		ServiceID:  "svc-1",
+		VolumeName: "db:postgres",
+		Cron:       "0 2 * * *",
+	}); err != nil {
+		t.Fatalf("expected db:postgres schedule target to succeed, got: %v", err)
+	}
+	if _, err := svc.CreateSchedule(ctx, VolumeSchedule{
+		ProjectID:  "proj-1",
+		ServiceID:  "svc-1",
+		VolumeName: "db:unknown",
+		Cron:       "0 2 * * *",
+	}); err == nil {
+		t.Fatal("expected unsupported db:unknown schedule target to fail")
+	}
+}

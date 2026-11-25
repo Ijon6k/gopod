@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"html"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,7 @@ func (d *Deployer) deployDrop(ctx context.Context, s Service, depID, trigger str
 
 	entries, _ := os.ReadDir(distDir)
 	if len(entries) == 0 {
+		safeName := html.EscapeString(s.Name)
 		indexPath := filepath.Join(distDir, "index.html")
 		_ = os.WriteFile(indexPath, fmt.Appendf(nil, `<!DOCTYPE html>
 <html>
@@ -35,7 +37,7 @@ func (d *Deployer) deployDrop(ctx context.Context, s Service, depID, trigger str
 <p>Service: <strong>%s</strong> is ready.</p>
 <p>Upload your static assets via the Static Drop tab to publish your website.</p>
 </body>
-</html>`, s.Name, s.Name), 0644)
+</html>`, safeName, safeName), 0644)
 	}
 
 	absDistDir, err := filepath.Abs(distDir)

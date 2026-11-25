@@ -395,7 +395,11 @@ func (c *Client) RunContainer(ctx context.Context, opts RunContainerOptions) (st
 			args = append(args, "-e", fmt.Sprintf("%s=%s", k, v))
 		}
 	}
-	args = append(args, opts.Image)
+	img := strings.TrimSpace(opts.Image)
+	if img == "" || strings.HasPrefix(img, "-") || strings.ContainsAny(img, " \t\r\n") {
+		return "", fmt.Errorf("invalid container image %q", opts.Image)
+	}
+	args = append(args, "--", img)
 	if len(opts.Command) > 0 {
 		args = append(args, opts.Command...)
 	}

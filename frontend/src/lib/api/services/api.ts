@@ -137,16 +137,31 @@ export const servicesApi = {
 		onError?: (error: Event) => void
 	): () => void {
 		if (typeof window === 'undefined') return () => {};
-		const es = new EventSource(`/api/deployments/${id}/logs/stream`);
-		es.onmessage = (event) => {
-			if (event.data) onMessage(event.data);
+		let closed = false;
+		let es: EventSource | null = null;
+		const connect = (grant?: string) => {
+			if (closed) return;
+			const qs = grant ? `?grant=${encodeURIComponent(grant)}` : '';
+			es = new EventSource(`/api/deployments/${id}/logs/stream${qs}`, {
+				withCredentials: true
+			});
+			es.onmessage = (event) => {
+				if (event.data) onMessage(event.data);
+			};
+			if (onError) {
+				es.onerror = onError;
+			} else {
+				es.onerror = () => es?.close();
+			}
 		};
-		if (onError) {
-			es.onerror = onError;
-		} else {
-			es.onerror = () => es.close();
-		}
-		return () => es.close();
+		apiClient
+			.get<{ grant: string }>('/auth/stream-grant')
+			.then((res) => connect(res.data?.grant))
+			.catch(() => connect());
+		return () => {
+			closed = true;
+			es?.close();
+		};
 	},
 
 	async getJournal(id: string, lines = 100): Promise<JournalResponse> {

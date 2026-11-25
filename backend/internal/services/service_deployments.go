@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"gopod/internal/activity"
+	"gopod/pkg/crypto"
 )
 
 // ErrDeployInProgress is returned when a service already has a deployment
@@ -82,8 +83,14 @@ func (s *WorkloadService) StartDeploy(ctx context.Context, serviceID, trigger st
 	if trigger == "rollback" && len(overrides) > 2 && overrides[2] != "" {
 		targetDepID := overrides[2]
 		if oldDep, err := s.repo.GetDeployment(ctx, targetDepID); err == nil && oldDep != nil && strings.TrimSpace(oldDep.ConfigSnapshot) != "" {
+			rawSnapshot := strings.TrimSpace(oldDep.ConfigSnapshot)
+			if !strings.HasPrefix(rawSnapshot, "{") {
+				if dec, decErr := crypto.Decrypt(rawSnapshot); decErr == nil {
+					rawSnapshot = dec
+				}
+			}
 			var snapSvc Service
-			if err := json.Unmarshal([]byte(oldDep.ConfigSnapshot), &snapSvc); err == nil {
+			if err := json.Unmarshal([]byte(rawSnapshot), &snapSvc); err == nil {
 				// Restore service snapshot configuration
 				snapSvc.ID = svc.ID
 				snapSvc.ProjectID = svc.ProjectID
@@ -430,10 +437,15 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 	depRecord.Duration = duration
 	depRecord.FinishedAt = &finished
 
-	// If successful, take immutable snapshot of service configuration for rollback
+	// If successful, take immutable snapshot of service configuration for rollback.
+	// Encrypt at rest so decrypted EnvVars/WebhookSecret are never stored plaintext in SQLite.
 	if status == "success" {
 		if snapBytes, err := json.Marshal(svc); err == nil {
-			depRecord.ConfigSnapshot = string(snapBytes)
+			if enc, encErr := crypto.Encrypt(string(snapBytes)); encErr == nil {
+				depRecord.ConfigSnapshot = enc
+			} else {
+				depRecord.ConfigSnapshot = ""
+			}
 		}
 	}
 

@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"gopod/internal/podman"
@@ -147,15 +148,32 @@ func (d *Deployer) generateDefaultQuadletContent(ctx context.Context, s Service,
 	}
 
 	var extraDirectives strings.Builder
+	sanitizeLine := func(v string) string {
+		v = strings.ReplaceAll(v, "\r", "")
+		v = strings.ReplaceAll(v, "\n", "")
+		v = strings.ReplaceAll(v, "\x00", "")
+		return strings.TrimSpace(v)
+	}
+	escapeQuoted := func(v string) string {
+		v = sanitizeLine(v)
+		v = strings.ReplaceAll(v, `\`, `\\`)
+		v = strings.ReplaceAll(v, `"`, `\"`)
+		return v
+	}
 	if extracted.Exec != "" {
-		extraDirectives.WriteString(fmt.Sprintf("Exec=%s\n", extracted.Exec))
+		if execVal := sanitizeLine(extracted.Exec); execVal != "" {
+			extraDirectives.WriteString(fmt.Sprintf("Exec=%s\n", execVal))
+		}
 	}
 	for _, env := range extracted.Environment {
-		extraDirectives.WriteString(fmt.Sprintf("Environment=%s\n", env))
+		if envVal := sanitizeLine(env); envVal != "" {
+			extraDirectives.WriteString(fmt.Sprintf("Environment=%s\n", envVal))
+		}
 	}
 	for _, env := range s.EnvVars {
-		if env.Key != "" && !strings.HasPrefix(env.Key, "#") {
-			extraDirectives.WriteString(fmt.Sprintf("Environment=\"%s=%s\"\n", env.Key, env.Value))
+		key := sanitizeLine(env.Key)
+		if key != "" && !strings.HasPrefix(key, "#") && !strings.Contains(key, "=") {
+			extraDirectives.WriteString(fmt.Sprintf("Environment=\"%s=%s\"\n", key, escapeQuoted(env.Value)))
 		}
 	}
 	for _, vol := range extracted.Volumes {
@@ -171,41 +189,51 @@ func (d *Deployer) generateDefaultQuadletContent(ctx context.Context, s Service,
 	}
 
 	if s.Advanced != nil {
-		if s.Advanced.Runtime.UserNamespace != "" && s.Advanced.Runtime.UserNamespace != "default" && s.Advanced.Runtime.UserNamespace != "none" {
-			extraDirectives.WriteString(fmt.Sprintf("UserNS=%s\n", s.Advanced.Runtime.UserNamespace))
+		if userNS := sanitizeLine(s.Advanced.Runtime.UserNamespace); userNS != "" && userNS != "default" && userNS != "none" {
+			extraDirectives.WriteString(fmt.Sprintf("UserNS=%s\n", userNS))
 		}
 		for _, v := range s.Advanced.Storage.Volumes {
 			if v.Source != "" && v.Target != "" {
-				volSource := SanitizeQuadletSlug(v.Source)
-				if v.Options != "" {
-					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:%s\n", volSource, v.Target, v.Options))
+				var volSource string
+				if strings.HasPrefix(strings.TrimSpace(v.Source), "/") {
+					volSource = sanitizeLine(filepath.Clean(strings.TrimSpace(v.Source)))
 				} else {
-					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:Z\n", volSource, v.Target))
+					volSource = SanitizeQuadletSlug(v.Source)
+				}
+				targetPath := sanitizeLine(v.Target)
+				opts := sanitizeLine(v.Options)
+				if opts != "" {
+					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:%s\n", volSource, targetPath, opts))
+				} else {
+					extraDirectives.WriteString(fmt.Sprintf("Volume=%s:%s:Z\n", volSource, targetPath))
 				}
 			}
 		}
 		for _, cap := range s.Advanced.Security.CapAdd {
-			if cap != "" {
-				extraDirectives.WriteString(fmt.Sprintf("AddCapability=%s\n", cap))
+			if c := sanitizeLine(cap); c != "" {
+				extraDirectives.WriteString(fmt.Sprintf("AddCapability=%s\n", c))
 			}
 		}
 		for _, cap := range s.Advanced.Security.CapDrop {
-			if cap != "" {
-				extraDirectives.WriteString(fmt.Sprintf("DropCapability=%s\n", cap))
+			if c := sanitizeLine(cap); c != "" {
+				extraDirectives.WriteString(fmt.Sprintf("DropCapability=%s\n", c))
 			}
 		}
 		for _, dev := range s.Advanced.Runtime.Devices {
-			if dev != "" {
-				extraDirectives.WriteString(fmt.Sprintf("AddDevice=%s\n", dev))
+			if d := sanitizeLine(dev); d != "" {
+				extraDirectives.WriteString(fmt.Sprintf("AddDevice=%s\n", d))
 			}
+		}
+		if s.Advanced.Security.NoNewPrivileges {
+			extraDirectives.WriteString("NoNewPrivileges=true\n")
 		}
 		if s.Advanced.Security.Privileged || s.Advanced.Security.SELinuxLabel == "disable" {
 			extraDirectives.WriteString("SecurityLabelDisable=true\n")
-		} else if s.Advanced.Security.SELinuxLabel != "" && s.Advanced.Security.SELinuxLabel != "container_file_t" {
-			extraDirectives.WriteString(fmt.Sprintf("SecurityLabelType=%s\n", s.Advanced.Security.SELinuxLabel))
+		} else if selinux := sanitizeLine(s.Advanced.Security.SELinuxLabel); selinux != "" && selinux != "container_file_t" {
+			extraDirectives.WriteString(fmt.Sprintf("SecurityLabelType=%s\n", selinux))
 		}
-		if s.Advanced.Security.AppArmorProfile != "" {
-			extraDirectives.WriteString(fmt.Sprintf("AppArmorProfile=%s\n", s.Advanced.Security.AppArmorProfile))
+		if appArmor := sanitizeLine(s.Advanced.Security.AppArmorProfile); appArmor != "" {
+			extraDirectives.WriteString(fmt.Sprintf("AppArmorProfile=%s\n", appArmor))
 		}
 	}
 	extraDirectives.WriteString(quadletResourceDirectives(s))

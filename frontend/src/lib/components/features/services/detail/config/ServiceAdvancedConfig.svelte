@@ -8,8 +8,6 @@
 		showAdvanced: boolean;
 		runtimeTarget: 'standalone' | 'pod' | 'quadlet';
 		podName: string;
-		cpuLimit: string;
-		memLimit: string;
 		autoDeploy: boolean;
 		watchPaths: string;
 	}
@@ -18,8 +16,6 @@
 		showAdvanced = $bindable(),
 		runtimeTarget = $bindable(),
 		podName = $bindable(),
-		cpuLimit = $bindable(),
-		memLimit = $bindable(),
 		autoDeploy = $bindable(),
 		watchPaths = $bindable()
 	}: Props = $props();
@@ -35,7 +31,7 @@
 			<SlidersHorizontal size={14} />
 			<span>Advanced options</span>
 			<span class="text-[11px] font-normal text-kumo-subtle">
-				(Resource limits, auto-deploy triggers, runtime target)
+				(Runtime target &amp; auto-deploy triggers; resource limits live in Advanced tab)
 			</span>
 		</div>
 		<CaretDown
@@ -94,33 +90,7 @@
 				{/if}
 			</div>
 
-			<!-- 2. Resource Limits (cgroups v2) -->
-			<div class="bg-kumo-surface flex flex-col gap-2 rounded-lg border border-kumo-line p-3.5">
-				<span class="text-xs font-medium text-kumo-default">Resource limits (cgroups v2)</span>
-				<div class="flex flex-wrap items-center gap-4">
-					<div class="flex w-40 flex-col gap-1">
-						<label for="cpu-limit" class="text-[11px] text-kumo-subtle">CPU limit (cores)</label>
-						<Input
-							id="cpu-limit"
-							bind:value={cpuLimit}
-							placeholder="e.g. 1.0 (unlimited)"
-							class="h-8 font-mono text-xs"
-						/>
-					</div>
-
-					<div class="flex w-40 flex-col gap-1">
-						<label for="mem-limit" class="text-[11px] text-kumo-subtle">Memory limit</label>
-						<Input
-							id="mem-limit"
-							bind:value={memLimit}
-							placeholder="e.g. 512MB, 1GB"
-							class="h-8 font-mono text-xs"
-						/>
-					</div>
-				</div>
-			</div>
-
-			<!-- 3. Deployment Triggers & Webhooks -->
+			<!-- 2. Deployment Triggers & Webhooks -->
 			<div class="bg-kumo-surface flex flex-col gap-3 rounded-lg border border-kumo-line p-3.5">
 				<span class="text-xs font-medium text-kumo-default">Deployment triggers</span>
 

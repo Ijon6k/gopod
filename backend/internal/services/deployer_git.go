@@ -171,7 +171,15 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, trigg
 		return result, err
 	}
 
-	imageTag := fmt.Sprintf("gopod-%s-%s:latest", strings.ToLower(s.ProjectID), strings.ToLower(s.Name))
+	projSlug := strings.ToLower(SanitizeQuadletSlug(s.ProjectID))
+	if projSlug == "" {
+		projSlug = "proj"
+	}
+	nameSlug := strings.ToLower(SanitizeQuadletSlug(s.Name))
+	if nameSlug == "" {
+		nameSlug = "svc"
+	}
+	imageTag := fmt.Sprintf("gopod-%s-%s:latest", projSlug, nameSlug)
 	logLine(fmt.Sprintf("🔨 Building container image: %s using %s...", imageTag, dockerfile))
 
 	buildArgs, rejected := normalizeBuildArgs(s.BuildArgs)

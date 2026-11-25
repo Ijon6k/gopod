@@ -6,6 +6,7 @@
 	import { errorToastOptions } from '$lib/utils/toast';
 	import {
 		Button,
+		ConfirmDialog,
 		Field,
 		Input,
 		Select,
@@ -63,30 +64,49 @@
 		})();
 	});
 
-	// Service-specific data
+	// Service-specific data (match exact serviceId or canonical volume prefix, never loose substring)
+	let normalizedServiceSlug = $derived(service.name.toLowerCase().replace(/[^a-z0-9_-]+/g, '-'));
+	function matchesServiceVolume(volName: string): boolean {
+		if (!volName) return false;
+		if (volName === service.id || volName === service.name || volName === normalizedServiceSlug) {
+			return true;
+		}
+		return (
+			volName.startsWith(`${service.id}-`) ||
+			volName.startsWith(`${service.id}_`) ||
+			volName.startsWith(`${normalizedServiceSlug}-`) ||
+			volName.startsWith(`${normalizedServiceSlug}_`)
+		);
+	}
+
 	let serviceSnapshots = $derived(
 		dataStore.volumeSnapshots.filter(
 			(s) =>
 				s.serviceId === service.id ||
-				(service.projectId &&
+				(!s.serviceId &&
+					service.projectId &&
 					s.projectId === service.projectId &&
-					s.volumeName.includes(service.name))
+					matchesServiceVolume(s.volumeName))
 		)
 	);
 	let serviceSchedules = $derived(
 		dataStore.volumeSchedules.filter(
 			(s) =>
 				s.serviceId === service.id ||
-				(service.projectId &&
+				(!s.serviceId &&
+					service.projectId &&
 					s.projectId === service.projectId &&
-					s.volumeName.includes(service.name))
+					matchesServiceVolume(s.volumeName))
 		)
 	);
 	let serviceVolumes = $derived(
 		volumes.filter(
 			(v) =>
 				v.serviceId === service.id ||
-				(service.projectId && v.projectId === service.projectId && v.name.includes(service.name))
+				(!v.serviceId &&
+					service.projectId &&
+					v.projectId === service.projectId &&
+					matchesServiceVolume(v.name))
 		)
 	);
 
@@ -231,13 +251,23 @@
 		dataStore.downloadVolumeSnapshot(snap.id, snap.filename);
 	}
 
-	async function handleDeleteSnapshot(id: string) {
-		if (confirm('Delete this backup archive?')) {
-			try {
-				await dataStore.deleteVolumeSnapshot(id);
-			} catch (err) {
-				console.error('Failed to delete snapshot:', err);
-			}
+	let deletingSnapshotId = $state<string | null>(null);
+	let isDeletingSnapshot = $state(false);
+
+	function handleDeleteSnapshot(id: string) {
+		deletingSnapshotId = id;
+	}
+
+	async function confirmDeleteSnapshot() {
+		if (!deletingSnapshotId) return;
+		isDeletingSnapshot = true;
+		try {
+			await dataStore.deleteVolumeSnapshot(deletingSnapshotId);
+		} catch (err) {
+			console.error('Failed to delete snapshot:', err);
+		} finally {
+			isDeletingSnapshot = false;
+			deletingSnapshotId = null;
 		}
 	}
 </script>
@@ -698,3 +728,14 @@
 		</div>
 	</div>
 {/if}
+
+<ConfirmDialog
+	open={deletingSnapshotId !== null}
+	title="Delete backup archive?"
+	description="This backup archive will be permanently deleted. This action cannot be undone."
+	variant="danger"
+	confirmText="Delete"
+	isConfirming={isDeletingSnapshot}
+	onconfirm={confirmDeleteSnapshot}
+	oncancel={() => (deletingSnapshotId = null)}
+/>

@@ -155,9 +155,12 @@ func (d *Deployer) retirePredecessor(ctx context.Context, predecessorID, canonic
 
 // deployImage pulls container image and starts container.
 func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger string, logLine func(string)) (*DeployResult, error) {
-	imageToRun := s.Image
+	imageToRun := strings.TrimSpace(s.Image)
 	if imageToRun == "" {
 		imageToRun = "docker.io/library/nginx:alpine"
+	}
+	if err := ValidateContainerImage(imageToRun); err != nil {
+		return nil, err
 	}
 
 	// Smart Image Cache Check: avoid redundant remote pulls when image exists locally

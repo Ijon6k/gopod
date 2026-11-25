@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { Service } from '$lib/types';
 	import { api } from '$lib/api';
-	import { Button, CopyButton, Input, Select } from '$lib/components/ui';
+	import { Button, ConfirmDialog, CopyButton, Input, Select } from '$lib/components/ui';
 	import { Badge, useKumoToastManager } from 'kumo-svelte';
 	import { errorToastOptions } from '$lib/utils/toast';
 	import { ArrowsClockwise, CheckCircle, GitBranch, Warning } from 'phosphor-svelte';
@@ -69,15 +69,18 @@
 		};
 	});
 
+	let showRotateConfirm = $state(false);
+
 	async function generateSecret() {
-		if (
-			hasSecret &&
-			!window.confirm(
-				'Rotate the signing secret? The provider webhook stops validating until you paste the new value there.'
-			)
-		) {
+		if (hasSecret) {
+			showRotateConfirm = true;
 			return;
 		}
+		await performGenerateSecret();
+	}
+
+	async function performGenerateSecret() {
+		showRotateConfirm = false;
 		rotating = true;
 		try {
 			const res = await api.services.rotateWebhookSecret(service.id);
@@ -229,3 +232,14 @@
 		{/if}
 	</div>
 </div>
+
+<ConfirmDialog
+	open={showRotateConfirm}
+	title="Rotate signing secret?"
+	description="The provider webhook will stop validating incoming deliveries until you update it with the new signing secret."
+	variant="danger"
+	confirmText="Rotate secret"
+	isConfirming={rotating}
+	onconfirm={performGenerateSecret}
+	oncancel={() => (showRotateConfirm = false)}
+/>

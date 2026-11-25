@@ -273,6 +273,12 @@ func (r *SQLiteRepository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// UpdateStatus updates only the runtime status column without touching other service config fields.
+func (r *SQLiteRepository) UpdateStatus(ctx context.Context, id, status string) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE services SET status = ? WHERE id = ?", status, id)
+	return err
+}
+
 // SetWebhookToken replaces the webhook token of a service. Update cannot do
 // this (its SQL keeps an existing token via COALESCE), so rotation has an
 // explicit setter.

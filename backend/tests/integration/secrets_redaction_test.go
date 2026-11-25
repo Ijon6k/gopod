@@ -32,13 +32,13 @@ func setupAuthedServer(t *testing.T) (http.Handler, string) {
 	if rec.Code != http.StatusOK && rec.Code != http.StatusCreated {
 		t.Fatalf("setup failed: %d %s", rec.Code, rec.Body.String())
 	}
-	var resp struct {
-		Token string `json:"token"`
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "gopod_session" && c.Value != "" {
+			return handler, c.Value
+		}
 	}
-	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil || resp.Token == "" {
-		t.Fatalf("setup token missing: %v", err)
-	}
-	return handler, resp.Token
+	t.Fatalf("setup session cookie missing")
+	return handler, ""
 }
 
 func doAuthedJSON(t *testing.T, handler http.Handler, method, path string, body []byte, token string) *httptest.ResponseRecorder {

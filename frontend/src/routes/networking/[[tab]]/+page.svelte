@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { goto } from '$app/navigation';
-	import { PageHeader, Tabs, Button } from '$lib/components/ui';
+	import { PageHeader, Tabs, Button, ConfirmDialog } from '$lib/components/ui';
 	import { useKumoToastManager } from 'kumo-svelte';
 	import { errorToastOptions } from '$lib/utils/toast';
 	import { server, dataStore } from '$lib/data';
@@ -65,10 +65,16 @@
 		isDomainModalOpen = false;
 	}
 
+	let deletingDomainId = $state<string | null>(null);
+
 	function handleDeleteDomain(id: string) {
-		if (confirm('Are you sure you want to remove this domain routing rule?')) {
-			dataStore.deleteDomain(id);
-		}
+		deletingDomainId = id;
+	}
+
+	function confirmDeleteDomain() {
+		if (!deletingDomainId) return;
+		dataStore.deleteDomain(deletingDomainId);
+		deletingDomainId = null;
 	}
 
 	async function loadCaddyfile() {
@@ -192,4 +198,14 @@
 	domain={editingDomain}
 	onclose={() => (isDomainModalOpen = false)}
 	onsave={handleSaveDomain}
+/>
+
+<ConfirmDialog
+	open={deletingDomainId !== null}
+	title="Remove domain routing rule?"
+	description="Incoming requests for this hostname will no longer be routed to the upstream service."
+	variant="danger"
+	confirmText="Remove"
+	onconfirm={confirmDeleteDomain}
+	oncancel={() => (deletingDomainId = null)}
 />

@@ -307,7 +307,7 @@
 			{:else if activeTab === 'terminal'}
 				<TerminalTab {service} />
 			{:else if activeTab === 'advanced'}
-				<AdvancedTab {service} onNavigateTab={(tab: string) => (activeTab = tab)} />
+				<AdvancedTab bind:service onNavigateTab={(tab: string) => (activeTab = tab)} />
 			{/if}
 		</div>
 	</div>

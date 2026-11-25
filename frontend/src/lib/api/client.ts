@@ -27,17 +27,8 @@ export function setUnauthorizedHandler(handler: () => void): void {
 	unauthorizedHandler = handler;
 }
 
-// Request interceptor to attach Bearer token if present
-apiClient.interceptors.request.use((config) => {
-	if (typeof window !== 'undefined') {
-		const token = localStorage.getItem('gopod_token');
-		if (token && config.headers) {
-			config.headers.Authorization = `Bearer ${token}`;
-		}
-	}
-	return config;
-});
-
+// Authentication relies strictly on HttpOnly session cookies (withCredentials)
+// rather than localStorage bearer tokens.
 export class ApiError extends Error {
 	status?: number;
 	data?: any;

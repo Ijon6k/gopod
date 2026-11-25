@@ -17,6 +17,7 @@ services:
       - CONTAINER_HOST=unix:///run/podman/podman.sock
       - DOCKER_HOST=unix:///run/podman/podman.sock
       - GOPOD_DB_PATH=/app/data/gopod.db
+      - TRUSTED_PROXIES=${TRUSTED_PROXIES:-127.0.0.1/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16}
       # Config-plane transport via filesystem socket: no TCP admin port is
       # exposed anywhere. The socket directory is shared via
       # gopod-caddy-admin volume with the Caddy container.
@@ -25,6 +26,7 @@ services:
       - "${PODMAN_SOCKET:-/run/user/1000/podman/podman.sock}:/run/podman/podman.sock:z"
       - "./data:/app/data:Z"
       - "./caddy/logs:/var/log/caddy:z"
+      - "./caddy/Caddyfile:/root/.config/gopod/caddy/Caddyfile:z"
       # Socket dir must carry the container label so Caddy (enforcing
       # SELinux) can open it.
       - "gopod-caddy-admin:/run/gopod-caddy:z"
@@ -45,7 +47,7 @@ services:
     environment:
       - CADDY_INGRESS_NETWORK=gopod-net
     volumes:
-      - "./caddy/Caddyfile:/etc/caddy/Caddyfile:Z"
+      - "./caddy/Caddyfile:/etc/caddy/Caddyfile:z"
       - "./caddy/data:/data:Z"
       - "./caddy/config:/config:Z"
       - "./caddy/logs:/var/log/caddy:z"

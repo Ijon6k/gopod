@@ -7,6 +7,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -30,9 +32,35 @@ type remoteObject struct {
 // iDrive...) shares this shape: custom endpoint + credentials + optional
 // path-style addressing — the same information model Dokploy feeds rclone,
 // implemented natively in Go instead of shelling out to the rclone binary.
+func validateS3Endpoint(raw string) error {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil {
+		return fmt.Errorf("invalid destination endpoint: %w", err)
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "https" && scheme != "http" {
+		return errors.New("destination endpoint must use http or https scheme")
+	}
+	host := strings.TrimSpace(u.Hostname())
+	if host == "" {
+		return errors.New("destination endpoint missing hostname")
+	}
+	lowerHost := strings.ToLower(host)
+	if lowerHost == "metadata.google.internal" || lowerHost == "169.254.169.254" || lowerHost == "fd00:ec2::254" {
+		return fmt.Errorf("destination endpoint host %q is blocked", host)
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLinkLocalUnicast() {
+		return fmt.Errorf("destination endpoint link-local address %q is blocked", host)
+	}
+	return nil
+}
+
 func s3ClientFor(ctx context.Context, d BackupDestination) (*s3.Client, error) {
 	if d.Endpoint == "" || d.Bucket == "" || d.AccessKey == "" || d.SecretKey == "" {
 		return nil, errors.New("destination requires endpoint, bucket, accessKey and secretKey")
+	}
+	if err := validateS3Endpoint(d.Endpoint); err != nil {
+		return nil, err
 	}
 	region := d.Region
 	if region == "" {

@@ -4,6 +4,8 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"crypto/aes"
+	"crypto/cipher"
 	"crypto/rand"
 	"crypto/sha256"
 	"database/sql"
@@ -144,34 +146,66 @@ func (s *Service) CreateSystemBackup(ctx context.Context, destinationID string) 
 		}
 	}
 
-	// 2. Encryption Master Key (Critical for restoring secrets). A backup that
-	// silently drops the key makes every encrypted secret unrecoverable —
-	// that must surface as a failed backup, never a completed one.
+	// 2. Encryption Master Key (Critical for restoring secrets). Encrypt with
+	// GOPOD_BACKUP_PASSPHRASE when configured so off-host archives do not expose
+	// raw key material in plaintext.
+	keyEncrypted := false
 	keyFile := crypto.KeyFilePath(dataDir)
 	if info, statErr := os.Stat(keyFile); statErr == nil && !info.IsDir() {
 		destKeyDir := filepath.Join(tmpDir, "keys")
 		if err := os.MkdirAll(destKeyDir, 0700); err != nil {
 			return nil, fmt.Errorf("prepare key directory in backup: %w", err)
 		}
-		if err := copyFile(keyFile, filepath.Join(destKeyDir, "master.key")); err != nil {
-			return nil, fmt.Errorf("bundle master key into backup: %w", err)
-		}
-		// copyFile inherits the umask (0644); the tarball records that mode
-		// verbatim, so force owner-only permissions before archiving.
-		if err := os.Chmod(filepath.Join(destKeyDir, "master.key"), 0600); err != nil {
-			return nil, fmt.Errorf("secure master key copy in backup: %w", err)
+		if pass := strings.TrimSpace(os.Getenv("GOPOD_BACKUP_PASSPHRASE")); pass != "" {
+			rawKey, readErr := os.ReadFile(keyFile)
+			if readErr != nil {
+				return nil, fmt.Errorf("read master key for backup: %w", readErr)
+			}
+			encKey, encErr := encryptWithPassphrase(rawKey, pass)
+			if encErr != nil {
+				return nil, fmt.Errorf("encrypt master key in backup: %w", encErr)
+			}
+			targetKey := filepath.Join(destKeyDir, "master.key.enc")
+			if err := os.WriteFile(targetKey, encKey, 0600); err != nil {
+				return nil, fmt.Errorf("bundle encrypted master key: %w", err)
+			}
+			keyEncrypted = true
+		} else {
+			if err := copyFile(keyFile, filepath.Join(destKeyDir, "master.key")); err != nil {
+				return nil, fmt.Errorf("bundle master key into backup: %w", err)
+			}
+			if err := os.Chmod(filepath.Join(destKeyDir, "master.key"), 0600); err != nil {
+				return nil, fmt.Errorf("secure master key copy in backup: %w", err)
+			}
 		}
 	}
 
 	// 3. System Quadlets & Ingress Configs (if present)
 	copyDirIfExists(filepath.Join(dataDir, "quadlets"), filepath.Join(tmpDir, "quadlets"))
 	copyDirIfExists(filepath.Join(dataDir, "caddy"), filepath.Join(tmpDir, "caddy"))
+	caddyDest := filepath.Join(tmpDir, "caddy", "Caddyfile")
+	if _, statErr := os.Stat(caddyDest); statErr != nil {
+		for _, candidate := range []string{
+			strings.TrimSpace(os.Getenv("CADDYFILE_PATH")),
+			"/root/.config/gopod/caddy/Caddyfile",
+			"./caddy/Caddyfile",
+		} {
+			if candidate == "" {
+				continue
+			}
+			if info, err := os.Stat(candidate); err == nil && !info.IsDir() {
+				_ = os.MkdirAll(filepath.Dir(caddyDest), 0700)
+				_ = copyFile(candidate, caddyDest)
+				break
+			}
+		}
+	}
 	copyDirIfExists(filepath.Join(dataDir, "compose"), filepath.Join(tmpDir, "compose"))
 
 	// 4. Backup metadata manifest
 	fp, _ := crypto.KeyFingerprint()
-	manifest := fmt.Sprintf("{\n  \"version\": 1,\n  \"createdAt\": %q,\n  \"keyFromEnv\": %v,\n  \"keyFingerprint\": %q\n}",
-		time.Now().UTC().Format(time.RFC3339), crypto.KeyFromEnv(), fp)
+	manifest := fmt.Sprintf("{\n  \"version\": 1,\n  \"createdAt\": %q,\n  \"keyFromEnv\": %v,\n  \"keyEncrypted\": %v,\n  \"keyFingerprint\": %q\n}",
+		time.Now().UTC().Format(time.RFC3339), crypto.KeyFromEnv(), keyEncrypted, fp)
 	if err := os.WriteFile(filepath.Join(tmpDir, "gopod-manifest.json"), []byte(manifest), 0644); err != nil {
 		return nil, fmt.Errorf("write backup manifest: %w", err)
 	}
@@ -214,17 +248,6 @@ func (s *Service) CreateSystemBackup(ctx context.Context, destinationID string) 
 		Status:      "completed",
 		Compression: "gzip",
 		CreatedAt:   time.Now(),
-	}
-
-	// 6. Remote Mirror Push (if S3 destination specified)
-	if destinationID != "" {
-		state := s.mirrorSnapshotToDestination(ctx, &snap, archivePath)
-		snap.RemoteStatus = state.Status
-		snap.RemoteProvider = state.Provider
-		snap.RemoteDestinationID = state.DestinationID
-		snap.RemoteKey = state.RemoteKey
-		snap.Checksum = state.Checksum
-		snap.RemoteError = state.ErrText
 	}
 
 	// Insert the row BEFORE mirroring: a crash mid-upload must always leave a
@@ -290,6 +313,23 @@ func (s *Service) CreateSystemBackup(ctx context.Context, destinationID string) 
 	}
 
 	return &snap, nil
+}
+
+func encryptWithPassphrase(plaintext []byte, passphrase string) ([]byte, error) {
+	sum := sha256.Sum256([]byte(passphrase))
+	block, err := aes.NewCipher(sum[:])
+	if err != nil {
+		return nil, err
+	}
+	gcm, err := cipher.NewGCM(block)
+	if err != nil {
+		return nil, err
+	}
+	nonce := make([]byte, gcm.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return nil, err
+	}
+	return gcm.Seal(nonce, nonce, plaintext, nil), nil
 }
 
 // ListSystemBackups returns historical instance disaster recovery backups.

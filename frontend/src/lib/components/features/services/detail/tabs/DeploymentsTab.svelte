@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Service, Deployment } from '$lib/types';
-	import { Button } from '$lib/components/ui';
+	import { Button, ConfirmDialog } from '$lib/components/ui';
 	import { SearchInput, Tabs } from '$lib/components/ui';
 	import { dataStore } from '$lib/data';
 	import { Empty } from 'kumo-svelte';
@@ -127,13 +127,20 @@
 		dataStore.deleteDeployment(dep.id);
 	}
 
+	let showClearConfirm = $state(false);
+	let isClearingHistory = $state(false);
+
 	function handleClearHistory() {
-		if (
-			confirm(
-				'Clear old deployments from history? (The currently active production deployment will be preserved)'
-			)
-		) {
-			dataStore.clearServiceDeployments(service.id, true);
+		showClearConfirm = true;
+	}
+
+	async function confirmClearHistory() {
+		isClearingHistory = true;
+		try {
+			await dataStore.clearServiceDeployments(service.id, true);
+			showClearConfirm = false;
+		} finally {
+			isClearingHistory = false;
 		}
 	}
 
@@ -296,4 +303,15 @@
 	{service}
 	open={isWebhookModalOpen}
 	onclose={() => (isWebhookModalOpen = false)}
+/>
+
+<ConfirmDialog
+	open={showClearConfirm}
+	title="Clear deployment history?"
+	description="Old deployments will be removed from history. The currently active production deployment will be preserved."
+	variant="danger"
+	confirmText="Clear history"
+	isConfirming={isClearingHistory}
+	onconfirm={confirmClearHistory}
+	oncancel={() => (showClearConfirm = false)}
 />

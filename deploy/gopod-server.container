@@ -17,6 +17,7 @@ Environment=GOPOD_DB_PATH=/app/data/gopod.db
 # ingress Caddy shares this netns (127.0.0.1:8085 upstream), while tenant
 # containers on gopod-net reach it only through Caddy.
 Environment=GOPOD_BIND_HOST=127.0.0.1
+Environment=TRUSTED_PROXIES=127.0.0.1/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
 # Recommended transport: filesystem-socket managed by Caddy. Works with the
 # pod layout (shared netns) and with standalone containers sharing a volume.
 Environment=CADDY_ADMIN_URL=unix:///run/gopod-caddy/admin.sock
@@ -24,7 +25,7 @@ Volume=%t/podman/podman.sock:/run/podman/podman.sock:z
 Volume=%h/.local/share/gopod/data:/app/data:Z
 Volume=%h/.local/share/gopod/logs:/var/log/caddy:z
 Volume=%h/.local/share/gopod/caddy-admin:/run/gopod-caddy:z
-Volume=%h/.config/gopod/caddy:/root/.config/gopod/caddy:Z
+Volume=%h/.config/gopod/caddy:/root/.config/gopod/caddy:z
 
 [Service]
 Restart=always

@@ -49,6 +49,8 @@ spec:
         # network bridge or published TCP admin port.
         - name: CADDY_ADMIN_URL
           value: "unix:///run/gopod-caddy/admin.sock"
+        - name: TRUSTED_PROXIES
+          value: "127.0.0.1/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
       volumeMounts:
         - name: gopod-data
           mountPath: /app/data
@@ -56,6 +58,8 @@ spec:
           mountPath: /run/podman/podman.sock
         - name: caddy-logs
           mountPath: /var/log/caddy
+        - name: caddy-config
+          mountPath: /root/.config/gopod/caddy
         - name: caddy-admin-sock
           mountPath: /run/gopod-caddy
 

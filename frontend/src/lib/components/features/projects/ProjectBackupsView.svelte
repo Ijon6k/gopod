@@ -5,6 +5,7 @@
 	import BackupDestinationsCard from '$lib/components/features/storage/BackupDestinationsCard.svelte';
 	import {
 		Button,
+		ConfirmDialog,
 		Field,
 		Input,
 		Select,
@@ -82,13 +83,23 @@
 		}
 	}
 
-	async function handleDeleteSnapshot(id: string) {
-		if (confirm('Delete this volume snapshot? This action cannot be undone.')) {
-			try {
-				await dataStore.deleteVolumeSnapshot(id);
-			} catch (err) {
-				console.error('Failed to delete snapshot:', err);
-			}
+	let deletingSnapshotId = $state<string | null>(null);
+	let isDeletingSnapshot = $state(false);
+
+	function handleDeleteSnapshot(id: string) {
+		deletingSnapshotId = id;
+	}
+
+	async function confirmDeleteSnapshot() {
+		if (!deletingSnapshotId) return;
+		isDeletingSnapshot = true;
+		try {
+			await dataStore.deleteVolumeSnapshot(deletingSnapshotId);
+		} catch (err) {
+			console.error('Failed to delete snapshot:', err);
+		} finally {
+			isDeletingSnapshot = false;
+			deletingSnapshotId = null;
 		}
 	}
 
@@ -435,8 +446,7 @@
 				</h3>
 			</div>
 			<span class="text-[11px] text-[var(--text-tertiary)]">
-				Standard format: <code class="font-mono text-[var(--text-secondary)]">tar.zst</code> (lossless
-				ultra-fast Zstandard)
+				Standard format: <code class="font-mono text-[var(--text-secondary)]">tar.gz</code> (gzip compressed tarball)
 			</span>
 		</div>
 
@@ -562,14 +572,16 @@
 									<!-- Actions: Restore, Download, Delete -->
 									<TableCell class="px-3.5 py-3 text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-1.5">
-											<button
-												type="button"
-												onclick={() => openRestoreModal(snap)}
-												class="cursor-pointer rounded border-0 bg-[var(--accent-muted)] px-2 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--bg-shell)]"
-												title="Restore this snapshot to volume"
-											>
-												Restore
-											</button>
+											{#if !snap.volumeName.startsWith('db:') && snap.volumeName !== 'system:gopod'}
+												<button
+													type="button"
+													onclick={() => openRestoreModal(snap)}
+													class="cursor-pointer rounded border-0 bg-[var(--accent-muted)] px-2 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--bg-shell)]"
+													title="Restore this snapshot to volume"
+												>
+													Restore
+												</button>
+											{/if}
 											<button
 												type="button"
 												onclick={() => handleDownload(snap)}
@@ -778,3 +790,14 @@
 		</div>
 	</div>
 {/if}
+
+<ConfirmDialog
+	open={deletingSnapshotId !== null}
+	title="Delete volume snapshot?"
+	description="This backup archive will be removed from local storage and mirrored remote destinations. This action cannot be undone."
+	variant="danger"
+	confirmText="Delete"
+	isConfirming={isDeletingSnapshot}
+	onconfirm={confirmDeleteSnapshot}
+	oncancel={() => (deletingSnapshotId = null)}
+/>

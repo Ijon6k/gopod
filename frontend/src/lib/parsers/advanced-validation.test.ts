@@ -106,6 +106,9 @@ describe('validateVolumeRow', () => {
 		expect(validateVolumeRow({ source: 'rel/path', target: '/b', options: '' })).toContain(
 			'absolute host path or a named volume'
 		);
+		expect(validateVolumeRow({ source: '~/.ssh', target: '/b', options: '' })).toContain(
+			'Home directory (~)'
+		);
 		expect(validateVolumeRow({ source: 'app_data', target: 'app/data', options: '' })).toContain(
 			'absolute container path'
 		);

@@ -27,16 +27,20 @@ type ParsedQuadlet struct {
 	CapAdd        []string
 	CapDrop       []string
 	Devices       []string
-	Privileged    bool
-	Pod           string
+	Privileged      bool
+	NoNewPrivileges bool
+	Pod             string
 }
 
 // ValidateContainerImage validates that the image identifier is an OCI image reference
-// and explicitly rejects compose files, file paths, empty strings, and whitespace.
+// and explicitly rejects compose files, file paths, leading flags, empty strings, and whitespace.
 func ValidateContainerImage(image string) error {
 	trimmed := strings.TrimSpace(image)
 	if trimmed == "" {
 		return fmt.Errorf("container image cannot be empty")
+	}
+	if strings.HasPrefix(trimmed, "-") {
+		return fmt.Errorf("invalid container image %q: image reference must not start with '-'", trimmed)
 	}
 	if strings.ContainsAny(trimmed, " \t\r\n") {
 		return fmt.Errorf("invalid container image %q: OCI image references must not contain whitespace", trimmed)
@@ -140,6 +144,10 @@ func ParseQuadlet(content string) ParsedQuadlet {
 			case strings.EqualFold(key, "SecurityLabelDisable"):
 				if strings.EqualFold(val, "true") || strings.EqualFold(val, "yes") {
 					p.Privileged = true
+				}
+			case strings.EqualFold(key, "NoNewPrivileges"):
+				if strings.EqualFold(val, "true") || strings.EqualFold(val, "yes") {
+					p.NoNewPrivileges = true
 				}
 			case strings.EqualFold(key, "Restart"):
 				p.RestartPolicy = val

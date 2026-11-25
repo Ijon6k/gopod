@@ -95,3 +95,49 @@ func TestRequireAuthMiddlewareCaching(t *testing.T) {
 		t.Errorf("expected CountUsers called 1 time (cached), got %d calls", calls)
 	}
 }
+
+func TestRequireAuthAllowQueryRejectsSessionQueryToken(t *testing.T) {
+	repo := &mockAuthRepo{
+		userCount: 1,
+		user: &User{
+			ID:    "u-1",
+			Email: "admin@gopod.internal",
+		},
+		session: &Session{
+			Token:     "valid-token",
+			UserID:    "u-1",
+			ExpiresAt: time.Now().Add(time.Hour),
+		},
+	}
+
+	authService := NewService(repo)
+	mw := NewMiddleware(authService)
+	handler := mw.RequireAuthAllowQuery(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Long-lived session token in ?token= query param must be rejected.
+	req := httptest.NewRequest("GET", "/api/deployments/dep-1/logs/stream?token=valid-token", nil)
+	rr := httptest.NewRecorder()
+	handler(rr, req)
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 when passing session token in query param, got %d", rr.Code)
+	}
+
+	// Single-use stream grant must be accepted once and rejected on replay.
+	grant, err := authService.IssueStreamGrant("u-1")
+	if err != nil {
+		t.Fatalf("IssueStreamGrant: %v", err)
+	}
+	req2 := httptest.NewRequest("GET", "/api/deployments/dep-1/logs/stream?grant="+grant, nil)
+	rr2 := httptest.NewRecorder()
+	handler(rr2, req2)
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("expected 200 with valid single-use stream grant, got %d", rr2.Code)
+	}
+	rr3 := httptest.NewRecorder()
+	handler(rr3, httptest.NewRequest("GET", "/api/deployments/dep-1/logs/stream?grant="+grant, nil))
+	if rr3.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 on replayed stream grant, got %d", rr3.Code)
+	}
+}

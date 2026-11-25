@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"time"
 
 	"gopod/internal/auth"
+	"gopod/pkg/crypto"
 	"gopod/pkg/httputil"
 )
 
@@ -315,6 +317,9 @@ func (h *Handler) handleListDeployments(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	for i := range deployments {
+		deployments[i] = redactDeploymentSnapshot(deployments[i])
 	}
 	httputil.WriteJSON(w, http.StatusOK, deployments)
 }
@@ -663,4 +668,33 @@ func (h *Handler) handleRunGC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, result)
+}
+
+// redactDeploymentSnapshot ensures decrypted secrets stored for rollback in
+// ConfigSnapshot are never returned over the HTTP API.
+func redactDeploymentSnapshot(d Deployment) Deployment {
+	raw := strings.TrimSpace(d.ConfigSnapshot)
+	if raw == "" {
+		return d
+	}
+	if !strings.HasPrefix(raw, "{") {
+		dec, err := crypto.Decrypt(raw)
+		if err != nil {
+			d.ConfigSnapshot = ""
+			return d
+		}
+		raw = dec
+	}
+	var svc Service
+	if err := json.Unmarshal([]byte(raw), &svc); err != nil {
+		d.ConfigSnapshot = ""
+		return d
+	}
+	redacted := RedactService(svc)
+	if b, err := json.Marshal(redacted); err == nil {
+		d.ConfigSnapshot = string(b)
+	} else {
+		d.ConfigSnapshot = ""
+	}
+	return d
 }

@@ -36,9 +36,6 @@ class AuthStore {
 		this.error = null;
 		try {
 			const res = await authApi.setup(payload);
-			if (typeof window !== 'undefined' && res.token) {
-				localStorage.setItem('gopod_token', res.token);
-			}
 			this.user = res.user;
 			this.isAuthenticated = true;
 			this.isInitialized = true;
@@ -56,9 +53,6 @@ class AuthStore {
 		this.error = null;
 		try {
 			const res = await authApi.login(payload);
-			if (typeof window !== 'undefined' && res.token) {
-				localStorage.setItem('gopod_token', res.token);
-			}
 			this.user = res.user;
 			this.isAuthenticated = true;
 			return res.user;

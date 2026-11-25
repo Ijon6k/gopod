@@ -110,9 +110,18 @@ func TestAPILifecycle_FullWorkflow(t *testing.T) {
 	if err := json.NewDecoder(rec.Body).Decode(&setupResp); err != nil {
 		t.Fatalf("failed to decode setup response: %v", err)
 	}
-	token := setupResp.Token
+	if setupResp.Token != "" {
+		t.Fatalf("expected raw session token omitted from setup JSON response")
+	}
+	var token string
+	for _, c := range rec.Result().Cookies() {
+		if c.Name == "gopod_session" && c.Value != "" {
+			token = c.Value
+			break
+		}
+	}
 	if token == "" {
-		t.Fatal("expected non-empty token from setup")
+		t.Fatal("expected gopod_session HttpOnly cookie from setup")
 	}
 
 	// 3. Create a Project

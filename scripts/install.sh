@@ -146,7 +146,7 @@ run_task() {
         printf "\r  ${GREEN}${CHAR_CHECK}${NC} %s completed.\033[K\n" "$task_label"
         return 0
     else
-        printf "\r  ${RED}${CHAR_CROSS}${NC} %s ${RED}(failed with code %d)${NC}\033[K\n" "$task_label"
+        printf "\r  ${RED}${CHAR_CROSS}${NC} %s ${RED}(failed with code %d)${NC}\033[K\n" "$task_label" "$exit_code"
         return $exit_code
     fi
 }
@@ -170,6 +170,9 @@ run_privileged() {
 # ─────────────────────────────────────────────────────────────────────────────
 
 create_cli_wrapper() {
+    if [ "${DRY_RUN:-false}" = true ]; then
+        return 0
+    fi
     local wrapper_user="${1:-$CURRENT_USER}"
     local wrapper_uid="${2:-$USER_UID}"
     local wrapper_home="${3:-$USER_HOME}"
@@ -177,6 +180,7 @@ create_cli_wrapper() {
     local wrapper_data="${5:-${wrapper_home}/.local/share/gopod}"
     local wrapper_port="${6:-$GOPOD_PORT}"
     local wrapper_caddy="${7:-$CADDY_HTTP_PORT}"
+    local wrapper_image="${8:-$GOPOD_IMAGE}"
 
     local tmp_wrapper
     tmp_wrapper="$(mktemp /tmp/gopod-cli.XXXXXX 2>/dev/null || echo "/tmp/gopod-cli-$$")"
@@ -200,6 +204,7 @@ GOPOD_CONFIG="${wrapper_config}"
 GOPOD_DATA="${wrapper_data}"
 DEFAULT_PORT="${wrapper_port}"
 DEFAULT_CADDY_PORT="${wrapper_caddy}"
+DEFAULT_IMAGE="${wrapper_image}"
 WRAPPER_VARS
 
     cat << 'WRAPPER_BODY' >> "$tmp_wrapper"
@@ -379,7 +384,7 @@ run_compose() {
                 run_rootless podman ps -a --filter name=gopod
                 ;;
             pull)
-                run_rootless podman pull ghcr.io/ijon6k/gopod:latest 2>/dev/null || true
+                run_rootless podman pull "${DEFAULT_IMAGE:-ghcr.io/ijon6k/gopod:latest}" 2>/dev/null || true
                 ;;
             *)
                 echo -e "${RED}Error: Compose command not found and action '${action}' not supported in fallback.${NC}" >&2
@@ -487,10 +492,10 @@ case "$CMD" in
         echo -e "${BLUE}${BOLD}=== GOPOD Service Status ===${NC}"
         echo -e "  Running Mode : ${CYAN}$(mode_label "$DETECTED_MODE")${NC}"
 
-        if curl -fsSL -o /dev/null "http://127.0.0.1:${ACTUAL_PORT}" 2>/dev/null; then
-            echo -e "  Health Check : ${GREEN}${BOLD}Healthy${NC} (HTTP 200 on :${ACTUAL_PORT})"
+        if curl -fsSL -o /dev/null "http://127.0.0.1:${ACTUAL_CADDY_PORT}" 2>/dev/null; then
+            echo -e "  Health Check : ${GREEN}${BOLD}Healthy${NC} (HTTP 200 via Caddy on :${ACTUAL_CADDY_PORT})"
         else
-            echo -e "  Health Check : ${RED}${BOLD}Unreachable / Starting${NC} (default :${ACTUAL_PORT})"
+            echo -e "  Health Check : ${RED}${BOLD}Unreachable / Starting${NC} (Caddy ingress :${ACTUAL_CADDY_PORT})"
         fi
 
         ensure_socket
@@ -578,17 +583,17 @@ case "$CMD" in
             quadlet-pod)
                 run_rootless podman auto-update
                 echo -e "${CYAN}==>${NC} Restarting GOPOD pod..."
-                run_rootless systemctl --user restart gopod-pod.service 2>/dev/null || true
+                systemctl_cmd restart gopod-pod.service 2>/dev/null || true
                 ;;
             quadlet-standalone)
                 run_rootless podman auto-update
                 echo -e "${CYAN}==>${NC} Restarting units..."
                 quadlet_units | while read -r u; do
-                    run_rootless systemctl --user restart "$u" 2>/dev/null || true
+                    systemctl_cmd restart "$u" 2>/dev/null || true
                 done
                 ;;
             pod)
-                run_rootless podman pull ghcr.io/ijon6k/gopod:latest 2>/dev/null || true
+                run_rootless podman pull "${DEFAULT_IMAGE:-ghcr.io/ijon6k/gopod:latest}" 2>/dev/null || true
                 restart_stack
                 ;;
             compose)
@@ -597,7 +602,7 @@ case "$CMD" in
                 run_compose up -d
                 ;;
             container)
-                run_rootless podman pull ghcr.io/ijon6k/gopod:latest 2>/dev/null || true
+                run_rootless podman pull "${DEFAULT_IMAGE:-ghcr.io/ijon6k/gopod:latest}" 2>/dev/null || true
                 restart_stack
                 ;;
             *)
@@ -654,8 +659,12 @@ case "$CMD" in
                 fi
                 ;;
             status)
-                systemctl_cmd status gopod-pod.service gopod-server.service gopod-caddy.service --no-pager 2>/dev/null || \
-                systemctl_cmd status --no-pager "$(quadlet_units | tr '\n' ' ')" 2>/dev/null
+                mapfile -t _units < <(quadlet_units)
+                if [ ${#_units[@]} -gt 0 ]; then
+                    systemctl_cmd status "${_units[@]}" --no-pager 2>/dev/null || true
+                else
+                    systemctl_cmd status gopod-pod.service gopod-server.service gopod-caddy.service --no-pager 2>/dev/null || true
+                fi
                 ;;
             *)
                 echo -e "${RED}Unknown units command '${SUBCMD}'. Available: list|start|stop|restart|status${NC}" >&2
@@ -1114,6 +1123,10 @@ if [ "$USER_UID" -eq 0 ] && [ "$AS_USER" = false ]; then
         fi
 
         if [ "$ALLOW_ROOT" = false ]; then
+            if [ "$DRY_RUN" = true ]; then
+                echo -e "${CYAN}[DRY-RUN] Would provision rootless user '${SERVICE_USER}', subuid/subgid, sysctl, linger, and re-exec.${NC}"
+                exit 0
+            fi
             echo -e "\n${CYAN}${BOLD}==> Provisioning dedicated '${SERVICE_USER}' service user for rootless execution...${NC}"
 
             # 1. Create service user if missing
@@ -1644,12 +1657,13 @@ services:
       - DOCKER_HOST=unix:///run/podman/podman.sock
       - GOPOD_DB_PATH=/app/data/gopod.db
       - CADDY_ADMIN_URL=unix:///run/gopod-caddy/admin.sock
+      - TRUSTED_PROXIES=127.0.0.1/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
     volumes:
-      - "${DETECTED_SOCKET}:/run/podman/podman.sock:ro,z"
+      - "${DETECTED_SOCKET}:/run/podman/podman.sock:z"
       - "${GOPOD_DATA}/data:/app/data:Z"
       - "${GOPOD_DATA}/logs:/var/log/caddy:z"
       - "${GOPOD_DATA}/caddy-admin:/run/gopod-caddy:z"
-      - "${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:Z"
+      - "${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:z"
     networks:
       - gopod-internal
     security_opt:
@@ -1665,7 +1679,7 @@ services:
     environment:
       - CADDY_INGRESS_NETWORK=gopod-net
     volumes:
-      - "${GOPOD_CONFIG}/caddy/Caddyfile:/etc/caddy/Caddyfile:Z"
+      - "${GOPOD_CONFIG}/caddy/Caddyfile:/etc/caddy/Caddyfile:z"
       - "${GOPOD_DATA}/caddy/data:/data:Z"
       - "${GOPOD_DATA}/caddy/config:/config:Z"
       - "${GOPOD_DATA}/logs:/var/log/caddy:z"
@@ -1725,11 +1739,17 @@ EOF
         POD_JOIN="Pod=gopod.pod"
         POD_WANT="PartOf=gopod-pod.service"
     elif [ "$RUN_MODE" = "quadlet-standalone" ]; then
+        cat <<EOF > "${QUADLET_DIR}/gopod-internal.network"
+[Network]
+NetworkName=gopod-internal
+Driver=bridge
+EOF
         POD_WANT="After=network-online.target"
-        CADDY_STANDALONE_NET="Network=gopod-net.network
+        CADDY_STANDALONE_NET="Network=gopod-internal.network
+Network=gopod-net.network
 PublishPort=${CADDY_HTTP_PORT}:80
 PublishPort=${CADDY_HTTPS_PORT}:443"
-        SERVER_STANDALONE_NET="Network=gopod-net.network"
+        SERVER_STANDALONE_NET="Network=gopod-internal.network"
     fi
 
     cat <<EOF > "${QUADLET_DIR}/gopod-caddy.container"
@@ -1743,7 +1763,7 @@ ${CADDY_STANDALONE_NET}
 ContainerName=gopod-caddy
 Image=${CADDY_IMAGE}
 AutoUpdate=registry
-Volume=${GOPOD_CONFIG}/caddy/Caddyfile:/etc/caddy/Caddyfile:Z
+Volume=${GOPOD_CONFIG}/caddy/Caddyfile:/etc/caddy/Caddyfile:z
 Volume=${GOPOD_DATA}/caddy/data:/data:Z
 Volume=${GOPOD_DATA}/caddy/config:/config:Z
 Volume=${GOPOD_DATA}/logs:/var/log/caddy:z
@@ -1774,6 +1794,7 @@ Environment=PORT=8085
 Environment=PODMAN_SOCKET=/run/podman/podman.sock
 Environment=GOPOD_DB_PATH=/app/data/gopod.db
 Environment=CADDY_ADMIN_URL=unix:///run/gopod-caddy/admin.sock
+Environment=TRUSTED_PROXIES=127.0.0.1/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
 EOF
 
     if [ "$RUN_MODE" = "quadlet-pod" ]; then
@@ -1787,7 +1808,7 @@ Volume=${DETECTED_SOCKET}:/run/podman/podman.sock:z
 Volume=${GOPOD_DATA}/data:/app/data:Z
 Volume=${GOPOD_DATA}/logs:/var/log/caddy:z
 Volume=${GOPOD_DATA}/caddy-admin:/run/gopod-caddy:z
-Volume=${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:Z
+Volume=${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:z
 
 [Service]
 Restart=always
@@ -1860,10 +1881,12 @@ start_compose() {
             -e PODMAN_SOCKET=/run/podman/podman.sock \
             -e GOPOD_DB_PATH=/app/data/gopod.db \
             -e CADDY_ADMIN_URL=unix:///run/gopod-caddy/admin.sock \
-            -v "${DETECTED_SOCKET}:/run/podman/podman.sock:ro,z" \
+            -e TRUSTED_PROXIES=127.0.0.1/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16 \
+            -v "${DETECTED_SOCKET}:/run/podman/podman.sock:z" \
             -v "${GOPOD_DATA}/data:/app/data:Z" \
+            -v "${GOPOD_DATA}/logs:/var/log/caddy:z" \
             -v "${GOPOD_DATA}/caddy-admin:/run/gopod-caddy:z" \
-            -v "${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:Z" \
+            -v "${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:z" \
             --security-opt label=disable \
             "${GOPOD_IMAGE}"
 
@@ -1873,7 +1896,7 @@ start_compose() {
             -p "${CADDY_HTTP_PORT}:80" \
             -p "${CADDY_HTTPS_PORT}:443" \
             -e CADDY_INGRESS_NETWORK=gopod-net \
-            -v "${GOPOD_CONFIG}/caddy/Caddyfile:/etc/caddy/Caddyfile:Z" \
+            -v "${GOPOD_CONFIG}/caddy/Caddyfile:/etc/caddy/Caddyfile:z" \
             -v "${GOPOD_DATA}/caddy/data:/data:Z" \
             -v "${GOPOD_DATA}/caddy/config:/config:Z" \
             -v "${GOPOD_DATA}/logs:/var/log/caddy:z" \
@@ -1887,6 +1910,8 @@ task_orchestrate_services() {
     case "$RUN_MODE" in
         quadlet-pod|quadlet-standalone)
             if ! start_quadlet; then
+                rm -f "${QUADLET_DIR}/gopod.pod" "${QUADLET_DIR}/gopod-caddy.container" "${QUADLET_DIR}/gopod-server.container" "${QUADLET_DIR}/gopod-internal.network" 2>/dev/null || true
+                echo "container" > "${GOPOD_DATA}/.fallback_mode"
                 RUN_MODE="container"
                 # Ensure Caddyfile points to gopod:8085 when falling back to container mode
                 sed -i 's/127\.0\.0\.1:8085/gopod:8085/g' "${GOPOD_CONFIG}/caddy/Caddyfile" 2>/dev/null || true
@@ -1898,7 +1923,12 @@ task_orchestrate_services() {
             ;;
     esac
 }
+rm -f "${GOPOD_DATA}/.fallback_mode" 2>/dev/null || true
 run_task "Deploying container services (${RUN_MODE} mode)" task_orchestrate_services
+if [ -f "${GOPOD_DATA}/.fallback_mode" ]; then
+    RUN_MODE="$(cat "${GOPOD_DATA}/.fallback_mode")"
+    rm -f "${GOPOD_DATA}/.fallback_mode" 2>/dev/null || true
+fi
 
 task_verify_readiness() {
     if [ "$DRY_RUN" = true ]; then return 0; fi
@@ -1920,7 +1950,10 @@ task_install_cli_wrapper() {
 run_task "Installing GOPOD CLI management wrapper (/usr/local/bin/gopod)" task_install_cli_wrapper
 
 # Detect Public IP for VPS or fallback to local IP
-PUBLIC_IP=$(curl -4s --max-time 2 https://api.ipify.org 2>/dev/null || curl -4s --max-time 2 https://ifconfig.me 2>/dev/null || true)
+PUBLIC_IP=""
+if [ "${GOPOD_OFFLINE:-false}" != true ]; then
+    PUBLIC_IP=$(curl -4s --max-time 2 https://api.ipify.org 2>/dev/null || curl -4s --max-time 2 https://ifconfig.me 2>/dev/null || true)
+fi
 if [ -n "$PUBLIC_IP" ] && [[ "$PUBLIC_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     SERVER_IP="$PUBLIC_IP"
 else
@@ -1937,7 +1970,11 @@ echo -e " Running Mode  : ${BOLD}${RUN_MODE}${NC} (Auto-restart enabled)"
 echo -e " Service User  : ${BOLD}${CURRENT_USER}${NC} $([ "$CURRENT_USER" = "root" ] && echo "${YELLOW}(Rootful)${NC}" || echo "${GREEN}(Rootless, UID: ${USER_UID})${NC}")"
 echo -e " Podman Socket : ${DIM}${DETECTED_SOCKET}${NC}"
 echo -e " Storage Path  : ${DIM}${GOPOD_DATA}${NC}"
-echo -e " Compose Spec  : ${DIM}${GOPOD_CONFIG}/compose.yml${NC}"
+if [[ "$RUN_MODE" == quadlet-* ]]; then
+    echo -e " Quadlet Units : ${DIM}${QUADLET_DIR}${NC}"
+else
+    echo -e " Compose Spec  : ${DIM}${GOPOD_CONFIG}/compose.yml${NC}"
+fi
 echo -e " CLI Helper    : ${CYAN}${BOLD}/usr/local/bin/gopod${NC} ${GREEN}(Auto-configured, ready to use)${NC}"
 echo "──────────────────────────────────────────────────────────────"
 echo -e "${BOLD}Management Cheat Sheet (Run directly from any terminal):${NC}"

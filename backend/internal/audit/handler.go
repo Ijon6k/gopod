@@ -30,13 +30,16 @@ func (h *Handler) handleAuditLogs(w http.ResponseWriter, r *http.Request) {
 	limit := 100
 	if limitStr != "" {
 		if parsed, err := strconv.Atoi(limitStr); err == nil && parsed > 0 {
+			if parsed > 500 {
+				parsed = 500
+			}
 			limit = parsed
 		}
 	}
 
 	logs, err := h.service.List(r.Context(), category, limit)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Failed to retrieve audit logs", http.StatusInternalServerError)
 		return
 	}
 

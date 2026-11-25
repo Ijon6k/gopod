@@ -3,6 +3,7 @@ package storage
 import (
 	"context"
 	"database/sql"
+	"time"
 
 	"gopod/pkg/crypto"
 )
@@ -161,6 +162,12 @@ func (r *SQLiteRepository) UpdateSchedule(ctx context.Context, s VolumeSchedule)
 
 func (r *SQLiteRepository) DeleteSchedule(ctx context.Context, id string) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM volume_schedules WHERE id = ?", id)
+	return err
+}
+
+// UpdateScheduleLastRun records the timestamp of the latest scheduled execution.
+func (r *SQLiteRepository) UpdateScheduleLastRun(ctx context.Context, id string, ts time.Time) error {
+	_, err := r.db.ExecContext(ctx, "UPDATE volume_schedules SET last_run = ? WHERE id = ?", ts, id)
 	return err
 }
 

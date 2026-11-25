@@ -99,12 +99,18 @@ func (s *WorkloadService) ListServices(ctx context.Context, projectID string) ([
 			}
 			if realSt, ok := statusMap[svc.ID]; ok && realSt != "" && realSt != svc.Status {
 				svc.Status = realSt
-				toUpdate := *svc
-				go func(u Service) {
+				svcID := svc.ID
+				go func(id, st string, full Service) {
 					bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 					defer cancel()
-					_ = s.repo.Update(bgCtx, u)
-				}(toUpdate)
+					if updater, ok := s.repo.(interface {
+						UpdateStatus(context.Context, string, string) error
+					}); ok {
+						_ = updater.UpdateStatus(bgCtx, id, st)
+						return
+					}
+					_ = s.repo.Update(bgCtx, full)
+				}(svcID, realSt, *svc)
 			}
 		}
 	}
@@ -160,9 +166,18 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 		randBytes := make([]byte, 8)
 		_, _ = rand.Read(randBytes)
 		randomSuffix := hex.EncodeToString(randBytes)
-		cleanProj := strings.ToLower(strings.ReplaceAll(svc.ProjectID, " ", "-"))
-		cleanName := strings.ToLower(strings.ReplaceAll(svc.Name, " ", "-"))
+		cleanProj := strings.ToLower(SanitizeQuadletSlug(svc.ProjectID))
+		if cleanProj == "" {
+			cleanProj = "proj"
+		}
+		cleanName := strings.ToLower(SanitizeQuadletSlug(svc.Name))
+		if cleanName == "" {
+			cleanName = "svc"
+		}
 		svc.ID = fmt.Sprintf("%s-%s-%s", cleanProj, cleanName, randomSuffix)
+	}
+	if err := ValidateIdentifier("service id", svc.ID); err != nil {
+		return nil, err
 	}
 	if svc.WebhookToken == "" {
 		b := make([]byte, 16)
@@ -170,6 +185,23 @@ func (s *WorkloadService) CreateService(ctx context.Context, svc Service) (*Serv
 		svc.WebhookToken = "wh_" + hex.EncodeToString(b)
 	}
 
+	if strings.TrimSpace(svc.Image) != "" {
+		if err := ValidateContainerImage(svc.Image); err != nil {
+			return nil, err
+		}
+	}
+	if svc.Advanced != nil {
+		for _, v := range svc.Advanced.Storage.Volumes {
+			if strings.TrimSpace(v.Source) != "" || strings.TrimSpace(v.Target) != "" {
+				if err := ValidateVolumeMount(v.Source, v.Target); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if err := validateAdvancedDirectives(svc.Advanced); err != nil {
+			return nil, err
+		}
+	}
 	if strings.TrimSpace(svc.GitRepo) != "" {
 		if err := ValidateGitURL(svc.GitRepo); err != nil {
 			return nil, err
@@ -448,6 +480,23 @@ func (s *WorkloadService) UpdateService(ctx context.Context, svc Service) error 
 		}
 	}
 
+	if strings.TrimSpace(svc.Image) != "" {
+		if err := ValidateContainerImage(svc.Image); err != nil {
+			return err
+		}
+	}
+	if svc.Advanced != nil {
+		for _, v := range svc.Advanced.Storage.Volumes {
+			if strings.TrimSpace(v.Source) != "" || strings.TrimSpace(v.Target) != "" {
+				if err := ValidateVolumeMount(v.Source, v.Target); err != nil {
+					return err
+				}
+			}
+		}
+		if err := validateAdvancedDirectives(svc.Advanced); err != nil {
+			return err
+		}
+	}
 	if strings.TrimSpace(svc.GitRepo) != "" {
 		if err := ValidateGitURL(svc.GitRepo); err != nil {
 			return err

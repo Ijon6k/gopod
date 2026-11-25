@@ -104,7 +104,10 @@ const OPT_TOKEN = /^[A-Za-z0-9=+_.:-]+$/;
 export function validateVolumeRow(row: VolumeRow): string {
 	const source = (row.source || '').trim();
 	if (source === '') return 'Source is required (named volume or absolute host path)';
-	if (!source.startsWith('/') && !source.startsWith('~') && !NAMED_VOLUME.test(source)) {
+	if (source.startsWith('~')) {
+		return 'Home directory (~) paths are not supported; use an absolute host path or named volume';
+	}
+	if (!source.startsWith('/') && !NAMED_VOLUME.test(source)) {
 		return 'Source must be an absolute host path or a named volume';
 	}
 	const target = (row.target || '').trim();

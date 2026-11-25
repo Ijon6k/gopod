@@ -3,6 +3,7 @@
 	import { dataStore } from '$lib/data';
 	import { api } from '$lib/api';
 	import { LayerCard, Badge, Button, useKumoToastManager } from 'kumo-svelte';
+	import { ConfirmDialog } from '$lib/components/ui';
 	import { errorToastOptions } from '$lib/utils/toast';
 	import { Sparkle, CheckCircle, Info, FileCode } from 'phosphor-svelte';
 	import DeployActionsBar from './deploy/DeployActionsBar.svelte';
@@ -201,15 +202,16 @@
 		}
 	}
 
-	async function handleFreshVolumes() {
+	let showFreshConfirm = $state(false);
+
+	function handleFreshVolumes() {
 		if (isFreshingVolumes) return;
-		if (
-			!confirm(
-				'Are you sure you want to deploy with fresh volumes? Existing container volume mounts will be deleted and recreated.'
-			)
-		) {
-			return;
-		}
+		showFreshConfirm = true;
+	}
+
+	async function confirmFreshVolumes() {
+		showFreshConfirm = false;
+		if (isFreshingVolumes) return;
 		isFreshingVolumes = true;
 		showFeedback('Purging volume mounts and queueing deployment...', 'info', false);
 		try {
@@ -359,3 +361,14 @@
 		</div>
 	{/if}
 </LayerCard>
+
+<ConfirmDialog
+	open={showFreshConfirm}
+	title="Deploy with fresh volumes?"
+	description="Existing container volume mounts for this service will be deleted and recreated. Persistent data inside those volumes will be lost."
+	variant="danger"
+	confirmText="Deploy fresh"
+	isConfirming={isFreshingVolumes}
+	onconfirm={confirmFreshVolumes}
+	oncancel={() => (showFreshConfirm = false)}
+/>

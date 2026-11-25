@@ -67,7 +67,7 @@ func (d *DB) migrate() error {
 		size TEXT DEFAULT '',
 		size_bytes INTEGER DEFAULT 0,
 		status TEXT DEFAULT 'completed',
-		compression TEXT DEFAULT 'zstd',
+		compression TEXT DEFAULT 'gzip',
 		remote_provider TEXT DEFAULT '',
 		remote_destination_id TEXT DEFAULT '',
 		remote_key TEXT DEFAULT '',

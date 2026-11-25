@@ -4,6 +4,7 @@
 	// both render the same global destination pool (one shared API + store).
 	import {
 		Button,
+		ConfirmDialog,
 		Field,
 		Input,
 		Checkbox,
@@ -145,14 +146,17 @@
 		}
 	}
 
-	async function handleDeleteDestination(id: string) {
-		if (
-			!confirm(
-				`Delete destination "${destinationName(id)}"? Schedules using it keep producing local-only snapshots.`
-			)
-		) {
-			return;
-		}
+	let deletingDestinationId = $state<string | null>(null);
+	let isDeletingDestination = $state(false);
+
+	function handleDeleteDestination(id: string) {
+		deletingDestinationId = id;
+	}
+
+	async function confirmDeleteDestination() {
+		if (!deletingDestinationId) return;
+		const id = deletingDestinationId;
+		isDeletingDestination = true;
 		try {
 			await dataStore.deleteBackupDestination(id);
 			toast.add({
@@ -160,6 +164,7 @@
 				description: 'Schedules referencing it now stay local-only.',
 				variant: 'success'
 			});
+			deletingDestinationId = null;
 		} catch (err: unknown) {
 			console.error('Failed to delete destination:', err);
 			toast.add(
@@ -168,6 +173,8 @@
 					'Could not delete the destination — check server logs.'
 				)
 			);
+		} finally {
+			isDeletingDestination = false;
 		}
 	}
 
@@ -438,3 +445,14 @@
 		{/if}
 	</div>
 </Modal>
+
+<ConfirmDialog
+	open={deletingDestinationId !== null}
+	title={deletingDestinationId ? `Delete destination "${destinationName(deletingDestinationId)}"?` : 'Delete destination?'}
+	description="Schedules referencing this destination will continue producing local-only snapshots."
+	variant="danger"
+	confirmText="Delete"
+	isConfirming={isDeletingDestination}
+	onconfirm={confirmDeleteDestination}
+	oncancel={() => (deletingDestinationId = null)}
+/>

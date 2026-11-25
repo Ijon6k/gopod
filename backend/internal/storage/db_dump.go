@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/rand"
@@ -84,7 +85,7 @@ func FindServiceContainer(ctx context.Context, serviceID string) (string, error)
 		}
 	}
 
-	// 2. Fallback: search containers containing serviceID in name
+	// 2. Fallback: exact match or hyphen-delimited suffix/prefix
 	cmd = exec.CommandContext(ctx, "podman", "ps", "--format", "{{.Names}}")
 	setupCmdEnv(cmd)
 	out, err = cmd.Output()
@@ -92,7 +93,7 @@ func FindServiceContainer(ctx context.Context, serviceID string) (string, error)
 		lines := strings.Split(strings.TrimSpace(string(out)), "\n")
 		for _, l := range lines {
 			name := strings.TrimSpace(l)
-			if strings.Contains(name, serviceID) {
+			if name == serviceID || strings.HasPrefix(name, serviceID+"-") || strings.HasSuffix(name, "-"+serviceID) {
 				return name, nil
 			}
 		}
@@ -142,7 +143,36 @@ func (s *Service) CreateDatabaseDump(ctx context.Context, req DatabaseDumpReques
 	}
 	defer outFile.Close()
 
+	if strings.HasPrefix(strings.TrimSpace(req.Username), "-") {
+		return nil, errors.New("database username must not start with '-'")
+	}
+	if strings.HasPrefix(strings.TrimSpace(req.Database), "-") {
+		return nil, errors.New("database name must not start with '-'")
+	}
+
 	var dumpErr error
+	var stderrBuf bytes.Buffer
+	runDump := func(args []string, extraEnv ...string) error {
+		gw := gzip.NewWriter(outFile)
+		cmd := exec.CommandContext(ctx, "podman", args...)
+		setupCmdEnv(cmd)
+		if len(extraEnv) > 0 {
+			cmd.Env = append(cmd.Env, extraEnv...)
+		}
+		cmd.Stdout = gw
+		cmd.Stderr = &stderrBuf
+		runErr := cmd.Run()
+		_ = gw.Close()
+		if runErr != nil && stderrBuf.Len() > 0 {
+			msg := strings.TrimSpace(stderrBuf.String())
+			if len(msg) > 512 {
+				msg = msg[:512]
+			}
+			return fmt.Errorf("%w: %s", runErr, msg)
+		}
+		return runErr
+	}
+
 	switch engine {
 	case "postgres":
 		user := req.Username
@@ -153,97 +183,70 @@ func (s *Service) CreateDatabaseDump(ctx context.Context, req DatabaseDumpReques
 		if dbName == "" {
 			dbName = user
 		}
-		// Stream pg_dump through gzip
-		gw := gzip.NewWriter(outFile)
 		args := []string{"exec", "-i"}
+		var extraEnv []string
 		if req.Password != "" {
-			args = append(args, "-e", "PGPASSWORD="+req.Password)
+			args = append(args, "-e", "PGPASSWORD")
+			extraEnv = append(extraEnv, "PGPASSWORD="+req.Password)
 		}
-		args = append(args, containerName, "pg_dump", "-U", user, "-h", "localhost", "--no-acl", "--no-owner", dbName)
-		cmd := exec.CommandContext(ctx, "podman", args...)
-		setupCmdEnv(cmd)
-		cmd.Stdout = gw
-		dumpErr = cmd.Run()
-		_ = gw.Close()
+		args = append(args, containerName, "pg_dump", "-U", user, "-h", "localhost", "--no-acl", "--no-owner", "--", dbName)
+		dumpErr = runDump(args, extraEnv...)
 
-	case "mysql":
+	case "mysql", "mariadb":
 		user := req.Username
 		if user == "" {
 			user = "root"
 		}
 		dbName := req.Database
-		gw := gzip.NewWriter(outFile)
+		bin := "mysqldump"
+		if engine == "mariadb" {
+			bin = "mariadb-dump"
+		}
 		args := []string{"exec", "-i"}
+		var extraEnv []string
 		if req.Password != "" {
-			args = append(args, "-e", "MYSQL_PWD="+req.Password)
+			args = append(args, "-e", "MYSQL_PWD")
+			extraEnv = append(extraEnv, "MYSQL_PWD="+req.Password)
 		}
-		args = append(args, containerName, "mysqldump", "-u", user, "--single-transaction", "--quick")
+		args = append(args, containerName, bin, "-u", user, "--single-transaction", "--quick")
 		if dbName != "" {
-			args = append(args, dbName)
+			args = append(args, "--", dbName)
 		} else {
 			args = append(args, "--all-databases")
 		}
-		cmd := exec.CommandContext(ctx, "podman", args...)
-		setupCmdEnv(cmd)
-		cmd.Stdout = gw
-		dumpErr = cmd.Run()
-		_ = gw.Close()
-
-	case "mariadb":
-		user := req.Username
-		if user == "" {
-			user = "root"
-		}
-		dbName := req.Database
-		gw := gzip.NewWriter(outFile)
-		args := []string{"exec", "-i", containerName, "mariadb-dump", "-u", user}
-		if req.Password != "" {
-			args = append(args, "-p"+req.Password)
-		}
-		args = append(args, "--single-transaction", "--quick")
-		if dbName != "" {
-			args = append(args, dbName)
-		} else {
-			args = append(args, "--all-databases")
-		}
-		cmd := exec.CommandContext(ctx, "podman", args...)
-		setupCmdEnv(cmd)
-		cmd.Stdout = gw
-		dumpErr = cmd.Run()
-		_ = gw.Close()
+		dumpErr = runDump(args, extraEnv...)
 
 	case "mongodb":
-		gw := gzip.NewWriter(outFile)
-		args := []string{"exec", "-i", containerName, "mongodump"}
+		args := []string{"exec", "-i"}
+		var extraEnv []string
+		mongoArgs := []string{"mongodump"}
 		if req.Username != "" {
-			args = append(args, "-u", req.Username)
-		}
-		if req.Password != "" {
-			args = append(args, "-p", req.Password)
+			mongoArgs = append(mongoArgs, "-u", req.Username)
 		}
 		if req.Database != "" {
-			args = append(args, "-d", req.Database)
+			mongoArgs = append(mongoArgs, "-d", req.Database)
 		}
-		args = append(args, "--archive", "--gzip")
-		cmd := exec.CommandContext(ctx, "podman", args...)
-		setupCmdEnv(cmd)
-		cmd.Stdout = gw
-		dumpErr = cmd.Run()
-		_ = gw.Close()
+		mongoArgs = append(mongoArgs, "--archive", "--gzip")
+		if req.Password != "" {
+			args = append(args, "-e", "GOPOD_MONGO_PASS")
+			extraEnv = append(extraEnv, "GOPOD_MONGO_PASS="+req.Password)
+			args = append(args, containerName, "sh", "-c", `exec "$@" -p "$GOPOD_MONGO_PASS"`, "sh")
+			args = append(args, mongoArgs...)
+		} else {
+			args = append(args, containerName)
+			args = append(args, mongoArgs...)
+		}
+		dumpErr = runDump(args, extraEnv...)
 
 	case "redis":
-		// Trigger redis-cli BGSAVE or save RDB directly
-		gw := gzip.NewWriter(outFile)
-		args := []string{"exec", "-i", containerName, "redis-cli"}
+		args := []string{"exec", "-i"}
+		var extraEnv []string
 		if req.Password != "" {
-			args = append(args, "-a", req.Password)
+			args = append(args, "-e", "REDISCLI_AUTH")
+			extraEnv = append(extraEnv, "REDISCLI_AUTH="+req.Password)
 		}
-		args = append(args, "--rdb", "-")
-		cmd := exec.CommandContext(ctx, "podman", args...)
-		setupCmdEnv(cmd)
-		cmd.Stdout = gw
-		dumpErr = cmd.Run()
-		_ = gw.Close()
+		args = append(args, containerName, "redis-cli", "--rdb", "-")
+		dumpErr = runDump(args, extraEnv...)
 
 	default:
 		dumpErr = fmt.Errorf("unsupported database engine '%s'", engine)

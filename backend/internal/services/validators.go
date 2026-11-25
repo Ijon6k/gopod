@@ -94,6 +94,9 @@ func ValidateVolumeMount(source, target string) error {
 	if src == "" || dst == "" {
 		return errors.New("volume mount requires both source and target")
 	}
+	if src == "." || src == ".." || strings.Contains(src, "..") || strings.Contains(src, `\`) {
+		return errors.New("volume source must not contain '..' or backslashes")
+	}
 	if strings.ContainsAny(dst, "\x00\n\r:") {
 		return errors.New("volume target contains invalid characters or colons")
 	}
@@ -144,8 +147,55 @@ func ValidateGitURL(repoURL string) error {
 		return fmt.Errorf("invalid git repository URL %q", raw)
 	}
 	hostPart := raw[:colonIdx]
-	if strings.Contains(hostPart, "/") || strings.Contains(hostPart, "\\") {
+		if strings.Contains(hostPart, "/") || strings.Contains(hostPart, "\\") {
 		return fmt.Errorf("invalid git repository URL host %q", hostPart)
+	}
+	return nil
+}
+
+// validateAdvancedDirectives rejects control characters and quotes that could
+// inject additional systemd/Quadlet directives when persisted to unit files.
+func validateAdvancedDirectives(adv *ServiceAdvancedConfig) error {
+	if adv == nil {
+		return nil
+	}
+	check := func(field, val string) error {
+		if strings.ContainsAny(val, "\x00\r\n\"") {
+			return fmt.Errorf("%s contains disallowed control characters or quotes", field)
+		}
+		return nil
+	}
+	if err := check("runtime.userNamespace", adv.Runtime.UserNamespace); err != nil {
+		return err
+	}
+	for _, dev := range adv.Runtime.Devices {
+		if err := check("runtime.devices", dev); err != nil {
+			return err
+		}
+	}
+	if err := check("security.selinuxLabel", adv.Security.SELinuxLabel); err != nil {
+		return err
+	}
+	if err := check("security.apparmorProfile", adv.Security.AppArmorProfile); err != nil {
+		return err
+	}
+	for _, c := range adv.Security.CapAdd {
+		if err := check("security.capAdd", c); err != nil {
+			return err
+		}
+	}
+	for _, c := range adv.Security.CapDrop {
+		if err := check("security.capDrop", c); err != nil {
+			return err
+		}
+	}
+	if err := check("resources.swapLimit", adv.Resources.SwapLimit); err != nil {
+		return err
+	}
+	for _, v := range adv.Storage.Volumes {
+		if err := check("storage.volumes.options", v.Options); err != nil {
+			return err
+		}
 	}
 	return nil
 }

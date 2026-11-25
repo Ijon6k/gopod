@@ -62,16 +62,7 @@ export const runtimeApi = {
 		getTerminalWsUrl(id: string, cols = 80, rows = 24, cmd = 'sh', ticket?: string): string {
 			if (typeof window === 'undefined') return '';
 			const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-			let authParam = '';
-			if (ticket) {
-				authParam = `&ticket=${encodeURIComponent(ticket)}`;
-			} else {
-				const token =
-					typeof localStorage !== 'undefined' ? localStorage.getItem('gopod_token') || '' : '';
-				if (token) {
-					authParam = `&token=${encodeURIComponent(token)}`;
-				}
-			}
+			const authParam = ticket ? `&ticket=${encodeURIComponent(ticket)}` : '';
 			return `${protocol}//${window.location.host}/api/containers/${encodeURIComponent(id)}/exec?cmd=${encodeURIComponent(cmd)}&cols=${cols}&rows=${rows}${authParam}`;
 		}
 	},

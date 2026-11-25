@@ -177,21 +177,46 @@ func NewServer(cfg Config) (http.Handler, error) {
 	ingressService := ingress.NewService(ingressRepo, caddyReconciler)
 	ingressHandler := ingress.NewHandler(ingressService, authMiddleware)
 
-	// Reconcile Caddy on startup to establish reverse proxy and access logging
+	// Reconcile Caddy on startup with retry backoff so a concurrent Caddy boot
+	// has time to create its admin unix socket before we give up.
 	go func() {
-		bgCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
-		domains, err := ingressRepo.List(bgCtx, "")
-		if err == nil {
-			// Rewrite plaintext basic-auth passwords at rest to bcrypt hashes.
-			ingressService.MigrateBasicAuthHashes(bgCtx, domains)
-			_ = caddyReconciler.Reconcile(bgCtx, domains)
+		backoffs := []time.Duration{0, 1 * time.Second, 2 * time.Second, 4 * time.Second, 8 * time.Second}
+		for i, delay := range backoffs {
+			if delay > 0 {
+				time.Sleep(delay)
+			}
+			bgCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			domains, err := ingressRepo.List(bgCtx, "")
+			if err == nil {
+				if i == 0 {
+					// Rewrite plaintext basic-auth passwords at rest to bcrypt hashes.
+					ingressService.MigrateBasicAuthHashes(bgCtx, domains)
+				}
+				recErr := caddyReconciler.Reconcile(bgCtx, domains)
+				cancel()
+				if recErr == nil {
+					return
+				}
+			} else {
+				cancel()
+			}
 		}
 	}()
 
 	storageRepo := storage.NewSQLiteRepository(sqlDB)
 	storageService := storage.NewService(storageRepo)
 	storageService.SetSystemSource(sqlDB, dataDir)
+	storageService.SetServiceEnvResolver(func(ctx context.Context, serviceID string) (map[string]string, error) {
+		svc, err := serviceRepo.Get(ctx, serviceID)
+		if err != nil || svc == nil {
+			return nil, err
+		}
+		envMap := make(map[string]string, len(svc.EnvVars))
+		for _, ev := range svc.EnvVars {
+			envMap[ev.Key] = ev.Value
+		}
+		return envMap, nil
+	})
 	storageService.StartScheduler(context.Background())
 	storageHandler := storage.NewHandler(storageService, authMiddleware)
 
@@ -389,8 +414,6 @@ func withMiddleware(next http.Handler) http.Handler {
 		if origin != "" && httputil.IsOriginAllowed(origin, r.Host) {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
-		} else if origin == "" {
-			w.Header().Set("Access-Control-Allow-Origin", "*")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
@@ -400,10 +423,11 @@ func withMiddleware(next http.Handler) http.Handler {
 		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
 		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self' data:; connect-src 'self' ws: wss:; frame-ancestors 'self'; base-uri 'self'; object-src 'none';")
 
+		isTrusted := auth.IsTrustedProxy(r.RemoteAddr)
 		isSecure := r.TLS != nil ||
-			strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") ||
-			strings.EqualFold(r.Header.Get("X-Forwarded-Scheme"), "https") ||
-			strings.EqualFold(r.Header.Get("X-Forwarded-Ssl"), "on")
+			(isTrusted && (strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https") ||
+				strings.EqualFold(r.Header.Get("X-Forwarded-Scheme"), "https") ||
+				strings.EqualFold(r.Header.Get("X-Forwarded-Ssl"), "on")))
 		if isSecure {
 			w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
 		}

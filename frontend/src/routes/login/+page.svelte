@@ -24,7 +24,7 @@
 		isSubmitting = true;
 		try {
 			await authStore.login(result.data);
-			await goto('/', { replaceState: true });
+			await goto('/', { replace: true });
 		} catch (err: any) {
 			validationError = err.message || 'Invalid email or password.';
 		} finally {

@@ -28,6 +28,7 @@ import (
 	"gopod/internal/runtime"
 	"gopod/internal/services"
 	"gopod/internal/storage"
+	"gopod/internal/updater"
 	"gopod/pkg/crypto"
 	"gopod/pkg/httputil"
 )
@@ -87,6 +88,11 @@ func NewServer(cfg Config) (http.Handler, error) {
 		} else if n > 0 {
 			log.Printf("[auth] Migrated %d stored session token(s) to hashed form", n)
 		}
+		if n, err := authRepo.MigrateSessionIDs(context.Background()); err != nil {
+			log.Printf("[WARN] session id migration failed: %v", err)
+		} else if n > 0 {
+			log.Printf("[auth] Assigned surrogate IDs to %d legacy session(s)", n)
+		}
 	}
 
 	projectRepo := projects.NewSQLiteRepository(sqlDB)
@@ -127,6 +133,13 @@ func NewServer(cfg Config) (http.Handler, error) {
 
 	runtimeService := runtime.NewService(podmanClient)
 	runtimeService.SetMetricsStore(runtime.NewMetricsStore(sqlDB))
+	runtimeService.SetServiceScopeResolver(func(ctx context.Context, serviceID string) (string, bool) {
+		svc, err := serviceRepo.Get(ctx, serviceID)
+		if err != nil || svc == nil {
+			return "", false
+		}
+		return svc.ProjectID, true
+	})
 	go runtimeService.StartMetricsSampler(context.Background())
 	runtimeHandler := runtime.NewHandler(runtimeService, authMiddleware)
 	// Quadlet API responses mask env values GOPOD stores encrypted; the unit
@@ -183,6 +196,10 @@ func NewServer(cfg Config) (http.Handler, error) {
 	ingressRepo := ingress.NewSQLiteRepository(sqlDB)
 	ingressService := ingress.NewService(ingressRepo, caddyReconciler)
 	ingressService.SetSettingsDB(sqlDB)
+	ingressService.SetServerIPProvider(func() (string, bool) {
+		info := podman.DetectHostIPInfo()
+		return info.IP, info.IsPublic
+	})
 	_, _ = ingressService.LoadPanelSettings(context.Background())
 	ingressHandler := ingress.NewHandler(ingressService, authMiddleware)
 
@@ -310,6 +327,9 @@ func NewServer(cfg Config) (http.Handler, error) {
 	auditHandler.RegisterRoutes(mux)
 	activityHandler.RegisterRoutes(mux)
 	notifHandler.RegisterRoutes(mux)
+	updaterService := updater.NewService(podmanClient, dataDir, auditService, notifService)
+	updaterHandler := updater.NewHandler(updaterService, authMiddleware)
+	updaterHandler.RegisterRoutes(mux)
 
 	// ── License & Build Metadata (AGPL-3.0 §13) ──
 	// Public route: any user interacting with the service over the network can
@@ -412,6 +432,7 @@ func aboutHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{
 		"name":           "GoPod",
+		"version":        updater.Version,
 		"license":        "AGPL-3.0-only",
 		"source_url":     source,
 		"build_revision": revision,

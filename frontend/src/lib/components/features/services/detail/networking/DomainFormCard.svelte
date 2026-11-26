@@ -1,6 +1,8 @@
 <script lang="ts">
 	import type { Service, Domain } from '$lib/types';
 	import { Button, Input, Field, Select, Switch, LayerCard } from '$lib/components/ui';
+	import DomainDnsValidation from '$lib/components/features/networking/DomainDnsValidation.svelte';
+	import type { DNSCheckResult } from '$lib/types';
 	import { dataStore } from '$lib/data';
 	import { parseComposeServices, extractPortNumber } from '$lib/parsers/compose';
 	import { Globe, CaretDown, CaretUp } from 'phosphor-svelte';
@@ -40,6 +42,7 @@
 	let basicAuthEnabled = $state(false);
 	let basicAuthUser = $state('');
 	let basicAuthPass = $state('');
+	let dnsCheckResult = $state<DNSCheckResult | null>(null);
 
 	// Basic auth needs a username and a password. On edit, an already stored hash
 	// allows leaving the password blank (empty = keep, enforced by the backend).
@@ -260,8 +263,10 @@
 				basicAuthUser = editingDomain.basicAuthUser || '';
 				// The stored hash is write-only: never prefill, blank means keep.
 				basicAuthPass = '';
+				dnsCheckResult = editingDomain.dnsCheck || null;
 			} else {
 				initFormDefaults();
+				dnsCheckResult = null;
 			}
 		});
 	});
@@ -294,6 +299,12 @@
 			cleanHost.includes('127.0.0.1') ||
 			cleanHost === 'localhost';
 		const effectiveTarget = isCustomTarget ? customTargetName.trim() : targetContainer.trim();
+		let nextDnsStatus: Domain['dnsStatus'] = isLocal ? 'valid' : editingDomain?.dnsStatus || 'pending';
+		if (!isLocal && dnsCheckResult && dnsCheckResult.hostname === cleanHost) {
+			if (dnsCheckResult.valid) nextDnsStatus = 'valid';
+			else if (dnsCheckResult.status === 'mismatch') nextDnsStatus = 'mismatch';
+			else nextDnsStatus = 'pending';
+		}
 
 		const payload: Domain = {
 			id: editingDomain ? editingDomain.id : crypto.randomUUID(),
@@ -318,7 +329,9 @@
 			hasBasicAuth: basicAuthEnabled
 				? editingDomain?.hasBasicAuth || !!basicAuthPass.trim()
 				: undefined,
-			dnsStatus: isLocal ? 'valid' : editingDomain?.dnsStatus || 'pending'
+			dnsStatus: nextDnsStatus,
+			resolvedIp: dnsCheckResult?.resolvedIp || editingDomain?.resolvedIp,
+			behindCloudflare: dnsCheckResult?.behindCloudflare ?? editingDomain?.behindCloudflare
 		};
 
 		onSave(payload);
@@ -349,7 +362,7 @@
 					id="new-domain-host"
 					bind:value={domainName}
 					placeholder="e.g. app.localhost or api.example.com"
-					class="text-xs font-[var(--font-mono)]"
+					class="text-xs"
 				/>
 			</Field>
 		</div>
@@ -443,6 +456,13 @@
 			</Field>
 		</div>
 	</div>
+
+	<DomainDnsValidation
+		hostname={domainName}
+		domainId={editingDomain?.id}
+		initialDnsStatus={editingDomain?.dnsStatus}
+		onvalidated={(res) => (dnsCheckResult = res)}
+	/>
 
 	<div class="flex flex-col gap-2 pt-1 sm:flex-row sm:items-center sm:gap-6">
 		<Switch

@@ -160,12 +160,17 @@ func (d *DB) migrate() error {
 		password_hash TEXT NOT NULL,
 		name TEXT DEFAULT '',
 		role TEXT DEFAULT 'admin',
+		permissions_json TEXT DEFAULT '{}',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 
 	CREATE TABLE IF NOT EXISTS sessions (
 		token TEXT PRIMARY KEY,
+		id TEXT DEFAULT '',
 		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		ip_address TEXT DEFAULT '',
+		user_agent TEXT DEFAULT '',
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		expires_at DATETIME NOT NULL,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
@@ -249,6 +254,7 @@ func (d *DB) migrate() error {
 		project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 		role TEXT DEFAULT 'member',
+		service_ids_json TEXT DEFAULT '[]',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		PRIMARY KEY (project_id, user_id)
 	);
@@ -329,6 +335,13 @@ func (d *DB) migrate() error {
 		"CREATE INDEX IF NOT EXISTS idx_services_webhook ON services(webhook_token);",
 		"CREATE INDEX IF NOT EXISTS idx_deployments_project ON deployments(project_id);",
 		"CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);",
+		"ALTER TABLE users ADD COLUMN permissions_json TEXT DEFAULT '{}';",
+		"ALTER TABLE project_members ADD COLUMN service_ids_json TEXT DEFAULT '[]';",
+		"ALTER TABLE sessions ADD COLUMN id TEXT DEFAULT '';",
+		"ALTER TABLE sessions ADD COLUMN ip_address TEXT DEFAULT '';",
+		"ALTER TABLE sessions ADD COLUMN user_agent TEXT DEFAULT '';",
+		"ALTER TABLE sessions ADD COLUMN last_seen_at DATETIME;",
+		"CREATE INDEX IF NOT EXISTS idx_sessions_id ON sessions(id);",
 		"INSERT OR IGNORE INTO projects (id, name, description) VALUES ('system', 'GoPod System', 'Internal system placeholder for platform disaster recovery snapshots');",
 	}
 	for _, q := range newCols {
@@ -357,6 +370,11 @@ var dataMigrations = []string{
 	"UPDATE services SET auto_deploy = 1",
 	// Ensure system placeholder project exists for platform disaster recovery snapshots & schedules
 	"INSERT OR IGNORE INTO projects (id, name, description) VALUES ('system', 'GoPod System', 'Internal system placeholder for platform disaster recovery snapshots')",
+	// Backfill existing member accounts with safe developer defaults on upgrade so
+	// they retain expected access; newly created member accounts start least-privilege false.
+	`UPDATE users SET permissions_json = '{"canCreateServices":true,"canDeployServices":true,"canManageDomains":true,"canManageBackups":true,"canViewMonitoring":true,"canViewActivity":true}' WHERE LOWER(role) = 'member' AND (permissions_json IS NULL OR permissions_json = '' OR permissions_json = '{}')`,
+	// Ensure existing session rows start with non-null last_seen_at.
+	"UPDATE sessions SET last_seen_at = created_at WHERE last_seen_at IS NULL",
 }
 
 func (d *DB) migrateData() error {

@@ -6,6 +6,8 @@ import (
 	"log"
 	"net/http"
 	"time"
+
+	"gopod/internal/auth"
 )
 
 func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request) {
@@ -40,17 +42,16 @@ func (h *Handler) handleStream(w http.ResponseWriter, r *http.Request) {
 			return
 		case <-ticker.C:
 			ctx := r.Context()
-			sys, sysErr := h.service.GetSystemInfo(ctx)
-			stats, statsErr := h.service.GetContainerStats(ctx)
-
 			payload := map[string]interface{}{
 				"timestamp": time.Now().UTC().Format(time.RFC3339),
 			}
-			if sysErr == nil {
-				payload["system"] = sys
+			if h.middleware == nil || h.middleware.HasPermission(r, auth.PermissionViewMonitoring) || h.middleware.HasPermission(r, auth.PermissionAccessRuntime) {
+				if sys, sysErr := h.service.GetSystemInfo(ctx); sysErr == nil {
+					payload["system"] = sys
+				}
 			}
-			if statsErr == nil {
-				payload["stats"] = stats
+			if stats, statsErr := h.service.GetContainerStats(ctx); statsErr == nil {
+				payload["stats"] = h.filterStatsForCaller(r, stats)
 			}
 
 			dataBytes, err := json.Marshal(payload)

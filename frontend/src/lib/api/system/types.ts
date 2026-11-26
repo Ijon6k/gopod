@@ -2,6 +2,8 @@ export interface Server {
 	id?: string;
 	hostname: string;
 	ip: string;
+	localIp?: string;
+	ipIsPublic?: boolean;
 	os: string;
 	kernel: string;
 	vcpu: number;
@@ -29,6 +31,8 @@ export interface Server {
 
 export interface SystemInfoResponse {
 	ip?: string;
+	localIp?: string;
+	ipIsPublic?: boolean;
 	hostname: string;
 	os: string;
 	kernel: string;
@@ -151,8 +155,78 @@ export interface AdminUserSummary {
 	email: string;
 	name: string;
 	role: 'admin' | 'member';
+	permissions?: import('../auth/types').UserPermissions;
 	projectIds: string[];
+	projectScopes?: import('../auth/types').ProjectScope[];
 	createdAt: string;
+}
+
+export interface SelfInspection {
+	mode: 'quadlet-pod' | 'quadlet-standalone' | 'compose' | 'container' | 'dev-local' | 'native';
+	containerized: boolean;
+	containerId?: string;
+	containerName?: string;
+	runningImage?: string;
+	localDigest?: string;
+	podName?: string;
+	unitName?: string;
+	quadletDir?: string;
+	dbusReachable: boolean;
+	podmanSocketOk: boolean;
+	isDevBuild: boolean;
+	canAutoUpdate: boolean;
+	autoUpdateReason?: string;
+	manualHint?: string;
+	executablePath?: string;
+}
+
+export interface PodmanCompatibility {
+	version: string;
+	recommendedMinVersion: string;
+	compatible: boolean;
+	rootless: boolean;
+	os: string;
+	warning?: string;
+	upgradeHint: string;
+}
+
+export interface UpdateStatus {
+	state: 'idle' | 'updating' | 'succeeded' | 'rolled_back' | 'failed';
+	targetTag?: string;
+	targetRef?: string;
+	message?: string;
+	startedAt?: string;
+	finishedAt?: string;
+}
+
+export interface UpdateCheckResponse {
+	repository: string;
+	imageRepo: string;
+	currentVersion: string;
+	buildCommit?: string;
+	buildDate?: string;
+	channel: 'latest' | 'dev';
+	latestVersion?: string;
+	latestTag?: string;
+	releaseUrl?: string;
+	releaseNotes?: string;
+	publishedAt?: string;
+	remoteDigest?: string;
+	updateAvailable: boolean;
+	checkedAt: string;
+	checkError?: string;
+	self: SelfInspection;
+	podman: PodmanCompatibility;
+	lastStatus: UpdateStatus;
+}
+
+export interface VersionInfoResponse {
+	version: string;
+	buildCommit?: string;
+	buildDate?: string;
+	channel: 'latest' | 'dev';
+	mode: string;
+	isDevBuild: boolean;
 }
 
 export interface NotificationChannel {

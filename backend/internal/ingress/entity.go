@@ -27,9 +27,13 @@ type Domain struct {
 	BasicAuthPass string `json:"-"`
 	// HasBasicAuth is a computed, response-only flag telling whether a stored
 	// password hash exists for the domain.
-	HasBasicAuth bool      `json:"hasBasicAuth"`
-	DNSStatus    string    `json:"dnsStatus"`
-	CreatedAt    time.Time `json:"createdAt"`
+	HasBasicAuth     bool            `json:"hasBasicAuth"`
+	DNSStatus        string          `json:"dnsStatus"`
+	ResolvedIP       string          `json:"resolvedIp,omitempty"`
+	ResolvedIPs      []string        `json:"resolvedIps,omitempty"`
+	BehindCloudflare bool            `json:"behindCloudflare,omitempty"`
+	DNSCheck         *DNSCheckResult `json:"dnsCheck,omitempty"`
+	CreatedAt        time.Time       `json:"createdAt"`
 }
 
 // computeBasicAuthState fills response-only derived fields from the stored hash.

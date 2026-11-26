@@ -11,12 +11,16 @@ import (
 	"strconv"
 	"strings"
 
+	"gopod/internal/auth"
 	"gopod/pkg/httputil"
 )
 
 // handleDropUpload handles multipart .zip file upload for static sites.
 func (h *Handler) handleDropUpload(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
+		return
+	}
 	svc, err := h.service.GetService(r.Context(), id)
 	if err != nil || svc == nil {
 		httputil.WriteError(w, http.StatusNotFound, "Service not found")

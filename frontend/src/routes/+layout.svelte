@@ -25,7 +25,7 @@
 		// Case 1: Fresh installation / no users exist -> redirect to /setup
 		if (!initialized) {
 			if (pathname !== '/setup') {
-				goto('/setup', { replaceState: true });
+				goto('/setup', { replace: true });
 			}
 			return;
 		}
@@ -33,14 +33,30 @@
 		// Case 2: Cluster initialized but user is not authenticated
 		if (!authenticated) {
 			if (pathname !== '/login') {
-				goto('/login', { replaceState: true });
+				goto('/login', { replace: true });
 			}
 			return;
 		}
 
 		// Case 3: Fully authenticated user trying to access /login or /setup
 		if (pathname === '/login' || pathname === '/setup') {
-			goto('/', { replaceState: true });
+			goto('/', { replace: true });
+			return;
+		}
+
+		// Case 4: Enforce route visibility matching backend RBAC guards
+		if (!authStore.isAdmin) {
+			if (pathname.startsWith('/access') || pathname.startsWith('/credentials') || pathname.startsWith('/audit-log')) {
+				goto('/', { replace: true });
+				return;
+			}
+			if (pathname.startsWith('/runtime') && !authStore.can('canAccessRuntime')) {
+				goto('/', { replace: true });
+				return;
+			}
+			if (pathname.startsWith('/monitoring') && !authStore.can('canViewMonitoring')) {
+				goto('/', { replace: true });
+			}
 		}
 	}
 

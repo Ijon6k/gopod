@@ -122,11 +122,16 @@ func setupStorageHTTPTest(t *testing.T) (*Handler, *Service, *mockAuditRecorder,
 		password_hash TEXT,
 		name TEXT,
 		role TEXT,
+		permissions_json TEXT DEFAULT '{}',
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);
 	CREATE TABLE sessions (
 		token TEXT PRIMARY KEY,
+		id TEXT DEFAULT '',
 		user_id TEXT,
+		ip_address TEXT DEFAULT '',
+		user_agent TEXT DEFAULT '',
+		last_seen_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 		expires_at DATETIME,
 		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 	);`

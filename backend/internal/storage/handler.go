@@ -84,38 +84,63 @@ func (h *Handler) ensureProjectAccess(w http.ResponseWriter, r *http.Request, pr
 	return true
 }
 
-func (h *Handler) ensureSnapshotAccess(w http.ResponseWriter, r *http.Request, snapID string) bool {
+func (h *Handler) ensureBackupPermission(w http.ResponseWriter, r *http.Request, projectID, serviceID string) bool {
 	if h.middleware == nil {
 		return true
 	}
-	restricted, allowed := h.middleware.AllowedProjectSet(r)
-	if !restricted {
-		return true
+	if !h.middleware.HasPermission(r, auth.PermissionManageBackups) {
+		httputil.WriteError(w, http.StatusForbidden, "Permission 'canManageBackups' required")
+		return false
 	}
-	snap, err := h.service.GetSnapshot(r.Context(), snapID)
-	if err != nil || snap == nil {
-		return true
-	}
-	if !allowed[snap.ProjectID] {
+	if !h.middleware.CanAccessService(r, projectID, serviceID) {
 		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
 		return false
 	}
 	return true
 }
 
-func (h *Handler) ensureScheduleAccess(w http.ResponseWriter, r *http.Request, schedID string) bool {
+func (h *Handler) ensureSnapshotAccess(w http.ResponseWriter, r *http.Request, snapID string, requireManage bool) bool {
+	snap, err := h.service.GetSnapshot(r.Context(), snapID)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to verify snapshot access")
+		return false
+	}
+	if snap == nil {
+		httputil.WriteError(w, http.StatusNotFound, ErrSnapshotNotFound.Error())
+		return false
+	}
 	if h.middleware == nil {
 		return true
 	}
-	restricted, allowed := h.middleware.AllowedProjectSet(r)
-	if !restricted {
-		return true
+	if requireManage && !h.middleware.HasPermission(r, auth.PermissionManageBackups) {
+		httputil.WriteError(w, http.StatusForbidden, "Permission 'canManageBackups' required")
+		return false
 	}
+	if !h.middleware.CanAccessService(r, snap.ProjectID, snap.ServiceID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return false
+	}
+	return true
+}
+
+func (h *Handler) ensureScheduleAccess(w http.ResponseWriter, r *http.Request, schedID string, requireManage bool) bool {
 	sched, err := h.service.GetSchedule(r.Context(), schedID)
-	if err != nil || sched == nil {
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to verify schedule access")
+		return false
+	}
+	if sched == nil {
+		httputil.WriteError(w, http.StatusNotFound, ErrScheduleNotFound.Error())
+		return false
+	}
+	if h.middleware == nil {
 		return true
 	}
-	if !allowed[sched.ProjectID] {
+	if requireManage && !h.middleware.HasPermission(r, auth.PermissionManageBackups) {
+		httputil.WriteError(w, http.StatusForbidden, "Permission 'canManageBackups' required")
+		return false
+	}
+	if !h.middleware.CanAccessService(r, sched.ProjectID, sched.ServiceID) {
 		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
 		return false
 	}
@@ -133,11 +158,11 @@ func (h *Handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if projectID == "" && h.middleware != nil {
+	if h.middleware != nil {
 		if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
 			filtered := make([]VolumeSnapshot, 0, len(snapshots))
 			for _, s := range snapshots {
-				if allowed[s.ProjectID] {
+				if allowed[s.ProjectID] && h.middleware.CanAccessService(r, s.ProjectID, s.ServiceID) {
 					filtered = append(filtered, s)
 				}
 			}
@@ -162,7 +187,7 @@ func (h *Handler) handleCreateDatabaseDump(w http.ResponseWriter, r *http.Reques
 		httputil.WriteDecodeError(w, err)
 		return
 	}
-	if !h.ensureProjectAccess(w, r, req.ProjectID) {
+	if !h.ensureBackupPermission(w, r, req.ProjectID, req.ServiceID) {
 		return
 	}
 	snap, err := h.service.CreateDatabaseDump(r.Context(), req)
@@ -179,7 +204,7 @@ func (h *Handler) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteDecodeError(w, err)
 		return
 	}
-	if !h.ensureProjectAccess(w, r, snap.ProjectID) {
+	if !h.ensureBackupPermission(w, r, snap.ProjectID, snap.ServiceID) {
 		return
 	}
 
@@ -193,7 +218,7 @@ func (h *Handler) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureSnapshotAccess(w, r, id) {
+	if !h.ensureSnapshotAccess(w, r, id, true) {
 		return
 	}
 	if err := h.service.DeleteSnapshot(r.Context(), id); err != nil {
@@ -209,7 +234,7 @@ func (h *Handler) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleRestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureSnapshotAccess(w, r, id) {
+	if !h.ensureSnapshotAccess(w, r, id, true) {
 		return
 	}
 	var opts DatabaseRestoreRequest
@@ -234,7 +259,7 @@ func (h *Handler) handleRestoreSnapshot(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleDownloadSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureSnapshotAccess(w, r, id) {
+	if !h.ensureSnapshotAccess(w, r, id, false) {
 		return
 	}
 	filePath, filename, err := h.service.GetSnapshotFilePath(r.Context(), id)
@@ -259,11 +284,11 @@ func (h *Handler) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if projectID == "" && h.middleware != nil {
+	if h.middleware != nil {
 		if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
 			filtered := make([]VolumeSchedule, 0, len(schedules))
 			for _, s := range schedules {
-				if allowed[s.ProjectID] {
+				if allowed[s.ProjectID] && h.middleware.CanAccessService(r, s.ProjectID, s.ServiceID) {
 					filtered = append(filtered, s)
 				}
 			}
@@ -288,7 +313,7 @@ func (h *Handler) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteDecodeError(w, err)
 		return
 	}
-	if !h.ensureProjectAccess(w, r, sched.ProjectID) {
+	if !h.ensureBackupPermission(w, r, sched.ProjectID, sched.ServiceID) {
 		return
 	}
 
@@ -302,7 +327,7 @@ func (h *Handler) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureScheduleAccess(w, r, id) {
+	if !h.ensureScheduleAccess(w, r, id, true) {
 		return
 	}
 	if err := h.service.DeleteSchedule(r.Context(), id); err != nil {
@@ -314,7 +339,7 @@ func (h *Handler) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureScheduleAccess(w, r, id) {
+	if !h.ensureScheduleAccess(w, r, id, true) {
 		return
 	}
 	sched, err := h.service.ToggleSchedule(r.Context(), id)

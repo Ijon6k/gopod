@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 	"time"
 
@@ -19,9 +18,10 @@ import (
 
 // Service encapsulates ingress routing and telemetry business logic.
 type Service struct {
-	repo       Repository
-	reconciler *Reconciler
-	settingsDB *sql.DB
+	repo             Repository
+	reconciler       *Reconciler
+	settingsDB       *sql.DB
+	serverIPProvider func() (ip string, isPublic bool)
 }
 
 // NewService creates a new ingress domain service.
@@ -30,6 +30,11 @@ func NewService(repo Repository, reconciler *Reconciler) *Service {
 		repo:       repo,
 		reconciler: reconciler,
 	}
+}
+
+// SetServerIPProvider configures a host IP resolver for DNS A-record validation.
+func (s *Service) SetServerIPProvider(fn func() (ip string, isPublic bool)) {
+	s.serverIPProvider = fn
 }
 
 // ListDomains retrieves all domains, optionally filtered by projectID.
@@ -69,6 +74,16 @@ func (s *Service) GetDomain(ctx context.Context, id string) (*Domain, error) {
 	return d, nil
 }
 
+// VerifyDomainDNS checks live DNS resolution, server IP matching, and Cloudflare proxying for rawHost.
+func (s *Service) VerifyDomainDNS(ctx context.Context, rawHost string) (*DNSCheckResult, error) {
+	var serverIP string
+	var serverIPPublic bool
+	if s.serverIPProvider != nil {
+		serverIP, serverIPPublic = s.serverIPProvider()
+	}
+	return CheckDomainDNS(ctx, rawHost, serverIP, serverIPPublic)
+}
+
 // RevalidateDomain re-checks DNS for a domain rule and updates the database.
 func (s *Service) RevalidateDomain(ctx context.Context, id string) (*Domain, error) {
 	if s.repo == nil {
@@ -82,28 +97,18 @@ func (s *Service) RevalidateDomain(ctx context.Context, id string) (*Domain, err
 		return nil, errors.New("domain not found")
 	}
 
-	cleanHost := strings.ToLower(strings.TrimSpace(d.Hostname))
-	cleanHost = strings.TrimPrefix(cleanHost, "https://")
-	cleanHost = strings.TrimPrefix(cleanHost, "http://")
-	if idx := strings.Index(cleanHost, ":"); idx != -1 {
-		cleanHost = cleanHost[:idx]
+	check, err := s.VerifyDomainDNS(ctx, d.Hostname)
+	if err != nil {
+		return nil, err
 	}
 
-	isLoopback := strings.HasSuffix(cleanHost, ".localhost") || strings.HasSuffix(cleanHost, ".local") || strings.Contains(cleanHost, "127.0.0.1") || cleanHost == "localhost"
-
-	if isLoopback {
+	switch check.Status {
+	case "local", "valid", "cloudflare":
 		d.DNSStatus = "valid"
-	} else {
-		// Real DNS resolution check using net.Resolver
-		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-		defer cancel()
-		var resolver net.Resolver
-		ips, err := resolver.LookupIP(lookupCtx, "ip", cleanHost)
-		if err == nil && len(ips) > 0 {
-			d.DNSStatus = "valid"
-		} else {
-			d.DNSStatus = "pending"
-		}
+	case "mismatch":
+		d.DNSStatus = "mismatch"
+	default:
+		d.DNSStatus = "pending"
 	}
 
 	if err := s.repo.Update(ctx, *d); err != nil {
@@ -111,6 +116,10 @@ func (s *Service) RevalidateDomain(ctx context.Context, id string) (*Domain, err
 	}
 
 	d.computeBasicAuthState()
+	d.ResolvedIP = check.ResolvedIP
+	d.ResolvedIPs = check.ResolvedIPs
+	d.BehindCloudflare = check.BehindCloudflare
+	d.DNSCheck = check
 	return d, nil
 }
 

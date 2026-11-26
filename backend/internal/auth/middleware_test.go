@@ -50,6 +50,21 @@ func (m *mockAuthRepo) PruneExpiredSessions(ctx context.Context) (int64, error) 
 func (m *mockAuthRepo) DeleteOtherSessions(ctx context.Context, userID, keepToken string) (int64, error) {
 	return 0, nil
 }
+func (m *mockAuthRepo) ListUserSessions(ctx context.Context, userID string) ([]SessionSummary, error) {
+	return []SessionSummary{}, nil
+}
+func (m *mockAuthRepo) ListAllSessions(ctx context.Context) ([]SessionSummary, error) {
+	return []SessionSummary{}, nil
+}
+func (m *mockAuthRepo) GetSessionIDByToken(ctx context.Context, token string) (string, error) {
+	return "", nil
+}
+func (m *mockAuthRepo) DeleteSessionByID(ctx context.Context, sessionID, ownerUserID string) (bool, error) {
+	return false, nil
+}
+func (m *mockAuthRepo) TouchSessionLastSeen(ctx context.Context, token string, at time.Time) error {
+	return nil
+}
 
 func TestRequireAuthMiddlewareCaching(t *testing.T) {
 	repo := &mockAuthRepo{

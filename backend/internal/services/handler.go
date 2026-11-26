@@ -90,24 +90,54 @@ func (h *Handler) ensureProjectAccess(w http.ResponseWriter, r *http.Request, pr
 	return true
 }
 
-func (h *Handler) ensureServiceAccess(w http.ResponseWriter, r *http.Request, serviceID string) bool {
-	if h.middleware == nil {
-		return true
-	}
-	restricted, allowed := h.middleware.AllowedProjectSet(r)
-	if !restricted {
-		return true
-	}
-	svc, err := h.service.GetService(r.Context(), serviceID)
-	if err != nil || svc == nil {
-		// Let downstream handler produce consistent 404/400 when missing
-		return true
-	}
-	if !allowed[svc.ProjectID] {
-		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+func (h *Handler) ensurePermission(w http.ResponseWriter, r *http.Request, perm auth.Permission) bool {
+	if h.middleware != nil && !h.middleware.HasPermission(r, perm) {
+		httputil.WriteError(w, http.StatusForbidden, fmt.Sprintf("Permission '%s' required", perm))
 		return false
 	}
 	return true
+}
+
+func (h *Handler) ensureServiceAccess(w http.ResponseWriter, r *http.Request, serviceID string) (*Service, bool) {
+	svc, err := h.service.GetService(r.Context(), serviceID)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to verify service access")
+		return nil, false
+	}
+	if svc == nil {
+		httputil.WriteError(w, http.StatusNotFound, "Service not found")
+		return nil, false
+	}
+	if h.middleware != nil && !h.middleware.CanAccessService(r, svc.ProjectID, svc.ID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to service denied")
+		return nil, false
+	}
+	return svc, true
+}
+
+func (h *Handler) ensureServicePermission(w http.ResponseWriter, r *http.Request, serviceID string, perm auth.Permission) bool {
+	if !h.ensurePermission(w, r, perm) {
+		return false
+	}
+	_, ok := h.ensureServiceAccess(w, r, serviceID)
+	return ok
+}
+
+func (h *Handler) ensureDeploymentAccess(w http.ResponseWriter, r *http.Request, deploymentID string) (*Deployment, bool) {
+	dep, err := h.service.GetDeployment(r.Context(), deploymentID)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, "Failed to verify deployment access")
+		return nil, false
+	}
+	if dep == nil {
+		httputil.WriteError(w, http.StatusNotFound, "Deployment not found")
+		return nil, false
+	}
+	if h.middleware != nil && !h.middleware.CanAccessService(r, dep.ProjectID, dep.ServiceID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to deployment denied")
+		return nil, false
+	}
+	return dep, true
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
@@ -120,11 +150,12 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if projectID == "" && h.middleware != nil {
-		if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
+	if h.middleware != nil {
+		restrictedProj, allowedProj := h.middleware.AllowedProjectSet(r)
+		if restrictedProj {
 			filtered := make([]Service, 0, len(list))
 			for _, item := range list {
-				if allowed[item.ProjectID] {
+				if allowedProj[item.ProjectID] && h.middleware.CanAccessService(r, item.ProjectID, item.ID) {
 					filtered = append(filtered, item)
 				}
 			}
@@ -135,6 +166,9 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
+	if !h.ensurePermission(w, r, auth.PermissionCreateServices) {
+		return
+	}
 	var s Service
 	if err := httputil.DecodeJSONBody(w, r, &s, 0); err != nil {
 		httputil.WriteDecodeError(w, err)
@@ -154,16 +188,8 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
-		return
-	}
-	s, err := h.service.GetService(r.Context(), id)
-	if err != nil {
-		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if s == nil {
-		httputil.WriteError(w, http.StatusNotFound, "Service not found")
+	s, ok := h.ensureServiceAccess(w, r, id)
+	if !ok {
 		return
 	}
 	if (s.Type == "quadlet" || s.RuntimeTarget == "quadlet" || strings.TrimSpace(s.QuadletConfig) != "") && h.service.deployer != nil {
@@ -177,7 +203,11 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensurePermission(w, r, auth.PermissionDeployServices) {
+		return
+	}
+	existing, ok := h.ensureServiceAccess(w, r, id)
+	if !ok {
 		return
 	}
 	var s Service
@@ -186,6 +216,8 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.ID = id
+	// Pin ProjectID to the existing service so a caller cannot reassign ownership across projects.
+	s.ProjectID = existing.ProjectID
 
 	if err := h.service.UpdateService(r.Context(), s); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -201,7 +233,7 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeleteServices) {
 		return
 	}
 	deleteVolumes := r.URL.Query().Get("delete_volumes") == "true"
@@ -214,7 +246,7 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
 		return
 	}
 	trigger := "manual"
@@ -250,6 +282,12 @@ func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleCancelDeployment(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensurePermission(w, r, auth.PermissionDeployServices) {
+		return
+	}
+	if _, ok := h.ensureDeploymentAccess(w, r, id); !ok {
+		return
+	}
 	dep, err := h.service.CancelDeployment(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
@@ -260,6 +298,9 @@ func (h *Handler) handleCancelDeployment(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleCancelServiceDeployment(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
+		return
+	}
 	svc, err := h.service.CancelServiceDeployment(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
@@ -270,13 +311,8 @@ func (h *Handler) handleCancelServiceDeployment(w http.ResponseWriter, r *http.R
 
 func (h *Handler) handleGetDeployment(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	dep, err := h.service.GetDeployment(r.Context(), id)
-	if err != nil {
-		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if dep == nil {
-		httputil.WriteError(w, http.StatusNotFound, "Deployment not found")
+	dep, ok := h.ensureDeploymentAccess(w, r, id)
+	if !ok {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, dep)
@@ -286,6 +322,9 @@ func (h *Handler) handleGetDeploymentLogs(w http.ResponseWriter, r *http.Request
 	id := r.PathValue("id")
 	if !ValidDeploymentLogID(id) {
 		httputil.WriteError(w, http.StatusBadRequest, "Invalid deployment id")
+		return
+	}
+	if _, ok := h.ensureDeploymentAccess(w, r, id); !ok {
 		return
 	}
 	logs, err := h.service.GetDeploymentLogs(r.Context(), id)
@@ -303,6 +342,9 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 	id := r.PathValue("id")
 	if !ValidDeploymentLogID(id) {
 		httputil.WriteError(w, http.StatusBadRequest, "Invalid deployment id")
+		return
+	}
+	if _, ok := h.ensureDeploymentAccess(w, r, id); !ok {
 		return
 	}
 	flusher, ok := w.(http.Flusher)
@@ -370,7 +412,7 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 
 func (h *Handler) handleListDeployments(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if _, ok := h.ensureServiceAccess(w, r, id); !ok {
 		return
 	}
 	deployments, err := h.service.ListDeployments(r.Context(), id)
@@ -386,7 +428,7 @@ func (h *Handler) handleListDeployments(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
 		return
 	}
 	svc, err := h.service.StartService(r.Context(), id)
@@ -399,7 +441,7 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleStop(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
 		return
 	}
 	svc, err := h.service.StopService(r.Context(), id)
@@ -412,7 +454,7 @@ func (h *Handler) handleStop(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
 		return
 	}
 	svc, err := h.service.RestartService(r.Context(), id)
@@ -425,7 +467,7 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGetJournal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if _, ok := h.ensureServiceAccess(w, r, id); !ok {
 		return
 	}
 	lines := 100
@@ -452,6 +494,10 @@ func (h *Handler) handleGetJournal(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleValidateQuadlet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	svc, ok := h.ensureServiceAccess(w, r, id)
+	if !ok {
+		return
+	}
 	var req struct {
 		Content string            `json:"content"`
 		Files   map[string]string `json:"files"`
@@ -462,11 +508,8 @@ func (h *Handler) handleValidateQuadlet(w http.ResponseWriter, r *http.Request) 
 	}
 
 	content := req.Content
-	if content == "" && len(req.Files) == 0 {
-		svc, err := h.service.GetService(r.Context(), id)
-		if err == nil && svc != nil {
-			content = svc.QuadletConfig
-		}
+	if content == "" && len(req.Files) == 0 && svc != nil {
+		content = svc.QuadletConfig
 	}
 
 	valid, out, err := h.service.ValidateQuadlet(r.Context(), content, req.Files)
@@ -484,6 +527,9 @@ func (h *Handler) handleValidateQuadlet(w http.ResponseWriter, r *http.Request) 
 // -dryrun` verdict — data only, nothing is written to the systemd search path.
 func (h *Handler) handleQuadletPreview(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServicePermission(w, r, id, auth.PermissionRevealSecrets) {
+		return
+	}
 	files, valid, dryrun, verr := h.service.PreviewQuadlet(r.Context(), id)
 	if files == nil && verr != nil {
 		httputil.WriteError(w, http.StatusBadRequest, verr.Error())
@@ -521,6 +567,15 @@ func (h *Handler) handleValidateQuadletGlobal(w http.ResponseWriter, r *http.Req
 }
 
 func (h *Handler) handleValidateManifest(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	var existingSvc *Service
+	if id != "" {
+		svc, ok := h.ensureServiceAccess(w, r, id)
+		if !ok {
+			return
+		}
+		existingSvc = svc
+	}
 	var req struct {
 		Type string `json:"type"` // "kubernetes" | "compose"
 		Yaml string `json:"yaml"`
@@ -533,18 +588,14 @@ func (h *Handler) handleValidateManifest(w http.ResponseWriter, r *http.Request)
 	content := req.Yaml
 	manifestType := strings.ToLower(strings.TrimSpace(req.Type))
 
-	// If payload body was empty, try fetching service yaml if {id} was given
-	id := r.PathValue("id")
-	if strings.TrimSpace(content) == "" && id != "" {
-		svc, err := h.service.GetService(r.Context(), id)
-		if err == nil && svc != nil {
-			if manifestType == "compose" || svc.Type == "compose" {
-				content = svc.ComposeYaml
-				manifestType = "compose"
-			} else {
-				content = svc.K8sYaml
-				manifestType = "kubernetes"
-			}
+	// If payload body was empty, reuse service yaml verified above
+	if strings.TrimSpace(content) == "" && existingSvc != nil {
+		if manifestType == "compose" || existingSvc.Type == "compose" {
+			content = existingSvc.ComposeYaml
+			manifestType = "compose"
+		} else {
+			content = existingSvc.K8sYaml
+			manifestType = "kubernetes"
 		}
 	}
 
@@ -560,6 +611,9 @@ func (h *Handler) handleValidateManifest(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleDemoteQuadlet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
+		return
+	}
 	svc, err := h.service.DemoteQuadlet(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
@@ -570,6 +624,9 @@ func (h *Handler) handleDemoteQuadlet(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGroupIntoPod(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
+		return
+	}
 	var req struct {
 		PodName   string   `json:"podName"`
 		CreatePod bool     `json:"createPod"`
@@ -589,6 +646,9 @@ func (h *Handler) handleGroupIntoPod(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleUngroupFromPod(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServicePermission(w, r, id, auth.PermissionDeployServices) {
+		return
+	}
 	svc, err := h.service.UngroupFromPod(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
@@ -601,7 +661,7 @@ func (h *Handler) handleUngroupFromPod(w http.ResponseWriter, r *http.Request) {
 // the only read path that hands out secret values; list/get never do.
 func (h *Handler) handleRevealEnv(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionRevealSecrets) {
 		return
 	}
 	var req struct {
@@ -635,7 +695,7 @@ func (h *Handler) handleRevealEnv(w http.ResponseWriter, r *http.Request) {
 // part of list/get responses.
 func (h *Handler) handleRevealWebhook(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionRevealSecrets) {
 		return
 	}
 	token, err := h.service.WebhookTokenFor(r.Context(), id)
@@ -667,7 +727,7 @@ func (h *Handler) handleRevealWebhook(w http.ResponseWriter, r *http.Request) {
 // handleRotateWebhook issues a fresh webhook token; older tokens stop working.
 func (h *Handler) handleRotateWebhook(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionRevealSecrets) {
 		return
 	}
 	token, err := h.service.RotateWebhookToken(r.Context(), id)
@@ -688,7 +748,7 @@ func (h *Handler) handleRotateWebhook(w http.ResponseWriter, r *http.Request) {
 // handleRotateWebhookSecret issues a fresh signature secret and returns it once.
 func (h *Handler) handleRotateWebhookSecret(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if !h.ensureServiceAccess(w, r, id) {
+	if !h.ensureServicePermission(w, r, id, auth.PermissionRevealSecrets) {
 		return
 	}
 	secret, err := h.service.RotateWebhookSecret(r.Context(), id)

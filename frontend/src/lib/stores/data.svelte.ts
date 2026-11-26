@@ -28,6 +28,7 @@ import type {
 } from '$lib/types';
 
 import { api } from '$lib/api';
+import { authStore } from '$lib/stores/auth.svelte';
 import { ProjectsDomainStore } from './domains/projects.svelte';
 import { RuntimeDomainStore } from './domains/runtime.svelte';
 import { CredentialsDomainStore } from './domains/credentials.svelte';
@@ -656,10 +657,10 @@ export class DataStore {
 		//    projects are loaded — the former post-hoc relinkContainers pass
 		//    re-did the same O(C·S) resolution for nothing.
 		await Promise.all([
-			this.fetchRuntimeData(),
-			this.credentialsStore.fetchCredentials(),
+			authStore.can('canAccessRuntime') ? this.fetchRuntimeData() : Promise.resolve(),
+			authStore.isAdmin ? this.credentialsStore.fetchCredentials() : Promise.resolve(),
 			this.storageStore.fetchStorageData(),
-			this.telemetryStore.fetchTrafficLogs(),
+			authStore.can('canViewMonitoring') ? this.telemetryStore.fetchTrafficLogs() : Promise.resolve(),
 			this.fetchLiveStats()
 		]);
 		this.lastFetchedAt.initial = Date.now();

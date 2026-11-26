@@ -44,15 +44,42 @@ func (m *Middleware) SetAccessChecker(ac *AccessChecker) {
 	m.access = ac
 }
 
-// CanAccessProject reports whether the caller in r's context may read/mutate projectID.
-// When no user is attached in context (unit tests invoking handlers directly without
-// middleware) or when the user is an admin, access is allowed.
-func (m *Middleware) CanAccessProject(r *http.Request, projectID string) bool {
+// HasPermission reports whether the authenticated caller holds perm.
+// Fails closed when no user exists in context or user is unauthenticated.
+func (m *Middleware) HasPermission(r *http.Request, perm Permission) bool {
 	if r == nil {
-		return true
+		return false
 	}
 	user, ok := UserFromContext(r.Context())
-	if !ok || user.IsAdmin() {
+	if !ok {
+		return false
+	}
+	return user.HasPermission(perm)
+}
+
+// RequirePermission enforces authentication plus the specified capability perm
+// (administrators implicitly pass).
+func (m *Middleware) RequirePermission(perm Permission, next http.HandlerFunc) http.HandlerFunc {
+	return m.guard(false, func(w http.ResponseWriter, r *http.Request) {
+		if !m.HasPermission(r, perm) {
+			httputil.WriteError(w, http.StatusForbidden, "Insufficient permissions for this action")
+			return
+		}
+		next(w, r)
+	})
+}
+
+// CanAccessProject reports whether the caller in r's context may read/mutate projectID.
+// Fails closed if no authenticated user exists in context.
+func (m *Middleware) CanAccessProject(r *http.Request, projectID string) bool {
+	if r == nil {
+		return false
+	}
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		return false
+	}
+	if user.IsAdmin() {
 		return true
 	}
 	if m == nil || m.access == nil || strings.TrimSpace(projectID) == "" {
@@ -62,14 +89,38 @@ func (m *Middleware) CanAccessProject(r *http.Request, projectID string) bool {
 	return err == nil && allowed
 }
 
-// AllowedProjectSet reports whether the caller is scoped to specific projects and returns
-// the allowed set. When restricted == false, the caller sees all projects.
-func (m *Middleware) AllowedProjectSet(r *http.Request) (restricted bool, allowed map[string]bool) {
+// CanAccessService reports whether the caller in r's context may access serviceID
+// within projectID. Fails closed on missing user or DB errors.
+func (m *Middleware) CanAccessService(r *http.Request, projectID, serviceID string) bool {
 	if r == nil {
-		return false, nil
+		return false
 	}
 	user, ok := UserFromContext(r.Context())
-	if !ok || user.IsAdmin() {
+	if !ok {
+		return false
+	}
+	if user.IsAdmin() {
+		return true
+	}
+	if m == nil || m.access == nil || strings.TrimSpace(projectID) == "" {
+		return false
+	}
+	allowed, err := m.access.CanAccessService(r.Context(), user.ID, projectID, serviceID)
+	return err == nil && allowed
+}
+
+// AllowedProjectSet reports whether the caller is scoped to specific projects and returns
+// the allowed set. When restricted == false, the caller sees all projects.
+// Fails closed when no user exists in context.
+func (m *Middleware) AllowedProjectSet(r *http.Request) (restricted bool, allowed map[string]bool) {
+	if r == nil {
+		return true, map[string]bool{}
+	}
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		return true, map[string]bool{}
+	}
+	if user.IsAdmin() {
 		return false, nil
 	}
 	if m == nil || m.access == nil {
@@ -84,6 +135,29 @@ func (m *Middleware) AllowedProjectSet(r *http.Request) (restricted bool, allowe
 		set[id] = true
 	}
 	return true, set
+}
+
+// AllowedServiceSet reports whether the caller is restricted to specific service IDs
+// inside projectID.
+func (m *Middleware) AllowedServiceSet(r *http.Request, projectID string) (restricted bool, allowed map[string]bool) {
+	if r == nil {
+		return true, map[string]bool{}
+	}
+	user, ok := UserFromContext(r.Context())
+	if !ok {
+		return true, map[string]bool{}
+	}
+	if user.IsAdmin() {
+		return false, nil
+	}
+	if m == nil || m.access == nil || strings.TrimSpace(projectID) == "" {
+		return true, map[string]bool{}
+	}
+	rFlag, set, err := m.access.AllowedServiceSet(r.Context(), user.ID, projectID)
+	if err != nil {
+		return true, map[string]bool{}
+	}
+	return rFlag, set
 }
 
 // GrantProjectOwner records project access for the current user when creating a project

@@ -64,6 +64,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            GOPOD_VERSION=${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || (github.ref == 'refs/heads/dev' && 'dev' || github.ref_name) }}
+            GOPOD_COMMIT=${{ github.sha }}
+            GOPOD_BUILD_DATE=${{ github.event.head_commit.timestamp }}
+            GOPOD_CHANNEL=${{ github.ref == 'refs/heads/dev' && 'dev' || 'latest' }}
           # PRs only need to prove the build compiles — skip the slow arm64
           # QEMU build there, but keep multi-arch for real releases.
           platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}

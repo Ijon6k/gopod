@@ -19,7 +19,9 @@
 		ClockCounterClockwise,
 		GearSix,
 		SignOut,
-		CaretDown
+		CaretDown,
+		UsersThree,
+		Laptop
 	} from 'phosphor-svelte';
 
 	// Engine identity drives naming: "Podman" on podman hosts, "Docker" on
@@ -124,9 +126,11 @@
 		</KumoSidebar.Group>
 
 		<!-- Compute & Network Group -->
+		{#if authStore.can('canAccessRuntime') || authStore.can('canManageDomains') || authStore.can('canViewMonitoring')}
 		<KumoSidebar.Group>
 			<KumoSidebar.GroupLabel>Compute & Network</KumoSidebar.GroupLabel>
 			<KumoSidebar.Menu>
+				{#if authStore.can('canAccessRuntime')}
 				<!-- Engine runtime: flat entry, tabs live inside the page -->
 				<KumoSidebar.MenuItem>
 					<KumoSidebar.MenuButton
@@ -138,6 +142,8 @@
 						{engineName}
 					</KumoSidebar.MenuButton>
 				</KumoSidebar.MenuItem>
+				{/if}
+				{#if authStore.can('canManageDomains') || authStore.can('canViewMonitoring')}
 				<!-- Networking: flat entry, tabs live inside the page -->
 				<KumoSidebar.MenuItem>
 					<KumoSidebar.MenuButton
@@ -149,8 +155,10 @@
 						Networking
 					</KumoSidebar.MenuButton>
 				</KumoSidebar.MenuItem>
+				{/if}
 			</KumoSidebar.Menu>
 		</KumoSidebar.Group>
+		{/if}
 
 		<!-- Operations Group -->
 		<KumoSidebar.Group>
@@ -166,6 +174,7 @@
 						Deployments
 					</KumoSidebar.MenuButton>
 				</KumoSidebar.MenuItem>
+				{#if authStore.can('canViewMonitoring')}
 				<KumoSidebar.MenuItem>
 					<KumoSidebar.MenuButton
 						href="/monitoring"
@@ -176,6 +185,7 @@
 						Monitoring
 					</KumoSidebar.MenuButton>
 				</KumoSidebar.MenuItem>
+				{/if}
 				<KumoSidebar.MenuItem>
 					<KumoSidebar.MenuButton
 						href="/topology"
@@ -194,6 +204,16 @@
 			<KumoSidebar.GroupLabel>Platform</KumoSidebar.GroupLabel>
 			<KumoSidebar.Menu>
 				{#if authStore.user?.role === 'admin'}
+					<KumoSidebar.MenuItem>
+						<KumoSidebar.MenuButton
+							href="/access"
+							active={isActive('/access')}
+							icon={UsersThree}
+							tooltip="Access Control"
+						>
+							Access Control
+						</KumoSidebar.MenuButton>
+					</KumoSidebar.MenuItem>
 					<KumoSidebar.MenuItem>
 						<KumoSidebar.MenuButton
 							href="/credentials"
@@ -269,6 +289,9 @@
 				</div>
 				<DropdownMenu.Item onclick={() => goto('/settings')} icon={GearSix}>
 					<span class="text-xs">Settings</span>
+				</DropdownMenu.Item>
+				<DropdownMenu.Item onclick={() => goto('/settings?tab=security')} icon={Laptop}>
+					<span class="text-xs">Active Sessions</span>
 				</DropdownMenu.Item>
 				<DropdownMenu.Separator />
 				<DropdownMenu.Item

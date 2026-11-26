@@ -22,11 +22,36 @@ type Service struct {
 	// responses mask their values; the unit files on disk keep the real value
 	// because systemd needs it.
 	envSecretKeys func() map[string]bool
+
+	// serviceScopeResolver maps a service ID to its owning projectID so runtime
+	// metric/log checks enforce project & service RBAC without circular imports.
+	serviceScopeResolver func(ctx context.Context, serviceID string) (string, bool)
 }
 
 // NewService creates a new runtime domain service.
 func NewService(client *podman.Client) *Service {
 	return &Service{client: client}
+}
+
+// SetServiceScopeResolver installs a lookup mapping serviceID -> owning projectID.
+func (s *Service) SetServiceScopeResolver(fn func(ctx context.Context, serviceID string) (string, bool)) {
+	s.serviceScopeResolver = fn
+}
+
+// ResolveServiceProject returns the projectID owning serviceID when known.
+func (s *Service) ResolveServiceProject(ctx context.Context, serviceID string) (string, bool) {
+	if s.serviceScopeResolver == nil {
+		return "", false
+	}
+	return s.serviceScopeResolver(ctx, serviceID)
+}
+
+// InspectContainerState returns live container state and labels.
+func (s *Service) InspectContainerState(ctx context.Context, idOrName string) (*podman.ContainerInspectState, error) {
+	if s.client == nil {
+		return nil, errors.New("podman client not initialized")
+	}
+	return s.client.InspectContainerState(ctx, idOrName)
 }
 
 // SetMetricsStore installs the SQLite telemetry persistence store.

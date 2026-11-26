@@ -1,5 +1,5 @@
 import apiClient from '../client';
-import type { Domain } from './types';
+import type { DNSCheckResult, Domain } from './types';
 
 export const domainsApi = {
 	async list(): Promise<Domain[]> {
@@ -19,6 +19,11 @@ export const domainsApi = {
 
 	async delete(id: string): Promise<{ message: string }> {
 		const res = await apiClient.delete<{ message: string }>(`/domains/${id}`);
+		return res.data;
+	},
+
+	async verifyDns(hostname: string): Promise<DNSCheckResult> {
+		const res = await apiClient.post<DNSCheckResult>('/domains/verify-dns', { hostname });
 		return res.data;
 	},
 

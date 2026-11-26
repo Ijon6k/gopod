@@ -1,4 +1,18 @@
 export type DomainStatus = 'active' | 'pending' | 'error';
+export type DNSCheckStatus = 'local' | 'valid' | 'cloudflare' | 'mismatch' | 'pending';
+
+export interface DNSCheckResult {
+	hostname: string;
+	status: DNSCheckStatus;
+	valid: boolean;
+	behindCloudflare: boolean;
+	resolvedIps: string[];
+	resolvedIp?: string;
+	serverIp?: string;
+	serverIpPublic: boolean;
+	cname?: string;
+	message: string;
+}
 
 export interface Domain {
 	id: string;
@@ -13,8 +27,11 @@ export interface Domain {
 	containerPort?: number;
 	publishedPort?: number;
 	targetPort?: number;
-	dnsStatus?: 'valid' | 'pending' | 'error';
+	dnsStatus?: 'valid' | 'pending' | 'mismatch' | 'error';
 	resolvedIp?: string;
+	resolvedIps?: string[];
+	behindCloudflare?: boolean;
+	dnsCheck?: DNSCheckResult;
 	httpsRedirect?: boolean;
 	autoHttps?: boolean;
 	pathPrefix?: string;

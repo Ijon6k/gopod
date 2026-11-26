@@ -110,7 +110,21 @@ func (s *Service) sessionUserByToken(token string, r *http.Request) (*Session, *
 	if token == "" {
 		return nil, nil, nil
 	}
-	return s.repo.GetSession(r.Context(), token)
+	sess, user, err := s.repo.GetSession(r.Context(), token)
+	if err != nil || sess == nil || user == nil {
+		return sess, user, err
+	}
+	if time.Since(sess.LastSeenAt) >= 5*time.Minute {
+		_ = s.repo.TouchSessionLastSeen(r.Context(), token, time.Now())
+	}
+	if sess.IPAddress == "" || sess.UserAgent == "" {
+		if bf, ok := s.repo.(interface {
+			BackfillSessionMeta(ctx context.Context, token, ipAddr, userAgent string) error
+		}); ok {
+			_ = bf.BackfillSessionMeta(r.Context(), token, ClientIP(r), r.UserAgent())
+		}
+	}
+	return sess, user, nil
 }
 
 // CountUsers returns the total count of registered users.
@@ -131,6 +145,11 @@ var setupGuard sync.Mutex
 
 // SetupAdmin creates the initial administrator user and session.
 func (s *Service) SetupAdmin(ctx context.Context, name, email, password string) (*User, string, error) {
+	return s.SetupAdminWithMeta(ctx, name, email, password, "", "")
+}
+
+// SetupAdminWithMeta creates the initial administrator user and session with client metadata.
+func (s *Service) SetupAdminWithMeta(ctx context.Context, name, email, password, ipAddr, userAgent string) (*User, string, error) {
 	setupGuard.Lock()
 	defer setupGuard.Unlock()
 
@@ -154,6 +173,7 @@ func (s *Service) SetupAdmin(ctx context.Context, name, email, password string) 
 		PasswordHash: string(hash),
 		Name:         name,
 		Role:         "admin",
+		Permissions:  AllPermissions(),
 		CreatedAt:    time.Now(),
 	}
 
@@ -165,12 +185,17 @@ func (s *Service) SetupAdmin(ctx context.Context, name, email, password string) 
 	if err != nil {
 		return nil, "", err
 	}
-
+	sidHex, _ := GenerateRandomToken(12)
+	now := time.Now()
 	session := Session{
-		Token:     token,
-		UserID:    user.ID,
-		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
-		CreatedAt: time.Now(),
+		ID:         "ses_" + sidHex,
+		Token:      token,
+		UserID:     user.ID,
+		IPAddress:  strings.TrimSpace(ipAddr),
+		UserAgent:  SanitizeUserAgent(userAgent),
+		LastSeenAt: now,
+		ExpiresAt:  now.Add(30 * 24 * time.Hour),
+		CreatedAt:  now,
 	}
 
 	if err := s.repo.CreateSession(ctx, session); err != nil {
@@ -182,6 +207,11 @@ func (s *Service) SetupAdmin(ctx context.Context, name, email, password string) 
 
 // Login verifies user credentials and creates a new authenticated session.
 func (s *Service) Login(ctx context.Context, email, password string) (*User, string, error) {
+	return s.LoginWithMeta(ctx, email, password, "", "")
+}
+
+// LoginWithMeta verifies credentials and persists session IP + User-Agent telemetry.
+func (s *Service) LoginWithMeta(ctx context.Context, email, password, ipAddr, userAgent string) (*User, string, error) {
 	user, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
 		return nil, "", err
@@ -198,12 +228,17 @@ func (s *Service) Login(ctx context.Context, email, password string) (*User, str
 	if err != nil {
 		return nil, "", err
 	}
-
+	sidHex, _ := GenerateRandomToken(12)
+	now := time.Now()
 	session := Session{
-		Token:     token,
-		UserID:    user.ID,
-		ExpiresAt: time.Now().Add(30 * 24 * time.Hour),
-		CreatedAt: time.Now(),
+		ID:         "ses_" + sidHex,
+		Token:      token,
+		UserID:     user.ID,
+		IPAddress:  strings.TrimSpace(ipAddr),
+		UserAgent:  SanitizeUserAgent(userAgent),
+		LastSeenAt: now,
+		ExpiresAt:  now.Add(30 * 24 * time.Hour),
+		CreatedAt:  now,
 	}
 
 	if err := s.repo.CreateSession(ctx, session); err != nil {
@@ -211,10 +246,10 @@ func (s *Service) Login(ctx context.Context, email, password string) (*User, str
 	}
 
 	if s.audit != nil {
-		_ = s.audit.Record(ctx, "user.login", user.Email, "auth.session", "security", "", "success")
+		_ = s.audit.Record(ctx, "user.login", user.Email, "auth.session", "security", ipAddr, "success")
 	}
 	if s.activity != nil {
-		s.activity.Record(ctx, user.Email, "auth.login", "auth.session", user.ID, "", "", "success", "User logged in", "")
+		s.activity.Record(ctx, user.Email, "auth.login", "auth.session", user.ID, "", "", "success", "User logged in", ipAddr)
 	}
 
 	return user, token, nil

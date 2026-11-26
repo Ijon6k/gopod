@@ -102,7 +102,7 @@
 	function setView(view: 'tree' | 'system' | 'storage' | 'charts') {
 		activeView = view;
 		const targetUrl = view === 'tree' ? '/monitoring' : `/monitoring?view=${view}`;
-		goto(targetUrl, { replaceState: true, noScroll: true, keepFocus: true });
+		goto(targetUrl, { replace: true, reset: false });
 	}
 
 	function handleOpenTerminal(containerName: string) {

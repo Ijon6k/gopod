@@ -14,7 +14,10 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
+	"testing"
+	"time"
 )
 
 func readRootStorageStats() (usedGB, totalGB float64) {
@@ -171,8 +174,11 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 
 						storageUsedGB, storageTotalGB := readRootStorageStats()
 
+						ipInfo := DetectHostIPInfo()
 						return &SystemInfo{
-							IP:              detectHostIP(),
+							IP:              ipInfo.IP,
+							LocalIP:         ipInfo.LocalIP,
+							IPIsPublic:      ipInfo.IsPublic,
 							Hostname:        raw.Host.Hostname,
 							OS:              osName,
 							Kernel:          raw.Host.Kernel,
@@ -288,8 +294,11 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 	cstore, _ := store["containerStore"].(map[string]interface{})
 	storageUsedGB, storageTotalGB := readRootStorageStats()
 
+	ipInfo := DetectHostIPInfo()
 	return &SystemInfo{
-		IP:              detectHostIP(),
+		IP:              ipInfo.IP,
+		LocalIP:         ipInfo.LocalIP,
+		IPIsPublic:      ipInfo.IsPublic,
 		Hostname:        getString(host, "hostname"),
 		OS:              osName,
 		Kernel:          getString(host, "kernel"),
@@ -374,8 +383,11 @@ func (c *Client) getDockerSystemInfo(ctx context.Context) (*SystemInfo, error) {
 	}
 
 	storageUsedGB, storageTotalGB := readRootStorageStats()
+	ipInfo := DetectHostIPInfo()
 	return &SystemInfo{
-		IP:              detectHostIP(),
+		IP:              ipInfo.IP,
+		LocalIP:         ipInfo.LocalIP,
+		IPIsPublic:      ipInfo.IsPublic,
 		Hostname:        raw.Hostname,
 		OS:              raw.OperatingSystem,
 		Kernel:          raw.KernelVersion,
@@ -398,17 +410,40 @@ func (c *Client) getDockerSystemInfo(ctx context.Context) (*SystemInfo, error) {
 	}, nil
 }
 
-func detectHostIP() string {
-	if ip := os.Getenv("HOST_IP"); ip != "" {
-		return ip
+// HostIPInfo distinguishes the server's external/public IP (used for DNS A records)
+// from its outbound interface IP (which inside rootless Podman bridge networking is
+// typically a container-private 10.89.x.x address).
+type HostIPInfo struct {
+	IP       string
+	LocalIP  string
+	IsPublic bool
+}
+
+var (
+	publicIPMu       sync.RWMutex
+	cachedPublicIP   string
+	cachedPublicAt   time.Time
+	cachedPublicTTL  = 10 * time.Minute
+	cachedFailureTTL = 60 * time.Second
+)
+
+func isPublicRoutableIP(ip net.IP) bool {
+	if ip == nil {
+		return false
 	}
-	if ip := os.Getenv("SERVER_IP"); ip != "" {
-		return ip
+	if ip.IsLoopback() || ip.IsUnspecified() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() || ip.IsMulticast() {
+		return false
 	}
-	if ip := os.Getenv("PUBLIC_IP"); ip != "" {
-		return ip
+	// Reject RFC 6598 shared/CGNAT space (100.64.0.0/10) as direct inbound server IP.
+	if v4 := ip.To4(); v4 != nil {
+		if v4[0] == 100 && v4[1] >= 64 && v4[1] <= 127 {
+			return false
+		}
 	}
-	// Detect outbound interface IP without sending actual packets
+	return true
+}
+
+func detectLocalInterfaceIP() string {
 	conn, err := net.Dial("udp", "8.8.8.8:80")
 	if err == nil {
 		defer conn.Close()
@@ -420,6 +455,107 @@ func detectHostIP() string {
 		}
 	}
 	return "127.0.0.1"
+}
+
+func lookupPublicIP() string {
+	if testing.Testing() {
+		return ""
+	}
+	now := time.Now()
+	publicIPMu.RLock()
+	cached := cachedPublicIP
+	fetchedAt := cachedPublicAt
+	publicIPMu.RUnlock()
+
+	if cached != "" && now.Sub(fetchedAt) < cachedPublicTTL {
+		return cached
+	}
+	if cached == "" && !fetchedAt.IsZero() && now.Sub(fetchedAt) < cachedFailureTTL {
+		return ""
+	}
+
+	endpoints := []string{
+		"https://api.ipify.org",
+		"https://ipv4.icanhazip.com",
+		"https://checkip.amazonaws.com",
+	}
+	client := &http.Client{
+		Timeout: 1800 * time.Millisecond,
+		CheckRedirect: func(*http.Request, []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
+
+	var resolved string
+	for _, endpoint := range endpoints {
+		req, err := http.NewRequest(http.MethodGet, endpoint, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("User-Agent", "gopod")
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+		body, readErr := io.ReadAll(io.LimitReader(resp.Body, 128))
+		resp.Body.Close()
+		if readErr != nil || resp.StatusCode != http.StatusOK {
+			continue
+		}
+		ip := net.ParseIP(strings.TrimSpace(string(body)))
+		if ip != nil && ip.To4() != nil && isPublicRoutableIP(ip) {
+			resolved = ip.String()
+			break
+		}
+	}
+
+	publicIPMu.Lock()
+	cachedPublicIP = resolved
+	cachedPublicAt = time.Now()
+	publicIPMu.Unlock()
+	return resolved
+}
+
+// DetectHostIPInfo resolves the host's public IP for DNS records alongside its
+// local/container interface IP.
+func DetectHostIPInfo() HostIPInfo {
+	localIP := detectLocalInterfaceIP()
+
+	for _, envKey := range []string{"PUBLIC_IP", "SERVER_IP", "HOST_IP"} {
+		if raw := strings.TrimSpace(os.Getenv(envKey)); raw != "" {
+			if parsed := net.ParseIP(raw); parsed != nil {
+				return HostIPInfo{
+					IP:       parsed.String(),
+					LocalIP:  localIP,
+					IsPublic: isPublicRoutableIP(parsed),
+				}
+			}
+			return HostIPInfo{
+				IP:       raw,
+				LocalIP:  localIP,
+				IsPublic: false,
+			}
+		}
+	}
+
+	if pub := lookupPublicIP(); pub != "" {
+		return HostIPInfo{
+			IP:       pub,
+			LocalIP:  localIP,
+			IsPublic: true,
+		}
+	}
+
+	parsedLocal := net.ParseIP(localIP)
+	return HostIPInfo{
+		IP:       localIP,
+		LocalIP:  localIP,
+		IsPublic: isPublicRoutableIP(parsedLocal),
+	}
+}
+
+func detectHostIP() string {
+	return DetectHostIPInfo().IP
 }
 
 // PruneSystem cleans up gopod-owned stopped containers, dangling images, and

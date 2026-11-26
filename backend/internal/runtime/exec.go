@@ -15,6 +15,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/gorilla/websocket"
 
+	"gopod/internal/auth"
 	"gopod/pkg/httputil"
 )
 
@@ -113,22 +114,34 @@ func (h *Handler) handleContainerExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Guard WebSocket endpoint: check one-time ticket first, then fallback to session auth
+	// Guard WebSocket endpoint: fail closed if middleware is missing, allow
+	// one-time ticket (already gated by PermissionControlRuntime at issuance),
+	// otherwise verify both session auth AND PermissionControlRuntime.
+	if h.middleware == nil {
+		http.Error(w, "Authorization unavailable", http.StatusForbidden)
+		return
+	}
 	var authenticated bool
+	var authorized bool
 	if ticket := r.URL.Query().Get("ticket"); ticket != "" && h.ticketManager != nil {
 		if h.ticketManager.ValidateAndConsume(ticket, id) {
 			authenticated = true
+			authorized = true
 		}
 	}
 	if !authenticated {
 		// WebSocket clients cannot set an Authorization header during the
-		// upgrade handshake, so the session may arrive in the query string; the
-		// one-time ticket above remains the preferred path.
+		// upgrade handshake, so the session/grant may arrive in the query string;
+		// the one-time ticket above remains the preferred path.
 		h.middleware.RequireAuthAllowQuery(func(w http.ResponseWriter, r *http.Request) {
 			authenticated = true
+			authorized = h.middleware.HasPermission(r, auth.PermissionControlRuntime)
+			if !authorized {
+				httputil.WriteError(w, http.StatusForbidden, "Permission 'canControlRuntime' required for container terminal")
+			}
 		})(w, r)
 	}
-	if !authenticated {
+	if !authenticated || !authorized {
 		return
 	}
 

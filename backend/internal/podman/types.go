@@ -3,6 +3,8 @@ package podman
 // SystemInfo represents host & engine metrics.
 type SystemInfo struct {
 	IP              string  `json:"ip"`
+	LocalIP         string  `json:"localIp,omitempty"`
+	IPIsPublic      bool    `json:"ipIsPublic"`
 	Hostname        string  `json:"hostname"`
 	OS              string  `json:"os"`
 	Kernel          string  `json:"kernel"`

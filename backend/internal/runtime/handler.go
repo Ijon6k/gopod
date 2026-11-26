@@ -42,41 +42,41 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Protected host & container telemetry
 	mux.HandleFunc("GET /api/system", h.middleware.RequireAuth(h.handleSystem))
-	mux.HandleFunc("GET /api/system/metrics/history", h.middleware.RequireAuth(h.handleSystemMetricsHistory))
-	mux.HandleFunc("GET /api/services/{id}/metrics/history", h.middleware.RequireAuth(h.handleServiceMetricsHistory))
+	mux.HandleFunc("GET /api/system/metrics/history", h.middleware.RequirePermission(auth.PermissionViewMonitoring, h.handleSystemMetricsHistory))
+	mux.HandleFunc("GET /api/services/{id}/metrics/history", h.middleware.RequirePermission(auth.PermissionViewMonitoring, h.handleServiceMetricsHistory))
 	mux.HandleFunc("GET /api/stats", h.middleware.RequireAuth(h.handleStats))
 	mux.HandleFunc("GET /api/containers", h.middleware.RequireAuth(h.handleContainers))
 	// EventSource cannot set an Authorization header; the query-token fallback
 	// is scoped to exactly this SSE route.
 	mux.HandleFunc("GET /api/stats/stream", h.middleware.RequireAuthAllowQuery(h.handleStream))
 
-	// Host container & pod lifecycle actions (admin-only host control)
-	mux.HandleFunc("POST /api/containers/{id}/start", h.middleware.RequireAdmin(h.handleContainerStart))
-	mux.HandleFunc("POST /api/containers/{id}/stop", h.middleware.RequireAdmin(h.handleContainerStop))
-	mux.HandleFunc("POST /api/containers/{id}/restart", h.middleware.RequireAdmin(h.handleContainerRestart))
-	mux.HandleFunc("DELETE /api/containers/{id}", h.middleware.RequireAdmin(h.handleContainerDelete))
-	mux.HandleFunc("POST /api/containers/prune", h.middleware.RequireAdmin(h.handlePruneContainers))
+	// Host container & pod lifecycle actions (requires canControlRuntime or admin)
+	mux.HandleFunc("POST /api/containers/{id}/start", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleContainerStart))
+	mux.HandleFunc("POST /api/containers/{id}/stop", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleContainerStop))
+	mux.HandleFunc("POST /api/containers/{id}/restart", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleContainerRestart))
+	mux.HandleFunc("DELETE /api/containers/{id}", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleContainerDelete))
+	mux.HandleFunc("POST /api/containers/prune", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePruneContainers))
 	mux.HandleFunc("GET /api/containers/{id}/logs", h.middleware.RequireAuth(h.handleContainerLogs))
-	mux.HandleFunc("POST /api/containers/{id}/terminal-ticket", h.middleware.RequireAdmin(h.handleContainerTerminalTicket))
-	mux.HandleFunc("GET /api/containers/{id}/exec", h.handleContainerExec) // auth handled inside WebSocket upgrade
+	mux.HandleFunc("POST /api/containers/{id}/terminal-ticket", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleContainerTerminalTicket))
+	mux.HandleFunc("GET /api/containers/{id}/exec", h.handleContainerExec) // auth & PermissionControlRuntime handled inside WebSocket upgrade
 
-	// Podman host resources (read via RequireAuth; host-level mutations admin-only)
-	mux.HandleFunc("GET /api/pods", h.middleware.RequireAuth(h.handleListPods))
-	mux.HandleFunc("POST /api/pods", h.middleware.RequireAdmin(h.handleCreatePod))
-	mux.HandleFunc("POST /api/pods/{id}/start", h.middleware.RequireAdmin(h.handlePodStart))
-	mux.HandleFunc("POST /api/pods/{id}/stop", h.middleware.RequireAdmin(h.handlePodStop))
-	mux.HandleFunc("POST /api/pods/{id}/restart", h.middleware.RequireAdmin(h.handlePodRestart))
-	mux.HandleFunc("DELETE /api/pods/{id}", h.middleware.RequireAdmin(h.handlePodDelete))
-	mux.HandleFunc("GET /api/images", h.middleware.RequireAuth(h.handleListImages))
-	mux.HandleFunc("POST /api/images/prune", h.middleware.RequireAdmin(h.handlePruneImages))
-	mux.HandleFunc("DELETE /api/images/{id}", h.middleware.RequireAdmin(h.handleImageRemove))
-	mux.HandleFunc("GET /api/volumes", h.middleware.RequireAuth(h.handleListVolumes))
-	mux.HandleFunc("POST /api/volumes/prune", h.middleware.RequireAdmin(h.handlePruneVolumes))
-	mux.HandleFunc("DELETE /api/volumes/{name}", h.middleware.RequireAdmin(h.handleVolumeDelete))
-	mux.HandleFunc("GET /api/networks", h.middleware.RequireAuth(h.handleListNetworks))
-	mux.HandleFunc("DELETE /api/networks/{name}", h.middleware.RequireAdmin(h.handleNetworkRemove))
-	mux.HandleFunc("POST /api/system/prune", h.middleware.RequireAdmin(h.handlePruneSystem))
-	mux.HandleFunc("GET /api/system/df", h.middleware.RequireAuth(h.handleGetDiskUsage))
+	// Podman host resources
+	mux.HandleFunc("GET /api/pods", h.middleware.RequirePermission(auth.PermissionAccessRuntime, h.handleListPods))
+	mux.HandleFunc("POST /api/pods", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleCreatePod))
+	mux.HandleFunc("POST /api/pods/{id}/start", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePodStart))
+	mux.HandleFunc("POST /api/pods/{id}/stop", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePodStop))
+	mux.HandleFunc("POST /api/pods/{id}/restart", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePodRestart))
+	mux.HandleFunc("DELETE /api/pods/{id}", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePodDelete))
+	mux.HandleFunc("GET /api/images", h.middleware.RequirePermission(auth.PermissionAccessRuntime, h.handleListImages))
+	mux.HandleFunc("POST /api/images/prune", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePruneImages))
+	mux.HandleFunc("DELETE /api/images/{id}", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleImageRemove))
+	mux.HandleFunc("GET /api/volumes", h.middleware.RequirePermission(auth.PermissionAccessRuntime, h.handleListVolumes))
+	mux.HandleFunc("POST /api/volumes/prune", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePruneVolumes))
+	mux.HandleFunc("DELETE /api/volumes/{name}", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleVolumeDelete))
+	mux.HandleFunc("GET /api/networks", h.middleware.RequirePermission(auth.PermissionAccessRuntime, h.handleListNetworks))
+	mux.HandleFunc("DELETE /api/networks/{name}", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handleNetworkRemove))
+	mux.HandleFunc("POST /api/system/prune", h.middleware.RequirePermission(auth.PermissionControlRuntime, h.handlePruneSystem))
+	mux.HandleFunc("GET /api/system/df", h.middleware.RequirePermission(auth.PermissionAccessRuntime, h.handleGetDiskUsage))
 
 	// Protected Quadlet systemd resources (host systemd unit access admin-only)
 	mux.HandleFunc("GET /api/quadlets", h.middleware.RequireAdmin(h.handleListQuadlets))
@@ -115,12 +115,57 @@ func (h *Handler) handleSystem(w http.ResponseWriter, r *http.Request) {
 	httputil.WriteJSON(w, http.StatusOK, info)
 }
 
+func (h *Handler) canAccessContainerLabels(r *http.Request, labels map[string]string) bool {
+	if h.middleware == nil {
+		return true
+	}
+	if h.middleware.HasPermission(r, auth.PermissionAccessRuntime) {
+		return true
+	}
+	if len(labels) == 0 {
+		return false
+	}
+	projID := strings.TrimSpace(labels["io.gopod.project"])
+	svcID := strings.TrimSpace(labels["io.gopod.service"])
+	if projID == "" || projID == "system" {
+		return false
+	}
+	return h.middleware.CanAccessService(r, projID, svcID)
+}
+
+func (h *Handler) filterStatsForCaller(r *http.Request, stats []podman.ContainerStat) []podman.ContainerStat {
+	if h.middleware == nil || h.middleware.HasPermission(r, auth.PermissionAccessRuntime) {
+		return stats
+	}
+	containers, err := h.service.GetContainers(r.Context())
+	if err != nil {
+		return []podman.ContainerStat{}
+	}
+	allowedIDs := make(map[string]bool)
+	for _, c := range containers {
+		if h.canAccessContainerLabels(r, c.Labels) {
+			allowedIDs[c.ID] = true
+			for _, name := range c.Names {
+				allowedIDs[name] = true
+			}
+		}
+	}
+	out := make([]podman.ContainerStat, 0, len(stats))
+	for _, st := range stats {
+		if allowedIDs[st.ID] || allowedIDs[st.Name] {
+			out = append(out, st)
+		}
+	}
+	return out
+}
+
 func (h *Handler) handleStats(w http.ResponseWriter, r *http.Request) {
 	stats, err := h.service.GetContainerStats(r.Context())
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	stats = h.filterStatsForCaller(r, stats)
 	httputil.WriteJSON(w, http.StatusOK, stats)
 }
 
@@ -129,6 +174,15 @@ func (h *Handler) handleContainers(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if h.middleware != nil && !h.middleware.HasPermission(r, auth.PermissionAccessRuntime) {
+		filtered := make([]podman.ContainerItem, 0, len(containers))
+		for _, c := range containers {
+			if h.canAccessContainerLabels(r, c.Labels) {
+				filtered = append(filtered, c)
+			}
+		}
+		containers = filtered
 	}
 	httputil.WriteJSON(w, http.StatusOK, containers)
 }
@@ -186,6 +240,21 @@ const maxContainerLogTail = 10000
 
 func (h *Handler) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if h.middleware != nil && !h.middleware.HasPermission(r, auth.PermissionAccessRuntime) {
+		st, inspectErr := h.service.InspectContainerState(r.Context(), id)
+		if inspectErr != nil {
+			if errors.Is(inspectErr, podman.ErrNotFound) {
+				httputil.WriteError(w, http.StatusNotFound, "Container not found")
+				return
+			}
+			httputil.WriteError(w, http.StatusForbidden, "Access to container logs denied")
+			return
+		}
+		if st == nil || !h.canAccessContainerLabels(r, st.Labels) {
+			httputil.WriteError(w, http.StatusForbidden, "Access to container logs denied")
+			return
+		}
+	}
 	tail := 100
 	if tStr := r.URL.Query().Get("tail"); tStr != "" {
 		if t, err := strconv.Atoi(tStr); err == nil && t > 0 {
@@ -390,6 +459,17 @@ func (h *Handler) handleServiceMetricsHistory(w http.ResponseWriter, r *http.Req
 	if strings.TrimSpace(serviceID) == "" {
 		httputil.WriteError(w, http.StatusBadRequest, "service id is required")
 		return
+	}
+	if h.middleware != nil {
+		projID, ok := h.service.ResolveServiceProject(r.Context(), serviceID)
+		if !ok {
+			httputil.WriteError(w, http.StatusNotFound, "Service not found")
+			return
+		}
+		if !h.middleware.CanAccessService(r, projID, serviceID) {
+			httputil.WriteError(w, http.StatusForbidden, "Access to service metrics denied")
+			return
+		}
 	}
 	rangeStr := r.URL.Query().Get("range")
 	samples, err := h.service.QueryMetricsHistory(r.Context(), "service", serviceID, rangeStr)

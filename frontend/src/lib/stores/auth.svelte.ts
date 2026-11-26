@@ -3,7 +3,13 @@
 // Svelte 5 Runes ($state) implementation
 // ──────────────────────────────────────────────
 
-import { authApi, type User, type SetupPayload, type LoginPayload } from '$lib/api/auth';
+import {
+	authApi,
+	type User,
+	type SetupPayload,
+	type LoginPayload,
+	type PermissionKey
+} from '$lib/api/auth';
 import { dataStore } from '$lib/stores/data.svelte';
 
 class AuthStore {
@@ -12,6 +18,16 @@ class AuthStore {
 	isInitialized = $state<boolean | null>(null); // null until first check completes
 	isLoading = $state(false);
 	error = $state<string | null>(null);
+
+	get isAdmin(): boolean {
+		return this.user?.role === 'admin';
+	}
+
+	can(perm: PermissionKey): boolean {
+		if (!this.user) return false;
+		if (this.user.role === 'admin') return true;
+		return Boolean(this.user.permissions?.[perm]);
+	}
 
 	async checkStatus(): Promise<{ initialized: boolean; authenticated: boolean; user?: User }> {
 		this.isLoading = true;

@@ -1,22 +1,10 @@
 <script lang="ts">
-	import type { Domain } from '$lib/types';
-	import { services, server } from '$lib/data';
-	import { api } from '$lib/api';
-	import { Banner, Button, Input, Select, Switch } from '$lib/components/ui';
+	import type { DNSCheckResult, Domain } from '$lib/types';
+	import { services } from '$lib/data';
+	import { Banner, Button, Field, Input, Modal, Select, Switch } from '$lib/components/ui';
+	import DomainDnsValidation from './DomainDnsValidation.svelte';
 	import { parseComposeServices } from '$lib/parsers/compose';
-	import {
-		X,
-		Globe,
-		CheckCircle,
-		Warning,
-		Lock,
-		ArrowsLeftRight,
-		ShieldCheck,
-		WifiHigh,
-		Sparkle,
-		ArrowSquareOut,
-		CircleNotch
-	} from 'phosphor-svelte';
+	import { Globe } from 'phosphor-svelte';
 
 	interface Props {
 		open: boolean;
@@ -95,10 +83,8 @@
 		return list;
 	});
 
-	// DNS verification states
-	let isCheckingDNS = $state(false);
-	let dnsVerified = $state(true);
-	let lastChecked = $state<string | null>(null);
+	// Latest DNS check from DomainDnsValidation (when triggered in modal)
+	let dnsCheckResult = $state<DNSCheckResult | null>(null);
 
 	$effect(() => {
 		if (domain) {
@@ -114,12 +100,7 @@
 			basicAuth = !!domain.basicAuth;
 			basicAuthUser = domain.basicAuthUser || 'admin';
 			basicAuthPass = '';
-			const isLocal =
-				domain.hostname.endsWith('.localhost') ||
-				domain.hostname.endsWith('.local') ||
-				domain.hostname.includes('127.0.0.1') ||
-				domain.hostname === 'localhost';
-			dnsVerified = isLocal || domain.dnsStatus !== 'pending';
+			dnsCheckResult = domain.dnsCheck || null;
 		} else {
 			hostname = '';
 			selectedServiceId = services[0]?.id || '';
@@ -133,7 +114,7 @@
 			basicAuth = false;
 			basicAuthUser = 'admin';
 			basicAuthPass = '';
-			dnsVerified = false;
+			dnsCheckResult = null;
 		}
 	});
 
@@ -153,34 +134,8 @@
 		}
 	}
 
-	async function verifyDNS() {
-		if (!hostname.trim()) return;
-		isCheckingDNS = true;
-		try {
-			const clean = hostname
-				.trim()
-				.toLowerCase()
-				.replace(/^https?:\/\//, '')
-				.replace(/:\d+$/, '');
-			const isLocal =
-				clean.endsWith('.localhost') ||
-				clean.endsWith('.local') ||
-				clean.includes('127.0.0.1') ||
-				clean === 'localhost';
-			if (isLocal) {
-				dnsVerified = true;
-			} else if (domain?.id) {
-				const res = await api.domains.revalidate(domain.id);
-				dnsVerified = res.dnsStatus === 'valid';
-			} else {
-				dnsVerified = true;
-			}
-		} catch {
-			dnsVerified = false;
-		} finally {
-			isCheckingDNS = false;
-			lastChecked = 'Just now';
-		}
+	function handleDnsValidated(res: DNSCheckResult) {
+		dnsCheckResult = res;
 	}
 
 	function handleSave() {
@@ -201,7 +156,12 @@
 			cleanHost.endsWith('.local') ||
 			cleanHost.includes('127.0.0.1') ||
 			cleanHost === 'localhost';
-		const dnsStatus = isLocal || dnsVerified ? 'valid' : 'pending';
+		let dnsStatus: Domain['dnsStatus'] = isLocal ? 'valid' : domain?.dnsStatus || 'pending';
+		if (!isLocal && dnsCheckResult && dnsCheckResult.hostname === cleanHost) {
+			if (dnsCheckResult.valid) dnsStatus = 'valid';
+			else if (dnsCheckResult.status === 'mismatch') dnsStatus = 'mismatch';
+			else dnsStatus = 'pending';
+		}
 
 		const portNum = parseInt(String(containerPort), 10) || 3000;
 
@@ -218,7 +178,8 @@
 			containerPort: portNum,
 			publishedPort: portNum,
 			dnsStatus,
-			resolvedIp: server.ip,
+			resolvedIp: dnsCheckResult?.resolvedIp || domain?.resolvedIp,
+			behindCloudflare: dnsCheckResult?.behindCloudflare ?? domain?.behindCloudflare,
 			pathPrefix: pathPrefix.trim() || '/',
 			stripPathPrefix,
 			cors,
@@ -234,296 +195,187 @@
 		onsave(updated);
 		onclose();
 	}
-
-	function handleKeydown(e: KeyboardEvent) {
-		if (e.key === 'Escape') onclose();
-	}
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
-
-{#if open}
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(5,6,7,0.82)] p-3 backdrop-blur-[3px] sm:p-5"
-		role="dialog"
-		aria-modal="true"
-	>
-		<div
-			class="animate-in fade-in zoom-in-95 flex max-h-[90vh] w-full max-w-[620px] flex-col overflow-hidden rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] shadow-2xl duration-150"
-		>
-			<!-- Header -->
-			<div
-				class="flex shrink-0 items-center justify-between border-b border-[var(--border)] bg-[var(--bg-panel)] px-5 py-4"
-			>
-				<div class="flex items-center gap-2.5">
-					<div
-						class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-muted)] text-[var(--accent)]"
-					>
-						<Globe size={18} />
-					</div>
-					<div class="flex flex-col">
-						<h3 class="text-sm font-[var(--font-sans)] font-semibold text-[var(--text-primary)]">
-							{domain ? 'Edit Domain Configuration' : 'Add Domain Route'}
-						</h3>
-						<span class="text-xs text-[var(--text-tertiary)]">
-							Configures Caddy reverse proxy, TLS certificates, and path routing.
-						</span>
-					</div>
-				</div>
-
-				<button
-					type="button"
-					onclick={onclose}
-					class="flex h-7 w-7 cursor-pointer items-center justify-center rounded border-0 bg-transparent text-[var(--text-tertiary)] transition-colors hover:bg-[var(--bg-hover)] hover:text-[var(--text-primary)]"
-				>
-					<X size={15} />
-				</button>
-			</div>
-
-			<!-- Form Content (Scrollable) -->
-			<div class="flex flex-col gap-5 overflow-y-auto p-5 text-left text-xs">
-				<!-- 1. Hostname & Upstream Service -->
-				<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-					<div class="flex flex-col gap-1.5 sm:col-span-2">
-						<label
-							for="domain-hostname"
-							class="text-[11px] font-medium text-[var(--text-secondary)]"
-						>
-							Domain Name / Hostname
-						</label>
-						<Input
-							id="domain-hostname"
-							bind:value={hostname}
-							placeholder="e.g. app.yourdomain.com"
-							class="text-xs font-[var(--font-mono)]"
-						/>
-					</div>
-
-					<div class="flex flex-col gap-1.5">
-						<label for="domain-port" class="text-[11px] font-medium text-[var(--text-secondary)]">
-							Container Port
-						</label>
-						<Input
-							id="domain-port"
-							type="number"
-							bind:value={containerPort}
-							placeholder="3000"
-							class="text-xs font-[var(--font-mono)]"
-						/>
-					</div>
-				</div>
-
-				<Select
-					id="domain-service"
-					label="Target Service Workload"
-					value={selectedServiceId}
-					onValueChange={(val: any) => {
-						if (typeof val === 'string') {
-							selectedServiceId = val;
-							updateServicePort(val);
-						}
-					}}
-					options={services.map((svc) => ({
-						label: `${svc.name} (${svc.type} · port ${svc.port || 3000}) — ${svc.projectId}`,
-						value: svc.id
-					}))}
-					size="sm"
+<Modal
+	{open}
+	{onclose}
+	size="lg"
+	icon={Globe}
+	title={domain ? 'Edit domain configuration' : 'Add domain route'}
+	subtitle="Configure Caddy reverse proxy, TLS certificates, and path routing."
+>
+	<!-- 1. Hostname & Upstream Service -->
+	<div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+		<div class="sm:col-span-2">
+			<Field label="Domain name / hostname">
+				<Input
+					id="domain-hostname"
+					bind:value={hostname}
+					placeholder="e.g. app.yourdomain.com"
+					class="text-xs"
 				/>
+			</Field>
+		</div>
 
-				{#if staleServiceSelected}
-					<Banner variant="alert" size="sm">
-						<div class="text-xs">
-							<span class="font-medium">Target service no longer exists:</span>
-							<span>refresh the services list and pick a workload before saving.</span>
-						</div>
-					</Banner>
-				{/if}
+		<div>
+			<Field label="Container port">
+				<Input
+					id="domain-port"
+					type="number"
+					bind:value={containerPort}
+					placeholder="3000"
+					class="text-xs tabular-nums"
+				/>
+			</Field>
+		</div>
+	</div>
 
-				{#if detectedTargets.length > 0}
-					<Select
-						id="domain-target-container"
-						label="Target Container / Upstream DNS"
-						value={targetContainer || detectedTargets[0]?.value}
-						onValueChange={(val: any) => {
-							if (typeof val === 'string') {
-								targetContainer = val;
-								const matched = detectedTargets.find((t) => t.value === val);
-								if (matched && matched.ports.length > 0) {
-									containerPort = matched.ports[0];
-								}
-							}
-						}}
-						options={detectedTargets.map((t) => ({
-							label: t.label,
-							value: t.value
-						}))}
-						size="sm"
-					/>
-				{/if}
+	<Select
+		id="domain-service"
+		label="Target service workload"
+		value={selectedServiceId}
+		onValueChange={(val: any) => {
+			if (typeof val === 'string') {
+				selectedServiceId = val;
+				updateServicePort(val);
+			}
+		}}
+		options={services.map((svc) => ({
+			label: `${svc.name} (${svc.type} · port ${svc.port || 3000}) — ${svc.projectId}`,
+			value: svc.id
+		}))}
+		size="sm"
+	/>
 
-				<!-- 2. DNS Resolution Diagnostic Box -->
-				<div
-					class="flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3.5"
-				>
-					<div class="flex items-center justify-between">
-						<div class="flex items-center gap-2">
-							<span class="text-[11.5px] font-semibold text-[var(--text-primary)]"
-								>DNS A-Record Verification</span
-							>
-							{#if dnsVerified}
-								<span
-									class="inline-flex items-center gap-1 rounded bg-[var(--status-green-muted)] px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-[var(--status-green)]"
-								>
-									<CheckCircle size={12} /> Resolves to {server.ip}
-								</span>
-							{:else}
-								<span
-									class="inline-flex items-center gap-1 rounded bg-[var(--status-amber-muted)] px-1.5 py-0.5 font-mono text-[10.5px] font-medium text-[var(--status-amber)]"
-								>
-									<Warning size={12} /> Pending propagation
-								</span>
-							{/if}
-						</div>
+	{#if staleServiceSelected}
+		<Banner variant="alert" size="sm">
+			<div class="text-xs">
+				<span class="font-medium">Target service no longer exists:</span>
+				<span>refresh the services list and pick a workload before saving.</span>
+			</div>
+		</Banner>
+	{/if}
 
-						<button
-							type="button"
-							onclick={verifyDNS}
-							disabled={isCheckingDNS || !hostname}
-							class="inline-flex cursor-pointer items-center gap-1 border-0 bg-transparent p-0 text-[11px] text-[var(--accent)] hover:underline disabled:opacity-50"
-						>
-							{#if isCheckingDNS}
-								<CircleNotch size={12} class="animate-spin" /> Checking...
-							{:else}
-								Verify DNS Now 🔄
-							{/if}
-						</button>
-					</div>
+	{#if detectedTargets.length > 0}
+		<Select
+			id="domain-target-container"
+			label="Target container / upstream host"
+			value={targetContainer || detectedTargets[0]?.value}
+			onValueChange={(val: any) => {
+				if (typeof val === 'string') {
+					targetContainer = val;
+					const matched = detectedTargets.find((t) => t.value === val);
+					if (matched && matched.ports.length > 0) {
+						containerPort = matched.ports[0];
+					}
+				}
+			}}
+			options={detectedTargets.map((t) => ({
+				label: t.label,
+				value: t.value
+			}))}
+			size="sm"
+		/>
+	{/if}
 
-					<p class="m-0 text-[11px] leading-relaxed text-[var(--text-tertiary)]">
-						Point your domain's <strong class="text-[var(--text-secondary)]">A record</strong> to
-						your server IP:
-						<code
-							class="rounded border border-[var(--border-subtle)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[11px] text-[var(--text-primary)]"
-							>{server.ip}</code
-						>. Caddy automatically requests Let's Encrypt once the record is active.
-					</p>
+	<!-- 2. Minimalist DNS Validation (turns green when valid or behind Cloudflare) -->
+	<DomainDnsValidation
+		{hostname}
+		domainId={domain?.id}
+		initialDnsStatus={domain?.dnsStatus}
+		onvalidated={handleDnsValidated}
+	/>
+
+	<!-- 3. TLS & Ingress Options -->
+	<div class="flex flex-col gap-2">
+		<span class="text-xs font-medium text-[var(--text-primary)]">
+			TLS &amp; routing options
+		</span>
+
+		<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+			<div
+				class="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2.5"
+			>
+				<div class="flex flex-col">
+					<span class="text-xs font-medium text-[var(--text-primary)]">Automatic HTTPS</span>
+					<span class="text-[11px] text-[var(--text-tertiary)]">Let's Encrypt / ZeroSSL ACME</span>
 				</div>
-
-				<!-- 3. TLS & Ingress Options -->
-				<div class="flex flex-col gap-2.5 pt-1">
-					<span class="text-[11.5px] font-semibold text-[var(--text-primary)]">
-						TLS & Routing Configuration
-					</span>
-
-					<div class="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-						<!-- Toggle: Auto HTTPS -->
-						<div
-							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
-						>
-							<div class="flex flex-col">
-								<span class="text-xs font-medium text-[var(--text-primary)]">Automatic HTTPS</span>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]"
-									>Let's Encrypt / ZeroSSL ACME</span
-								>
-							</div>
-							<Switch bind:checked={tls} size="sm" />
-						</div>
-
-						<!-- Toggle: CORS Headers -->
-						<div
-							class="flex items-center justify-between rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-2.5"
-						>
-							<div class="flex flex-col">
-								<span class="text-xs font-medium text-[var(--text-primary)]"
-									>Enable CORS Headers</span
-								>
-								<span class="text-[10.5px] text-[var(--text-tertiary)]"
-									>Allow Cross-Origin Requests</span
-								>
-							</div>
-							<Switch bind:checked={cors} size="sm" />
-						</div>
-					</div>
-				</div>
-
-				<!-- 4. Path Routing Prefix -->
-				<div class="grid grid-cols-1 gap-3 pt-1 sm:grid-cols-2">
-					<div class="flex flex-col gap-1.5">
-						<label
-							for="domain-path-prefix"
-							class="text-[11px] font-medium text-[var(--text-secondary)]"
-						>
-							Path Routing Prefix
-						</label>
-						<Input
-							id="domain-path-prefix"
-							bind:value={pathPrefix}
-							placeholder="/"
-							class="text-xs font-[var(--font-mono)]"
-						/>
-					</div>
-
-					<div class="flex items-center gap-2.5 pt-5">
-						<Switch
-							bind:checked={stripPathPrefix}
-							size="sm"
-							label="Strip path prefix before upstream"
-						/>
-					</div>
-				</div>
-
-				<!-- 5. Basic Authentication (Staging Protection) -->
-				<div
-					class="flex flex-col gap-2.5 rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3"
-				>
-					<div class="flex items-center justify-between">
-						<div class="flex flex-col">
-							<span class="text-xs font-medium text-[var(--text-primary)]"
-								>Basic HTTP Authentication</span
-							>
-							<span class="text-[10.5px] text-[var(--text-tertiary)]"
-								>Password protect staging or preview environments</span
-							>
-						</div>
-						<Switch bind:checked={basicAuth} size="sm" />
-					</div>
-
-					{#if basicAuth}
-						<div class="flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-2">
-							<div class="grid grid-cols-2 gap-2">
-								<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
-								<Input
-									type="password"
-									bind:value={basicAuthPass}
-									placeholder={domain?.hasBasicAuth ? 'Leave blank to keep current' : 'Password'}
-									class="text-xs"
-								/>
-							</div>
-							{#if basicAuthIncomplete}
-								<span class="text-[10.5px] text-[var(--status-amber)]">
-									Set a username and password to protect this route.
-								</span>
-							{/if}
-						</div>
-					{/if}
-				</div>
+				<Switch bind:checked={tls} size="sm" />
 			</div>
 
-			<!-- Footer -->
 			<div
-				class="flex shrink-0 items-center justify-between border-t border-[var(--border)] bg-[var(--bg-panel)] px-5 py-3.5"
+				class="flex items-center justify-between rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-2.5"
 			>
-				<Button variant="secondary" size="sm" onclick={onclose}>Cancel</Button>
-
-				<Button
-					variant="primary"
-					size="sm"
-					disabled={!hostname.trim() || !selectedServiceId || !selectedService || basicAuthIncomplete}
-					onclick={handleSave}
-				>
-					Save Domain Configuration
-				</Button>
+				<div class="flex flex-col">
+					<span class="text-xs font-medium text-[var(--text-primary)]">Enable CORS headers</span>
+					<span class="text-[11px] text-[var(--text-tertiary)]">Allow cross-origin requests</span>
+				</div>
+				<Switch bind:checked={cors} size="sm" />
 			</div>
 		</div>
 	</div>
-{/if}
+
+	<!-- 4. Path Routing Prefix -->
+	<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+		<Field label="Path routing prefix">
+			<Input id="domain-path-prefix" bind:value={pathPrefix} placeholder="/" class="text-xs" />
+		</Field>
+
+		<div class="flex items-center pt-5">
+			<Switch
+				bind:checked={stripPathPrefix}
+				size="sm"
+				label="Strip path prefix before upstream"
+			/>
+		</div>
+	</div>
+
+	<!-- 5. Basic Authentication (Staging Protection) -->
+	<div
+		class="flex flex-col gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--bg-panel)] p-3"
+	>
+		<div class="flex items-center justify-between">
+			<div class="flex flex-col">
+				<span class="text-xs font-medium text-[var(--text-primary)]">
+					Basic HTTP authentication
+				</span>
+				<span class="text-[11px] text-[var(--text-tertiary)]">
+					Password protect staging or preview environments
+				</span>
+			</div>
+			<Switch bind:checked={basicAuth} size="sm" />
+		</div>
+
+		{#if basicAuth}
+			<div class="flex flex-col gap-1.5 border-t border-[var(--border-subtle)] pt-2.5">
+				<div class="grid grid-cols-2 gap-2">
+					<Input bind:value={basicAuthUser} placeholder="Username" class="text-xs" />
+					<Input
+						type="password"
+						bind:value={basicAuthPass}
+						placeholder={domain?.hasBasicAuth ? 'Leave blank to keep current' : 'Password'}
+						class="text-xs"
+					/>
+				</div>
+				{#if basicAuthIncomplete}
+					<span class="text-[11px] text-[var(--status-amber)]">
+						Set a username and password to protect this route.
+					</span>
+				{/if}
+			</div>
+		{/if}
+	</div>
+
+	{#snippet footer()}
+		<Button variant="secondary" size="sm" onclick={onclose}>Cancel</Button>
+		<Button
+			variant="primary"
+			size="sm"
+			disabled={!hostname.trim() || !selectedServiceId || !selectedService || basicAuthIncomplete}
+			onclick={handleSave}
+		>
+			Save domain configuration
+		</Button>
+	{/snippet}
+</Modal>

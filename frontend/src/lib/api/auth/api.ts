@@ -1,5 +1,12 @@
 import apiClient from '../client';
-import type { User, AuthStatus, AuthResponse, SetupPayload, LoginPayload } from './types';
+import type {
+	User,
+	AuthStatus,
+	AuthResponse,
+	SetupPayload,
+	LoginPayload,
+	SessionSummary
+} from './types';
 
 export const authApi = {
 	async getStatus(): Promise<AuthStatus> {
@@ -31,6 +38,25 @@ export const authApi = {
 		newPassword: string;
 	}): Promise<{ message: string }> {
 		const res = await apiClient.post<{ message: string }>('/auth/password', payload);
+		return res.data;
+	},
+
+	async listMySessions(): Promise<SessionSummary[]> {
+		const res = await apiClient.get<SessionSummary[]>('/auth/sessions');
+		return res.data;
+	},
+
+	async revokeMySession(id: string): Promise<{ success: boolean; revokedCurrent: boolean }> {
+		const res = await apiClient.delete<{ success: boolean; revokedCurrent: boolean }>(
+			`/auth/sessions/${encodeURIComponent(id)}`
+		);
+		return res.data;
+	},
+
+	async revokeOtherSessions(): Promise<{ success: boolean; revokedCount: number }> {
+		const res = await apiClient.post<{ success: boolean; revokedCount: number }>(
+			'/auth/sessions/revoke-others'
+		);
 		return res.data;
 	}
 };

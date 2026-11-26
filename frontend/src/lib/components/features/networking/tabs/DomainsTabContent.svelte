@@ -17,6 +17,7 @@
 		Lock,
 		LockOpen,
 		CheckCircle,
+		CloudCheck,
 		Warning,
 		ArrowSquareOut,
 		PencilSimple,
@@ -79,11 +80,15 @@
 				updated.hostname === 'localhost';
 			toast.add({
 				title: 'DNS Verified',
-				description: isLoopback
-					? `${updated.hostname} verified as Local Loopback.`
-					: updated.dnsStatus === 'valid'
-						? `${updated.hostname} DNS record verified (${server.ip}).`
-						: `${updated.hostname} DNS record pending propagation.`,
+				description:
+					updated.dnsCheck?.message ||
+					(isLoopback
+						? `${updated.hostname} verified as local loopback.`
+						: updated.behindCloudflare
+							? `${updated.hostname} is behind Cloudflare proxy.`
+							: updated.dnsStatus === 'valid'
+								? `${updated.hostname} DNS record verified.`
+								: `${updated.hostname} DNS record not pointing to this server yet.`),
 				variant: updated.dnsStatus === 'valid' || isLoopback ? 'success' : 'warning'
 			});
 		} catch (err: any) {
@@ -121,12 +126,15 @@
 			</div>
 			<div class="flex flex-col gap-0.5">
 				<span class="text-xs font-semibold text-[var(--text-primary)]">
-					Server Public IP for DNS Records
+					{server.ipIsPublic ? 'Server Public IP for DNS Records' : 'Host / Container Network IP'}
 				</span>
 				<span class="text-xs leading-relaxed text-[var(--text-tertiary)]">
-					Create an <strong class="text-[var(--text-secondary)]">A Record</strong> in your DNS registrar
-					pointing to your host IP. Caddy automatically requests and renews Let's Encrypt TLS certificates
-					once DNS propagates.
+					{#if server.ipIsPublic}
+						Create an <strong class="text-[var(--text-secondary)]">A record</strong> in your DNS registrar
+						pointing to this server IP (or proxy through Cloudflare). Caddy provisions Let's Encrypt automatically.
+					{:else}
+						Auto-detected a private container/interface IP. Point public DNS A records to your host VPS public IP (or set <span class="font-medium text-[var(--text-secondary)]">PUBLIC_IP</span>).
+					{/if}
 				</span>
 			</div>
 		</div>
@@ -134,7 +142,7 @@
 		<div
 			class="flex shrink-0 items-center gap-2 self-start rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] px-3 py-1.5 sm:self-auto"
 		>
-			<span class="font-mono text-xs font-medium text-[var(--text-primary)]">{server.ip}</span>
+			<span class="text-xs font-medium text-[var(--text-primary)] tabular-nums">{server.ip}</span>
 			<button
 				type="button"
 				onclick={copyIp}
@@ -246,11 +254,19 @@
 								<TableCell class="px-3 py-3 whitespace-nowrap">
 									{#if domain.hostname.endsWith('.localhost') || domain.hostname.endsWith('.local') || domain.hostname.includes('127.0.0.1') || domain.hostname === 'localhost'}
 										<Badge variant="success" class="gap-1 text-xs">
-											<CheckCircle size={12} /> Local Loopback
+											<CheckCircle size={12} /> Local loopback
+										</Badge>
+									{:else if domain.behindCloudflare}
+										<Badge variant="success" class="gap-1 text-xs">
+											<CloudCheck size={12} /> Behind Cloudflare
 										</Badge>
 									{:else if domain.dnsStatus === 'valid'}
 										<Badge variant="success" class="gap-1 text-xs">
-											<CheckCircle size={12} /> Resolves ({server.ip})
+											<CheckCircle size={12} /> Resolves ({domain.resolvedIp || server.ip})
+										</Badge>
+									{:else if domain.dnsStatus === 'mismatch'}
+										<Badge variant="warning" class="gap-1 text-xs">
+											<Warning size={12} /> IP mismatch
 										</Badge>
 									{:else}
 										<Badge variant="warning" class="gap-1 text-xs">

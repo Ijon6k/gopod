@@ -55,7 +55,7 @@
 	];
 
 	function onTabChange(id: string) {
-		goto(`/runtime/${id}`, { replaceState: true });
+		goto(`/runtime/${id}`, { replace: true });
 	}
 </script>
 

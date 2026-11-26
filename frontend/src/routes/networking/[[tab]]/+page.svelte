@@ -38,7 +38,7 @@
 	];
 
 	function onTabChange(id: string) {
-		goto(`/networking/${id}`, { replaceState: true });
+		goto(`/networking/${id}`, { replace: true });
 	}
 
 	function handleAddDomain() {

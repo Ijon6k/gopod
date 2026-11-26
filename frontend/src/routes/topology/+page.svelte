@@ -82,9 +82,9 @@
 		viewMode = mode;
 		selectedItem = null;
 		if (mode === 'global') {
-			goto('/topology', { replaceState: true, noScroll: true });
+			goto('/topology', { replace: true, reset: false });
 		} else {
-			goto(`/topology?project=${mode}`, { replaceState: true, noScroll: true });
+			goto(`/topology?project=${mode}`, { replace: true, reset: false });
 		}
 	}
 

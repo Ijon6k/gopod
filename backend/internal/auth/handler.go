@@ -40,6 +40,9 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/auth/me", h.handleMe)
 	mux.HandleFunc("POST /api/auth/password", h.handlePasswordChange)
 	mux.HandleFunc("POST /api/auth/stream-grant", h.handleStreamGrant)
+	mux.HandleFunc("GET /api/auth/sessions", h.handleListMySessions)
+	mux.HandleFunc("POST /api/auth/sessions/revoke-others", h.handleRevokeOtherSessions)
+	mux.HandleFunc("DELETE /api/auth/sessions/{id}", h.handleRevokeMySession)
 }
 
 func (h *Handler) handleStatus(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +102,7 @@ func (h *Handler) handleSetup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.service.SetupAdmin(r.Context(), name, email, password)
+	user, token, err := h.service.SetupAdminWithMeta(r.Context(), name, email, password, ClientIP(r), r.UserAgent())
 	if err != nil {
 		httputil.WriteError(w, http.StatusForbidden, err.Error())
 		return
@@ -144,7 +147,7 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, token, err := h.service.Login(r.Context(), email, password)
+	user, token, err := h.service.LoginWithMeta(r.Context(), email, password, ClientIP(r), r.UserAgent())
 	if err != nil {
 		if h.limiter != nil {
 			h.limiter.RecordFailureWithAccount(r, email)

@@ -23,6 +23,7 @@
 		PencilSimple,
 		LockOpen,
 		CheckCircle,
+		CloudCheck,
 		Warning,
 		HardDrive,
 		ArrowsClockwise
@@ -121,16 +122,15 @@
 		<div class="flex items-center gap-2 text-[var(--text-secondary)]">
 			<Globe size={16} class="shrink-0 text-[var(--accent)]" />
 			<span>
-				Point your domain's <strong>A-Record</strong> at your DNS provider (Cloudflare, Namecheap, etc.)
-				to the host IP:
+				{#if server.ipIsPublic}
+					Point your domain's <strong>A record</strong> at your DNS provider (Cloudflare, Namecheap, etc.)
+					to <span class="font-medium text-[var(--text-primary)] tabular-nums">{serverIp}</span>.
+				{:else}
+					Running inside container networking (<span class="font-medium text-[var(--text-primary)] tabular-nums">{serverIp}</span>). Point external A records to your host VPS public IP.
+				{/if}
 			</span>
-			<code
-				class="rounded border border-[var(--border)] bg-[var(--bg-table-header)] px-2 py-0.5 font-[var(--font-mono)] font-semibold text-[var(--text-primary)]"
-			>
-				{serverIp}
-			</code>
 		</div>
-		<CopyButton text={serverIp} label="Copy Server IP" variant="button" />
+		<CopyButton text={serverIp} label="Copy IP" variant="button" />
 	</div>
 
 	<!-- Header -->
@@ -271,13 +271,21 @@
 
 								<!-- DNS Status -->
 								<TableCell class="px-3 py-3 whitespace-nowrap">
-									{#if d.hostname.endsWith('.localhost') || d.hostname.endsWith('.local') || d.hostname.includes('127.0.0.1')}
+									{#if d.hostname.endsWith('.localhost') || d.hostname.endsWith('.local') || d.hostname.includes('127.0.0.1') || d.hostname === 'localhost'}
 										<Badge variant="success" class="gap-1 text-xs">
-											<CheckCircle size={12} /> Local Loopback
+											<CheckCircle size={12} /> Local loopback
+										</Badge>
+									{:else if d.behindCloudflare}
+										<Badge variant="success" class="gap-1 text-xs">
+											<CloudCheck size={12} /> Behind Cloudflare
 										</Badge>
 									{:else if d.dnsStatus === 'valid'}
 										<Badge variant="success" class="gap-1 text-xs">
-											<CheckCircle size={12} /> Resolves ({serverIp})
+											<CheckCircle size={12} /> Resolves ({d.resolvedIp || serverIp})
+										</Badge>
+									{:else if d.dnsStatus === 'mismatch'}
+										<Badge variant="warning" class="gap-1 text-xs">
+											<Warning size={12} /> IP mismatch
 										</Badge>
 									{:else}
 										<Badge variant="warning" class="gap-1 text-xs">

@@ -36,7 +36,7 @@
 				email: result.data.email,
 				password: result.data.password
 			});
-			await goto('/', { replaceState: true });
+			await goto('/', { replace: true });
 		} catch (err: any) {
 			validationError = err.message || 'Setup failed. Please check your details and try again.';
 		} finally {

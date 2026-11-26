@@ -1803,12 +1803,30 @@ Environment=GOPOD_BIND_HOST=127.0.0.1
 EOF
     fi
 
+    local HOST_BUS_PATH=""
+    if [ "$USER_UID" -ne 0 ] && [ -S "/run/user/${USER_UID}/bus" ]; then
+        HOST_BUS_PATH="/run/user/${USER_UID}/bus"
+    elif [ -S "/run/dbus/system_bus_socket" ] && [ "$USER_UID" -eq 0 ]; then
+        HOST_BUS_PATH="/run/dbus/system_bus_socket"
+    fi
+
     cat <<EOF >> "${QUADLET_DIR}/gopod-server.container"
 Volume=${DETECTED_SOCKET}:/run/podman/podman.sock:z
 Volume=${GOPOD_DATA}/data:/app/data:Z
 Volume=${GOPOD_DATA}/logs:/var/log/caddy:z
 Volume=${GOPOD_DATA}/caddy-admin:/run/gopod-caddy:z
 Volume=${GOPOD_CONFIG}/caddy:/root/.config/gopod/caddy:z
+Volume=${QUADLET_DIR}:/root/.config/containers/systemd:z
+EOF
+
+    if [ -n "$HOST_BUS_PATH" ] && [ "$USER_UID" -ne 0 ]; then
+        cat <<EOF >> "${QUADLET_DIR}/gopod-server.container"
+Environment=GOPOD_USER_BUS=/run/host-run/bus
+Volume=${HOST_BUS_PATH}:/run/host-run/bus
+EOF
+    fi
+
+    cat <<EOF >> "${QUADLET_DIR}/gopod-server.container"
 
 [Service]
 Restart=always

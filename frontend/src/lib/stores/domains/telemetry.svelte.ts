@@ -6,6 +6,8 @@ export class TelemetryDomainStore {
 	server = $state<Server>({
 		hostname: 'localhost',
 		ip: '127.0.0.1',
+		localIp: '127.0.0.1',
+		ipIsPublic: false,
 		os: 'Linux',
 		kernel: '—',
 		vcpu: 4,
@@ -226,6 +228,8 @@ export class TelemetryDomainStore {
 		const s = this.server;
 		this.lastSystemAtMs = Date.now();
 		s.ip = sys.ip || s.ip;
+		if (sys.localIp !== undefined) s.localIp = sys.localIp || s.localIp;
+		if (sys.ipIsPublic !== undefined) s.ipIsPublic = Boolean(sys.ipIsPublic);
 		s.hostname = sys.hostname || s.hostname;
 		s.os = sys.os || s.os;
 		s.kernel = sys.kernel || s.kernel;

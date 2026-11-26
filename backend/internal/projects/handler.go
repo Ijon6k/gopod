@@ -45,6 +45,10 @@ func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
+	if h.middleware != nil && !h.middleware.HasPermission(r, auth.PermissionCreateProjects) {
+		httputil.WriteError(w, http.StatusForbidden, "Permission 'canCreateProjects' required")
+		return
+	}
 	var input CreateProjectInput
 	if err := httputil.DecodeJSONBody(w, r, &input, 0); err != nil {
 		httputil.WriteDecodeError(w, err)
@@ -83,9 +87,15 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if h.middleware != nil && !h.middleware.CanAccessProject(r, id) {
-		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
-		return
+	if h.middleware != nil {
+		if !h.middleware.HasPermission(r, auth.PermissionDeleteProjects) {
+			httputil.WriteError(w, http.StatusForbidden, "Permission 'canDeleteProjects' required")
+			return
+		}
+		if !h.middleware.CanAccessProject(r, id) {
+			httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+			return
+		}
 	}
 	if err := h.service.DeleteProject(r.Context(), id); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())

@@ -10,8 +10,12 @@ import type {
 	MetricSample,
 	PanelSettings,
 	AdminUserSummary,
-	NotificationChannel
+	NotificationChannel,
+	UpdateCheckResponse,
+	UpdateStatus,
+	VersionInfoResponse
 } from './types';
+import type { SessionSummary, UserPermissions, ProjectScope } from '../auth/types';
 
 export const systemApi = {
 	async health(): Promise<{ status: string; timestamp: string; socket: string }> {
@@ -147,7 +151,9 @@ export const systemApi = {
 		email: string;
 		password: string;
 		role: 'admin' | 'member';
-		projectIds: string[];
+		permissions?: UserPermissions;
+		projectIds?: string[];
+		projectScopes?: ProjectScope[];
 	}): Promise<AdminUserSummary> {
 		const res = await apiClient.post<AdminUserSummary>('/users', data);
 		return res.data;
@@ -155,7 +161,14 @@ export const systemApi = {
 
 	async updateUser(
 		id: string,
-		data: { name?: string; role?: 'admin' | 'member'; password?: string; projectIds?: string[] }
+		data: {
+			name?: string;
+			role?: 'admin' | 'member';
+			permissions?: UserPermissions;
+			password?: string;
+			projectIds?: string[];
+			projectScopes?: ProjectScope[];
+		}
 	): Promise<AdminUserSummary> {
 		const res = await apiClient.put<AdminUserSummary>(`/users/${encodeURIComponent(id)}`, data);
 		return res.data;
@@ -163,6 +176,42 @@ export const systemApi = {
 
 	async deleteUser(id: string): Promise<void> {
 		await apiClient.delete(`/users/${encodeURIComponent(id)}`);
+	},
+
+	async listAllSessions(): Promise<SessionSummary[]> {
+		const res = await apiClient.get<SessionSummary[]>('/users/sessions');
+		return res.data;
+	},
+
+	async revokeAdminSession(id: string): Promise<{ success: boolean; revokedCurrent: boolean }> {
+		const res = await apiClient.delete<{ success: boolean; revokedCurrent: boolean }>(
+			`/users/sessions/${encodeURIComponent(id)}`
+		);
+		return res.data;
+	},
+
+	async version(): Promise<VersionInfoResponse> {
+		const res = await apiClient.get<VersionInfoResponse>('/system/version');
+		return res.data;
+	},
+
+	async checkUpdates(channel?: 'latest' | 'dev', force = false): Promise<UpdateCheckResponse> {
+		const res = await apiClient.get<UpdateCheckResponse>('/system/updates', {
+			params: {
+				...(channel ? { channel } : {}),
+				...(force ? { force: 'true' } : {})
+			}
+		});
+		return res.data;
+	},
+
+	async triggerUpdate(payload: {
+		tag?: string;
+		channel?: 'latest' | 'dev';
+		confirmSwitchFromDev?: boolean;
+	}): Promise<UpdateStatus> {
+		const res = await apiClient.post<UpdateStatus>('/system/update', payload);
+		return res.data;
 	},
 
 	async listNotifications(): Promise<NotificationChannel[]> {

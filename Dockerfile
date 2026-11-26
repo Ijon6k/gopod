@@ -21,8 +21,13 @@ COPY backend/ ./
 # Ensure freshly built frontend dist is placed inside dist/
 COPY --from=frontend-builder /app/backend/dist ./dist
 
+ARG GOPOD_VERSION=dev
+ARG GOPOD_COMMIT=
+ARG GOPOD_BUILD_DATE=
+ARG GOPOD_CHANNEL=latest
+
 # Build single static binary with embedded SPA frontend
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /app/gopod ./cmd/server
+RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w -X gopod/internal/updater.Version=${GOPOD_VERSION} -X gopod/internal/updater.BuildCommit=${GOPOD_COMMIT} -X gopod/internal/updater.BuildDate=${GOPOD_BUILD_DATE} -X gopod/internal/updater.Channel=${GOPOD_CHANNEL}" -o /app/gopod ./cmd/server
 
 # Stage 3: Minimal Production Container
 FROM docker.io/library/alpine:3.21

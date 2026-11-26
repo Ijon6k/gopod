@@ -574,13 +574,14 @@ func demuxContainerLogs(raw []byte) string {
 	return strings.ReplaceAll(b.String(), "\r\n", "\n")
 }
 
-// ContainerInspectState holds live container lifecycle and HEALTHCHECK state.
+// ContainerInspectState holds live container lifecycle, labels, and HEALTHCHECK state.
 type ContainerInspectState struct {
 	Status       string
 	Running      bool
 	ExitCode     int
 	HasHealth    bool
 	HealthStatus string // "", "starting", "healthy", "unhealthy"
+	Labels       map[string]string
 }
 
 // InspectContainerState returns live execution and HEALTHCHECK status for idOrName.
@@ -600,7 +601,8 @@ func (c *Client) InspectContainerState(ctx context.Context, idOrName string) (*C
 				} `json:"Health"`
 			} `json:"State"`
 			Config *struct {
-				Healthcheck interface{} `json:"Healthcheck"`
+				Healthcheck interface{}       `json:"Healthcheck"`
+				Labels      map[string]string `json:"Labels"`
 			} `json:"Config"`
 		}
 		if err := json.Unmarshal(body, &single); err != nil {
@@ -617,11 +619,15 @@ func (c *Client) InspectContainerState(ctx context.Context, idOrName string) (*C
 			Running:  single.State.Running,
 			ExitCode: single.State.ExitCode,
 		}
+		if single.Config != nil {
+			st.Labels = single.Config.Labels
+			if single.Config.Healthcheck != nil {
+				st.HasHealth = true
+			}
+		}
 		if single.State.Health != nil && strings.TrimSpace(single.State.Health.Status) != "" {
 			st.HasHealth = true
 			st.HealthStatus = strings.ToLower(strings.TrimSpace(single.State.Health.Status))
-		} else if single.Config != nil && single.Config.Healthcheck != nil {
-			st.HasHealth = true
 		}
 		return st, nil
 	}

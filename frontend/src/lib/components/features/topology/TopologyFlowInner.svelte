@@ -213,7 +213,7 @@
 		bind:edges={flowEdges}
 		{nodeTypes}
 		{edgeTypes}
-		colorMode={ui.theme}
+		forceColorMode={ui.theme}
 		fitView
 		fitViewOptions={{ padding: 0.15 }}
 		minZoom={0.2}

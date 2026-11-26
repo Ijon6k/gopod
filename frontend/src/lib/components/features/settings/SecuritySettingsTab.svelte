@@ -3,6 +3,7 @@
 	import { api } from '$lib/api';
 	import { authStore } from '$lib/stores/auth.svelte';
 	import type { KeyStatusResponse } from '$lib/api/system/types';
+	import ActiveSessionsTab from '$lib/components/features/access/ActiveSessionsTab.svelte';
 	import {
 		Button,
 		Field,
@@ -45,6 +46,10 @@
 	let showConfirm = $state(false);
 
 	async function loadKeyStatus() {
+		if (!authStore.isAdmin) {
+			isLoadingKey = false;
+			return;
+		}
 		try {
 			keyStatus = await api.system.getKeyStatus();
 		} catch (err) {
@@ -101,13 +106,16 @@
 	}
 </script>
 
-<div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+<div class="flex flex-col gap-6">
+<div class="grid grid-cols-1 gap-6 {authStore.isAdmin ? 'lg:grid-cols-2' : ''}">
 	<!-- Change Password Card (Left Column) -->
 	<LayerCard class="flex flex-col gap-4 p-5">
 		<div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
 			<div class="flex items-center gap-2">
 				<LockKey size={16} class="text-[var(--accent)]" />
-				<h3 class="m-0 text-xs font-semibold text-[var(--text-primary)]">Administrator password</h3>
+				<h3 class="m-0 text-xs font-semibold text-[var(--text-primary)]">
+					{authStore.isAdmin ? 'Administrator password' : 'Account password'}
+				</h3>
 			</div>
 			<Badge variant="neutral">Authentication</Badge>
 		</div>
@@ -201,7 +209,8 @@
 		</div>
 	</LayerCard>
 
-	<!-- Security Architecture & Master Key (Right Column) -->
+	<!-- Security Architecture & Master Key (Admin Only Right Column) -->
+	{#if authStore.isAdmin}
 	<div class="flex flex-col gap-6">
 		<LayerCard class="flex flex-col gap-4 p-5">
 			<div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
@@ -273,38 +282,9 @@
 				</div>
 			</div>
 		</LayerCard>
-
-		<!-- Active User Session Info Card -->
-		<LayerCard class="flex flex-col gap-4 p-5">
-			<div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
-				<div class="flex items-center gap-2">
-					<UserCircle size={16} class="text-[var(--accent)]" />
-					<h3 class="m-0 text-xs font-semibold text-[var(--text-primary)]">
-						Active administrative session
-					</h3>
-				</div>
-				<span
-					class="inline-flex items-center gap-1.5 text-[11px] font-medium text-[var(--status-green)]"
-				>
-					<span class="h-1.5 w-1.5 rounded-full bg-[var(--status-green)]"></span>
-					Authenticated
-				</span>
-			</div>
-
-			<div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-				<div class="flex flex-col gap-1">
-					<span class="text-[11px] text-[var(--text-tertiary)]">Email address</span>
-					<span class="text-xs font-medium text-[var(--text-primary)]">
-						{authStore.user?.email || 'admin@gopod.dev'}
-					</span>
-				</div>
-				<div class="flex flex-col gap-1">
-					<span class="text-[11px] text-[var(--text-tertiary)]">Account role</span>
-					<span class="font-mono text-xs text-[var(--accent)] uppercase">
-						{authStore.user?.role || 'admin'}
-					</span>
-				</div>
-			</div>
-		</LayerCard>
 	</div>
+	{/if}
+</div>
+
+<ActiveSessionsTab scope="self" />
 </div>

@@ -20,6 +20,8 @@ type SystemInfo struct {
 	SwapUsed        int64   `json:"swapUsed"`
 	SwapUsedMB      float64 `json:"swapUsedMB"`
 	SwapTotalGB     float64 `json:"swapTotalGB"`
+	StorageUsedGB   float64 `json:"storageUsedGB"`
+	StorageTotalGB  float64 `json:"storageTotalGB"`
 	PodmanVersion   string  `json:"podmanVersion"`
 	Engine          string  `json:"engine"`
 	EngineVersion   string  `json:"engineVersion"`

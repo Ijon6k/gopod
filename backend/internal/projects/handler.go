@@ -27,12 +27,21 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
-	projects, err := h.service.ListProjects(r.Context())
+	list, err := h.service.ListProjects(r.Context())
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	httputil.WriteJSON(w, http.StatusOK, projects)
+	if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
+		filtered := make([]Project, 0, len(list))
+		for _, p := range list {
+			if allowed[p.ID] {
+				filtered = append(filtered, p)
+			}
+		}
+		list = filtered
+	}
+	httputil.WriteJSON(w, http.StatusOK, list)
 }
 
 func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
@@ -47,12 +56,19 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if h.middleware != nil {
+		h.middleware.GrantProjectOwner(r, project.ID)
+	}
 
 	httputil.WriteJSON(w, http.StatusCreated, project)
 }
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if h.middleware != nil && !h.middleware.CanAccessProject(r, id) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return
+	}
 	p, err := h.service.GetProject(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -67,6 +83,10 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if h.middleware != nil && !h.middleware.CanAccessProject(r, id) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return
+	}
 	if err := h.service.DeleteProject(r.Context(), id); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return

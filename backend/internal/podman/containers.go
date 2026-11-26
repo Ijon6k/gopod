@@ -3,6 +3,7 @@ package podman
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -464,14 +465,24 @@ func (c *Client) DeleteContainer(ctx context.Context, id string, force bool) err
 	return cmd.Run()
 }
 
-// GetContainerLogs returns logs for a given container.
+// GetContainerLogs returns demultiplexed logs for a given container.
 func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (string, error) {
+	return c.GetContainerLogsWithOptions(ctx, id, tail, false)
+}
+
+// GetContainerLogsWithOptions returns demultiplexed logs for a given container,
+// optionally requesting RFC3339 timestamps from Podman.
+func (c *Client) GetContainerLogsWithOptions(ctx context.Context, id string, tail int, timestamps bool) (string, error) {
 	if tail <= 0 {
 		tail = 100
 	}
 
 	if c.httpClient != nil {
-		reqURL := fmt.Sprintf("http://d/%s/libpod/containers/%s/logs?stdout=true&stderr=true&tail=%d", c.libpodVersion(), url.PathEscape(id), tail)
+		tsParam := ""
+		if timestamps {
+			tsParam = "&timestamps=true"
+		}
+		reqURL := fmt.Sprintf("http://d/%s/libpod/containers/%s/logs?stdout=true&stderr=true&tail=%d%s", c.libpodVersion(), url.PathEscape(id), tail, tsParam)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 		if err != nil {
 			return "", err
@@ -493,13 +504,161 @@ func (c *Client) GetContainerLogs(ctx context.Context, id string, tail int) (str
 		if err != nil {
 			return "", err
 		}
-		return string(logs), nil
+		return demuxContainerLogs(logs), nil
 	}
 
-	cmd := exec.CommandContext(ctx, "podman", "logs", "--tail", fmt.Sprintf("%d", tail), "--", id)
+	args := []string{"logs", "--tail", fmt.Sprintf("%d", tail)}
+	if timestamps {
+		args = append(args, "--timestamps")
+	}
+	args = append(args, "--", id)
+	cmd := exec.CommandContext(ctx, "podman", args...)
 	c.SetupCmdEnv(cmd)
 	out, err := cmd.CombinedOutput()
-	return string(out), err
+	return strings.ReplaceAll(string(out), "\r\n", "\n"), err
+}
+
+func isMultiplexHeader(hdr []byte) bool {
+	return len(hdr) >= 8 && hdr[0] <= 3 && hdr[1] == 0 && hdr[2] == 0 && hdr[3] == 0
+}
+
+// demuxContainerLogs strips Docker/Podman 8-byte multiplexed stream headers
+// ([streamType, 0, 0, 0, uint32_be(len)]) from non-TTY container log payloads,
+// falling back cleanly to raw UTF-8 text when the stream is unframed (Tty: true).
+func demuxContainerLogs(raw []byte) string {
+	if len(raw) == 0 {
+		return ""
+	}
+	if len(raw) < 8 || !isMultiplexHeader(raw) {
+		return strings.ReplaceAll(string(raw), "\r\n", "\n")
+	}
+
+	var b strings.Builder
+	b.Grow(len(raw))
+	pos := 0
+	decodedFrames := 0
+
+	for pos+8 <= len(raw) {
+		hdr := raw[pos : pos+8]
+		if !isMultiplexHeader(hdr) {
+			if decodedFrames == 0 {
+				return strings.ReplaceAll(string(raw), "\r\n", "\n")
+			}
+			b.Write(raw[pos:])
+			pos = len(raw)
+			break
+		}
+		frameLen := binary.BigEndian.Uint32(hdr[4:8])
+		remaining := uint64(len(raw) - pos - 8)
+		if uint64(frameLen) > remaining {
+			if decodedFrames == 0 {
+				return strings.ReplaceAll(string(raw), "\r\n", "\n")
+			}
+			b.Write(raw[pos+8:])
+			pos = len(raw)
+			break
+		}
+		pos += 8
+		end := pos + int(frameLen)
+		b.Write(raw[pos:end])
+		pos = end
+		decodedFrames++
+	}
+
+	if pos < len(raw) {
+		if decodedFrames == 0 {
+			return strings.ReplaceAll(string(raw), "\r\n", "\n")
+		}
+		b.Write(raw[pos:])
+	}
+	return strings.ReplaceAll(b.String(), "\r\n", "\n")
+}
+
+// ContainerInspectState holds live container lifecycle and HEALTHCHECK state.
+type ContainerInspectState struct {
+	Status       string
+	Running      bool
+	ExitCode     int
+	HasHealth    bool
+	HealthStatus string // "", "starting", "healthy", "unhealthy"
+}
+
+// InspectContainerState returns live execution and HEALTHCHECK status for idOrName.
+func (c *Client) InspectContainerState(ctx context.Context, idOrName string) (*ContainerInspectState, error) {
+	if strings.TrimSpace(idOrName) == "" {
+		return nil, errors.New("container identifier is required")
+	}
+
+	parseInspect := func(body []byte) (*ContainerInspectState, error) {
+		var single struct {
+			State struct {
+				Status   string `json:"Status"`
+				Running  bool   `json:"Running"`
+				ExitCode int    `json:"ExitCode"`
+				Health   *struct {
+					Status string `json:"Status"`
+				} `json:"Health"`
+			} `json:"State"`
+			Config *struct {
+				Healthcheck interface{} `json:"Healthcheck"`
+			} `json:"Config"`
+		}
+		if err := json.Unmarshal(body, &single); err != nil {
+			var arr []json.RawMessage
+			if aerr := json.Unmarshal(body, &arr); aerr != nil || len(arr) == 0 {
+				return nil, err
+			}
+			if err := json.Unmarshal(arr[0], &single); err != nil {
+				return nil, err
+			}
+		}
+		st := &ContainerInspectState{
+			Status:   strings.ToLower(strings.TrimSpace(single.State.Status)),
+			Running:  single.State.Running,
+			ExitCode: single.State.ExitCode,
+		}
+		if single.State.Health != nil && strings.TrimSpace(single.State.Health.Status) != "" {
+			st.HasHealth = true
+			st.HealthStatus = strings.ToLower(strings.TrimSpace(single.State.Health.Status))
+		} else if single.Config != nil && single.Config.Healthcheck != nil {
+			st.HasHealth = true
+		}
+		return st, nil
+	}
+
+	if c.httpClient != nil {
+		reqURL := fmt.Sprintf("http://d/%s/libpod/containers/%s/json", c.libpodVersion(), url.PathEscape(idOrName))
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+		if err != nil {
+			return nil, err
+		}
+		resp, cancel, err := c.do(ctx, readTimeout, req)
+		if err != nil {
+			return nil, fmt.Errorf("podman inspect request failed: %w", err)
+		}
+		defer cancel()
+		defer resp.Body.Close()
+		if resp.StatusCode == http.StatusNotFound {
+			return nil, fmt.Errorf("container %s: %w", idOrName, ErrNotFound)
+		}
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return nil, fmt.Errorf("podman inspect returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
+		}
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil, err
+		}
+		return parseInspect(body)
+	}
+
+	cmd := exec.CommandContext(ctx, "podman", "inspect", "--format", "json", "--", idOrName)
+	c.SetupCmdEnv(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return nil, fmt.Errorf("podman inspect failed: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return parseInspect(out)
 }
 
 func (c *Client) postContainerAction(ctx context.Context, id, action string) error {

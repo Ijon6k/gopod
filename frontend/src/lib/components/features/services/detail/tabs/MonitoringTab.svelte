@@ -54,6 +54,52 @@
 
 	let isRefreshing = $state(false);
 	let isRestartingContainer = $state(false);
+	let historyRange = $state<'live' | '1h' | '6h' | '24h' | '7d'>('live');
+	let histLoading = $state(false);
+	let histCpu = $state<TimeSeriesPoint[]>([]);
+	let histMemory = $state<TimeSeriesPoint[]>([]);
+	let histNetwork = $state<TimeSeriesPoint[]>([]);
+	let histStorage = $state<TimeSeriesPoint[]>([]);
+
+	async function selectHistoryRange(next: 'live' | '1h' | '6h' | '24h' | '7d') {
+		historyRange = next;
+		if (next === 'live') return;
+		histLoading = true;
+		try {
+			const samples = await api.system.serviceMetricsHistory(service.id, next);
+			const nCpu: TimeSeriesPoint[] = [];
+			const nMem: TimeSeriesPoint[] = [];
+			const nNet: TimeSeriesPoint[] = [];
+			const nDisk: TimeSeriesPoint[] = [];
+			for (const s of samples || []) {
+				const t = s.timestamp || '';
+				const lbl = s.label || '';
+				nCpu.push({ time: t, label: lbl, value: Math.max(0, s.cpuPercent) });
+				nMem.push({
+					time: t,
+					label: lbl,
+					value: Math.round((s.memUsedBytes || 0) / (1024 * 1024))
+				});
+				nNet.push({
+					time: t,
+					label: lbl,
+					value: Math.max(0, (s.netRxBps || 0) + (s.netTxBps || 0))
+				});
+				nDisk.push({ time: t, label: lbl, value: parseFloat((s.storageUsedGB || 0).toFixed(1)) });
+			}
+			histCpu = nCpu;
+			histMemory = nMem;
+			histNetwork = nNet;
+			histStorage = nDisk;
+		} catch {
+			histCpu = [];
+			histMemory = [];
+			histNetwork = [];
+			histStorage = [];
+		} finally {
+			histLoading = false;
+		}
+	}
 	let refreshRate = $state<'3s' | '5s' | '15s' | 'paused'>('3s');
 	const refreshOptions = [
 		{ label: '3s', value: '3s' },
@@ -96,14 +142,14 @@
 	});
 
 	let memLimit = $derived.by<number>(() => {
-		if (activeContainer && activeContainer.memoryLimit) {
+		if (activeContainer?.memoryLimit && activeContainer.memoryLimit > 0) {
 			return activeContainer.memoryLimit;
 		}
 		if (matchingContainers.length > 0) {
 			const maxLimit = Math.max(...matchingContainers.map((c) => c.memoryLimit || 0));
 			if (maxLimit > 0) return maxLimit;
 		}
-		return 512;
+		return 0;
 	});
 
 	let memPercent = $derived(
@@ -321,8 +367,27 @@
 			{/if}
 		</div>
 
-		<!-- Manual Refresh -->
-		<div class="flex items-center gap-2">
+		<!-- Range Selector & Manual Refresh -->
+		<div class="flex flex-wrap items-center gap-2">
+			<div
+				class="inline-flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
+			>
+				{#each [{ id: 'live', label: 'Live' }, { id: '1h', label: '1h' }, { id: '6h', label: '6h' }, { id: '24h', label: '24h' }, { id: '7d', label: '7d' }] as opt}
+					<button
+						type="button"
+						onclick={() => selectHistoryRange(opt.id as any)}
+						class="cursor-pointer rounded border-0 px-2 py-0.5 font-mono text-[11px] transition-colors {historyRange ===
+						opt.id
+							? 'bg-[var(--bg-surface)] font-semibold text-[var(--text-primary)] shadow-xs'
+							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+					>
+						{opt.label}
+					</button>
+				{/each}
+			</div>
+			{#if histLoading}
+				<span class="font-mono text-[10.5px] text-[var(--text-tertiary)]">Loading…</span>
+			{/if}
 			<button
 				type="button"
 				onclick={handleRefresh}
@@ -394,7 +459,11 @@
 				<CheckCircle size={15} class="shrink-0 text-[var(--status-green)]" />
 				<span class="font-semibold text-[var(--text-primary)]">Workload operating nominally</span>
 				<span class="text-[var(--text-tertiary)]">•</span>
-				<span>{formatMemory(currentMem)} / {memLimit} MB allocated</span>
+				<span
+					>{memLimit > 0
+						? `${formatMemory(currentMem)} / ${formatMemory(memLimit)} allocated`
+						: `${formatMemory(currentMem)} used (unlimited)`}</span
+				>
 				<span class="text-[var(--text-tertiary)]">•</span>
 				<span
 					>{matchingContainers.length}
@@ -420,17 +489,17 @@
 		hasContainers={matchingContainers.length > 0}
 	/>
 
-	<!-- 2x2 Metric Charts Grid with Live Per-Container Time Series -->
+	<!-- 2x2 Metric Charts Grid with Live or Persisted Time Series -->
 	<TelemetryChartsGrid
-		{cpuHistory}
+		cpuHistory={historyRange === 'live' ? cpuHistory : histCpu}
 		{currentCpu}
-		{memoryHistory}
+		memoryHistory={historyRange === 'live' ? memoryHistory : histMemory}
 		{currentMem}
 		{memLimit}
-		{networkHistory}
+		networkHistory={historyRange === 'live' ? networkHistory : histNetwork}
 		{currentNetRx}
 		{currentNetTx}
-		storageHistory={dataStore.storageHistory}
+		storageHistory={historyRange === 'live' ? dataStore.storageHistory : histStorage}
 		storageUsed={dataStore.server.storageUsed}
 		storageTotal={dataStore.server.storage}
 	/>

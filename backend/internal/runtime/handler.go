@@ -42,48 +42,50 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 
 	// Protected host & container telemetry
 	mux.HandleFunc("GET /api/system", h.middleware.RequireAuth(h.handleSystem))
+	mux.HandleFunc("GET /api/system/metrics/history", h.middleware.RequireAuth(h.handleSystemMetricsHistory))
+	mux.HandleFunc("GET /api/services/{id}/metrics/history", h.middleware.RequireAuth(h.handleServiceMetricsHistory))
 	mux.HandleFunc("GET /api/stats", h.middleware.RequireAuth(h.handleStats))
 	mux.HandleFunc("GET /api/containers", h.middleware.RequireAuth(h.handleContainers))
 	// EventSource cannot set an Authorization header; the query-token fallback
 	// is scoped to exactly this SSE route.
 	mux.HandleFunc("GET /api/stats/stream", h.middleware.RequireAuthAllowQuery(h.handleStream))
 
-	// Protected container actions
-	mux.HandleFunc("POST /api/containers/{id}/start", h.middleware.RequireAuth(h.handleContainerStart))
-	mux.HandleFunc("POST /api/containers/{id}/stop", h.middleware.RequireAuth(h.handleContainerStop))
-	mux.HandleFunc("POST /api/containers/{id}/restart", h.middleware.RequireAuth(h.handleContainerRestart))
-	mux.HandleFunc("DELETE /api/containers/{id}", h.middleware.RequireAuth(h.handleContainerDelete))
-	mux.HandleFunc("POST /api/containers/prune", h.middleware.RequireAuth(h.handlePruneContainers))
+	// Host container & pod lifecycle actions (admin-only host control)
+	mux.HandleFunc("POST /api/containers/{id}/start", h.middleware.RequireAdmin(h.handleContainerStart))
+	mux.HandleFunc("POST /api/containers/{id}/stop", h.middleware.RequireAdmin(h.handleContainerStop))
+	mux.HandleFunc("POST /api/containers/{id}/restart", h.middleware.RequireAdmin(h.handleContainerRestart))
+	mux.HandleFunc("DELETE /api/containers/{id}", h.middleware.RequireAdmin(h.handleContainerDelete))
+	mux.HandleFunc("POST /api/containers/prune", h.middleware.RequireAdmin(h.handlePruneContainers))
 	mux.HandleFunc("GET /api/containers/{id}/logs", h.middleware.RequireAuth(h.handleContainerLogs))
-	mux.HandleFunc("POST /api/containers/{id}/terminal-ticket", h.middleware.RequireAuth(h.handleContainerTerminalTicket))
+	mux.HandleFunc("POST /api/containers/{id}/terminal-ticket", h.middleware.RequireAdmin(h.handleContainerTerminalTicket))
 	mux.HandleFunc("GET /api/containers/{id}/exec", h.handleContainerExec) // auth handled inside WebSocket upgrade
 
-	// Protected Podman resources
+	// Podman host resources (read via RequireAuth; host-level mutations admin-only)
 	mux.HandleFunc("GET /api/pods", h.middleware.RequireAuth(h.handleListPods))
-	mux.HandleFunc("POST /api/pods", h.middleware.RequireAuth(h.handleCreatePod))
-	mux.HandleFunc("POST /api/pods/{id}/start", h.middleware.RequireAuth(h.handlePodStart))
-	mux.HandleFunc("POST /api/pods/{id}/stop", h.middleware.RequireAuth(h.handlePodStop))
-	mux.HandleFunc("POST /api/pods/{id}/restart", h.middleware.RequireAuth(h.handlePodRestart))
-	mux.HandleFunc("DELETE /api/pods/{id}", h.middleware.RequireAuth(h.handlePodDelete))
+	mux.HandleFunc("POST /api/pods", h.middleware.RequireAdmin(h.handleCreatePod))
+	mux.HandleFunc("POST /api/pods/{id}/start", h.middleware.RequireAdmin(h.handlePodStart))
+	mux.HandleFunc("POST /api/pods/{id}/stop", h.middleware.RequireAdmin(h.handlePodStop))
+	mux.HandleFunc("POST /api/pods/{id}/restart", h.middleware.RequireAdmin(h.handlePodRestart))
+	mux.HandleFunc("DELETE /api/pods/{id}", h.middleware.RequireAdmin(h.handlePodDelete))
 	mux.HandleFunc("GET /api/images", h.middleware.RequireAuth(h.handleListImages))
-	mux.HandleFunc("POST /api/images/prune", h.middleware.RequireAuth(h.handlePruneImages))
-	mux.HandleFunc("DELETE /api/images/{id}", h.middleware.RequireAuth(h.handleImageRemove))
+	mux.HandleFunc("POST /api/images/prune", h.middleware.RequireAdmin(h.handlePruneImages))
+	mux.HandleFunc("DELETE /api/images/{id}", h.middleware.RequireAdmin(h.handleImageRemove))
 	mux.HandleFunc("GET /api/volumes", h.middleware.RequireAuth(h.handleListVolumes))
-	mux.HandleFunc("POST /api/volumes/prune", h.middleware.RequireAuth(h.handlePruneVolumes))
-	mux.HandleFunc("DELETE /api/volumes/{name}", h.middleware.RequireAuth(h.handleVolumeDelete))
+	mux.HandleFunc("POST /api/volumes/prune", h.middleware.RequireAdmin(h.handlePruneVolumes))
+	mux.HandleFunc("DELETE /api/volumes/{name}", h.middleware.RequireAdmin(h.handleVolumeDelete))
 	mux.HandleFunc("GET /api/networks", h.middleware.RequireAuth(h.handleListNetworks))
-	mux.HandleFunc("DELETE /api/networks/{name}", h.middleware.RequireAuth(h.handleNetworkRemove))
-	mux.HandleFunc("POST /api/system/prune", h.middleware.RequireAuth(h.handlePruneSystem))
+	mux.HandleFunc("DELETE /api/networks/{name}", h.middleware.RequireAdmin(h.handleNetworkRemove))
+	mux.HandleFunc("POST /api/system/prune", h.middleware.RequireAdmin(h.handlePruneSystem))
 	mux.HandleFunc("GET /api/system/df", h.middleware.RequireAuth(h.handleGetDiskUsage))
 
-	// Protected Quadlet systemd resources
-	mux.HandleFunc("GET /api/quadlets", h.middleware.RequireAuth(h.handleListQuadlets))
-	mux.HandleFunc("POST /api/quadlets/{name}/start", h.middleware.RequireAuth(h.handleQuadletStart))
-	mux.HandleFunc("POST /api/quadlets/{name}/stop", h.middleware.RequireAuth(h.handleQuadletStop))
-	mux.HandleFunc("POST /api/quadlets/{name}/restart", h.middleware.RequireAuth(h.handleQuadletRestart))
-	mux.HandleFunc("POST /api/quadlets/reload", h.middleware.RequireAuth(h.handleQuadletReload))
-	mux.HandleFunc("GET /api/quadlets/{name}/content", h.middleware.RequireAuth(h.handleQuadletContent))
-	mux.HandleFunc("DELETE /api/quadlets/{name}", h.middleware.RequireAuth(h.handleQuadletDelete))
+	// Protected Quadlet systemd resources (host systemd unit access admin-only)
+	mux.HandleFunc("GET /api/quadlets", h.middleware.RequireAdmin(h.handleListQuadlets))
+	mux.HandleFunc("POST /api/quadlets/{name}/start", h.middleware.RequireAdmin(h.handleQuadletStart))
+	mux.HandleFunc("POST /api/quadlets/{name}/stop", h.middleware.RequireAdmin(h.handleQuadletStop))
+	mux.HandleFunc("POST /api/quadlets/{name}/restart", h.middleware.RequireAdmin(h.handleQuadletRestart))
+	mux.HandleFunc("POST /api/quadlets/reload", h.middleware.RequireAdmin(h.handleQuadletReload))
+	mux.HandleFunc("GET /api/quadlets/{name}/content", h.middleware.RequireAdmin(h.handleQuadletContent))
+	mux.HandleFunc("DELETE /api/quadlets/{name}", h.middleware.RequireAdmin(h.handleQuadletDelete))
 }
 
 func (h *Handler) handleHealth(w http.ResponseWriter, r *http.Request) {
@@ -193,7 +195,8 @@ func (h *Handler) handleContainerLogs(w http.ResponseWriter, r *http.Request) {
 	if tail > maxContainerLogTail {
 		tail = maxContainerLogTail
 	}
-	logs, err := h.service.GetContainerLogs(r.Context(), id, tail)
+	timestamps := r.URL.Query().Get("timestamps") == "true"
+	logs, err := h.service.GetContainerLogsWithOptions(r.Context(), id, tail, timestamps)
 	if err != nil {
 		// A vanished container is expected between list and fetch (it may
 		// have just exited and been removed); surface it as a clean 404
@@ -370,6 +373,31 @@ func (h *Handler) handleGetDiskUsage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	httputil.WriteJSON(w, http.StatusOK, df)
+}
+
+func (h *Handler) handleSystemMetricsHistory(w http.ResponseWriter, r *http.Request) {
+	rangeStr := r.URL.Query().Get("range")
+	samples, err := h.service.QueryMetricsHistory(r.Context(), "host", "host", rangeStr)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, samples)
+}
+
+func (h *Handler) handleServiceMetricsHistory(w http.ResponseWriter, r *http.Request) {
+	serviceID := r.PathValue("id")
+	if strings.TrimSpace(serviceID) == "" {
+		httputil.WriteError(w, http.StatusBadRequest, "service id is required")
+		return
+	}
+	rangeStr := r.URL.Query().Get("range")
+	samples, err := h.service.QueryMetricsHistory(r.Context(), "service", serviceID, rangeStr)
+	if err != nil {
+		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	httputil.WriteJSON(w, http.StatusOK, samples)
 }
 
 // ── Quadlet Handlers ──

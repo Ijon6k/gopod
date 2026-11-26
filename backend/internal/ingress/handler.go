@@ -74,16 +74,33 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/domains/{id}/revalidate", h.middleware.RequireAuth(h.handleRevalidateDomain))
 	mux.HandleFunc("GET /api/traffic/requests", h.middleware.RequireAuth(h.handleTrafficRequests))
 	mux.HandleFunc("GET /api/traffic/metrics", h.middleware.RequireAuth(h.handleTrafficMetrics))
-	mux.HandleFunc("GET /api/ingress/caddyfile", h.middleware.RequireAuth(h.handleGetCaddyfile))
-	mux.HandleFunc("POST /api/ingress/reload", h.middleware.RequireAuth(h.handleReloadCaddy))
+	mux.HandleFunc("GET /api/ingress/caddyfile", h.middleware.RequireAdmin(h.handleGetCaddyfile))
+	mux.HandleFunc("POST /api/ingress/reload", h.middleware.RequireAdmin(h.handleReloadCaddy))
+	mux.HandleFunc("GET /api/system/panel-settings", h.middleware.RequireAdmin(h.handleGetPanelSettings))
+	mux.HandleFunc("PUT /api/system/panel-settings", h.middleware.RequireAdmin(h.handleUpdatePanelSettings))
 }
 
 func (h *Handler) handleListDomains(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("projectId")
+	if projectID != "" && h.middleware != nil && !h.middleware.CanAccessProject(r, projectID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return
+	}
 	domains, err := h.service.ListDomains(r.Context(), projectID)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if projectID == "" && h.middleware != nil {
+		if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
+			filtered := make([]Domain, 0, len(domains))
+			for _, d := range domains {
+				if allowed[d.ProjectID] {
+					filtered = append(filtered, d)
+				}
+			}
+			domains = filtered
+		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, domains)
 }
@@ -92,6 +109,10 @@ func (h *Handler) handleCreateDomain(w http.ResponseWriter, r *http.Request) {
 	var p domainPayload
 	if err := httputil.DecodeJSONBody(w, r, &p, 0); err != nil {
 		httputil.WriteDecodeError(w, err)
+		return
+	}
+	if h.middleware != nil && !h.middleware.CanAccessProject(r, p.ProjectID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
 		return
 	}
 
@@ -105,6 +126,12 @@ func (h *Handler) handleCreateDomain(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleUpdateDomain(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if existing, err := h.service.GetDomain(r.Context(), id); err == nil && existing != nil {
+		if h.middleware != nil && !h.middleware.CanAccessProject(r, existing.ProjectID) {
+			httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+			return
+		}
+	}
 	var p domainPayload
 	if err := httputil.DecodeJSONBody(w, r, &p, 0); err != nil {
 		httputil.WriteDecodeError(w, err)
@@ -112,6 +139,10 @@ func (h *Handler) handleUpdateDomain(w http.ResponseWriter, r *http.Request) {
 	}
 	d := p.toDomain()
 	d.ID = id
+	if d.ProjectID != "" && h.middleware != nil && !h.middleware.CanAccessProject(r, d.ProjectID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return
+	}
 
 	updated, err := h.service.UpdateDomain(r.Context(), d)
 	if err != nil {
@@ -127,6 +158,12 @@ func (h *Handler) handleUpdateDomain(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeleteDomain(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if existing, err := h.service.GetDomain(r.Context(), id); err == nil && existing != nil {
+		if h.middleware != nil && !h.middleware.CanAccessProject(r, existing.ProjectID) {
+			httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+			return
+		}
+	}
 	if err := h.service.DeleteDomain(r.Context(), id); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return

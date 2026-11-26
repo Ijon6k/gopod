@@ -201,6 +201,60 @@ func listRemote(ctx context.Context, d BackupDestination, prefix string, maxKeys
 	return objects, nil
 }
 
+// downloadFromDestination streams an object from S3-compatible storage into
+// localPath atomically and verifies the SHA-256 checksum when expectedChecksum
+// is provided.
+func downloadFromDestination(ctx context.Context, d BackupDestination, remoteKey, localPath, expectedChecksum string) error {
+	client, err := s3ClientFor(ctx, d)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(remoteKey) == "" {
+		return errors.New("remote snapshot key is missing")
+	}
+
+	out, err := client.GetObject(ctx, &s3.GetObjectInput{
+		Bucket: aws.String(d.Bucket),
+		Key:    aws.String(remoteKey),
+	})
+	if err != nil {
+		return fmt.Errorf("s3 get object: %w", err)
+	}
+	defer out.Body.Close()
+
+	tmpPath := localPath + ".download.tmp"
+	f, err := os.OpenFile(tmpPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+	if err != nil {
+		return fmt.Errorf("create restore temp file: %w", err)
+	}
+	cleanupTmp := true
+	defer func() {
+		f.Close()
+		if cleanupTmp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+
+	h := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(f, h), out.Body); err != nil {
+		return fmt.Errorf("stream remote snapshot: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("close restore temp file: %w", err)
+	}
+	if expected := strings.TrimSpace(expectedChecksum); expected != "" {
+		actual := hex.EncodeToString(h.Sum(nil))
+		if !strings.EqualFold(actual, expected) {
+			return fmt.Errorf("checksum mismatch on remote snapshot (got %s, want %s)", actual, expected)
+		}
+	}
+	if err := os.Rename(tmpPath, localPath); err != nil {
+		return fmt.Errorf("commit downloaded snapshot: %w", err)
+	}
+	cleanupTmp = false
+	return nil
+}
+
 // remoteKeyFor builds the object key under the destination's optional prefix:
 // <prefix>/<volume>/<filename>.
 func remoteKeyFor(d BackupDestination, snap VolumeSnapshot) string {

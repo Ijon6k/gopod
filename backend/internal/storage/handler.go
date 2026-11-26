@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 
 	"gopod/internal/auth"
@@ -38,11 +39,11 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/storage/schedules/{id}/toggle", h.middleware.RequireAuth(h.handleToggleSchedule))
 	mux.HandleFunc("DELETE /api/storage/schedules/{id}", h.middleware.RequireAuth(h.handleDeleteSchedule))
 
-	mux.HandleFunc("GET /api/storage/destinations", h.middleware.RequireAuth(h.handleListDestinations))
-	mux.HandleFunc("POST /api/storage/destinations", h.middleware.RequireAuth(h.handleCreateDestination))
-	mux.HandleFunc("POST /api/storage/destinations/test", h.middleware.RequireAuth(h.handleTestDestinationStruct))
-	mux.HandleFunc("POST /api/storage/destinations/{id}/test", h.middleware.RequireAuth(h.handleTestDestination))
-	mux.HandleFunc("DELETE /api/storage/destinations/{id}", h.middleware.RequireAuth(h.handleDeleteDestination))
+	mux.HandleFunc("GET /api/storage/destinations", h.middleware.RequireAdmin(h.handleListDestinations))
+	mux.HandleFunc("POST /api/storage/destinations", h.middleware.RequireAdmin(h.handleCreateDestination))
+	mux.HandleFunc("POST /api/storage/destinations/test", h.middleware.RequireAdmin(h.handleTestDestinationStruct))
+	mux.HandleFunc("POST /api/storage/destinations/{id}/test", h.middleware.RequireAdmin(h.handleTestDestination))
+	mux.HandleFunc("DELETE /api/storage/destinations/{id}", h.middleware.RequireAdmin(h.handleDeleteDestination))
 
 	// Frontend compatibility aliases (/api/volumes/*)
 	mux.HandleFunc("GET /api/volumes/snapshots", h.middleware.RequireAuth(h.handleListSnapshots))
@@ -58,30 +59,90 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/volumes/schedules/{id}", h.middleware.RequireAuth(h.handleDeleteSchedule))
 
 	// Destination aliases on the same compatibility prefix.
-	mux.HandleFunc("GET /api/volumes/destinations", h.middleware.RequireAuth(h.handleListDestinations))
-	mux.HandleFunc("POST /api/volumes/destinations", h.middleware.RequireAuth(h.handleCreateDestination))
-	mux.HandleFunc("POST /api/volumes/destinations/test", h.middleware.RequireAuth(h.handleTestDestinationStruct))
-	mux.HandleFunc("POST /api/volumes/destinations/{id}/test", h.middleware.RequireAuth(h.handleTestDestination))
-	mux.HandleFunc("DELETE /api/volumes/destinations/{id}", h.middleware.RequireAuth(h.handleDeleteDestination))
+	mux.HandleFunc("GET /api/volumes/destinations", h.middleware.RequireAdmin(h.handleListDestinations))
+	mux.HandleFunc("POST /api/volumes/destinations", h.middleware.RequireAdmin(h.handleCreateDestination))
+	mux.HandleFunc("POST /api/volumes/destinations/test", h.middleware.RequireAdmin(h.handleTestDestinationStruct))
+	mux.HandleFunc("POST /api/volumes/destinations/{id}/test", h.middleware.RequireAdmin(h.handleTestDestination))
+	mux.HandleFunc("DELETE /api/volumes/destinations/{id}", h.middleware.RequireAdmin(h.handleDeleteDestination))
 
-	// System / Self-Backup endpoints
-	mux.HandleFunc("POST /api/system/backup", h.middleware.RequireAuth(h.handleCreateSystemBackup))
-	mux.HandleFunc("GET /api/system/backups", h.middleware.RequireAuth(h.handleListSystemBackups))
-	mux.HandleFunc("GET /api/system/backups/{id}/verify", h.middleware.RequireAuth(h.handleVerifySystemBackup))
-	mux.HandleFunc("GET /api/system/backup/schedule", h.middleware.RequireAuth(h.handleGetSystemBackupSchedule))
-	mux.HandleFunc("POST /api/system/backup/schedule", h.middleware.RequireAuth(h.handleSaveSystemBackupSchedule))
-	mux.HandleFunc("GET /api/system/security/key-status", h.middleware.RequireAuth(h.handleGetKeyStatus))
+	// System / Self-Backup endpoints (admin-only disaster recovery)
+	mux.HandleFunc("POST /api/system/backup", h.middleware.RequireAdmin(h.handleCreateSystemBackup))
+	mux.HandleFunc("GET /api/system/backups", h.middleware.RequireAdmin(h.handleListSystemBackups))
+	mux.HandleFunc("GET /api/system/backups/{id}/verify", h.middleware.RequireAdmin(h.handleVerifySystemBackup))
+	mux.HandleFunc("GET /api/system/backup/schedule", h.middleware.RequireAdmin(h.handleGetSystemBackupSchedule))
+	mux.HandleFunc("POST /api/system/backup/schedule", h.middleware.RequireAdmin(h.handleSaveSystemBackupSchedule))
+	mux.HandleFunc("GET /api/system/security/key-status", h.middleware.RequireAdmin(h.handleGetKeyStatus))
 }
 
 // ── Snapshots ──
 
+func (h *Handler) ensureProjectAccess(w http.ResponseWriter, r *http.Request, projectID string) bool {
+	if h.middleware != nil && !h.middleware.CanAccessProject(r, projectID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return false
+	}
+	return true
+}
+
+func (h *Handler) ensureSnapshotAccess(w http.ResponseWriter, r *http.Request, snapID string) bool {
+	if h.middleware == nil {
+		return true
+	}
+	restricted, allowed := h.middleware.AllowedProjectSet(r)
+	if !restricted {
+		return true
+	}
+	snap, err := h.service.GetSnapshot(r.Context(), snapID)
+	if err != nil || snap == nil {
+		return true
+	}
+	if !allowed[snap.ProjectID] {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return false
+	}
+	return true
+}
+
+func (h *Handler) ensureScheduleAccess(w http.ResponseWriter, r *http.Request, schedID string) bool {
+	if h.middleware == nil {
+		return true
+	}
+	restricted, allowed := h.middleware.AllowedProjectSet(r)
+	if !restricted {
+		return true
+	}
+	sched, err := h.service.GetSchedule(r.Context(), schedID)
+	if err != nil || sched == nil {
+		return true
+	}
+	if !allowed[sched.ProjectID] {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return false
+	}
+	return true
+}
+
 func (h *Handler) handleListSnapshots(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("projectId")
+	if projectID != "" && !h.ensureProjectAccess(w, r, projectID) {
+		return
+	}
 	serviceID := r.URL.Query().Get("serviceId")
 	snapshots, err := h.service.ListSnapshots(r.Context(), projectID)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if projectID == "" && h.middleware != nil {
+		if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
+			filtered := make([]VolumeSnapshot, 0, len(snapshots))
+			for _, s := range snapshots {
+				if allowed[s.ProjectID] {
+					filtered = append(filtered, s)
+				}
+			}
+			snapshots = filtered
+		}
 	}
 	if serviceID != "" {
 		filtered := make([]VolumeSnapshot, 0, len(snapshots))
@@ -101,6 +162,9 @@ func (h *Handler) handleCreateDatabaseDump(w http.ResponseWriter, r *http.Reques
 		httputil.WriteDecodeError(w, err)
 		return
 	}
+	if !h.ensureProjectAccess(w, r, req.ProjectID) {
+		return
+	}
 	snap, err := h.service.CreateDatabaseDump(r.Context(), req)
 	if err != nil {
 		httputil.WriteError(w, http.StatusBadRequest, err.Error())
@@ -115,6 +179,9 @@ func (h *Handler) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteDecodeError(w, err)
 		return
 	}
+	if !h.ensureProjectAccess(w, r, snap.ProjectID) {
+		return
+	}
 
 	created, err := h.service.CreateSnapshot(r.Context(), snap)
 	if err != nil {
@@ -126,6 +193,9 @@ func (h *Handler) handleCreateSnapshot(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureSnapshotAccess(w, r, id) {
+		return
+	}
 	if err := h.service.DeleteSnapshot(r.Context(), id); err != nil {
 		if errors.Is(err, ErrSnapshotNotFound) {
 			httputil.WriteError(w, http.StatusNotFound, err.Error())
@@ -139,7 +209,15 @@ func (h *Handler) handleDeleteSnapshot(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleRestoreSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if err := h.service.RestoreSnapshot(r.Context(), id); err != nil {
+	if !h.ensureSnapshotAccess(w, r, id) {
+		return
+	}
+	var opts DatabaseRestoreRequest
+	if err := httputil.DecodeJSONBody(w, r, &opts, 0); err != nil && !errors.Is(err, io.EOF) {
+		httputil.WriteDecodeError(w, err)
+		return
+	}
+	if err := h.service.RestoreSnapshotWithOptions(r.Context(), id, opts); err != nil {
 		switch {
 		case errors.Is(err, ErrSnapshotNotFound):
 			httputil.WriteError(w, http.StatusNotFound, err.Error())
@@ -156,6 +234,9 @@ func (h *Handler) handleRestoreSnapshot(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleDownloadSnapshot(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureSnapshotAccess(w, r, id) {
+		return
+	}
 	filePath, filename, err := h.service.GetSnapshotFilePath(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusNotFound, err.Error())
@@ -169,11 +250,25 @@ func (h *Handler) handleDownloadSnapshot(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleListSchedules(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("projectId")
+	if projectID != "" && !h.ensureProjectAccess(w, r, projectID) {
+		return
+	}
 	serviceID := r.URL.Query().Get("serviceId")
 	schedules, err := h.service.ListSchedules(r.Context(), projectID)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if projectID == "" && h.middleware != nil {
+		if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
+			filtered := make([]VolumeSchedule, 0, len(schedules))
+			for _, s := range schedules {
+				if allowed[s.ProjectID] {
+					filtered = append(filtered, s)
+				}
+			}
+			schedules = filtered
+		}
 	}
 	if serviceID != "" {
 		filtered := make([]VolumeSchedule, 0, len(schedules))
@@ -193,6 +288,9 @@ func (h *Handler) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 		httputil.WriteDecodeError(w, err)
 		return
 	}
+	if !h.ensureProjectAccess(w, r, sched.ProjectID) {
+		return
+	}
 
 	created, err := h.service.CreateSchedule(r.Context(), sched)
 	if err != nil {
@@ -204,6 +302,9 @@ func (h *Handler) handleCreateSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureScheduleAccess(w, r, id) {
+		return
+	}
 	if err := h.service.DeleteSchedule(r.Context(), id); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -213,6 +314,9 @@ func (h *Handler) handleDeleteSchedule(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleToggleSchedule(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureScheduleAccess(w, r, id) {
+		return
+	}
 	sched, err := h.service.ToggleSchedule(r.Context(), id)
 	if err != nil {
 		if errors.Is(err, ErrScheduleNotFound) {

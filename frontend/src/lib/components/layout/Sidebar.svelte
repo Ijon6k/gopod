@@ -193,26 +193,28 @@
 		<KumoSidebar.Group>
 			<KumoSidebar.GroupLabel>Platform</KumoSidebar.GroupLabel>
 			<KumoSidebar.Menu>
-				<KumoSidebar.MenuItem>
-					<KumoSidebar.MenuButton
-						href="/credentials"
-						active={isActive('/credentials')}
-						icon={Key}
-						tooltip="Credentials"
-					>
-						Credentials
-					</KumoSidebar.MenuButton>
-				</KumoSidebar.MenuItem>
-				<KumoSidebar.MenuItem>
-					<KumoSidebar.MenuButton
-						href="/audit-log"
-						active={isActive('/audit-log')}
-						icon={ClockCounterClockwise}
-						tooltip="Audit Log"
-					>
-						Audit Log
-					</KumoSidebar.MenuButton>
-				</KumoSidebar.MenuItem>
+				{#if authStore.user?.role === 'admin'}
+					<KumoSidebar.MenuItem>
+						<KumoSidebar.MenuButton
+							href="/credentials"
+							active={isActive('/credentials')}
+							icon={Key}
+							tooltip="Credentials"
+						>
+							Credentials
+						</KumoSidebar.MenuButton>
+					</KumoSidebar.MenuItem>
+					<KumoSidebar.MenuItem>
+						<KumoSidebar.MenuButton
+							href="/audit-log"
+							active={isActive('/audit-log')}
+							icon={ClockCounterClockwise}
+							tooltip="Audit Log"
+						>
+							Audit Log
+						</KumoSidebar.MenuButton>
+					</KumoSidebar.MenuItem>
+				{/if}
 				<KumoSidebar.MenuItem>
 					<KumoSidebar.MenuButton
 						href="/settings"
@@ -228,7 +230,9 @@
 	</KumoSidebar.Content>
 
 	<!-- Footer: Account Profile -->
-	<KumoSidebar.Footer class="flex flex-col items-center border-t border-[var(--border)] px-2 py-2 pb-6 md:pb-2">
+	<KumoSidebar.Footer
+		class="flex flex-col items-center border-t border-[var(--border)] px-2 py-2 pb-6 md:pb-2"
+	>
 		<DropdownMenu>
 			<DropdownMenu.Trigger
 				title="Account profile"

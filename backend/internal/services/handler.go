@@ -61,14 +61,14 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/services/{id}/journal", h.middleware.RequireAuth(h.handleGetJournal))
 	mux.HandleFunc("POST /api/services/{id}/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadlet))
 	mux.HandleFunc("POST /api/services/{id}/quadlet/preview", h.middleware.RequireAuth(h.handleQuadletPreview))
-	mux.HandleFunc("POST /api/quadlet/validate", h.middleware.RequireAuth(h.handleValidateQuadletGlobal))
+	mux.HandleFunc("POST /api/quadlet/validate", h.middleware.RequireAdmin(h.handleValidateQuadletGlobal))
 	mux.HandleFunc("POST /api/services/{id}/quadlet/demote", h.middleware.RequireAuth(h.handleDemoteQuadlet))
 	mux.HandleFunc("POST /api/services/{id}/group-pod", h.middleware.RequireAuth(h.handleGroupIntoPod))
 	mux.HandleFunc("POST /api/services/{id}/ungroup-pod", h.middleware.RequireAuth(h.handleUngroupFromPod))
 	mux.HandleFunc("POST /api/services/{id}/drop-upload", h.middleware.RequireAuth(h.handleDropUpload))
 	mux.HandleFunc("POST /api/services/validate-manifest", h.middleware.RequireAuth(h.handleValidateManifest))
 	mux.HandleFunc("POST /api/services/{id}/validate-manifest", h.middleware.RequireAuth(h.handleValidateManifest))
-	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAuth(h.handleGetLinger))
+	mux.HandleFunc("GET /api/system/linger", h.middleware.RequireAdmin(h.handleGetLinger))
 
 	// On-demand secret access. List/get responses never carry secret env
 	// values or the webhook token; these endpoints hand them out explicitly.
@@ -78,16 +78,58 @@ func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/services/{id}/webhook/secret", h.middleware.RequireAuth(h.handleRotateWebhookSecret))
 
 	// Cleanup engine: inventory + manual run (nightly job runs unattended).
-	mux.HandleFunc("GET /api/system/gc/preview", h.middleware.RequireAuth(h.handleGCPreview))
-	mux.HandleFunc("POST /api/system/gc", h.middleware.RequireAuth(h.handleRunGC))
+	mux.HandleFunc("GET /api/system/gc/preview", h.middleware.RequireAdmin(h.handleGCPreview))
+	mux.HandleFunc("POST /api/system/gc", h.middleware.RequireAdmin(h.handleRunGC))
+}
+
+func (h *Handler) ensureProjectAccess(w http.ResponseWriter, r *http.Request, projectID string) bool {
+	if h.middleware != nil && !h.middleware.CanAccessProject(r, projectID) {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return false
+	}
+	return true
+}
+
+func (h *Handler) ensureServiceAccess(w http.ResponseWriter, r *http.Request, serviceID string) bool {
+	if h.middleware == nil {
+		return true
+	}
+	restricted, allowed := h.middleware.AllowedProjectSet(r)
+	if !restricted {
+		return true
+	}
+	svc, err := h.service.GetService(r.Context(), serviceID)
+	if err != nil || svc == nil {
+		// Let downstream handler produce consistent 404/400 when missing
+		return true
+	}
+	if !allowed[svc.ProjectID] {
+		httputil.WriteError(w, http.StatusForbidden, "Access to project denied")
+		return false
+	}
+	return true
 }
 
 func (h *Handler) handleList(w http.ResponseWriter, r *http.Request) {
 	projectID := r.URL.Query().Get("projectId")
+	if projectID != "" && !h.ensureProjectAccess(w, r, projectID) {
+		return
+	}
 	list, err := h.service.ListServices(r.Context(), projectID)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if projectID == "" && h.middleware != nil {
+		if restricted, allowed := h.middleware.AllowedProjectSet(r); restricted {
+			filtered := make([]Service, 0, len(list))
+			for _, item := range list {
+				if allowed[item.ProjectID] {
+					filtered = append(filtered, item)
+				}
+			}
+			list = filtered
+		}
 	}
 	httputil.WriteJSON(w, http.StatusOK, RedactServices(list))
 }
@@ -96,6 +138,9 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 	var s Service
 	if err := httputil.DecodeJSONBody(w, r, &s, 0); err != nil {
 		httputil.WriteDecodeError(w, err)
+		return
+	}
+	if !h.ensureProjectAccess(w, r, s.ProjectID) {
 		return
 	}
 
@@ -109,6 +154,9 @@ func (h *Handler) handleCreate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	s, err := h.service.GetService(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -129,6 +177,9 @@ func (h *Handler) handleGet(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	var s Service
 	if err := httputil.DecodeJSONBody(w, r, &s, 0); err != nil {
 		httputil.WriteDecodeError(w, err)
@@ -150,6 +201,9 @@ func (h *Handler) handleUpdate(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	deleteVolumes := r.URL.Query().Get("delete_volumes") == "true"
 	if err := h.service.DeleteService(r.Context(), id, deleteVolumes); err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -160,6 +214,9 @@ func (h *Handler) handleDelete(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	trigger := "manual"
 	var body struct {
 		Trigger            string `json:"trigger"`
@@ -313,6 +370,9 @@ func (h *Handler) handleStreamDeploymentLogs(w http.ResponseWriter, r *http.Requ
 
 func (h *Handler) handleListDeployments(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	deployments, err := h.service.ListDeployments(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -326,6 +386,9 @@ func (h *Handler) handleListDeployments(w http.ResponseWriter, r *http.Request) 
 
 func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	svc, err := h.service.StartService(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -336,6 +399,9 @@ func (h *Handler) handleStart(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleStop(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	svc, err := h.service.StopService(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -346,6 +412,9 @@ func (h *Handler) handleStop(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	svc, err := h.service.RestartService(r.Context(), id)
 	if err != nil {
 		httputil.WriteError(w, http.StatusInternalServerError, err.Error())
@@ -356,6 +425,9 @@ func (h *Handler) handleRestart(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleGetJournal(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	lines := 100
 	if lStr := r.URL.Query().Get("lines"); lStr != "" {
 		if val, err := strconv.Atoi(lStr); err == nil && val > 0 {
@@ -529,6 +601,9 @@ func (h *Handler) handleUngroupFromPod(w http.ResponseWriter, r *http.Request) {
 // the only read path that hands out secret values; list/get never do.
 func (h *Handler) handleRevealEnv(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	var req struct {
 		Keys []string `json:"keys"`
 	}
@@ -560,6 +635,9 @@ func (h *Handler) handleRevealEnv(w http.ResponseWriter, r *http.Request) {
 // part of list/get responses.
 func (h *Handler) handleRevealWebhook(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	token, err := h.service.WebhookTokenFor(r.Context(), id)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -589,6 +667,9 @@ func (h *Handler) handleRevealWebhook(w http.ResponseWriter, r *http.Request) {
 // handleRotateWebhook issues a fresh webhook token; older tokens stop working.
 func (h *Handler) handleRotateWebhook(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	token, err := h.service.RotateWebhookToken(r.Context(), id)
 	if err != nil {
 		status := http.StatusBadRequest
@@ -607,6 +688,9 @@ func (h *Handler) handleRotateWebhook(w http.ResponseWriter, r *http.Request) {
 // handleRotateWebhookSecret issues a fresh signature secret and returns it once.
 func (h *Handler) handleRotateWebhookSecret(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
+	if !h.ensureServiceAccess(w, r, id) {
+		return
+	}
 	secret, err := h.service.RotateWebhookSecret(r.Context(), id)
 	if err != nil {
 		status := http.StatusBadRequest

@@ -224,6 +224,10 @@ func (d *Deployer) deployGit(ctx context.Context, s Service, depID string, trigg
 	}
 
 	if plan.mode == redeployStartFirst {
+		if err := d.awaitReplacementReady(ctx, plan.runName, logLine); err != nil {
+			d.rollbackFailedReplacement(ctx, plan, logLine)
+			return result, err
+		}
 		containerName = d.retirePredecessor(ctx, plan.predecessorID, containerName, plan.runName, logLine)
 	}
 

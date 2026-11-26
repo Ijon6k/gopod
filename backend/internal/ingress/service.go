@@ -3,6 +3,7 @@ package ingress
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 type Service struct {
 	repo       Repository
 	reconciler *Reconciler
+	settingsDB *sql.DB
 }
 
 // NewService creates a new ingress domain service.

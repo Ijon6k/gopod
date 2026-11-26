@@ -1,7 +1,8 @@
 <script lang="ts">
 	import type { TimeSeriesPoint } from '$lib/types';
 	import { AreaChart } from '$lib/components/ui';
-	import { formatMemory } from '$lib/utils/format';
+	import { formatMemory, formatRateBps } from '$lib/utils/format';
+	import { server } from '$lib/data';
 
 	interface Props {
 		cpuHistory: TimeSeriesPoint[];
@@ -30,6 +31,10 @@
 		storageUsed,
 		storageTotal
 	}: Props = $props();
+
+	let hostMemMB = $derived(Math.max(Math.round((server.memory || 16) * 1024), currentMem, 512));
+	let chartMemMax = $derived(memLimit > 0 ? memLimit : hostMemMB);
+	let netMax = $derived(Math.max(1024, ...networkHistory.map((p) => p.value)) * 1.25);
 </script>
 
 <div class="grid w-full grid-cols-1 gap-4 lg:grid-cols-2">
@@ -92,7 +97,9 @@
 				<span
 					class="rounded border border-[var(--border)] bg-[var(--bg-surface)] px-1.5 py-0.5 font-mono text-[10px] text-[var(--status-green)]"
 				>
-					0 MB – {memLimit} MB Scale
+					{memLimit > 0
+						? `0 – ${formatMemory(memLimit)} Scale`
+						: `0 – ${formatMemory(chartMemMax)} (Host)`}
 				</span>
 			</div>
 			<div
@@ -115,7 +122,7 @@
 			<AreaChart
 				data={memoryHistory}
 				height={350}
-				maxValue={memLimit}
+				maxValue={chartMemMax}
 				showGrid={true}
 				strokeColor="var(--status-green)"
 				fillColor="var(--status-green)"
@@ -123,12 +130,12 @@
 			<div
 				class="pointer-events-none absolute top-1 right-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
 			>
-				{memLimit} MB (100%)
+				{formatMemory(chartMemMax)} (100%)
 			</div>
 			<div
 				class="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
 			>
-				{Math.round(memLimit / 2)} MB (50%)
+				{formatMemory(chartMemMax / 2)} (50%)
 			</div>
 			<div
 				class="pointer-events-none absolute right-1 bottom-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
@@ -156,12 +163,26 @@
 				<span>Tx: <strong class="text-[var(--text-secondary)]">{currentNetTx}</strong></span>
 			</div>
 		</div>
-		<AreaChart
-			data={networkHistory}
-			height={340}
-			strokeColor="var(--status-blue)"
-			fillColor="var(--status-blue)"
-		/>
+		<div class="relative w-full">
+			<AreaChart
+				data={networkHistory}
+				height={340}
+				maxValue={netMax}
+				showGrid={true}
+				strokeColor="var(--status-blue)"
+				fillColor="var(--status-blue)"
+			/>
+			<div
+				class="pointer-events-none absolute top-1 right-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+			>
+				{formatRateBps(netMax)}
+			</div>
+			<div
+				class="pointer-events-none absolute right-1 bottom-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+			>
+				0 B/s
+			</div>
+		</div>
 	</div>
 
 	<!-- 4. Storage / Host I/O Chart (2-Column Grid, 2x Height) -->

@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { formatMemory } from '$lib/utils/format';
+	import { server } from '$lib/data';
 	import { Cpu, Gauge, ArrowsDownUp } from 'phosphor-svelte';
 	import { LayerCard } from 'kumo-svelte';
 
@@ -22,6 +23,10 @@
 		currentNetTx,
 		hasContainers
 	}: Props = $props();
+
+	let hostMemMB = $derived(Math.max(Math.round((server.memory || 16) * 1024), currentMem, 512));
+	let effectiveMaxMB = $derived(memLimit > 0 ? memLimit : hostMemMB);
+	let effectivePct = $derived(Math.min(Math.round((currentMem / effectiveMaxMB) * 100), 100));
 </script>
 
 <div class="grid grid-cols-1 gap-4 md:grid-cols-3">
@@ -84,26 +89,32 @@
 			>
 				{formatMemory(currentMem)}
 			</strong>
-			<span class="font-mono text-xs text-[var(--text-secondary)]">{memPercent}% used</span>
+			<span class="font-mono text-xs text-[var(--text-secondary)]">
+				{memLimit > 0 ? `${memPercent}% used` : `${effectivePct}% of host`}
+			</span>
 		</div>
 
 		<!-- Capacity Bar -->
 		<div class="h-1.5 w-full overflow-hidden rounded-full bg-[var(--bg-surface)]">
 			<div
-				class="h-full rounded-full transition-all duration-500 {memPercent > 85
+				class="h-full rounded-full transition-all duration-500 {memLimit > 0 && effectivePct > 85
 					? 'bg-[var(--status-red)]'
-					: memPercent > 70
+					: memLimit > 0 && effectivePct > 70
 						? 'bg-[var(--status-amber)]'
 						: 'bg-[var(--status-green)]'}"
-				style="width: {memPercent}%;"
+				style="width: {effectivePct}%;"
 			></div>
 		</div>
 
 		<div
 			class="flex items-center justify-between border-t border-[var(--border-subtle)] pt-1 text-[11px] text-[var(--text-tertiary)]"
 		>
-			<span>Budget: {memLimit} MB</span>
-			<span>Available: {Math.max(0, memLimit - currentMem)} MB</span>
+			<span>{memLimit > 0 ? `Limit: ${formatMemory(memLimit)}` : 'Limit: Unlimited'}</span>
+			<span>
+				{memLimit > 0
+					? `Available: ${formatMemory(Math.max(0, memLimit - currentMem))}`
+					: `Host max: ${formatMemory(hostMemMB)}`}
+			</span>
 		</div>
 	</LayerCard>
 

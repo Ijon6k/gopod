@@ -1,12 +1,70 @@
 package podman
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"os"
 	"strings"
 	"testing"
 )
+
+func muxFrame(streamType byte, payload string) []byte {
+	var hdr [8]byte
+	hdr[0] = streamType
+	binary.BigEndian.PutUint32(hdr[4:8], uint32(len(payload)))
+	var buf bytes.Buffer
+	buf.Write(hdr[:])
+	buf.WriteString(payload)
+	return buf.Bytes()
+}
+
+func TestGetContainerLogsDemuxesMultiplexedFrames(t *testing.T) {
+	var raw bytes.Buffer
+	line1 := "2026-10-28 08:00:12.039 UTC [25] LOG:  checkpoint starting: time\n"
+	line2 := "2026-10-28 11:38:02.199 UTC [30] ERROR:  canceling statement due to user request\r\n"
+	raw.Write(muxFrame(1, line1))
+	raw.Write(muxFrame(2, line2))
+
+	state := &fakeDaemonState{
+		libpodVer:  fakePodman5,
+		logsStatus: 200,
+		logsBody:   raw.String(),
+	}
+	client, log := newFakeSocketClient(t, state)
+
+	got, err := client.GetContainerLogsWithOptions(context.Background(), "pg1", 50, true)
+	if err != nil {
+		t.Fatalf("GetContainerLogsWithOptions failed: %v", err)
+	}
+	want := line1 + "2026-10-28 11:38:02.199 UTC [30] ERROR:  canceling statement due to user request\n"
+	if got != want {
+		t.Fatalf("demuxed mismatch:\n got: %q\nwant: %q", got, want)
+	}
+	if !log.hasQuery("timestamps=true") {
+		t.Fatalf("expected timestamps=true query parameter in daemon call: %v", log.queries)
+	}
+}
+
+func TestDemuxContainerLogsEdgeCases(t *testing.T) {
+	if got := demuxContainerLogs(nil); got != "" {
+		t.Fatalf("empty input = %q, want empty", got)
+	}
+	// Plain unframed TTY stream stays untouched
+	plain := "plain stdout line\r\nsecond line\r\n"
+	if got := demuxContainerLogs([]byte(plain)); got != "plain stdout line\nsecond line\n" {
+		t.Fatalf("plain passthrough mismatch: %q", got)
+	}
+	// Truncated payload frame after a valid header falls back cleanly without panicking or dropping bytes
+	var partial bytes.Buffer
+	partial.Write(muxFrame(1, "first\n"))
+	partial.Write([]byte{2, 0, 0, 0, 0, 0, 0, 99})
+	partial.WriteString("tail")
+	if got := demuxContainerLogs(partial.Bytes()); got != "first\ntail" {
+		t.Fatalf("partial frame fallback mismatch: %q", got)
+	}
+}
 
 // Delete must match pods/volumes semantics: 404 means the object is already
 // gone, so teardown races (preflight cleanup vs pod cascade) stay idempotent.

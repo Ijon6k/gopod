@@ -36,8 +36,14 @@ export const storageApi = {
 		return res.data;
 	},
 
-	async restoreSnapshot(id: string): Promise<{ message: string }> {
-		const res = await apiClient.post<{ message: string }>(`/volumes/snapshots/${id}/restore`);
+	async restoreSnapshot(
+		id: string,
+		opts?: { serviceId?: string; database?: string; username?: string; password?: string }
+	): Promise<{ message: string }> {
+		const res = await apiClient.post<{ message: string }>(
+			`/volumes/snapshots/${id}/restore`,
+			opts || undefined
+		);
 		return res.data;
 	},
 

@@ -437,8 +437,11 @@ export class DataStore {
 	deleteVolumeSnapshot(id: string) {
 		return this.storageStore.deleteVolumeSnapshot(id);
 	}
-	restoreVolumeSnapshot(id: string) {
-		return this.storageStore.restoreVolumeSnapshot(id);
+	restoreVolumeSnapshot(
+		id: string,
+		opts?: { serviceId?: string; database?: string; username?: string; password?: string }
+	) {
+		return this.storageStore.restoreVolumeSnapshot(id, opts);
 	}
 	downloadVolumeSnapshot(id: string, filename: string) {
 		return this.storageStore.downloadVolumeSnapshot(id, filename);

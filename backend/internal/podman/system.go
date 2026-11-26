@@ -14,7 +14,23 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 )
+
+func readRootStorageStats() (usedGB, totalGB float64) {
+	var st syscall.Statfs_t
+	if err := syscall.Statfs("/", &st); err != nil || st.Blocks == 0 || st.Bsize <= 0 {
+		return 0, 0
+	}
+	blockSize := float64(st.Bsize)
+	totalBytes := float64(st.Blocks) * blockSize
+	usedBytes := float64(st.Blocks-st.Bfree) * blockSize
+	if usedBytes < 0 {
+		usedBytes = 0
+	}
+	const gb = 1024 * 1024 * 1024
+	return usedBytes / gb, totalBytes / gb
+}
 
 // HostMemoryInfo represents memory metrics read from /proc/meminfo.
 type HostMemoryInfo struct {
@@ -153,6 +169,8 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 							osName += " " + raw.Host.Distribution.Version
 						}
 
+						storageUsedGB, storageTotalGB := readRootStorageStats()
+
 						return &SystemInfo{
 							IP:              detectHostIP(),
 							Hostname:        raw.Host.Hostname,
@@ -172,6 +190,8 @@ func (c *Client) GetSystemInfo(ctx context.Context) (*SystemInfo, error) {
 							SwapUsed:        swapUsed,
 							SwapUsedMB:      float64(swapUsed) / (1024 * 1024),
 							SwapTotalGB:     float64(swapTotal) / (1024 * 1024 * 1024),
+							StorageUsedGB:   storageUsedGB,
+							StorageTotalGB:  storageTotalGB,
 							PodmanVersion:   raw.Version.Version,
 							Engine:          "podman",
 							EngineVersion:   raw.Version.Version,
@@ -266,6 +286,7 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 	}
 
 	cstore, _ := store["containerStore"].(map[string]interface{})
+	storageUsedGB, storageTotalGB := readRootStorageStats()
 
 	return &SystemInfo{
 		IP:              detectHostIP(),
@@ -286,6 +307,8 @@ func (c *Client) getSystemInfoCLI(ctx context.Context) (*SystemInfo, error) {
 		SwapUsed:        swapUsed,
 		SwapUsedMB:      float64(swapUsed) / (1024 * 1024),
 		SwapTotalGB:     float64(swapTotal) / (1024 * 1024 * 1024),
+		StorageUsedGB:   storageUsedGB,
+		StorageTotalGB:  storageTotalGB,
 		PodmanVersion:   getString(ver, "Version"),
 		Engine:          "podman",
 		EngineVersion:   getString(ver, "Version"),
@@ -350,6 +373,7 @@ func (c *Client) getDockerSystemInfo(ctx context.Context) (*SystemInfo, error) {
 		memUsed = 0
 	}
 
+	storageUsedGB, storageTotalGB := readRootStorageStats()
 	return &SystemInfo{
 		IP:              detectHostIP(),
 		Hostname:        raw.Hostname,
@@ -363,6 +387,8 @@ func (c *Client) getDockerSystemInfo(ctx context.Context) (*SystemInfo, error) {
 		MemUsedGB:       float64(memUsed) / (1024 * 1024 * 1024),
 		MemTotalGB:      float64(memTotal) / (1024 * 1024 * 1024),
 		MemAvailableGB:  float64(memAvailable) / (1024 * 1024 * 1024),
+		StorageUsedGB:   storageUsedGB,
+		StorageTotalGB:  storageTotalGB,
 		Engine:          "docker",
 		EngineVersion:   raw.ServerVersion,
 		RunningCount:    raw.ContainersRun,

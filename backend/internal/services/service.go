@@ -24,6 +24,11 @@ type AuditRecorder interface {
 	Record(ctx context.Context, action, actor, target, category, ip, status string) error
 }
 
+// EventNotifier sends asynchronous event notifications to configured channels.
+type EventNotifier interface {
+	NotifyAsync(event, title, message string, fields map[string]string)
+}
+
 // IngressCleaner cleans up routing and reverse proxy rules for deleted services.
 type IngressCleaner func(ctx context.Context, serviceID string)
 
@@ -33,6 +38,7 @@ type WorkloadService struct {
 	deployer          *Deployer
 	logManager        *LogManager
 	audit             AuditRecorder
+	notifier          EventNotifier
 	ingressCleaner    IngressCleaner
 	activeCancels     sync.Map // deploymentID string -> context.CancelFunc
 	activeServiceDeps sync.Map // serviceID string -> deploymentID string
@@ -62,6 +68,11 @@ func NewWorkloadService(repo Repository, deployer *Deployer, logMgr *LogManager)
 // SetAuditRecorder configures audit logging.
 func (s *WorkloadService) SetAuditRecorder(ar AuditRecorder) {
 	s.audit = ar
+}
+
+// SetNotifier configures outbound notification dispatch for lifecycle events.
+func (s *WorkloadService) SetNotifier(n EventNotifier) {
+	s.notifier = n
 }
 
 // SetIngressCleaner configures ingress domain teardown.

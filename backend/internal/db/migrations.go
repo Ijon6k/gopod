@@ -223,6 +223,46 @@ func (d *DB) migrate() error {
 	CREATE INDEX IF NOT EXISTS idx_activity_service ON activity_log(service_id);
 	CREATE INDEX IF NOT EXISTS idx_activity_action ON activity_log(action);
 	CREATE INDEX IF NOT EXISTS idx_activity_ts ON activity_log(ts);
+
+	CREATE TABLE IF NOT EXISTS metric_samples (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		ts DATETIME DEFAULT CURRENT_TIMESTAMP,
+		scope TEXT NOT NULL,
+		target_id TEXT NOT NULL,
+		cpu_pct REAL DEFAULT 0,
+		mem_used_bytes INTEGER DEFAULT 0,
+		mem_limit_bytes INTEGER DEFAULT 0,
+		storage_used_gb REAL DEFAULT 0,
+		storage_total_gb REAL DEFAULT 0,
+		net_rx_bps REAL DEFAULT 0,
+		net_tx_bps REAL DEFAULT 0
+	);
+	CREATE INDEX IF NOT EXISTS idx_metric_samples_lookup ON metric_samples(scope, target_id, ts);
+
+	CREATE TABLE IF NOT EXISTS system_settings (
+		key TEXT PRIMARY KEY,
+		value TEXT DEFAULT '',
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
+
+	CREATE TABLE IF NOT EXISTS project_members (
+		project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+		user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+		role TEXT DEFAULT 'member',
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		PRIMARY KEY (project_id, user_id)
+	);
+	CREATE INDEX IF NOT EXISTS idx_project_members_user ON project_members(user_id);
+
+	CREATE TABLE IF NOT EXISTS notification_channels (
+		id TEXT PRIMARY KEY,
+		name TEXT NOT NULL,
+		provider TEXT NOT NULL,
+		config_enc TEXT DEFAULT '',
+		events_json TEXT DEFAULT '[]',
+		enabled BOOLEAN DEFAULT 1,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+	);
 	`
 
 	if _, err := d.Exec(schema); err != nil {

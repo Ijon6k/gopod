@@ -4,6 +4,7 @@
 	import { api } from '$lib/api';
 	import { useKumoToastManager } from 'kumo-svelte';
 	import { errorToastOptions } from '$lib/utils/toast';
+	import SnapshotRestoreModal from '$lib/components/features/storage/SnapshotRestoreModal.svelte';
 	import {
 		Button,
 		ConfirmDialog,
@@ -136,7 +137,6 @@
 
 	// Snapshot restore state
 	let restoringSnapshot = $state<VolumeSnapshot | null>(null);
-	let isRestoring = $state(false);
 	let restoreSuccessMessage = $state<string | null>(null);
 
 	// Snapshot manual state
@@ -229,21 +229,6 @@
 			schedError = err instanceof Error ? err.message : 'Failed to create schedule';
 		} finally {
 			isCreatingSchedule = false;
-		}
-	}
-
-	async function confirmRestore() {
-		if (!restoringSnapshot) return;
-		isRestoring = true;
-		try {
-			await dataStore.restoreVolumeSnapshot(restoringSnapshot.id);
-			restoreSuccessMessage = `Restored ${restoringSnapshot.filename} successfully.`;
-			setTimeout(() => (restoreSuccessMessage = null), 4000);
-		} catch (err) {
-			console.error('Failed to restore snapshot:', err);
-		} finally {
-			isRestoring = false;
-			restoringSnapshot = null;
 		}
 	}
 
@@ -573,11 +558,14 @@
 									</TableCell>
 									<TableCell class="px-3.5 py-3 text-right">
 										<div class="inline-flex items-center gap-1.5">
-											{#if !snap.volumeName.startsWith('db:')}
+											{#if snap.volumeName !== 'system:gopod'}
 												<button
 													type="button"
 													onclick={() => (restoringSnapshot = snap)}
 													class="cursor-pointer rounded border-0 bg-[var(--accent-muted)] px-2 py-1 text-[11px] font-medium text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white"
+													title={snap.volumeName.startsWith('db:')
+														? 'Restore database dump into running container'
+														: 'Restore volume snapshot'}
 												>
 													Restore
 												</button>
@@ -694,40 +682,14 @@
 	</div>
 {/if}
 
-<!-- Modal: Restore Volume Snapshot -->
-{#if restoringSnapshot}
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(5,6,7,0.82)] p-4 backdrop-blur-[3px]"
-		role="dialog"
-	>
-		<div
-			class="animate-in fade-in flex w-full max-w-md flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] p-5"
-		>
-			<div class="flex items-center gap-2 text-[var(--status-amber)]">
-				<Warning size={18} />
-				<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">Restore Snapshot</h3>
-			</div>
-			<div class="text-xs leading-relaxed text-[var(--text-secondary)]">
-				Restoring <code class="font-mono text-[var(--text-primary)]"
-					>{restoringSnapshot.filename}</code
-				>
-				will replace the current contents of volume <strong>{restoringSnapshot.volumeName}</strong>.
-			</div>
-			<div class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2">
-				<Button variant="secondary" size="sm" onclick={() => (restoringSnapshot = null)}
-					>Cancel</Button
-				>
-				<Button variant="primary" size="sm" disabled={isRestoring} onclick={confirmRestore}>
-					{#if isRestoring}
-						<CircleNotch size={13} class="animate-spin" /> Restoring...
-					{:else}
-						Confirm Restore
-					{/if}
-				</Button>
-			</div>
-		</div>
-	</div>
-{/if}
+<SnapshotRestoreModal
+	snapshot={restoringSnapshot}
+	onclose={() => (restoringSnapshot = null)}
+	onrestored={(msg) => {
+		restoreSuccessMessage = msg;
+		setTimeout(() => (restoreSuccessMessage = null), 4000);
+	}}
+/>
 
 <ConfirmDialog
 	open={deletingSnapshotId !== null}

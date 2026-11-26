@@ -81,6 +81,11 @@ type AuditRecorder interface {
 	Record(ctx context.Context, action, actor, target, category, ip, status string) error
 }
 
+// EventNotifier sends asynchronous event alerts (e.g., backup failures).
+type EventNotifier interface {
+	NotifyAsync(event, title, message string, fields map[string]string)
+}
+
 // ServiceEnvResolver returns decrypted env vars for a service so scheduled
 // database dumps can authenticate without embedding static credentials.
 type ServiceEnvResolver func(ctx context.Context, serviceID string) (map[string]string, error)
@@ -92,6 +97,7 @@ type Service struct {
 	sqlDB       *sql.DB
 	dataDir     string
 	audit       AuditRecorder
+	notifier    EventNotifier
 	envResolver ServiceEnvResolver
 	mu          sync.Mutex
 	backupMu    sync.Mutex
@@ -115,6 +121,27 @@ func (s *Service) backupDir() string {
 // SetAuditRecorder configures audit recording for storage lifecycle operations.
 func (s *Service) SetAuditRecorder(ar AuditRecorder) {
 	s.audit = ar
+}
+
+// SetNotifier configures outbound notification alerts for backup failures.
+func (s *Service) SetNotifier(n EventNotifier) {
+	s.notifier = n
+}
+
+// GetSnapshot looks up snapshot metadata for authorization checks.
+func (s *Service) GetSnapshot(ctx context.Context, id string) (*VolumeSnapshot, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	return s.repo.GetSnapshot(ctx, id)
+}
+
+// GetSchedule looks up schedule metadata for authorization checks.
+func (s *Service) GetSchedule(ctx context.Context, id string) (*VolumeSchedule, error) {
+	if s.repo == nil {
+		return nil, errors.New("repository not initialized")
+	}
+	return s.repo.GetSchedule(ctx, id)
 }
 
 // SetServiceEnvResolver configures service env lookup for scheduled DB backups.
@@ -268,8 +295,15 @@ func (s *Service) CreateSnapshot(ctx context.Context, snap VolumeSnapshot) (*Vol
 	return &snap, nil
 }
 
-// RestoreSnapshot restores volume contents from a real snapshot archive.
+// RestoreSnapshot restores volume or database snapshot contents from a local
+// archive or fetches it from its remote S3 mirror on demand.
 func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
+	return s.RestoreSnapshotWithOptions(ctx, id, DatabaseRestoreRequest{})
+}
+
+// RestoreSnapshotWithOptions restores a volume or db:<engine> snapshot, with
+// optional database credential/target overrides.
+func (s *Service) RestoreSnapshotWithOptions(ctx context.Context, id string, dbOpts DatabaseRestoreRequest) error {
 	if s.repo == nil {
 		return errors.New("repository not initialized")
 	}
@@ -282,14 +316,34 @@ func (s *Service) RestoreSnapshot(ctx context.Context, id string) error {
 		return ErrSystemRestoreUnsupported
 	}
 
+	cleanFilename := filepath.Base(snap.Filename)
+	filePath := filepath.Join(s.backupDir(), cleanFilename)
+	if _, statErr := os.Stat(filePath); os.IsNotExist(statErr) && snap.RemoteDestinationID != "" && snap.RemoteKey != "" {
+		dest, dErr := s.repo.GetDestination(ctx, snap.RemoteDestinationID)
+		if dErr != nil || dest == nil {
+			return fmt.Errorf("local archive missing and remote destination unavailable: %w", statErr)
+		}
+		if mkErr := os.MkdirAll(s.backupDir(), 0700); mkErr != nil {
+			return fmt.Errorf("prepare backup dir: %w", mkErr)
+		}
+		if dlErr := downloadFromDestination(ctx, *dest, snap.RemoteKey, filePath, snap.Checksum); dlErr != nil {
+			return fmt.Errorf("remote S3 restore fetch failed: %w", dlErr)
+		}
+	}
+
+	if strings.HasPrefix(snap.VolumeName, "db:") {
+		if _, statErr := os.Stat(filePath); statErr != nil {
+			return fmt.Errorf("snapshot file missing: %w", statErr)
+		}
+		return s.RestoreDatabaseDump(ctx, snap, filePath, dbOpts)
+	}
+
 	// Stored rows are replayed against the shell/daemon below; re-validate the
 	// volume name so a legacy host-path row can never be bind-mounted again.
 	if err := validateVolumeName(snap.VolumeName); err != nil {
 		return err
 	}
 
-	cleanFilename := filepath.Base(snap.Filename)
-	filePath := filepath.Join(s.backupDir(), cleanFilename)
 	inFile, err := os.Open(filePath)
 	if err != nil {
 		return fmt.Errorf("snapshot file missing: %w", err)
@@ -369,6 +423,14 @@ func (s *Service) GetSnapshotFilePath(ctx context.Context, id string) (string, s
 	cleanFilename := filepath.Base(snap.Filename)
 	filePath := filepath.Join(s.backupDir(), cleanFilename)
 	if _, err := os.Stat(filePath); err != nil {
+		if os.IsNotExist(err) && snap.RemoteDestinationID != "" && snap.RemoteKey != "" {
+			if dest, dErr := s.repo.GetDestination(ctx, snap.RemoteDestinationID); dErr == nil && dest != nil {
+				_ = os.MkdirAll(s.backupDir(), 0700)
+				if dlErr := downloadFromDestination(ctx, *dest, snap.RemoteKey, filePath, snap.Checksum); dlErr == nil {
+					return filePath, cleanFilename, nil
+				}
+			}
+		}
 		return "", "", fmt.Errorf("snapshot file not found on disk: %w", err)
 	}
 	return filePath, cleanFilename, nil
@@ -607,6 +669,10 @@ func (s *Service) registerCronJob(sched VolumeSchedule) {
 				// CreateSystemBackup; only volume backups need this event.
 				activity.EmitEngineEvent(ctx, "error", sched.ProjectID, "", sched.VolumeName, "admin", "backup_failed",
 					fmt.Sprintf("Scheduled backup for volume %s failed: %v", sched.VolumeName, err), nil)
+			}
+			if s.notifier != nil {
+				s.notifier.NotifyAsync("backup.failed", "Scheduled Backup Failed: "+sched.VolumeName,
+					err.Error(), map[string]string{"Target": sched.VolumeName, "Project": sched.ProjectID})
 			}
 		} else if sched.RetentionCount > 0 && s.repo != nil {
 			allSnaps, _ := s.repo.ListSnapshots(ctx, sched.ProjectID)

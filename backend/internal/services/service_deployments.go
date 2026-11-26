@@ -467,6 +467,27 @@ func (s *WorkloadService) executeDeployment(ctx context.Context, svc *Service, d
 			fmt.Sprintf("Deploy %s finished for service '%s' with status %s", depRecord.ID, svc.Name, status),
 			map[string]any{"deployment": depRecord.ID, "trigger": depRecord.Trigger, "status": status})
 	}
+
+	if s.notifier != nil && status != "cancelled" {
+		fields := map[string]string{
+			"Service":  svc.Name,
+			"Project":  svc.ProjectID,
+			"Trigger":  depRecord.Trigger,
+			"Duration": duration,
+		}
+		if status == "success" {
+			s.notifier.NotifyAsync("deploy.succeeded", "Deployment Succeeded: "+svc.Name,
+				fmt.Sprintf("Deployment #%d completed cleanly.", depRecord.Number), fields)
+		} else {
+			errMsg := "Deployment failed"
+			if deployErr != nil {
+				errMsg = deployErr.Error()
+			}
+			fields["Error"] = errMsg
+			s.notifier.NotifyAsync("deploy.failed", "Deployment Failed: "+svc.Name,
+				fmt.Sprintf("Deployment #%d failed.", depRecord.Number), fields)
+		}
+	}
 }
 
 // CancelDeployment cancels an in-flight deployment and reconciles service state.

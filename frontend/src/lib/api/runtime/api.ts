@@ -45,9 +45,9 @@ export const runtimeApi = {
 			return res.data;
 		},
 
-		async logs(id: string, tail = 100): Promise<ContainerLogsResponse> {
+		async logs(id: string, tail = 100, timestamps = false): Promise<ContainerLogsResponse> {
 			const res = await apiClient.get<ContainerLogsResponse>(`/containers/${id}/logs`, {
-				params: { tail }
+				params: timestamps ? { tail, timestamps: 'true' } : { tail }
 			});
 			return res.data;
 		},

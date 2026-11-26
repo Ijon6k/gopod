@@ -19,9 +19,9 @@ func NewHandler(service *Service, mw *auth.Middleware) *Handler {
 	return &Handler{service: service, middleware: mw}
 }
 
-// RegisterRoutes registers audit routes.
+// RegisterRoutes registers audit routes (admin-only).
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/audit-log", h.middleware.RequireAuth(h.handleAuditLogs))
+	mux.HandleFunc("GET /api/audit-log", h.middleware.RequireAdmin(h.handleAuditLogs))
 }
 
 func (h *Handler) handleAuditLogs(w http.ResponseWriter, r *http.Request) {

@@ -5,6 +5,8 @@
 	import { PageHeader, AreaChart, Select } from '$lib/components/ui';
 	import { LayerCard } from 'kumo-svelte';
 	import { dataStore } from '$lib/data';
+	import { api } from '$lib/api';
+	import type { TimeSeriesPoint } from '$lib/types';
 	import { formatRateBps } from '$lib/utils/format';
 	import {
 		ServerOverviewBar,
@@ -21,6 +23,56 @@
 	let refreshRate = $state<'3s' | '5s' | '15s' | 'paused'>('3s');
 	let lastUpdatedSec = $state(0);
 	let terminalTarget = $state<string | null>(null);
+	let historyRange = $state<'live' | '1h' | '6h' | '24h' | '7d'>('live');
+	let histLoading = $state(false);
+	let histCpu = $state<TimeSeriesPoint[]>([]);
+	let histMemory = $state<TimeSeriesPoint[]>([]);
+	let histStorage = $state<TimeSeriesPoint[]>([]);
+	let histNetwork = $state<TimeSeriesPoint[]>([]);
+
+	async function selectHistoryRange(next: 'live' | '1h' | '6h' | '24h' | '7d') {
+		historyRange = next;
+		if (next === 'live') return;
+		histLoading = true;
+		try {
+			const samples = await api.system.metricsHistory(next);
+			const nextCpu: TimeSeriesPoint[] = [];
+			const nextMem: TimeSeriesPoint[] = [];
+			const nextDisk: TimeSeriesPoint[] = [];
+			const nextNet: TimeSeriesPoint[] = [];
+			for (const s of samples || []) {
+				const t = s.timestamp || '';
+				const lbl = s.label || '';
+				nextCpu.push({ time: t, label: lbl, value: Math.max(0, s.cpuPercent) });
+				nextMem.push({
+					time: t,
+					label: lbl,
+					value: parseFloat(((s.memUsedBytes || 0) / (1024 * 1024 * 1024)).toFixed(2))
+				});
+				nextDisk.push({
+					time: t,
+					label: lbl,
+					value: parseFloat((s.storageUsedGB || 0).toFixed(1))
+				});
+				nextNet.push({
+					time: t,
+					label: lbl,
+					value: Math.max(0, (s.netRxBps || 0) + (s.netTxBps || 0))
+				});
+			}
+			histCpu = nextCpu;
+			histMemory = nextMem;
+			histStorage = nextDisk;
+			histNetwork = nextNet;
+		} catch {
+			histCpu = [];
+			histMemory = [];
+			histStorage = [];
+			histNetwork = [];
+		} finally {
+			histLoading = false;
+		}
+	}
 
 	// Direct series getters: each view tracks only the history it draws.
 	let cpuHistory = $derived(dataStore.cpuHistory);
@@ -237,7 +289,36 @@
 	{:else if activeView === 'storage'}
 		<PodmanStorageManager />
 	{:else}
-		<!-- Live session time-series area charts with scannable summary markers -->
+		{@const activeCpu = historyRange === 'live' ? cpuHistory : histCpu}
+		{@const activeMem = historyRange === 'live' ? memoryHistory : histMemory}
+		{@const activeDisk = historyRange === 'live' ? storageHistory : histStorage}
+		{@const activeNet = historyRange === 'live' ? networkHistory : histNetwork}
+		{@const rangeLabel = historyRange === 'live' ? 'Session buffer' : `SQLite (${historyRange})`}
+
+		<!-- History Range Selector -->
+		<div class="flex flex-wrap items-center justify-between gap-2">
+			<div
+				class="inline-flex items-center rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-0.5"
+			>
+				{#each [{ id: 'live', label: 'Live (8m)' }, { id: '1h', label: '1h' }, { id: '6h', label: '6h' }, { id: '24h', label: '24h' }, { id: '7d', label: '7d' }] as opt}
+					<button
+						type="button"
+						onclick={() => selectHistoryRange(opt.id as any)}
+						class="cursor-pointer rounded border-0 px-2.5 py-1 font-mono text-[11px] transition-colors {historyRange ===
+						opt.id
+							? 'bg-[var(--bg-surface)] font-semibold text-[var(--text-primary)] shadow-xs'
+							: 'bg-transparent text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]'}"
+					>
+						{opt.label}
+					</button>
+				{/each}
+			</div>
+			<span class="font-mono text-[11px] text-[var(--text-tertiary)]">
+				{histLoading ? 'Loading persisted history…' : rangeLabel}
+			</span>
+		</div>
+
+		<!-- Live & Historical telemetry area charts -->
 		<div class="grid grid-cols-1 gap-4 lg:grid-cols-2">
 			<!-- 1. CPU Utilization -->
 			<LayerCard class="flex flex-col gap-3 p-5">
@@ -255,20 +336,42 @@
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span
-							>Max (session): <strong class="font-medium text-[var(--text-secondary)]"
-								>{maxCpuSession.toFixed(1)}%</strong
+							>Max ({historyRange}):
+							<strong class="font-medium text-[var(--text-secondary)]"
+								>{Math.max(server.cpuUsage, ...activeCpu.map((p) => p.value), 0).toFixed(
+									1
+								)}%</strong
 							></span
 						>
 						<span>•</span>
-						<span>Session buffer</span>
+						<span>{rangeLabel}</span>
 					</div>
 				</div>
-				<AreaChart
-					data={cpuHistory}
-					height={210}
-					strokeColor="var(--accent)"
-					fillColor="var(--accent)"
-				/>
+				<div class="relative w-full">
+					<AreaChart
+						data={activeCpu}
+						height={210}
+						maxValue={100}
+						showGrid={true}
+						strokeColor="var(--accent)"
+						fillColor="var(--accent)"
+					/>
+					<div
+						class="pointer-events-none absolute top-1 right-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						100%
+					</div>
+					<div
+						class="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						50%
+					</div>
+					<div
+						class="pointer-events-none absolute right-1 bottom-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						0%
+					</div>
+				</div>
 			</LayerCard>
 
 			<!-- 2. Memory (RAM) -->
@@ -289,20 +392,41 @@
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
 						<span
-							>Max (session): <strong class="font-medium text-[var(--text-secondary)]"
-								>{maxMemorySession.toFixed(1)} GB</strong
+							>Max ({historyRange}):
+							<strong class="font-medium text-[var(--text-secondary)]"
+								>{Math.max(server.memoryUsed, ...activeMem.map((p) => p.value), 0).toFixed(1)} GB</strong
 							></span
 						>
 						<span>•</span>
-						<span>Session buffer</span>
+						<span>{rangeLabel}</span>
 					</div>
 				</div>
-				<AreaChart
-					data={memoryHistory}
-					height={210}
-					strokeColor="var(--status-green)"
-					fillColor="var(--status-green)"
-				/>
+				{@const memMax = server.memory > 0 ? server.memory : Math.max(16, maxMemorySession)}
+				<div class="relative w-full">
+					<AreaChart
+						data={activeMem}
+						height={210}
+						maxValue={memMax}
+						showGrid={true}
+						strokeColor="var(--status-green)"
+						fillColor="var(--status-green)"
+					/>
+					<div
+						class="pointer-events-none absolute top-1 right-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						{memMax.toFixed(1)} GB (100%)
+					</div>
+					<div
+						class="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						{(memMax / 2).toFixed(1)} GB (50%)
+					</div>
+					<div
+						class="pointer-events-none absolute right-1 bottom-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						0 GB
+					</div>
+				</div>
 			</LayerCard>
 
 			<!-- 3. Storage usage -->
@@ -320,15 +444,35 @@
 						</strong>
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
-						<span>Session buffer</span>
+						<span>{rangeLabel}</span>
 					</div>
 				</div>
-				<AreaChart
-					data={storageHistory}
-					height={210}
-					strokeColor="var(--status-amber)"
-					fillColor="var(--status-amber)"
-				/>
+				{@const diskMax = server.storage > 0 ? server.storage : 100}
+				<div class="relative w-full">
+					<AreaChart
+						data={activeDisk}
+						height={210}
+						maxValue={diskMax}
+						showGrid={true}
+						strokeColor="var(--status-amber)"
+						fillColor="var(--status-amber)"
+					/>
+					<div
+						class="pointer-events-none absolute top-1 right-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						{diskMax.toFixed(0)} GB (100%)
+					</div>
+					<div
+						class="pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						{(diskMax / 2).toFixed(0)} GB (50%)
+					</div>
+					<div
+						class="pointer-events-none absolute right-1 bottom-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						0 GB
+					</div>
+				</div>
 			</LayerCard>
 
 			<!-- 4. Network throughput -->
@@ -346,15 +490,30 @@
 						</strong>
 					</div>
 					<div class="flex items-center gap-2 font-mono text-[11px] text-[var(--text-tertiary)]">
-						<span>Session buffer</span>
+						<span>{rangeLabel}</span>
 					</div>
 				</div>
-				<AreaChart
-					data={networkHistory}
-					height={210}
-					strokeColor="var(--status-blue)"
-					fillColor="var(--status-blue)"
-				/>
+				{@const netMax = Math.max(1024, ...activeNet.map((p) => p.value)) * 1.25}
+				<div class="relative w-full">
+					<AreaChart
+						data={activeNet}
+						height={210}
+						maxValue={netMax}
+						showGrid={true}
+						strokeColor="var(--status-blue)"
+						fillColor="var(--status-blue)"
+					/>
+					<div
+						class="pointer-events-none absolute top-1 right-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						{formatRateBps(netMax)}
+					</div>
+					<div
+						class="pointer-events-none absolute right-1 bottom-1 font-mono text-[9px] text-[var(--text-tertiary)] select-none"
+					>
+						0 B/s
+					</div>
+				</div>
 			</LayerCard>
 		</div>
 	{/if}

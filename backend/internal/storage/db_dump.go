@@ -6,8 +6,10 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -303,4 +305,261 @@ func (s *Service) CreateDatabaseDump(ctx context.Context, req DatabaseDumpReques
 	}
 
 	return &snap, nil
+}
+
+// DatabaseRestoreRequest holds optional overrides when restoring a DB dump snapshot.
+type DatabaseRestoreRequest struct {
+	ServiceID string `json:"serviceId"`
+	Database  string `json:"database"`
+	Username  string `json:"username"`
+	Password  string `json:"password"`
+}
+
+func firstNonEmptyEnv(env map[string]string, keys ...string) string {
+	for _, k := range keys {
+		if v := strings.TrimSpace(env[k]); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// RestoreDatabaseDump streams a saved .sql.gz or .rdb.gz dump back into the
+// target service's database container.
+func (s *Service) RestoreDatabaseDump(ctx context.Context, snap *VolumeSnapshot, archivePath string, req DatabaseRestoreRequest) error {
+	if snap == nil {
+		return ErrSnapshotNotFound
+	}
+	engine := strings.ToLower(strings.TrimSpace(strings.TrimPrefix(snap.VolumeName, "db:")))
+	switch engine {
+	case "postgres", "mysql", "mariadb", "mongodb", "redis":
+	default:
+		return fmt.Errorf("unsupported database snapshot target %q", snap.VolumeName)
+	}
+
+	serviceID := strings.TrimSpace(req.ServiceID)
+	if serviceID == "" {
+		serviceID = snap.ServiceID
+	}
+	if serviceID == "" {
+		return errors.New("serviceId is required to restore a database dump")
+	}
+
+	containerName, err := FindServiceContainer(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+
+	var env map[string]string
+	if s.envResolver != nil {
+		env, _ = s.envResolver(ctx, serviceID)
+	}
+
+	user := strings.TrimSpace(req.Username)
+	dbName := strings.TrimSpace(req.Database)
+	pass := req.Password
+
+	switch engine {
+	case "postgres":
+		if user == "" {
+			user = firstNonEmptyEnv(env, "POSTGRES_USER")
+			if user == "" {
+				user = "postgres"
+			}
+		}
+		if dbName == "" {
+			dbName = firstNonEmptyEnv(env, "POSTGRES_DB")
+			if dbName == "" {
+				dbName = user
+			}
+		}
+		if pass == "" {
+			pass = firstNonEmptyEnv(env, "POSTGRES_PASSWORD")
+		}
+	case "mysql", "mariadb":
+		if user == "" {
+			user = firstNonEmptyEnv(env, "MYSQL_USER", "MARIADB_USER")
+			if user == "" {
+				user = "root"
+			}
+		}
+		if dbName == "" {
+			dbName = firstNonEmptyEnv(env, "MYSQL_DATABASE", "MARIADB_DATABASE")
+		}
+		if pass == "" {
+			if user == "root" {
+				pass = firstNonEmptyEnv(env, "MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD", "MYSQL_PASSWORD", "MARIADB_PASSWORD")
+			} else {
+				pass = firstNonEmptyEnv(env, "MYSQL_PASSWORD", "MARIADB_PASSWORD", "MYSQL_ROOT_PASSWORD", "MARIADB_ROOT_PASSWORD")
+			}
+		}
+	case "mongodb":
+		if user == "" {
+			user = firstNonEmptyEnv(env, "MONGO_INITDB_ROOT_USERNAME")
+		}
+		if dbName == "" {
+			dbName = firstNonEmptyEnv(env, "MONGO_INITDB_DATABASE")
+		}
+		if pass == "" {
+			pass = firstNonEmptyEnv(env, "MONGO_INITDB_ROOT_PASSWORD")
+		}
+	}
+
+	if strings.HasPrefix(user, "-") {
+		return errors.New("database username must not start with '-'")
+	}
+	if strings.HasPrefix(dbName, "-") {
+		return errors.New("database name must not start with '-'")
+	}
+
+	inFile, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("open backup archive: %w", err)
+	}
+	defer inFile.Close()
+
+	runExecStream := func(stdin io.Reader, args []string, extraEnv ...string) error {
+		var stderrBuf bytes.Buffer
+		cmd := exec.CommandContext(ctx, "podman", args...)
+		setupCmdEnv(cmd)
+		if len(extraEnv) > 0 {
+			cmd.Env = append(cmd.Env, extraEnv...)
+		}
+		cmd.Stdin = stdin
+		cmd.Stderr = &stderrBuf
+		if err := cmd.Run(); err != nil {
+			msg := strings.TrimSpace(stderrBuf.String())
+			if len(msg) > 512 {
+				msg = msg[:512]
+			}
+			if msg != "" {
+				return fmt.Errorf("%w: %s", err, msg)
+			}
+			return err
+		}
+		return nil
+	}
+
+	switch engine {
+	case "postgres":
+		gr, err := gzip.NewReader(inFile)
+		if err != nil {
+			return fmt.Errorf("invalid gzip database archive: %w", err)
+		}
+		defer gr.Close()
+
+		args := []string{"exec", "-i"}
+		var extraEnv []string
+		if pass != "" {
+			args = append(args, "-e", "PGPASSWORD")
+			extraEnv = append(extraEnv, "PGPASSWORD="+pass)
+		}
+		args = append(args, containerName, "psql", "-v", "ON_ERROR_STOP=1", "-U", user, "-h", "localhost", "-d", dbName)
+		return runExecStream(gr, args, extraEnv...)
+
+	case "mysql", "mariadb":
+		gr, err := gzip.NewReader(inFile)
+		if err != nil {
+			return fmt.Errorf("invalid gzip database archive: %w", err)
+		}
+		defer gr.Close()
+
+		bin := "mysql"
+		if engine == "mariadb" {
+			bin = "mariadb"
+		}
+		args := []string{"exec", "-i"}
+		var extraEnv []string
+		if pass != "" {
+			args = append(args, "-e", "MYSQL_PWD")
+			extraEnv = append(extraEnv, "MYSQL_PWD="+pass)
+		}
+		args = append(args, containerName, bin, "-u", user)
+		if dbName != "" {
+			args = append(args, "--", dbName)
+		}
+		return runExecStream(gr, args, extraEnv...)
+
+	case "mongodb":
+		args := []string{"exec", "-i"}
+		var extraEnv []string
+		mongoArgs := []string{"mongorestore", "--archive", "--gzip", "--drop"}
+		if user != "" {
+			mongoArgs = append(mongoArgs, "-u", user)
+		}
+		if dbName != "" {
+			mongoArgs = append(mongoArgs, "-d", dbName)
+		}
+		if pass != "" {
+			args = append(args, "-e", "GOPOD_MONGO_PASS")
+			extraEnv = append(extraEnv, "GOPOD_MONGO_PASS="+pass)
+			args = append(args, containerName, "sh", "-c", `exec "$@" -p "$GOPOD_MONGO_PASS"`, "sh")
+			args = append(args, mongoArgs...)
+		} else {
+			args = append(args, containerName)
+			args = append(args, mongoArgs...)
+		}
+		return runExecStream(inFile, args, extraEnv...)
+
+	case "redis":
+		gr, err := gzip.NewReader(inFile)
+		if err != nil {
+			return fmt.Errorf("invalid gzip redis archive: %w", err)
+		}
+		defer gr.Close()
+
+		volName, err := findContainerDataVolume(ctx, containerName)
+		if err != nil {
+			return err
+		}
+
+		stopCmd := exec.CommandContext(ctx, "podman", "stop", "-t", "10", "--", containerName)
+		setupCmdEnv(stopCmd)
+		if out, err := stopCmd.CombinedOutput(); err != nil {
+			return fmt.Errorf("stop redis container for restore: %w (%s)", err, strings.TrimSpace(string(out)))
+		}
+		defer func() {
+			startCmd := exec.CommandContext(context.Background(), "podman", "start", "--", containerName)
+			setupCmdEnv(startCmd)
+			_ = startCmd.Run()
+		}()
+
+		args := []string{"run", "--rm", "-i", "-v", fmt.Sprintf("%s:/data:Z", volName), "docker.io/library/alpine:latest", "sh", "-c", "cat > /data/dump.rdb"}
+		return runExecStream(gr, args)
+	}
+	return nil
+}
+
+func findContainerDataVolume(ctx context.Context, containerName string) (string, error) {
+	cmd := exec.CommandContext(ctx, "podman", "inspect", "--format", "json", "--", containerName)
+	setupCmdEnv(cmd)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("inspect redis container mounts: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	var inspected []struct {
+		Mounts []struct {
+			Type        string `json:"Type"`
+			Name        string `json:"Name"`
+			Destination string `json:"Destination"`
+		} `json:"Mounts"`
+	}
+	if err := json.Unmarshal(out, &inspected); err != nil || len(inspected) == 0 {
+		return "", fmt.Errorf("parse redis mounts failed: %v", err)
+	}
+	for _, m := range inspected[0].Mounts {
+		if m.Destination == "/data" && m.Type == "volume" && m.Name != "" {
+			if err := validateVolumeName(m.Name); err == nil {
+				return m.Name, nil
+			}
+		}
+	}
+	for _, m := range inspected[0].Mounts {
+		if m.Type == "volume" && m.Name != "" {
+			if err := validateVolumeName(m.Name); err == nil {
+				return m.Name, nil
+			}
+		}
+	}
+	return "", errors.New("no named volume mount found on redis container for RDB restore")
 }

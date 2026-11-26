@@ -65,6 +65,7 @@
 	--color-kumo-muted: var(--color-kumo-muted);
 	--color-kumo-control: var(--color-kumo-control);
 	--color-kumo-default: var(--color-kumo-contrast);
+	--color-kumo-inverse: var(--color-kumo-inverse);
 	--color-kumo-brand: var(--accent);
 	--color-kumo-focus: var(--color-kumo-focus);
 
@@ -142,6 +143,7 @@
 	--color-kumo-subtle: #a1a1aa;
 	--color-kumo-muted: #71717a;
 	--color-kumo-control: #16161a;
+	--color-kumo-inverse: #09090b;
 
 	/* Mapped 1:1 to Kumo Tokens */
 	--bg-canvas: var(--color-kumo-canvas);
@@ -307,6 +309,7 @@ html.light {
 	--color-kumo-subtle: #71717a;
 	--color-kumo-muted: #a1a1aa;
 	--color-kumo-control: #ffffff;
+	--color-kumo-inverse: #ffffff;
 
 	/* Clean Indigo for Light Mode */
 	--accent: #4f46e5;
@@ -335,6 +338,33 @@ html.light {
 
 .kumo-layer-card {
 	background-color: var(--color-kumo-elevated);
+}
+
+/* Crisp Kumo Checkbox visibility & accent state in dark/light mode */
+[data-kumo-component='Checkbox']:not([data-kumo-part='label']) {
+	background-color: var(--bg-input);
+	border: 1px solid var(--border);
+	--tw-ring-shadow: 0 0 #0000;
+}
+
+[data-kumo-component='Checkbox']:not([data-kumo-part='label']):hover {
+	border-color: var(--text-tertiary);
+}
+
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-checked],
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-state='checked'],
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-indeterminate],
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-state='indeterminate'] {
+	background-color: var(--accent);
+	border-color: var(--accent);
+	color: #ffffff;
+}
+
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-checked] svg,
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-state='checked'] svg,
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-indeterminate] svg,
+[data-kumo-component='Checkbox']:not([data-kumo-part='label'])[data-state='indeterminate'] svg {
+	color: #ffffff;
 }
 
 /* ──────────────────────────────────────────────

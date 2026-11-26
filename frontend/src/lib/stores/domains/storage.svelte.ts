@@ -43,8 +43,11 @@ export class StorageDomainStore {
 		this.volumeSnapshots = this.volumeSnapshots.filter((s) => s.id !== id);
 	}
 
-	async restoreVolumeSnapshot(id: string) {
-		await api.volumes.restoreSnapshot(id);
+	async restoreVolumeSnapshot(
+		id: string,
+		opts?: { serviceId?: string; database?: string; username?: string; password?: string }
+	) {
+		await api.volumes.restoreSnapshot(id, opts);
 	}
 
 	downloadVolumeSnapshot(id: string, filename: string) {

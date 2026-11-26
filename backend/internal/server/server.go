@@ -22,6 +22,7 @@ import (
 	"gopod/internal/credentials"
 	"gopod/internal/db"
 	"gopod/internal/ingress"
+	"gopod/internal/notifications"
 	"gopod/internal/podman"
 	"gopod/internal/projects"
 	"gopod/internal/runtime"
@@ -72,7 +73,11 @@ func NewServer(cfg Config) (http.Handler, error) {
 	authRepo := auth.NewSQLiteRepository(sqlDB)
 	authService := auth.NewService(authRepo)
 	authMiddleware := auth.NewMiddleware(authService)
+	accessChecker := auth.NewAccessChecker(sqlDB)
+	authMiddleware.SetAccessChecker(accessChecker)
 	authHandler := auth.NewHandler(authService)
+	notifService := notifications.NewService(sqlDB)
+	notifHandler := notifications.NewHandler(notifService, authMiddleware)
 
 	// Rewrite plaintext session tokens at rest to hashed form (idempotent:
 	// rows already carrying the hash prefix are skipped).
@@ -121,6 +126,8 @@ func NewServer(cfg Config) (http.Handler, error) {
 	serviceHandler := services.NewHandler(workloadService, authMiddleware)
 
 	runtimeService := runtime.NewService(podmanClient)
+	runtimeService.SetMetricsStore(runtime.NewMetricsStore(sqlDB))
+	go runtimeService.StartMetricsSampler(context.Background())
 	runtimeHandler := runtime.NewHandler(runtimeService, authMiddleware)
 	// Quadlet API responses mask env values GOPOD stores encrypted; the unit
 	// files keep the real value because systemd needs it.
@@ -175,6 +182,8 @@ func NewServer(cfg Config) (http.Handler, error) {
 	})
 	ingressRepo := ingress.NewSQLiteRepository(sqlDB)
 	ingressService := ingress.NewService(ingressRepo, caddyReconciler)
+	ingressService.SetSettingsDB(sqlDB)
+	_, _ = ingressService.LoadPanelSettings(context.Background())
 	ingressHandler := ingress.NewHandler(ingressService, authMiddleware)
 
 	// Reconcile Caddy on startup with retry backoff so a concurrent Caddy boot
@@ -235,7 +244,9 @@ func NewServer(cfg Config) (http.Handler, error) {
 	authService.SetAuditRecorder(auditService)
 	authService.SetActivityRecorder(activityRecorderFunc(activity.RecordActivity))
 	workloadService.SetAuditRecorder(auditService)
+	workloadService.SetNotifier(notifService)
 	storageService.SetAuditRecorder(auditService)
+	storageService.SetNotifier(notifService)
 
 	projectService.SetServiceChecker(func(ctx context.Context, projectID string) (int, error) {
 		svcs, err := serviceRepo.List(ctx, projectID)
@@ -289,6 +300,7 @@ func NewServer(cfg Config) (http.Handler, error) {
 
 	// ── Register Domain Routes ──
 	authHandler.RegisterRoutes(mux)
+	auth.RegisterAdminRoutes(mux, authMiddleware, accessChecker)
 	projectHandler.RegisterRoutes(mux)
 	serviceHandler.RegisterRoutes(mux)
 	runtimeHandler.RegisterRoutes(mux)
@@ -297,6 +309,7 @@ func NewServer(cfg Config) (http.Handler, error) {
 	storageHandler.RegisterRoutes(mux)
 	auditHandler.RegisterRoutes(mux)
 	activityHandler.RegisterRoutes(mux)
+	notifHandler.RegisterRoutes(mux)
 
 	// ── License & Build Metadata (AGPL-3.0 §13) ──
 	// Public route: any user interacting with the service over the network can

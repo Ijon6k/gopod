@@ -13,6 +13,7 @@ import (
 // Service encapsulates container engine interactions and telemetry business logic.
 type Service struct {
 	client      *podman.Client
+	metrics     *MetricsStore
 	statsMu     sync.RWMutex
 	cachedStats []podman.ContainerStat
 	statsTime   time.Time
@@ -26,6 +27,19 @@ type Service struct {
 // NewService creates a new runtime domain service.
 func NewService(client *podman.Client) *Service {
 	return &Service{client: client}
+}
+
+// SetMetricsStore installs the SQLite telemetry persistence store.
+func (s *Service) SetMetricsStore(store *MetricsStore) {
+	s.metrics = store
+}
+
+// QueryMetricsHistory returns stored historical telemetry for scope+targetID.
+func (s *Service) QueryMetricsHistory(ctx context.Context, scope, targetID, rangeStr string) ([]MetricSample, error) {
+	if s.metrics == nil {
+		return []MetricSample{}, nil
+	}
+	return s.metrics.QueryHistory(ctx, scope, targetID, rangeStr)
 }
 
 // SetEnvSecretKeyProvider installs the callback that returns env var keys
@@ -130,6 +144,11 @@ func (s *Service) DeleteContainer(ctx context.Context, id string, force bool) er
 // GetContainerLogs returns logs for a container.
 func (s *Service) GetContainerLogs(ctx context.Context, id string, tail int) (string, error) {
 	return s.client.GetContainerLogs(ctx, id, tail)
+}
+
+// GetContainerLogsWithOptions returns logs for a container with optional timestamps.
+func (s *Service) GetContainerLogsWithOptions(ctx context.Context, id string, tail int, timestamps bool) (string, error) {
+	return s.client.GetContainerLogsWithOptions(ctx, id, tail, timestamps)
 }
 
 // PruneContainers deletes stopped containers and resets failed systemd units.

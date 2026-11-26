@@ -57,6 +57,7 @@ type Reconciler struct {
 	mu              sync.RWMutex
 	hostDomainMap   map[string]Domain
 	serviceResolver ServiceResolver
+	panelSettings   PanelSettings
 }
 
 // AccessLogItem represents a structured Caddy JSON access log.
@@ -635,6 +636,7 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
 
 	r.mu.RLock()
 	currentAdminURL := r.adminURL
+	panel := r.panelSettings
 	r.mu.RUnlock()
 
 	ctrlUpstream := fmt.Sprintf("127.0.0.1:%s", r.controlPort)
@@ -651,7 +653,32 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
     admin %s
 }
 
-# Default Control Plane Dashboard Proxy
+`, adminListen)
+
+	panelHost := sanitizePanelHost(panel.Domain)
+	if panelHost != "" {
+		isPanelLocal := strings.HasSuffix(panelHost, ".localhost") || strings.HasSuffix(panelHost, ".local") || panelHost == "127.0.0.1"
+		panelAddr := panelHost
+		if isPanelLocal {
+			if panel.TLS {
+				panelAddr = fmt.Sprintf("http://%s, https://%s", panelHost, panelHost)
+			} else {
+				panelAddr = "http://" + panelHost
+			}
+		} else if !panel.TLS {
+			panelAddr = "http://" + panelHost
+		}
+		fmt.Fprintf(&b, "# Configured Control Plane Domain\n%s {\n    log {\n        output file %s {\n            roll_size 20MiB\n            roll_keep 7\n        }\n        format json\n    }\n", panelAddr, caddyLogFile)
+		if panel.TLS && isPanelLocal {
+			b.WriteString("    tls internal\n")
+		}
+		fmt.Fprintf(&b, "    reverse_proxy %s\n}\n\n", ctrlUpstream)
+	}
+
+	if panelHost != "" && panel.LockCatchall {
+		b.WriteString("# Catch-all :80 disabled because Panel Domain Lock is active\n:80 {\n    respond \"Not Found\" 404\n}\n\n")
+	} else {
+		fmt.Fprintf(&b, `# Default Control Plane Dashboard Proxy
 :80 {
     log {
         output file %s {
@@ -663,7 +690,8 @@ func (r *Reconciler) GenerateCaddyfile(domains []Domain) string {
     reverse_proxy %s
 }
 
-`, adminListen, caddyLogFile, ctrlUpstream)
+`, caddyLogFile, ctrlUpstream)
+	}
 
 	for _, d := range domains {
 		route, err := r.buildDomainRoute(d)

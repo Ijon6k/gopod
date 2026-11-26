@@ -6,7 +6,11 @@ import type {
 	SystemLingerResponse,
 	GCPreview,
 	GCResult,
-	KeyStatusResponse
+	KeyStatusResponse,
+	MetricSample,
+	PanelSettings,
+	AdminUserSummary,
+	NotificationChannel
 } from './types';
 
 export const systemApi = {
@@ -102,6 +106,109 @@ export const systemApi = {
 
 	async runGC(scope: string, includeVolumes = false, volumes: string[] = []): Promise<GCResult> {
 		const res = await apiClient.post<GCResult>('/system/gc', { scope, includeVolumes, volumes });
+		return res.data;
+	},
+
+	async metricsHistory(range: '1h' | '6h' | '24h' | '7d' = '1h'): Promise<MetricSample[]> {
+		const res = await apiClient.get<MetricSample[]>('/system/metrics/history', {
+			params: { range }
+		});
+		return res.data;
+	},
+
+	async serviceMetricsHistory(
+		serviceId: string,
+		range: '1h' | '6h' | '24h' | '7d' = '1h'
+	): Promise<MetricSample[]> {
+		const res = await apiClient.get<MetricSample[]>(
+			`/services/${encodeURIComponent(serviceId)}/metrics/history`,
+			{ params: { range } }
+		);
+		return res.data;
+	},
+
+	async getPanelSettings(): Promise<PanelSettings> {
+		const res = await apiClient.get<PanelSettings>('/system/panel-settings');
+		return res.data;
+	},
+
+	async updatePanelSettings(data: PanelSettings): Promise<PanelSettings> {
+		const res = await apiClient.put<PanelSettings>('/system/panel-settings', data);
+		return res.data;
+	},
+
+	async listUsers(): Promise<AdminUserSummary[]> {
+		const res = await apiClient.get<AdminUserSummary[]>('/users');
+		return res.data;
+	},
+
+	async createUser(data: {
+		name: string;
+		email: string;
+		password: string;
+		role: 'admin' | 'member';
+		projectIds: string[];
+	}): Promise<AdminUserSummary> {
+		const res = await apiClient.post<AdminUserSummary>('/users', data);
+		return res.data;
+	},
+
+	async updateUser(
+		id: string,
+		data: { name?: string; role?: 'admin' | 'member'; password?: string; projectIds?: string[] }
+	): Promise<AdminUserSummary> {
+		const res = await apiClient.put<AdminUserSummary>(`/users/${encodeURIComponent(id)}`, data);
+		return res.data;
+	},
+
+	async deleteUser(id: string): Promise<void> {
+		await apiClient.delete(`/users/${encodeURIComponent(id)}`);
+	},
+
+	async listNotifications(): Promise<NotificationChannel[]> {
+		const res = await apiClient.get<NotificationChannel[]>('/notifications');
+		return res.data;
+	},
+
+	async createNotification(data: {
+		name: string;
+		provider: 'discord' | 'telegram';
+		webhookUrl?: string;
+		botToken?: string;
+		chatId?: string;
+		events: string[];
+		enabled?: boolean;
+	}): Promise<NotificationChannel> {
+		const res = await apiClient.post<NotificationChannel>('/notifications', data);
+		return res.data;
+	},
+
+	async updateNotification(
+		id: string,
+		data: {
+			name?: string;
+			webhookUrl?: string;
+			botToken?: string;
+			chatId?: string;
+			events?: string[];
+			enabled?: boolean;
+		}
+	): Promise<NotificationChannel> {
+		const res = await apiClient.put<NotificationChannel>(
+			`/notifications/${encodeURIComponent(id)}`,
+			data
+		);
+		return res.data;
+	},
+
+	async deleteNotification(id: string): Promise<void> {
+		await apiClient.delete(`/notifications/${encodeURIComponent(id)}`);
+	},
+
+	async testNotification(id: string): Promise<{ message: string }> {
+		const res = await apiClient.post<{ message: string }>(
+			`/notifications/${encodeURIComponent(id)}/test`
+		);
 		return res.data;
 	},
 

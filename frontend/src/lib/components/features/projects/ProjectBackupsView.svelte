@@ -3,6 +3,7 @@
 	import { useKumoToastManager } from 'kumo-svelte';
 	import { errorToastOptions } from '$lib/utils/toast';
 	import BackupDestinationsCard from '$lib/components/features/storage/BackupDestinationsCard.svelte';
+	import SnapshotRestoreModal from '$lib/components/features/storage/SnapshotRestoreModal.svelte';
 	import {
 		Button,
 		ConfirmDialog,
@@ -52,7 +53,6 @@
 	let isCreatingSnapshot = $state(false);
 	let snapshotTargetVolume = $state<string | null>(null);
 	let restoringSnapshot = $state<VolumeSnapshot | null>(null);
-	let isRestoring = $state(false);
 	let restoreSuccessMessage = $state<string | null>(null);
 
 	// Schedule form state. The backend is the source of truth for cron syntax
@@ -105,23 +105,6 @@
 
 	function openRestoreModal(snap: VolumeSnapshot) {
 		restoringSnapshot = snap;
-	}
-
-	async function confirmRestore() {
-		if (!restoringSnapshot) return;
-		isRestoring = true;
-
-		try {
-			await dataStore.restoreVolumeSnapshot(restoringSnapshot.id);
-			const targetVol = restoringSnapshot.volumeName;
-			restoreSuccessMessage = `Snapshot restored successfully for volume "${targetVol}".`;
-			setTimeout(() => (restoreSuccessMessage = null), 4000);
-		} catch (err) {
-			console.error('Failed to restore snapshot:', err);
-		} finally {
-			isRestoring = false;
-			restoringSnapshot = null;
-		}
 	}
 
 	function handleToggleSchedule(id: string) {
@@ -446,7 +429,8 @@
 				</h3>
 			</div>
 			<span class="text-[11px] text-[var(--text-tertiary)]">
-				Standard format: <code class="font-mono text-[var(--text-secondary)]">tar.gz</code> (gzip compressed tarball)
+				Standard format: <code class="font-mono text-[var(--text-secondary)]">tar.gz</code> (gzip compressed
+				tarball)
 			</span>
 		</div>
 
@@ -572,12 +556,14 @@
 									<!-- Actions: Restore, Download, Delete -->
 									<TableCell class="px-3.5 py-3 text-right whitespace-nowrap">
 										<div class="inline-flex items-center gap-1.5">
-											{#if !snap.volumeName.startsWith('db:') && snap.volumeName !== 'system:gopod'}
+											{#if snap.volumeName !== 'system:gopod'}
 												<button
 													type="button"
 													onclick={() => openRestoreModal(snap)}
 													class="cursor-pointer rounded border-0 bg-[var(--accent-muted)] px-2 py-1 text-[11px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent)] hover:text-[var(--bg-shell)]"
-													title="Restore this snapshot to volume"
+													title={snap.volumeName.startsWith('db:')
+														? 'Restore database dump into running container'
+														: 'Restore this snapshot to volume'}
 												>
 													Restore
 												</button>
@@ -610,58 +596,14 @@
 	</section>
 </div>
 
-<!-- Confirmation Modal: Restore Snapshot -->
-{#if restoringSnapshot}
-	<div
-		class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(5,6,7,0.82)] p-4 backdrop-blur-[3px]"
-		role="dialog"
-		aria-modal="true"
-	>
-		<div
-			class="animate-in fade-in zoom-in-95 flex w-full max-w-md flex-col gap-4 rounded-[var(--radius-card)] border border-[var(--border)] bg-[var(--bg-shell)] p-5 text-left shadow-2xl duration-150"
-		>
-			<div class="flex items-start gap-3">
-				<div
-					class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--status-amber-muted)] text-[var(--status-amber)]"
-				>
-					<Warning size={18} />
-				</div>
-				<div class="flex flex-col gap-1">
-					<h3 class="m-0 text-sm font-semibold text-[var(--text-primary)]">
-						Restore Volume Snapshot
-					</h3>
-					<span class="text-xs leading-relaxed text-[var(--text-tertiary)]">
-						Restoring <code class="font-mono text-[var(--text-primary)]"
-							>{restoringSnapshot.filename}</code
-						>
-						will replace the current contents of volume
-						<strong class="text-[var(--text-primary)]">{restoringSnapshot.volumeName}</strong>.
-					</span>
-				</div>
-			</div>
-
-			<div
-				class="rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--bg-panel)] p-3 text-[11px] leading-relaxed text-[var(--text-secondary)]"
-			>
-				The target container will be briefly quiesced to ensure consistent file write integrity
-				before resuming execution.
-			</div>
-
-			<div class="flex items-center justify-end gap-2 border-t border-[var(--border-subtle)] pt-2">
-				<Button variant="secondary" size="sm" onclick={() => (restoringSnapshot = null)}>
-					Cancel
-				</Button>
-				<Button variant="primary" size="sm" disabled={isRestoring} onclick={confirmRestore}>
-					{#if isRestoring}
-						<CircleNotch size={13} class="animate-spin" /> Restoring...
-					{:else}
-						Confirm & Restore
-					{/if}
-				</Button>
-			</div>
-		</div>
-	</div>
-{/if}
+<SnapshotRestoreModal
+	snapshot={restoringSnapshot}
+	onclose={() => (restoringSnapshot = null)}
+	onrestored={(msg) => {
+		restoreSuccessMessage = msg;
+		setTimeout(() => (restoreSuccessMessage = null), 4000);
+	}}
+/>
 
 <!-- Modal: Create Backup Schedule -->
 {#if showScheduleForm}

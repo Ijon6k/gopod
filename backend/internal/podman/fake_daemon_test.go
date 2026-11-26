@@ -13,18 +13,31 @@ import (
 // requestLog records the wire requests a test issues so assertions can check
 // which libpod version prefix and endpoints the client actually used.
 type requestLog struct {
-	mu   sync.Mutex
-	got  []string
-	ping int
+	mu      sync.Mutex
+	got     []string
+	queries []string
+	ping    int
 }
 
 func (l *requestLog) record(r *http.Request) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	l.got = append(l.got, r.Method+" "+r.URL.Path)
+	l.queries = append(l.queries, r.URL.RawQuery)
 	if r.URL.Path == "/_ping" || strings.HasSuffix(r.URL.Path, "/libpod/_ping") {
 		l.ping++
 	}
+}
+
+func (l *requestLog) hasQuery(sub string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, q := range l.queries {
+		if strings.Contains(q, sub) {
+			return true
+		}
+	}
+	return false
 }
 
 func (l *requestLog) contains(sub string) bool {

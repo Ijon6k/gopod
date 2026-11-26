@@ -46,6 +46,8 @@ export interface SystemInfoResponse {
 	swapUsed?: number;
 	swapUsedMB?: number;
 	swapTotalGB?: number;
+	storageUsedGB?: number;
+	storageTotalGB?: number;
 	podmanVersion: string;
 	/** Container engine detected by the backend: 'podman' | 'docker' | ''. */
 	engine?: string;
@@ -136,4 +138,45 @@ export interface SystemBackupVerification {
 	entries?: string[];
 	errors?: string[];
 	warnings?: string[];
+}
+
+export interface PanelSettings {
+	domain: string;
+	lockCatchall: boolean;
+	tls: boolean;
+}
+
+export interface AdminUserSummary {
+	id: string;
+	email: string;
+	name: string;
+	role: 'admin' | 'member';
+	projectIds: string[];
+	createdAt: string;
+}
+
+export interface NotificationChannel {
+	id: string;
+	name: string;
+	provider: 'discord' | 'telegram';
+	events: string[];
+	enabled: boolean;
+	webhookHint?: string;
+	chatId?: string;
+	hasSecret: boolean;
+	createdAt: string;
+}
+
+export interface MetricSample {
+	timestamp: string;
+	label: string;
+	scope: string;
+	targetId: string;
+	cpuPercent: number;
+	memUsedBytes: number;
+	memLimitBytes: number;
+	storageUsedGB: number;
+	storageTotalGB: number;
+	netRxBps: number;
+	netTxBps: number;
 }

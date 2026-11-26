@@ -21,24 +21,24 @@ func NewHandler(service *Service, mw *auth.Middleware) *Handler {
 	}
 }
 
-// RegisterRoutes registers credentials routes on the mux.
+// RegisterRoutes registers credentials routes on the mux (admin-only).
 func (h *Handler) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/credentials/ssh-keys", h.middleware.RequireAuth(h.handleListSSHKeys))
-	mux.HandleFunc("POST /api/credentials/ssh-keys", h.middleware.RequireAuth(h.handleCreateSSHKey))
-	mux.HandleFunc("POST /api/credentials/ssh-keys/generate", h.middleware.RequireAuth(h.handleGenerateSSHKey))
-	mux.HandleFunc("DELETE /api/credentials/ssh-keys/{id}", h.middleware.RequireAuth(h.handleDeleteSSHKey))
+	mux.HandleFunc("GET /api/credentials/ssh-keys", h.middleware.RequireAdmin(h.handleListSSHKeys))
+	mux.HandleFunc("POST /api/credentials/ssh-keys", h.middleware.RequireAdmin(h.handleCreateSSHKey))
+	mux.HandleFunc("POST /api/credentials/ssh-keys/generate", h.middleware.RequireAdmin(h.handleGenerateSSHKey))
+	mux.HandleFunc("DELETE /api/credentials/ssh-keys/{id}", h.middleware.RequireAdmin(h.handleDeleteSSHKey))
 
-	mux.HandleFunc("GET /api/credentials/git-tokens", h.middleware.RequireAuth(h.handleListGitTokens))
-	mux.HandleFunc("POST /api/credentials/git-tokens", h.middleware.RequireAuth(h.handleCreateGitToken))
-	mux.HandleFunc("DELETE /api/credentials/git-tokens/{id}", h.middleware.RequireAuth(h.handleDeleteGitToken))
+	mux.HandleFunc("GET /api/credentials/git-tokens", h.middleware.RequireAdmin(h.handleListGitTokens))
+	mux.HandleFunc("POST /api/credentials/git-tokens", h.middleware.RequireAdmin(h.handleCreateGitToken))
+	mux.HandleFunc("DELETE /api/credentials/git-tokens/{id}", h.middleware.RequireAdmin(h.handleDeleteGitToken))
 
-	mux.HandleFunc("GET /api/credentials/registries", h.middleware.RequireAuth(h.handleListRegistries))
-	mux.HandleFunc("POST /api/credentials/registries", h.middleware.RequireAuth(h.handleCreateRegistry))
-	mux.HandleFunc("DELETE /api/credentials/registries/{id}", h.middleware.RequireAuth(h.handleDeleteRegistry))
+	mux.HandleFunc("GET /api/credentials/registries", h.middleware.RequireAdmin(h.handleListRegistries))
+	mux.HandleFunc("POST /api/credentials/registries", h.middleware.RequireAdmin(h.handleCreateRegistry))
+	mux.HandleFunc("DELETE /api/credentials/registries/{id}", h.middleware.RequireAdmin(h.handleDeleteRegistry))
 
-	mux.HandleFunc("GET /api/credentials/secrets", h.middleware.RequireAuth(h.handleListSecrets))
-	mux.HandleFunc("POST /api/credentials/secrets", h.middleware.RequireAuth(h.handleCreateSecret))
-	mux.HandleFunc("DELETE /api/credentials/secrets/{id}", h.middleware.RequireAuth(h.handleDeleteSecret))
+	mux.HandleFunc("GET /api/credentials/secrets", h.middleware.RequireAdmin(h.handleListSecrets))
+	mux.HandleFunc("POST /api/credentials/secrets", h.middleware.RequireAdmin(h.handleCreateSecret))
+	mux.HandleFunc("DELETE /api/credentials/secrets/{id}", h.middleware.RequireAdmin(h.handleDeleteSecret))
 }
 
 // ── SSH Keys ──

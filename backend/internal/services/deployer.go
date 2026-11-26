@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"gopod/internal/credentials"
 	"gopod/internal/podman"
@@ -51,6 +52,12 @@ type Deployer struct {
 	logManager       *LogManager
 	dataDir          string
 	repo             Repository
+
+	// Optional overrides used in unit tests for readiness gating.
+	readinessInspectFn    func(ctx context.Context, idOrName string) (*podman.ContainerInspectState, error)
+	readinessTimeout      time.Duration
+	readinessPollInterval time.Duration
+	readinessGracePeriod  time.Duration
 }
 
 // NewDeployer creates a new container deployer.

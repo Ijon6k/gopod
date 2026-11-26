@@ -205,6 +205,10 @@ func (d *Deployer) deployImage(ctx context.Context, s Service, depID, trigger st
 	}
 
 	if plan.mode == redeployStartFirst {
+		if err := d.awaitReplacementReady(ctx, plan.runName, logLine); err != nil {
+			d.rollbackFailedReplacement(ctx, plan, logLine)
+			return nil, err
+		}
 		containerName = d.retirePredecessor(ctx, plan.predecessorID, containerName, plan.runName, logLine)
 	}
 

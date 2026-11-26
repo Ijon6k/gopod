@@ -5,23 +5,67 @@
 	import { ui } from '$lib/stores/ui.svelte';
 	import { server } from '$lib/data';
 	import type { SystemInfoResponse } from '$lib/api/system/types';
-	import { LayerCard, Field, Input, Badge } from '$lib/components/ui';
-	import { Sun, Moon, Desktop, Globe, Clock, ShieldCheck } from 'phosphor-svelte';
+	import { LayerCard, Field, Input, Badge, Button, Switch } from '$lib/components/ui';
+	import { useKumoToastManager } from 'kumo-svelte';
+	import { errorToastOptions } from '$lib/utils/toast';
+	import { Sun, Moon, Desktop, Globe, Clock, ShieldCheck, Lock } from 'phosphor-svelte';
+
+	const toast = useKumoToastManager();
 
 	let sysInfo = $state<SystemInfoResponse | null>(null);
 	let hostname = $state(server.hostname || 'gopod-host');
 
+	let panelDomain = $state('');
+	let panelTls = $state(false);
+	let panelLockCatchall = $state(false);
+	let savingPanel = $state(false);
+
 	onMount(async () => {
 		try {
-			const info = await api.system.info();
+			const [info, panelCfg] = await Promise.all([
+				api.system.info().catch(() => null),
+				api.system.getPanelSettings().catch(() => null)
+			]);
 			if (info) {
 				sysInfo = info;
 				if (info.hostname) hostname = info.hostname;
+			}
+			if (panelCfg) {
+				panelDomain = panelCfg.domain || '';
+				panelTls = Boolean(panelCfg.tls);
+				panelLockCatchall = Boolean(panelCfg.lockCatchall);
 			}
 		} catch {
 			// keep fallback
 		}
 	});
+
+	async function handleSavePanelSettings() {
+		savingPanel = true;
+		try {
+			const saved = await api.system.updatePanelSettings({
+				domain: panelDomain.trim(),
+				tls: panelTls,
+				lockCatchall: panelLockCatchall
+			});
+			panelDomain = saved.domain;
+			panelTls = saved.tls;
+			panelLockCatchall = saved.lockCatchall;
+			toast.add({
+				title: 'Control plane ingress updated',
+				description: saved.lockCatchall
+					? `Dashboard locked to ${saved.domain}; unmapped :80 probes return 404.`
+					: saved.domain
+						? `Control plane bound to ${saved.domain} (catch-all :80 still active).`
+						: 'Default :80 control plane ingress active.',
+				variant: 'default'
+			});
+		} catch (err: any) {
+			toast.add(errorToastOptions(err, 'Failed to update panel ingress settings'));
+		} finally {
+			savingPanel = false;
+		}
+	}
 </script>
 
 <div class="flex flex-col gap-6">
@@ -144,6 +188,66 @@
 					></span
 				>
 			</div>
+		</div>
+	</LayerCard>
+
+	<!-- Control Plane Domain & Access Lock -->
+	<LayerCard class="flex flex-col gap-4 p-5">
+		<div class="flex items-center justify-between border-b border-[var(--border-subtle)] pb-3">
+			<div class="flex items-center gap-2">
+				<Lock size={16} class="text-[var(--accent)]" />
+				<div class="flex flex-col gap-0.5">
+					<h3 class="m-0 text-xs font-semibold text-[var(--text-primary)]">
+						Control plane domain &amp; access lock
+					</h3>
+					<p class="m-0 text-[11px] text-[var(--text-tertiary)]">
+						Bind the GOPOD dashboard to a dedicated hostname and optionally disable the catch-all
+						:80 listener.
+					</p>
+				</div>
+			</div>
+			<Badge variant={panelLockCatchall && panelDomain ? 'success' : 'neutral'}>
+				{panelLockCatchall && panelDomain ? 'Locked to domain' : 'Open on :80'}
+			</Badge>
+		</div>
+
+		<div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+			<Field label="Dashboard hostname">
+				<Input
+					id="setting-panel-domain"
+					bind:value={panelDomain}
+					placeholder="panel.homelab.local or gopod.example.com"
+					class="font-mono text-xs"
+				/>
+			</Field>
+			<div class="flex flex-col justify-end gap-2.5 pb-1">
+				<label class="flex cursor-pointer items-center justify-between gap-3 text-xs">
+					<span class="text-[var(--text-secondary)]">Automatic HTTPS / TLS</span>
+					<Switch bind:checked={panelTls} />
+				</label>
+				<label class="flex cursor-pointer items-center justify-between gap-3 text-xs">
+					<span class="text-[var(--text-secondary)]"
+						>Lock catch-all :80 listener (404 unmapped)</span
+					>
+					<Switch bind:checked={panelLockCatchall} disabled={!panelDomain.trim()} />
+				</label>
+			</div>
+		</div>
+
+		{#if panelLockCatchall && panelDomain.trim()}
+			<div
+				class="rounded-[var(--radius-sm)] border border-[var(--status-amber)]/40 bg-[var(--status-amber-muted)] px-3 py-2 text-[11px] text-[var(--status-amber)]"
+			>
+				Requests hitting raw IP or unmapped hostnames on port 80 will receive HTTP 404. Ensure
+				<code class="font-mono font-semibold">{panelDomain.trim()}</code> resolves to this host before
+				saving.
+			</div>
+		{/if}
+
+		<div class="flex justify-end border-t border-[var(--border-subtle)] pt-3">
+			<Button variant="primary" size="sm" onclick={handleSavePanelSettings} disabled={savingPanel}>
+				{savingPanel ? 'Applying Caddy config…' : 'Save & Reconcile Ingress'}
+			</Button>
 		</div>
 	</LayerCard>
 </div>

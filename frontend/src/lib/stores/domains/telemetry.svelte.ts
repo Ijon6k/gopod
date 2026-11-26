@@ -57,8 +57,52 @@ export class TelemetryDomainStore {
 		}
 	}
 
+	private hydratedFromHistory = false;
+
+	async hydrateHostHistory() {
+		if (this.hydratedFromHistory || this.cpuHistory.length >= 20) return;
+		this.hydratedFromHistory = true;
+		try {
+			const samples = await api.system.metricsHistory('1h');
+			if (!Array.isArray(samples) || samples.length === 0) return;
+			const seedCpu: TimeSeriesPoint[] = [];
+			const seedMem: TimeSeriesPoint[] = [];
+			const seedDisk: TimeSeriesPoint[] = [];
+			const seedNet: TimeSeriesPoint[] = [];
+			for (const sample of samples.slice(-240)) {
+				const t = sample.timestamp || new Date().toISOString();
+				const lbl = sample.label || '';
+				seedCpu.push({ time: t, label: lbl, value: Math.max(0, sample.cpuPercent) });
+				seedMem.push({
+					time: t,
+					label: lbl,
+					value: parseFloat(((sample.memUsedBytes || 0) / (1024 * 1024 * 1024)).toFixed(2))
+				});
+				seedDisk.push({
+					time: t,
+					label: lbl,
+					value: parseFloat((sample.storageUsedGB || 0).toFixed(1))
+				});
+				seedNet.push({
+					time: t,
+					label: lbl,
+					value: Math.max(0, (sample.netRxBps || 0) + (sample.netTxBps || 0))
+				});
+			}
+			if (this.cpuHistory.length < 5) {
+				this.cpuHistory = seedCpu;
+				this.memoryHistory = seedMem;
+				this.storageHistory = seedDisk;
+				this.networkHistory = seedNet;
+			}
+		} catch {
+			// historical hydration is best-effort
+		}
+	}
+
 	startStreamingStats(onStats?: (stats: any[]) => void) {
 		if (typeof window === 'undefined') return;
+		void this.hydrateHostHistory();
 		if (this.stopStream) return;
 
 		// EventSource fires onerror for every network hiccup while it keeps
@@ -195,6 +239,12 @@ export class TelemetryDomainStore {
 				: s.memory - s.memoryUsed;
 		s.swapUsed = sys.swapUsedMB != null ? sys.swapUsedMB : s.swapUsed;
 		s.swapTotal = sys.swapTotalGB != null ? sys.swapTotalGB : s.swapTotal;
+		if (sys.storageTotalGB != null && sys.storageTotalGB > 0) {
+			s.storage = parseFloat(sys.storageTotalGB.toFixed(1));
+		}
+		if (sys.storageUsedGB != null && sys.storageUsedGB >= 0) {
+			s.storageUsed = parseFloat(sys.storageUsedGB.toFixed(1));
+		}
 		// A real 0.0% must overwrite the previous sample — the former `||`
 		// treated zero as falsy and froze CPU at its last non-zero reading.
 		s.cpuUsage = sys.cpuUsage != null ? parseFloat(Number(sys.cpuUsage).toFixed(1)) : s.cpuUsage;
